@@ -42,8 +42,8 @@ module ViktoryRealty
     config.autoload_paths << Rails.root.join('app', 'presenters')
     config.autoload_paths << Rails.root.join('app', 'decorators')
 
-    # Active Job queue adapter
-    config.active_job.queue_adapter = :sidekiq
+    # Active Job queue adapter (temporarily using async for setup)
+    config.active_job.queue_adapter = :async
 
     # Active Storage
     config.active_storage.service = :local
@@ -64,8 +64,8 @@ module ViktoryRealty
       end
     end
 
-    # Rate limiting
-    config.middleware.use Rack::Attack
+    # Rate limiting (temporarily disabled for setup)
+    # config.middleware.use Rack::Attack
 
     # Session store
     config.session_store :cookie_store,
@@ -160,20 +160,20 @@ module ViktoryRealty
     config.assets.paths << Rails.root.join('app', 'assets', 'fonts')
     config.assets.precompile += %w[*.png *.jpg *.jpeg *.gif *.svg]
 
-    # Pagination defaults
-    Kaminari.configure do |config|
-      config.default_per_page = 20
-      config.max_per_page = 100
-    end
+    # Pagination defaults (disabled - using defaults)
+    # Kaminari.configure do |config|
+    #   config.default_per_page = 20
+    #   config.max_per_page = 100
+    # end
 
-    # Devise configuration
-    config.to_prepare do
-      Devise::SessionsController.layout 'devise'
-      Devise::RegistrationsController.layout proc { |controller| user_signed_in? ? 'application' : 'devise' }
-      Devise::ConfirmationsController.layout 'devise'
-      Devise::UnlocksController.layout 'devise'
-      Devise::PasswordsController.layout 'devise'
-    end
+    # Devise configuration (disabled for setup)
+    # config.to_prepare do
+    #   Devise::SessionsController.layout 'devise'
+    #   Devise::RegistrationsController.layout proc { |controller| user_signed_in? ? 'application' : 'devise' }
+    #   Devise::ConfirmationsController.layout 'devise'
+    #   Devise::UnlocksController.layout 'devise'
+    #   Devise::PasswordsController.layout 'devise'
+    # end
   end
 end
 

@@ -11,39 +11,50 @@ class ApplicationController < ActionController::Base
   # ============================================
   # INCLUDES
   # ============================================
-  include Pundit::Authorization
+  # include Pundit::Authorization
   
   # ============================================
   # BEFORE ACTIONS
   # ============================================
-  before_action :configure_permitted_parameters, if: :devise_controller?
+  # before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
-  before_action :track_user_activity
-  before_action :setup_meta_tags
+  # before_action :track_user_activity
+  # before_action :setup_meta_tags
   # Временно отключено: требуется gem browser
   # before_action :detect_device_type
   
   # ============================================
   # AFTER ACTIONS
   # ============================================
-  after_action :track_ahoy_visit
+  # after_action :track_ahoy_visit
   
   # ============================================
   # RESCUE FROM
   # ============================================
-  rescue_from Pundit::NotAuthorizedError, with: :user_not_authorized
+  # rescue_from Pundit::NotAuthorizedError, with: :user_not_authorized
   rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
   rescue_from ActionController::RoutingError, with: :render_404
   
   # ============================================
   # HELPER METHODS
   # ============================================
+  helper_method :user_signed_in?
+  helper_method :current_user
   helper_method :current_user_admin?
   helper_method :current_user_agent?
   helper_method :current_user_client?
   helper_method :mobile_device?
   helper_method :tablet_device?
   helper_method :desktop_device?
+  
+  # Stub methods for Devise (temporarily disabled)
+  def user_signed_in?
+    false
+  end
+  
+  def current_user
+    nil
+  end
   
   protected
   

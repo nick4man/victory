@@ -32,7 +32,10 @@ threads_count = ENV.fetch('RAILS_MAX_THREADS', 5).to_i
 threads threads_count, threads_count
 
 # Specifies the `port` that Puma will listen on to receive requests
-port ENV.fetch('PORT', 3000)
+port ENV.fetch('PORT', 5000)
+
+# Bind to 0.0.0.0 for Replit compatibility
+bind "tcp://0.0.0.0:#{ENV.fetch('PORT', 5000)}"
 
 # Specifies the `worker_timeout` threshold that Puma will use to wait before
 # terminating a worker in development environments
@@ -42,7 +45,7 @@ worker_timeout 3600 if ENV.fetch('RAILS_ENV', 'development') == 'development'
 # Workers are forked web server processes. If using threads and workers together
 # the concurrency of the application would be max `threads` * `workers`
 # Workers do not work on JRuby or Windows (both of which do not support processes)
-workers ENV.fetch('WEB_CONCURRENCY', 2).to_i
+workers ENV.fetch('WEB_CONCURRENCY', 1).to_i
 
 # Use the `preload_app!` method when specifying a `workers` number
 # This directive tells Puma to first boot the application and load code
@@ -56,9 +59,6 @@ plugin :tmp_restart
 # Bind to UNIX socket for better performance (production)
 if ENV.fetch('RAILS_ENV', 'development') == 'production'
   bind "unix://#{ENV.fetch('APP_ROOT', Dir.pwd)}/tmp/sockets/puma.sock"
-else
-  # Development mode - bind to port
-  port ENV.fetch('PORT', 3000)
 end
 
 # === Cluster mode ===

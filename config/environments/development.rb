@@ -52,11 +52,11 @@ Rails.application.configure do
   # Set default URL options
   config.action_mailer.default_url_options = {
     host: ENV.fetch('APP_HOST', 'localhost'),
-    port: ENV.fetch('APP_PORT', 3000)
+    port: ENV.fetch('PORT', 5000)
   }
   
   # Asset host for email images
-  config.action_mailer.asset_host = "http://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('APP_PORT', 3000)}"
+  config.action_mailer.asset_host = "http://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('PORT', 5000)}"
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log
@@ -82,13 +82,14 @@ Rails.application.configure do
   # Annotate rendered view with file names.
   # config.action_view.annotate_rendered_view_with_filenames = true
 
+  # Allow all hosts for Replit proxy compatibility
+  config.hosts.clear
+  
   # Uncomment if you wish to allow Action Cable access from any origin.
-  # config.action_cable.disable_request_forgery_protection = true
+  config.action_cable.disable_request_forgery_protection = true
 
   # ActionCable configuration
-  config.action_cable.url = "ws://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('APP_PORT', 3000)}/cable"
-  config.action_cable.allowed_request_origins = [
-    "http://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('APP_PORT', 3000)}"
-  ]
+  config.action_cable.url = "ws://#{ENV.fetch('APP_HOST', '0.0.0.0')}:#{ENV.fetch('PORT', 5000)}/cable"
+  config.action_cable.allowed_request_origins = nil
 end
 

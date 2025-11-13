@@ -7,29 +7,19 @@ class HomeController < ApplicationController
   # caches_action :index, expires_in: 15.minutes, cache_path: proc { |c| c.params }
   
   def index
-    # Track page view
-    track_event('home_page_viewed')
+    # Simplified for now - just render the homepage
+    # TODO: Re-enable features after gem dependencies are resolved
     
-    # Set meta tags for SEO
-    set_page_meta_tags
-    
-    # Load data for homepage sections
-    load_featured_properties
-    load_latest_properties
-    load_statistics
-    load_reviews
-    load_blog_posts
-    load_virtual_tours
-    
-    # Prepare search form
-    @search = Property.ransack(params[:q])
-    
-    # Track UTM parameters if present
-    capture_utm_params if params[:utm_source].present?
+    # Provide default empty data to prevent view errors
+    @statistics = { total_properties: 0, total_deals: 0, happy_clients: 0 }
+    @featured_properties = []
+    @latest_properties = []
+    @reviews = []
+    @blog_posts = []
+    @virtual_tours = []
     
     respond_to do |format|
       format.html
-      format.json { render json: homepage_data }
     end
   end
   

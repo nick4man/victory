@@ -7,27 +7,27 @@ Rails.application.routes.draw do
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
 
   # ============================================
-  # ADMIN PANEL (ActiveAdmin)
+  # ADMIN PANEL (ActiveAdmin) - Temporarily disabled
   # ============================================
-  devise_for :admin_users, ActiveAdmin::Devise.config
-  ActiveAdmin.routes(self)
+  # devise_for :admin_users, ActiveAdmin::Devise.config
+  # ActiveAdmin.routes(self)
 
   # ============================================
-  # USER AUTHENTICATION (Devise)
+  # USER AUTHENTICATION (Devise) - Temporarily disabled
   # ============================================
-  devise_for :users, controllers: {
-    registrations: 'users/registrations',
-    sessions: 'users/sessions',
-    passwords: 'users/passwords',
-    omniauth_callbacks: 'users/omniauth_callbacks'
-  }
+  # devise_for :users, controllers: {
+  #   registrations: 'users/registrations',
+  #   sessions: 'users/sessions',
+  #   passwords: 'users/passwords',
+  #   omniauth_callbacks: 'users/omniauth_callbacks'
+  # }
 
   # ============================================
   # MAIN ROUTES
   # ============================================
   
-  # Homepage
-  root 'home#index'
+  # Homepage (using minimal landing page for design work)
+  root 'landing#index'
 
   # ============================================
   # PROPERTIES (Каталог недвижимости)
@@ -411,17 +411,17 @@ Rails.application.routes.draw do
   match '/500', to: 'errors#internal_server_error', via: :all
 
   # ============================================
-  # DEVELOPMENT TOOLS (only in development)
+  # DEVELOPMENT TOOLS (only in development) - Temporarily disabled
   # ============================================
-  if Rails.env.development?
-    # Letter Opener
-    mount LetterOpenerWeb::Engine, at: '/letter_opener'
-    
-    # Sidekiq Web UI
-    require 'sidekiq/web'
-    mount Sidekiq::Web => '/sidekiq'
-    
-    # Flipper UI (Feature Flags)
-    mount Flipper::UI.app(Flipper) => '/flipper'
-  end
+  # if Rails.env.development?
+  #   # Letter Opener
+  #   mount LetterOpenerWeb::Engine, at: '/letter_opener'
+  #   
+  #   # Sidekiq Web UI
+  #   require 'sidekiq/web'
+  #   mount Sidekiq::Web => '/sidekiq'
+  #   
+  #   # Flipper UI (Feature Flags)
+  #   mount Flipper::UI.app(Flipper) => '/flipper'
+  # end
 end

@@ -1,0 +1,203 @@
+<%# Landing page inspired by Sminex minimalist design %>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>АН "Виктори" - Агентство недвижимости</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    
+    .hero-title {
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-white">
+  <!-- Minimalist Header -->
+  <header class="bg-white">
+    <div class="container mx-auto px-6 py-6">
+      <div class="flex items-center justify-between">
+        <div class="text-xl font-bold tracking-tight text-gray-900">АН "ВИКТОРИ"</div>
+        <nav class="hidden lg:flex items-center space-x-8 text-sm">
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Элитная недвижимость</a>
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Проекты</a>
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Услуги</a>
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">О компании</a>
+          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Контакты</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section - Sminex-inspired minimalist design -->
+  <section class="relative bg-white pt-20 pb-24 md:pt-32 md:pb-40">
+    <div class="container mx-auto px-6">
+      <div class="max-w-5xl mx-auto">
+        <!-- Main CTA Button -->
+        <div class="mb-16 md:mb-20">
+          <a href="#" class="inline-block px-8 py-3 border-2 border-gray-900 text-gray-900 font-semibold text-sm tracking-wide hover:bg-gray-900 hover:text-white transition-all duration-300">
+            ВЫБРАТЬ НЕДВИЖИМОСТЬ
+          </a>
+        </div>
+        
+        <!-- Hero Title -->
+        <h1 class="hero-title text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold text-gray-900 mb-8 md:mb-12 leading-tight">
+          ПРОФЕССИОНАЛЫ<br>
+          ЭЛИТНОЙ<br>
+          НЕДВИЖИМОСТИ
+        </h1>
+        
+        <!-- Portfolio Link -->
+        <div class="mb-16">
+          <a href="#" class="inline-block px-8 py-3 bg-gray-900 text-white font-semibold text-sm tracking-wide hover:bg-gray-800 transition-all duration-300">
+            ПОРТФОЛИО ПРОЕКТОВ
+          </a>
+        </div>
+        
+        <!-- Description Text -->
+        <div class="max-w-3xl">
+          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-6">
+            Мы создаём самую комфортную и престижную среду для жизни и работы. Заботимся о клиенте на каждом этапе: при выборе, на стадии покупки, в процессе ожидания ключей и, конечно, во время жизни в наших домах.
+          </p>
+          <p class="text-base md:text-lg text-gray-700 leading-relaxed">
+            Мы смотрим на свою работу глазами клиента и создаём только то, что устроило бы нас самих.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Secondary Section - USP -->
+  <section class="bg-gray-50 py-20 md:py-32">
+    <div class="container mx-auto px-6">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-8 leading-tight">
+          УНИКАЛЬНЫЕ ДОМА,<br>
+          ПРЕВОСХОДЯЩИЕ ОЖИДАНИЯ
+        </h2>
+        
+        <div class="max-w-3xl">
+          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-6">
+            Нам важно, как человек будет чувствовать себя в построенном нами доме. Мы вкладываем душу в каждый элемент и продумываем всё до мелочей.
+          </p>
+          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-10">
+            Наши продукты отличаются максимальной комплектацией и зачастую превосходят продукты конкурентов. Мы стремимся сделать каждый элемент дома идеальным для всех вас.
+          </p>
+          
+          <a href="#" class="inline-block border-b-2 border-gray-900 text-gray-900 font-semibold text-sm pb-1 hover:border-gray-600 transition">
+            ПОДРОБНЕЕ
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Section -->
+  <section class="bg-white py-20 md:py-32">
+    <div class="container mx-auto px-6">
+      <div class="max-w-5xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+          <div>
+            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">100</div>
+            <p class="text-gray-600 text-lg">реализованных проектов</p>
+          </div>
+          <div>
+            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">10+</div>
+            <p class="text-gray-600 text-lg">лет на рынке</p>
+          </div>
+          <div>
+            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">500+</div>
+            <p class="text-gray-600 text-lg">довольных клиентов</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Values Section -->
+  <section class="bg-gray-50 py-20 md:py-32">
+    <div class="container mx-auto px-6">
+      <div class="max-w-5xl mx-auto">
+        <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-16 leading-tight">
+          МЫ ВСЕГДА СТРОИМ ТО,<br>
+          ЧТО ОБЕЩАЛИ
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-16">
+          <div>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">АРХИТЕКТУРА</h3>
+            <p class="text-gray-700 leading-relaxed">
+              Мы вкладываем душу в каждый проект: прорабатываем детали, продумываем инфраструктуру и подбираем материалы премиум-класса.
+            </p>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">КАЧЕСТВО</h3>
+            <p class="text-gray-700 leading-relaxed">
+              Каждый элемент дома создаётся с вниманием к деталям. Мы используем только проверенные материалы и работаем с лучшими подрядчиками.
+            </p>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">КОМФОРТ</h3>
+            <p class="text-gray-700 leading-relaxed">
+              Продуманная инфраструктура, современные технологии и забота о каждой детали создают идеальную среду для жизни.
+            </p>
+          </div>
+          <div>
+            <h3 class="text-xl font-bold text-gray-900 mb-4">СЕРВИС</h3>
+            <p class="text-gray-700 leading-relaxed">
+              Мы сопровождаем клиента на всех этапах — от выбора недвижимости до послепродажного обслуживания.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="bg-gray-900 text-white py-12">
+    <div class="container mx-auto px-6">
+      <div class="max-w-5xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div>
+            <div class="text-lg font-bold mb-4">АН "ВИКТОРИ"</div>
+            <p class="text-gray-400 text-sm">Элитная недвижимость премиум-класса</p>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4 text-sm">ПРОЕКТЫ</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+              <li><a href="#" class="hover:text-white transition">Квартиры</a></li>
+              <li><a href="#" class="hover:text-white transition">Пентхаусы</a></li>
+              <li><a href="#" class="hover:text-white transition">Коммерческая</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4 text-sm">КОМПАНИЯ</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+              <li><a href="#" class="hover:text-white transition">О нас</a></li>
+              <li><a href="#" class="hover:text-white transition">Новости</a></li>
+              <li><a href="#" class="hover:text-white transition">Контакты</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4 text-sm">КОНТАКТЫ</h4>
+            <ul class="space-y-2 text-sm text-gray-400">
+              <li>+7 (495) 123-45-67</li>
+              <li>info@viktoryre.ru</li>
+            </ul>
+          </div>
+        </div>
+        <div class="border-t border-gray-800 pt-8">
+          <p class="text-gray-400 text-sm">&copy; 2024 АН "Виктори". Все права защищены.</p>
+        </div>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
