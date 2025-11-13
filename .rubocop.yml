@@ -1,0 +1,155 @@
+# Rubocop Configuration for АН "Виктори"
+# Ruby on Rails Style Guide
+# https://rubystyle.guide/
+# https://rails.rubystyle.guide/
+
+require:
+  - rubocop-rails
+  - rubocop-rspec
+  - rubocop-performance
+
+AllCops:
+  NewCops: enable
+  TargetRubyVersion: 3.2
+  DisplayCopNames: true
+  DisplayStyleGuide: true
+  ExtraDetails: true
+  Exclude:
+    - 'db/schema.rb'
+    - 'db/migrate/*.rb'
+    - 'bin/**/*'
+    - 'vendor/**/*'
+    - 'node_modules/**/*'
+    - 'tmp/**/*'
+    - 'log/**/*'
+    - 'config/environments/*'
+    - 'config/initializers/devise.rb'
+
+# Layout
+
+Layout/LineLength:
+  Max: 120
+  Exclude:
+    - 'config/**/*'
+
+Layout/EmptyLinesAroundBlockBody:
+  Enabled: false
+
+Layout/EmptyLinesAroundClassBody:
+  Enabled: false
+
+Layout/EmptyLinesAroundModuleBody:
+  Enabled: false
+
+# Style
+
+Style/Documentation:
+  Enabled: false
+
+Style/FrozenStringLiteralComment:
+  Enabled: true
+  EnforcedStyle: always
+
+Style/StringLiterals:
+  EnforcedStyle: single_quotes
+
+Style/SymbolArray:
+  EnforcedStyle: brackets
+
+Style/WordArray:
+  EnforcedStyle: brackets
+
+Style/ClassAndModuleChildren:
+  Enabled: false
+
+Style/GuardClause:
+  Enabled: false
+
+Style/IfUnlessModifier:
+  Enabled: false
+
+Style/NumericPredicate:
+  Enabled: false
+
+# Metrics
+
+Metrics/MethodLength:
+  Max: 25
+  Exclude:
+    - 'db/seeds.rb'
+
+Metrics/ClassLength:
+  Max: 150
+  Exclude:
+    - 'app/controllers/**/*'
+
+Metrics/BlockLength:
+  Max: 50
+  Exclude:
+    - 'spec/**/*'
+    - 'config/routes.rb'
+    - 'db/seeds.rb'
+    - 'app/admin/**/*'
+
+Metrics/AbcSize:
+  Max: 25
+  Exclude:
+    - 'db/seeds.rb'
+
+Metrics/CyclomaticComplexity:
+  Max: 10
+
+Metrics/PerceivedComplexity:
+  Max: 10
+
+# Naming
+
+Naming/VariableNumber:
+  Enabled: false
+
+Naming/PredicateName:
+  Enabled: false
+
+# Rails
+
+Rails:
+  Enabled: true
+
+Rails/Output:
+  Exclude:
+    - 'db/seeds.rb'
+
+Rails/HasAndBelongsToMany:
+  Enabled: false
+
+Rails/SkipsModelValidations:
+  Enabled: false
+
+Rails/InverseOf:
+  Enabled: false
+
+# RSpec
+
+RSpec/ExampleLength:
+  Max: 15
+
+RSpec/MultipleExpectations:
+  Max: 5
+
+RSpec/NestedGroups:
+  Max: 5
+
+RSpec/MultipleMemoizedHelpers:
+  Max: 10
+
+# Performance
+
+Performance:
+  Enabled: true
+
+# Lint
+
+Lint/AmbiguousBlockAssociation:
+  Exclude:
+    - 'spec/**/*'
+

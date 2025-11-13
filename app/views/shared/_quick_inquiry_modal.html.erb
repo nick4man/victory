@@ -1,0 +1,143 @@
+<!-- Quick Inquiry Modal -->
+<div id="quickInquiryModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+  <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <!-- Background overlay -->
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeModal('quickInquiryModal')"></div>
+
+    <!-- Center modal -->
+    <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+    <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h3 class="text-2xl font-bold text-gray-900" id="modal-title">
+              Быстрая заявка
+            </h3>
+            <p class="mt-1 text-sm text-gray-500">
+              Оставьте свои контакты, и мы свяжемся с вами в течение 15 минут
+            </p>
+          </div>
+          <button type="button" onclick="closeModal('quickInquiryModal')" class="text-gray-400 hover:text-gray-500 transition">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Form -->
+        <%= form_with url: contact_forms_quick_inquiry_path, method: :post, local: false, html: { class: "space-y-4", id: "quickInquiryForm" } do |f| %>
+          <%= hidden_field_tag 'inquiry[property_id]', '', id: 'quick_inquiry_property_id' %>
+          
+          <!-- Name -->
+          <div>
+            <%= label_tag 'inquiry[name]', "Ваше имя *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_field_tag 'inquiry[name]', '', 
+                placeholder: "Иван Иванов",
+                required: true,
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Phone -->
+          <div>
+            <%= label_tag 'inquiry[phone]', "Телефон *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= telephone_field_tag 'inquiry[phone]', '',
+                placeholder: "+7 (999) 123-45-67",
+                required: true,
+                data: { controller: "app", action: "input->app#formatPhone" },
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <%= label_tag 'inquiry[email]', "Email (необязательно)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= email_field_tag 'inquiry[email]', '',
+                placeholder: "your@email.com",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Message -->
+          <div>
+            <%= label_tag 'inquiry[message]', "Сообщение (необязательно)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_area_tag 'inquiry[message]', '',
+                rows: 3,
+                placeholder: "Расскажите, что вас интересует...",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Privacy Notice -->
+          <div class="rounded-lg bg-blue-50 p-3 border border-blue-100">
+            <p class="text-xs text-blue-700">
+              Нажимая кнопку "Отправить", вы соглашаетесь с 
+              <%= link_to "политикой конфиденциальности", pages_privacy_path, target: "_blank", class: "font-medium underline" %>
+            </p>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="flex gap-3">
+            <button type="button" onclick="closeModal('quickInquiryModal')" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition">
+              Отмена
+            </button>
+            <%= submit_tag "Отправить заявку", class: "flex-1 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white font-medium rounded-lg hover:from-primary-700 hover:to-primary-800 transition transform hover:scale-105" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Handle form submission via AJAX
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('quickInquiryForm');
+    if (!form) return;
+
+    form.addEventListener('ajax:success', (event) => {
+      const [data, status, xhr] = event.detail;
+      closeModal('quickInquiryModal');
+      showNotification('success', data.message || 'Заявка отправлена!');
+      form.reset();
+    });
+
+    form.addEventListener('ajax:error', (event) => {
+      const [data, status, xhr] = event.detail;
+      showNotification('error', data.errors ? data.errors.join(', ') : 'Произошла ошибка');
+    });
+  });
+
+  function openModal(modalId, propertyId = null) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    
+    // Set property ID if provided
+    if (propertyId && modalId === 'quickInquiryModal') {
+      document.getElementById('quick_inquiry_property_id').value = propertyId;
+    }
+  }
+
+  function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  function showNotification(type, message) {
+    // Simple notification (can be enhanced with toast library)
+    const color = type === 'success' ? 'green' : 'red';
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 bg-${color}-500 text-white px-6 py-3 rounded-lg shadow-lg z-50`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.remove();
+    }, 5000);
+  }
+</script>
+

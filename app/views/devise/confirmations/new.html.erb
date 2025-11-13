@@ -1,0 +1,102 @@
+<% content_for :title, "Подтверждение email" %>
+
+<div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="sm:mx-auto sm:w-full sm:max-w-md">
+    <!-- Logo -->
+    <div class="flex justify-center">
+      <%= link_to root_path, class: "flex items-center" do %>
+        <div class="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg">
+          <span class="text-2xl font-bold text-white">В</span>
+        </div>
+        <span class="ml-3 text-2xl font-bold text-gray-900">АН "Виктори"</span>
+      <% end %>
+    </div>
+
+    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+      Подтверждение email
+    </h2>
+    <p class="mt-2 text-center text-sm text-gray-600">
+      Повторно отправить инструкции для подтверждения
+    </p>
+  </div>
+
+  <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+    <div class="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
+      <%= form_for(resource, as: resource_name, url: confirmation_path(resource_name), html: { method: :post, class: "space-y-6" }) do |f| %>
+        <%= render "devise/shared/error_messages", resource: resource %>
+
+        <!-- Email Field -->
+        <div>
+          <%= f.label :email, "Email адрес", class: "block text-sm font-medium text-gray-700 mb-2" %>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
+              </svg>
+            </div>
+            <%= f.email_field :email,
+                autofocus: true,
+                autocomplete: "email",
+                value: (resource.pending_reconfirmation? ? resource.unconfirmed_email : resource.email),
+                placeholder: "your@email.com",
+                class: "appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition sm:text-sm" %>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div>
+          <%= f.submit "Отправить инструкции повторно", class: "w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-[1.02]" %>
+        </div>
+
+        <!-- Info Message -->
+        <div class="rounded-lg bg-blue-50 p-4 border border-blue-100">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="ml-3 flex-1">
+              <p class="text-sm text-blue-700">
+                Письмо с инструкциями будет отправлено на указанный email адрес. Проверьте также папку "Спам".
+              </p>
+            </div>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- Additional Links -->
+      <div class="mt-6">
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-300"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-2 bg-white text-gray-500">Или</span>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-2 gap-3">
+          <%= link_to new_user_session_path, class: "w-full inline-flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors" do %>
+            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+            </svg>
+            Войти
+          <% end %>
+
+          <%= link_to new_user_registration_path, class: "w-full inline-flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors" do %>
+            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+            </svg>
+            Регистрация
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 text-center">
+      <%= link_to "← Вернуться на главную", root_path, class: "text-sm text-gray-500 hover:text-gray-700 transition inline-flex items-center" %>
+    </div>
+  </div>
+</div>
+

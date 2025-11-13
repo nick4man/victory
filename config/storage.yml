@@ -1,0 +1,69 @@
+# Active Storage Configuration
+#
+# Store uploaded files on the local file system (default for development and test)
+
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>
+
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+# Use bin/rails credentials:edit to set the AWS secrets (with EDITOR=vim)
+# amazon:
+#   service: S3
+#   access_key_id: <%= Rails.application.credentials.dig(:aws, :access_key_id) %>
+#   secret_access_key: <%= Rails.application.credentials.dig(:aws, :secret_access_key) %>
+#   region: us-east-1
+#   bucket: your_own_bucket-<%= Rails.env %>
+
+# Remember not to commit your credentials to source control
+# and leave `access_key_id` & `secret_access_key` blank in your config file
+# if you want to use IAM roles for authentication
+
+# Development storage on local disk
+development:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+# Production storage options
+
+# Option 1: Local disk (simple, but not scalable)
+production:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+# Option 2: AWS S3 (recommended for production)
+# production:
+#   service: S3
+#   access_key_id: <%= ENV['AWS_ACCESS_KEY_ID'] %>
+#   secret_access_key: <%= ENV['AWS_SECRET_ACCESS_KEY'] %>
+#   region: <%= ENV.fetch('AWS_REGION', 'us-east-1') %>
+#   bucket: <%= ENV.fetch('AWS_BUCKET', 'viktory-realty-production') %>
+#   public: true
+
+# Option 3: Yandex Object Storage (российский аналог S3)
+# production:
+#   service: S3
+#   access_key_id: <%= ENV['YANDEX_ACCESS_KEY_ID'] %>
+#   secret_access_key: <%= ENV['YANDEX_SECRET_ACCESS_KEY'] %>
+#   region: ru-central1
+#   bucket: <%= ENV.fetch('YANDEX_BUCKET', 'viktory-realty') %>
+#   endpoint: https://storage.yandexcloud.net
+#   force_path_style: true
+
+# Option 4: Google Cloud Storage
+# production:
+#   service: GCS
+#   project: your-project
+#   credentials: <%= ENV['GCS_CREDENTIALS'] %>
+#   bucket: viktory-realty-production
+
+# Option 5: Azure Storage
+# production:
+#   service: AzureStorage
+#   storage_account_name: <%= ENV['AZURE_STORAGE_ACCOUNT'] %>
+#   storage_access_key: <%= ENV['AZURE_STORAGE_ACCESS_KEY'] %>
+#   container: viktory-realty-production
+

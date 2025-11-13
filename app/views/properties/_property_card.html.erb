@@ -1,0 +1,248 @@
+<%# Карточка объекта недвижимости - Reusable partial %>
+<%# Usage: <%= render 'properties/property_card', property: @property %>
+
+<div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 group">
+  <%= link_to property_path(property), class: "block" do %>
+    <!-- Image -->
+    <div class="relative h-64 bg-gray-200 overflow-hidden">
+      <% if property.primary_image %>
+        <%= image_tag property.primary_image.url, 
+            alt: property.title, 
+            class: "w-full h-full object-cover group-hover:scale-110 transition duration-500",
+            loading: "lazy" %>
+      <% elsif property.images.attached? && property.images.first %>
+        <%= image_tag property.images.first, 
+            alt: property.title, 
+            class: "w-full h-full object-cover group-hover:scale-110 transition duration-500",
+            loading: "lazy" %>
+      <% else %>
+        <!-- Placeholder -->
+        <div class="w-full h-full flex items-center justify-center text-gray-400 bg-gradient-to-br from-gray-100 to-gray-200">
+          <svg class="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+          </svg>
+        </div>
+      <% end %>
+      
+      <!-- Badges -->
+      <div class="absolute top-4 left-4 flex flex-col space-y-2">
+        <% if property.is_featured %>
+          <span class="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-md uppercase">
+            VIP
+          </span>
+        <% end %>
+        
+        <% if property.created_at >= 7.days.ago %>
+          <span class="bg-green-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-md uppercase">
+            Новое
+          </span>
+        <% end %>
+        
+        <% if property.virtual_tour_url.present? %>
+          <span class="bg-blue-500 text-white px-3 py-1 rounded-full text-xs font-bold shadow-md flex items-center">
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+              <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+            </svg>
+            3D
+          </span>
+        <% end %>
+      </div>
+      
+      <!-- Favorite Button -->
+      <% if user_signed_in? %>
+        <button type="button" 
+                class="absolute top-4 right-4 bg-white bg-opacity-90 backdrop-blur p-2.5 rounded-full hover:bg-opacity-100 transition shadow-md z-10" 
+                data-controller="favorite"
+                data-favorite-property-id-value="<%= property.id %>"
+                data-favorite-favorited-value="<%= current_user.favorited?(property) %>"
+                data-action="click->favorite#toggle"
+                onclick="event.preventDefault(); event.stopPropagation();">
+          <svg class="w-5 h-5 <%= current_user.favorited?(property) ? 'text-red-500 fill-current' : 'text-gray-600' %>" 
+               fill="<%= current_user.favorited?(property) ? 'currentColor' : 'none' %>" 
+               stroke="currentColor" 
+               viewBox="0 0 24 24"
+               data-favorite-target="icon">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+          </svg>
+        </button>
+      <% end %>
+      
+      <!-- Image Counter -->
+      <% if property.images_count > 0 || property.images.attached? %>
+        <div class="absolute bottom-4 right-4 bg-black bg-opacity-60 text-white px-3 py-1 rounded-full text-xs font-medium flex items-center">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <%= property.images_count > 0 ? property.images_count : property.images.count %>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- Content -->
+    <div class="p-5">
+      <!-- Price -->
+      <div class="flex items-baseline justify-between mb-3">
+        <div class="text-2xl font-bold text-primary-600">
+          <%= property.price_formatted %>
+        </div>
+        <% if property.price_per_sqm %>
+          <div class="text-sm text-gray-500">
+            <%= property.price_per_sqm_formatted %>
+          </div>
+        <% end %>
+      </div>
+      
+      <!-- Title -->
+      <h3 class="text-lg font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-primary-600 transition">
+        <%= property.title %>
+      </h3>
+      
+      <!-- Address -->
+      <div class="flex items-start text-gray-600 text-sm mb-4">
+        <svg class="w-4 h-4 mr-1.5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <span class="line-clamp-2"><%= property.full_address %></span>
+      </div>
+
+      <!-- Metro (if available) -->
+      <% if property.metro_station.present? %>
+        <div class="flex items-center text-gray-600 text-sm mb-4 pb-4 border-b border-gray-100">
+          <svg class="w-4 h-4 mr-1.5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
+          </svg>
+          <span><%= property.metro_station %></span>
+          <% if property.metro_distance %>
+            <span class="ml-2 text-gray-500">
+              (<%= property.metro_walking_distance? ? 'пешком' : 'транспорт' %> <%= property.metro_distance %>м)
+            </span>
+          <% end %>
+        </div>
+      <% end %>
+
+      <!-- Characteristics -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <!-- Area -->
+        <div class="flex flex-col items-center text-center p-2 bg-gray-50 rounded-lg">
+          <svg class="w-5 h-5 text-gray-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5z"/>
+          </svg>
+          <div class="text-xs text-gray-500">Площадь</div>
+          <div class="text-sm font-semibold text-gray-900"><%= property.area %> м²</div>
+        </div>
+
+        <!-- Rooms -->
+        <% if property.rooms %>
+          <div class="flex flex-col items-center text-center p-2 bg-gray-50 rounded-lg">
+            <svg class="w-5 h-5 text-gray-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+            </svg>
+            <div class="text-xs text-gray-500">Комнат</div>
+            <div class="text-sm font-semibold text-gray-900">
+              <%= property.rooms == 0 ? 'Студия' : property.rooms %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Floor -->
+        <% if property.floor && property.total_floors %>
+          <div class="flex flex-col items-center text-center p-2 bg-gray-50 rounded-lg">
+            <svg class="w-5 h-5 text-gray-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+            </svg>
+            <div class="text-xs text-gray-500">Этаж</div>
+            <div class="text-sm font-semibold text-gray-900"><%= property.floor %>/<%= property.total_floors %></div>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Features Icons -->
+      <% if property.has_amenities? %>
+        <div class="flex items-center space-x-3 mb-4 pt-4 border-t border-gray-100">
+          <% if property.has_parking %>
+            <div class="flex items-center text-xs text-gray-600" title="Парковка">
+              <svg class="w-4 h-4 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/>
+              </svg>
+              <span class="hidden sm:inline">Парковка</span>
+            </div>
+          <% end %>
+          
+          <% if property.has_balcony %>
+            <div class="flex items-center text-xs text-gray-600" title="Балкон">
+              <svg class="w-4 h-4 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5z"/>
+              </svg>
+              <span class="hidden sm:inline">Балкон</span>
+            </div>
+          <% end %>
+          
+          <% if property.has_elevator %>
+            <div class="flex items-center text-xs text-gray-600" title="Лифт">
+              <svg class="w-4 h-4 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 11l5-5m0 0l5 5m-5-5v12"/>
+              </svg>
+              <span class="hidden sm:inline">Лифт</span>
+            </div>
+          <% end %>
+          
+          <% if property.has_security %>
+            <div class="flex items-center text-xs text-gray-600" title="Охрана">
+              <svg class="w-4 h-4 mr-1 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+              </svg>
+              <span class="hidden sm:inline">Охрана</span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <!-- Footer with stats -->
+      <div class="flex items-center justify-between pt-4 border-t border-gray-100">
+        <!-- Views -->
+        <div class="flex items-center text-xs text-gray-500">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+          <%= property.views_count %>
+        </div>
+
+        <!-- ID -->
+        <div class="text-xs text-gray-400">
+          ID: <%= property.id %>
+        </div>
+
+        <!-- Date -->
+        <div class="text-xs text-gray-500">
+          <%= time_ago_in_words(property.created_at) %> назад
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <!-- Quick Action Buttons -->
+  <div class="px-5 pb-5 pt-2">
+    <div class="grid grid-cols-2 gap-2">
+      <%= link_to property_path(property), class: "flex items-center justify-center bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 px-4 rounded-lg transition" do %>
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+        </svg>
+        Подробнее
+      <% end %>
+      
+      <button type="button" 
+              class="flex items-center justify-center bg-white border-2 border-gray-300 hover:border-primary-600 hover:text-primary-600 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg transition"
+              data-action="click->properties-catalog#scheduleViewing"
+              data-property-id="<%= property.id %>">
+        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        Показ
+      </button>
+    </div>
+  </div>
+</div>

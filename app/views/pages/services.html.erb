@@ -1,0 +1,61 @@
+<% content_for :title, "Наши услуги" %>
+
+<div class="bg-white">
+  <!-- Header -->
+  <div class="bg-gradient-to-r from-primary-600 to-primary-800 py-12">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <h1 class="text-4xl font-extrabold tracking-tight text-white">
+        Наши услуги
+      </h1>
+      <p class="mt-4 text-xl text-primary-100">
+        Полный спектр услуг по недвижимости под ключ
+      </p>
+    </div>
+  </div>
+
+  <!-- Services Grid -->
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+    <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+      <% @services.each do |service| %>
+        <%= link_to service[:link], class: "group relative bg-white border border-gray-200 rounded-lg p-6 hover:shadow-xl transition-all duration-300" do %>
+          <div class="flex items-center mb-4">
+            <div class="text-4xl mr-4"><%= service[:icon] %></div>
+            <h3 class="text-xl font-semibold text-gray-900 group-hover:text-primary-600 transition">
+              <%= service[:title] %>
+            </h3>
+          </div>
+          <p class="text-gray-600 mb-4">
+            <%= service[:description] %>
+          </p>
+          <span class="inline-flex items-center text-primary-600 font-medium group-hover:translate-x-2 transition-transform">
+            Подробнее
+            <svg class="ml-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <!-- CTA Section -->
+  <div class="bg-gray-50 py-16">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="text-center">
+        <h2 class="text-3xl font-extrabold text-gray-900">
+          Нужна консультация?
+        </h2>
+        <p class="mt-4 text-lg text-gray-600">
+          Оставьте заявку, и наш специалист свяжется с вами
+        </p>
+        <div class="mt-8">
+          <%= link_to contacts_path, 
+              class: "inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700" do %>
+            Связаться с нами
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

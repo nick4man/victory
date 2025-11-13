@@ -1,0 +1,365 @@
+<%# Каталог недвижимости - properties/index.html.erb %>
+<% content_for :meta_tags do %>
+  <%= tag.meta name: 'description', content: 'Каталог недвижимости АН "Виктори" - большой выбор квартир, домов и коммерческой недвижимости для покупки и аренды' %>
+<% end %>
+
+<div class="bg-gray-50 min-h-screen" data-controller="properties-catalog">
+  <div class="container mx-auto px-4 py-8">
+    <!-- Breadcrumbs -->
+    <nav class="flex items-center space-x-2 text-sm text-gray-600 mb-6">
+      <%= link_to "Главная", root_path, class: "hover:text-primary-600 transition" %>
+      <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+      </svg>
+      <span class="text-gray-900 font-medium">Каталог недвижимости</span>
+    </nav>
+
+    <!-- Page Header -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
+      <div>
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Каталог недвижимости</h1>
+        <p class="text-gray-600">Найдено: <span class="font-semibold text-gray-900"><%= number_with_delimiter(@total_count) %></span> объектов</p>
+      </div>
+
+      <!-- View Mode Switcher -->
+      <div class="flex items-center space-x-2 mt-4 md:mt-0">
+        <button type="button" data-action="click->properties-catalog#switchView" data-view="grid" class="p-2 rounded hover:bg-gray-200 transition" title="Сетка">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+          </svg>
+        </button>
+        <button type="button" data-action="click->properties-catalog#switchView" data-view="list" class="p-2 rounded hover:bg-gray-200 transition" title="Список">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+          </svg>
+        </button>
+        <%= link_to properties_map_path(q: params[:q]), class: "p-2 rounded hover:bg-gray-200 transition", title: "Карта" do %>
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+          </svg>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-8">
+      <!-- Filters Sidebar -->
+      <aside class="lg:w-80 flex-shrink-0">
+        <div class="bg-white rounded-lg shadow-md p-6 sticky top-24">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-xl font-bold text-gray-900">Фильтры</h2>
+            <% if params[:q].present? %>
+              <%= link_to "Сбросить", properties_path, class: "text-sm text-primary-600 hover:text-primary-700" %>
+            <% end %>
+          </div>
+
+          <%= form_with url: properties_path, method: :get, class: "space-y-6", data: { controller: "filters", action: "submit->filters#submit" } do |f| %>
+            <!-- Deal Type -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Тип сделки</label>
+              <div class="space-y-2">
+                <label class="flex items-center">
+                  <%= radio_button_tag 'q[deal_type_eq]', 'sale', params.dig(:q, :deal_type_eq) == 'sale', class: "mr-2" %>
+                  <span class="text-gray-700">Купить</span>
+                </label>
+                <label class="flex items-center">
+                  <%= radio_button_tag 'q[deal_type_eq]', 'rent', params.dig(:q, :deal_type_eq) == 'rent', class: "mr-2" %>
+                  <span class="text-gray-700">Снять</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Property Type -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Тип недвижимости</label>
+              <select name="q[property_type_id_eq]" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                <option value="">Все типы</option>
+                <option value="1" <%= 'selected' if params.dig(:q, :property_type_id_eq) == '1' %>>Квартира</option>
+                <option value="2" <%= 'selected' if params.dig(:q, :property_type_id_eq) == '2' %>>Дом</option>
+                <option value="3" <%= 'selected' if params.dig(:q, :property_type_id_eq) == '3' %>>Коммерческая</option>
+              </select>
+            </div>
+
+            <!-- Price Range -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Цена (₽)</label>
+              <div class="grid grid-cols-2 gap-3">
+                <%= number_field_tag 'q[price_gteq]', params.dig(:q, :price_gteq), placeholder: "От", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+                <%= number_field_tag 'q[price_lteq]', params.dig(:q, :price_lteq), placeholder: "До", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+              </div>
+            </div>
+
+            <!-- Area Range -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Площадь (м²)</label>
+              <div class="grid grid-cols-2 gap-3">
+                <%= number_field_tag 'q[area_gteq]', params.dig(:q, :area_gteq), placeholder: "От", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+                <%= number_field_tag 'q[area_lteq]', params.dig(:q, :area_lteq), placeholder: "До", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+              </div>
+            </div>
+
+            <!-- Rooms -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Количество комнат</label>
+              <div class="grid grid-cols-4 gap-2">
+                <% [0, 1, 2, 3].each do |room_count| %>
+                  <label class="flex items-center justify-center">
+                    <%= check_box_tag 'q[rooms_in][]', room_count, params.dig(:q, :rooms_in)&.include?(room_count.to_s), class: "hidden peer" %>
+                    <span class="w-full text-center px-3 py-2 border border-gray-300 rounded-lg cursor-pointer peer-checked:bg-primary-600 peer-checked:text-white peer-checked:border-primary-600 hover:border-primary-400 transition">
+                      <%= room_count == 0 ? 'С' : room_count %>
+                    </span>
+                  </label>
+                <% end %>
+              </div>
+              <div class="mt-2">
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[rooms_gteq]', 4, params.dig(:q, :rooms_gteq) == '4', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">4+ комнат</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Floor -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Этаж</label>
+              <div class="grid grid-cols-2 gap-3">
+                <%= number_field_tag 'q[floor_gteq]', params.dig(:q, :floor_gteq), placeholder: "От", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+                <%= number_field_tag 'q[floor_lteq]', params.dig(:q, :floor_lteq), placeholder: "До", class: "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" %>
+              </div>
+              <div class="mt-3 space-y-2">
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[floor_not_eq]', 1, params.dig(:q, :floor_not_eq) == '1', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Не первый</span>
+                </label>
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[floor_not_eq_last]', 'true', params.dig(:q, :floor_not_eq_last) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Не последний</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- District -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Район</label>
+              <%= text_field_tag 'q[district_cont]', params.dig(:q, :district_cont), placeholder: "Например: Центральный", class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+            </div>
+
+            <!-- Metro Station -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Метро</label>
+              <%= text_field_tag 'q[metro_station_cont]', params.dig(:q, :metro_station_cont), placeholder: "Станция метро", class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+            </div>
+
+            <!-- Additional Features -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-3">Дополнительно</label>
+              <div class="space-y-2">
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[has_parking_eq]', 'true', params.dig(:q, :has_parking_eq) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Парковка</span>
+                </label>
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[has_balcony_eq]', 'true', params.dig(:q, :has_balcony_eq) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Балкон/Лоджия</span>
+                </label>
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[has_elevator_eq]', 'true', params.dig(:q, :has_elevator_eq) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Лифт</span>
+                </label>
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[pets_allowed_eq]', 'true', params.dig(:q, :pets_allowed_eq) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">Можно с питомцами</span>
+                </label>
+                <label class="flex items-center">
+                  <%= check_box_tag 'q[virtual_tour_url_present]', 'true', params.dig(:q, :virtual_tour_url_present) == 'true', class: "mr-2" %>
+                  <span class="text-sm text-gray-700">С виртуальным туром</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="space-y-3 pt-4 border-t border-gray-200">
+              <%= f.submit "Применить фильтры", class: "w-full bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer" %>
+              
+              <% if user_signed_in? %>
+                <button type="button" data-action="click->properties-catalog#saveSearch" class="w-full bg-white border-2 border-primary-600 text-primary-600 hover:bg-primary-50 font-semibold py-3 px-6 rounded-lg transition">
+                  <svg class="inline-block w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/>
+                  </svg>
+                  Сохранить поиск
+                </button>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+
+        <!-- Active Filters Display -->
+        <% if params[:q].present? %>
+          <div class="bg-white rounded-lg shadow-sm p-4 mt-4">
+            <div class="text-sm font-medium text-gray-700 mb-2">Активные фильтры:</div>
+            <div class="flex flex-wrap gap-2">
+              <% params[:q].each do |key, value| %>
+                <% next if value.blank? %>
+                <span class="inline-flex items-center bg-primary-100 text-primary-700 px-3 py-1 rounded-full text-sm">
+                  <%= key.humanize %>: <%= value %>
+                  <%= link_to properties_path(q: params[:q].except(key)), class: "ml-2 text-primary-600 hover:text-primary-800" do %>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                  <% end %>
+                </span>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </aside>
+
+      <!-- Main Content -->
+      <div class="flex-1">
+        <!-- Sort and Display Options -->
+        <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <!-- Sort -->
+            <div class="flex items-center space-x-4">
+              <label class="text-sm font-medium text-gray-700">Сортировка:</label>
+              <%= select_tag :sort, options_for_select([
+                ['По дате (новые)', 'date_desc'],
+                ['По дате (старые)', 'date_asc'],
+                ['По цене (возр.)', 'price_asc'],
+                ['По цене (убыв.)', 'price_desc'],
+                ['По площади (возр.)', 'area_asc'],
+                ['По площади (убыв.)', 'area_desc'],
+                ['По популярности', 'popular']
+              ], params[:sort] || 'date_desc'), 
+              class: "px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm",
+              data: { action: "change->filters#submit" } %>
+            </div>
+
+            <!-- Results per page -->
+            <div class="flex items-center space-x-4">
+              <label class="text-sm font-medium text-gray-700">Показывать:</label>
+              <%= select_tag :per_page, options_for_select([
+                ['12', 12],
+                ['24', 24],
+                ['48', 48],
+                ['96', 96]
+              ], params[:per_page] || 24), 
+              class: "px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm",
+              data: { action: "change->filters#submit" } %>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Recommendations (if available) -->
+        <% if defined?(@recommended_properties) && @recommended_properties.present? %>
+          <div class="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-6 mb-6 border border-purple-200">
+            <div class="flex items-center mb-4">
+              <svg class="w-6 h-6 text-purple-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+              </svg>
+              <h3 class="text-lg font-bold text-gray-900">Рекомендуем вам</h3>
+            </div>
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              <% @recommended_properties.take(3).each do |property| %>
+                <%= link_to property_path(property), class: "block bg-white rounded-lg p-3 hover:shadow-md transition" do %>
+                  <div class="text-sm font-semibold text-primary-600 mb-1"><%= property.price_formatted %></div>
+                  <div class="text-sm text-gray-700 font-medium mb-1"><%= property.rooms_info %>, <%= property.area %> м²</div>
+                  <div class="text-xs text-gray-500"><%= property.district %></div>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Properties Grid/List -->
+        <% if @properties.any? %>
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8" data-properties-catalog-target="grid">
+            <% @properties.each do |property| %>
+              <%= render partial: 'properties/property_card', locals: { property: property } %>
+            <% end %>
+          </div>
+
+          <!-- Pagination -->
+          <div class="bg-white rounded-lg shadow-sm p-6">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div class="text-sm text-gray-600">
+                Показано <%= @properties.offset_value + 1 %>-<%= [@properties.offset_value + @properties.size, @total_count].min %> из <%= number_with_delimiter(@total_count) %>
+              </div>
+
+              <%= paginate @properties, theme: 'twitter-bootstrap-4', 
+                  pagination_class: "flex items-center space-x-2",
+                  page_class: "px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 transition",
+                  current_page_class: "px-3 py-2 bg-primary-600 text-white border border-primary-600 rounded" %>
+            </div>
+          </div>
+
+        <% else %>
+          <!-- No Results -->
+          <div class="bg-white rounded-lg shadow-sm p-12 text-center">
+            <svg class="w-24 h-24 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <h3 class="text-2xl font-bold text-gray-900 mb-2">Ничего не найдено</h3>
+            <p class="text-gray-600 mb-6">Попробуйте изменить параметры поиска или <%= link_to "сбросить фильтры", properties_path, class: "text-primary-600 hover:text-primary-700 font-semibold" %></p>
+            
+            <%= link_to "Все объекты", properties_path, class: "inline-block bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-8 rounded-lg transition" %>
+          </div>
+        <% end %>
+
+        <!-- Average Price Info -->
+        <% if @properties.any? && @avg_price.present? %>
+          <div class="bg-blue-50 rounded-lg p-6 mt-6 border border-blue-200">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-sm text-gray-600 mb-1">Средняя цена в выборке</div>
+                <div class="text-2xl font-bold text-gray-900"><%= number_to_currency(@avg_price, unit: '₽', separator: ',', delimiter: ' ', format: '%n %u') %></div>
+              </div>
+              <div>
+                <div class="text-sm text-gray-600 mb-1">Средняя цена м²</div>
+                <div class="text-xl font-bold text-gray-900"><%= number_to_currency(@avg_price / @properties.average(:area).to_f, unit: '₽', separator: ',', delimiter: ' ', format: '%n %u') %>/м²</div>
+              </div>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Save Search Modal -->
+<% if user_signed_in? %>
+  <div class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center" data-properties-catalog-target="saveSearchModal">
+    <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-bold text-gray-900">Сохранить поиск</h3>
+        <button type="button" data-action="click->properties-catalog#closeSaveSearchModal" class="text-gray-400 hover:text-gray-600">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <%= form_with url: dashboard_saved_searches_path, method: :post, class: "space-y-4" do |f| %>
+        <%= hidden_field_tag 'saved_search[filters]', params[:q].to_json %>
+        
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">Название поиска</label>
+          <%= f.text_field :name, placeholder: "Например: 3-комнатная в центре", required: true, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <label class="flex items-center">
+            <%= f.check_box :notify_enabled, checked: true, class: "mr-2" %>
+            <span class="text-sm text-gray-700">Уведомлять о новых объектах</span>
+          </label>
+        </div>
+
+        <div class="flex space-x-3">
+          <%= f.submit "Сохранить", class: "flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer" %>
+          <button type="button" data-action="click->properties-catalog#closeSaveSearchModal" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition">
+            Отмена
+          </button>
+        </div>
+      <% end %>
+    </div>
+  </div>
+<% end %>

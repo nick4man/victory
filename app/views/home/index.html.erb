@@ -1,0 +1,599 @@
+<%# Главная страница АН "Виктори" %>
+<% content_for :meta_tags do %>
+  <%= tag.meta name: 'description', content: 'АН "Виктори" - надежное агентство недвижимости. Купить, продать или снять квартиру в Москве. Помощь с ипотекой и юридическим сопровождением.' %>
+<% end %>
+
+<!-- Hero Section -->
+<section class="relative bg-gradient-to-r from-blue-900 to-blue-700 text-white" data-controller="hero">
+  <div class="absolute inset-0 bg-black opacity-40"></div>
+  <%# Background image временно отключено: asset не найден %>
+  <%# <div class="absolute inset-0" style="background-image: url('<%= asset_path('hero-bg.jpg') %>'); background-size: cover; background-position: center; mix-blend-mode: overlay;"></div> %>
+  
+  <div class="relative container mx-auto px-4 py-20 md:py-32">
+    <div class="max-w-4xl mx-auto text-center">
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6 leading-tight">
+        Найдите идеальную недвижимость
+      </h1>
+      <p class="text-xl md:text-2xl mb-12 text-gray-200">
+        Более <%= number_with_delimiter(@statistics[:total_properties]) %> объектов для покупки и аренды
+      </p>
+
+      <!-- Search Form -->
+      <div class="bg-white rounded-lg shadow-2xl p-6 md:p-8">
+        <!-- Tabs -->
+        <div class="flex space-x-4 mb-6 border-b border-gray-200" data-controller="tabs">
+          <button type="button" class="tab-button px-6 py-3 font-semibold text-primary-600 border-b-2 border-primary-600" data-tabs-target="button" data-action="click->tabs#switch" data-tab="buy">
+            Купить
+          </button>
+          <button type="button" class="tab-button px-6 py-3 font-semibold text-gray-500 hover:text-primary-600 transition" data-tabs-target="button" data-action="click->tabs#switch" data-tab="rent">
+            Снять
+          </button>
+        </div>
+
+        <%= form_with url: properties_path, method: :get, class: "space-y-4" do |f| %>
+          <input type="hidden" name="q[deal_type_eq]" value="sale" data-tabs-target="dealType">
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Property Type -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Тип недвижимости</label>
+              <select name="q[property_type_id_eq]" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-800">
+                <option value="">Любой</option>
+                <option value="1">Квартира</option>
+                <option value="2">Дом</option>
+                <option value="3">Коммерческая</option>
+              </select>
+            </div>
+
+            <!-- Rooms -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Комнат</label>
+              <select name="q[rooms_eq]" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-800">
+                <option value="">Не важно</option>
+                <option value="0">Студия</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4+</option>
+              </select>
+            </div>
+
+            <!-- District -->
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Район</label>
+              <input type="text" name="q[district_cont]" placeholder="Например: Центральный" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-800">
+            </div>
+          </div>
+
+          <!-- Price Range -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Цена от</label>
+              <input type="number" name="q[price_gteq]" placeholder="1 000 000" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-800">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Цена до</label>
+              <input type="number" name="q[price_lteq]" placeholder="10 000 000" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent text-gray-800">
+            </div>
+          </div>
+
+          <button type="submit" class="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 px-8 rounded-lg transition shadow-lg transform hover:scale-105">
+            <svg class="inline-block w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            Найти недвижимость
+          </button>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Quick Actions -->
+<section class="py-12 bg-white -mt-16 relative z-10">
+  <div class="container mx-auto px-4">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <!-- Купить -->
+      <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-8 text-white shadow-xl hover:shadow-2xl transition transform hover:-translate-y-1">
+        <%= link_to properties_path(q: { deal_type_eq: 'sale' }), class: "block" do %>
+          <div class="flex items-center mb-4">
+            <div class="bg-white bg-opacity-20 p-3 rounded-lg">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="text-2xl font-bold mb-2">Купить квартиру</h3>
+          <p class="text-blue-100 mb-4"><%= number_with_delimiter(@statistics[:properties_for_sale]) %> объектов в продаже</p>
+          <span class="text-sm font-semibold inline-flex items-center">
+            Смотреть каталог
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </span>
+        <% end %>
+      </div>
+
+      <!-- Снять -->
+      <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-8 text-white shadow-xl hover:shadow-2xl transition transform hover:-translate-y-1">
+        <%= link_to properties_path(q: { deal_type_eq: 'rent' }), class: "block" do %>
+          <div class="flex items-center mb-4">
+            <div class="bg-white bg-opacity-20 p-3 rounded-lg">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="text-2xl font-bold mb-2">Снять квартиру</h3>
+          <p class="text-green-100 mb-4"><%= number_with_delimiter(@statistics[:properties_for_rent]) %> вариантов аренды</p>
+          <span class="text-sm font-semibold inline-flex items-center">
+            Смотреть каталог
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </span>
+        <% end %>
+      </div>
+
+      <!-- Продать -->
+      <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-8 text-white shadow-xl hover:shadow-2xl transition transform hover:-translate-y-1">
+        <%= link_to sell_evaluation_path, class: "block" do %>
+          <div class="flex items-center mb-4">
+            <div class="bg-white bg-opacity-20 p-3 rounded-lg">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+          <h3 class="text-2xl font-bold mb-2">Продать квартиру</h3>
+          <p class="text-purple-100 mb-4">Бесплатная оценка за 5 минут</p>
+          <span class="text-sm font-semibold inline-flex items-center">
+            Узнать стоимость
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </span>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Why Choose Us -->
+<section class="py-16 bg-gray-50">
+  <div class="container mx-auto px-4">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Почему выбирают нас</h2>
+      <p class="text-xl text-gray-600">Профессиональный подход к каждому клиенту</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div class="text-center">
+        <div class="bg-primary-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Проверенные объекты</h3>
+        <p class="text-gray-600">Все объявления проходят тщательную проверку</p>
+      </div>
+
+      <div class="text-center">
+        <div class="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Быстрый отклик</h3>
+        <p class="text-gray-600">Средний ответ за <%= @statistics[:avg_response_time] %> часа</p>
+      </div>
+
+      <div class="text-center">
+        <div class="bg-yellow-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Юридическая чистота</h3>
+        <p class="text-gray-600">Полное юридическое сопровождение сделок</p>
+      </div>
+
+      <div class="text-center">
+        <div class="bg-red-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg class="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+          </svg>
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 mb-2">Индивидуальный подход</h3>
+        <p class="text-gray-600">Персональный менеджер для каждого клиента</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Real-time Statistics -->
+<section class="py-16 bg-primary-600 text-white">
+  <div class="container mx-auto px-4">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2" data-controller="counter" data-counter-target="number" data-counter-end-value="<%= @statistics[:total_properties] %>">
+          <%= number_with_delimiter(@statistics[:total_properties]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Объектов недвижимости</div>
+      </div>
+      
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= number_with_delimiter(@statistics[:successful_deals]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Успешных сделок</div>
+      </div>
+      
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= number_with_delimiter(@statistics[:total_clients]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Довольных клиентов</div>
+      </div>
+      
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= @statistics[:this_week_new] %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Новых за неделю</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Featured Properties -->
+<% if @featured_properties.present? %>
+<section class="py-16 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Избранные предложения</h2>
+        <p class="text-gray-600">Лучшие объекты от наших партнеров</p>
+      </div>
+      <%= link_to "Смотреть все", properties_path, class: "text-primary-600 hover:text-primary-700 font-semibold inline-flex items-center" %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <% @featured_properties.each do |property| %>
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+          <%= link_to property_path(property), class: "block" do %>
+            <div class="relative h-64 bg-gray-200">
+              <% if property.primary_image %>
+                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover" %>
+              <% else %>
+                <div class="w-full h-full flex items-center justify-center text-gray-400">
+                  <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+              <% end %>
+              
+              <div class="absolute top-4 left-4">
+                <span class="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-xs font-bold">PREMIUM</span>
+              </div>
+              
+              <% if user_signed_in? %>
+                <button type="button" class="absolute top-4 right-4 bg-white bg-opacity-90 p-2 rounded-full hover:bg-opacity-100 transition" data-action="click->favorites#toggle" data-property-id="<%= property.id %>">
+                  <svg class="w-5 h-5 <%= current_user.favorited?(property) ? 'text-red-500 fill-current' : 'text-gray-600' %>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                  </svg>
+                </button>
+              <% end %>
+            </div>
+
+            <div class="p-6">
+              <div class="text-2xl font-bold text-primary-600 mb-2"><%= property.price_formatted %></div>
+              <h3 class="text-lg font-semibold text-gray-900 mb-2 line-clamp-2"><%= property.title %></h3>
+              
+              <div class="flex items-center text-gray-600 text-sm mb-4">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                </svg>
+                <%= property.address %>
+              </div>
+
+              <div class="grid grid-cols-3 gap-4 text-sm text-gray-600">
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5z"/>
+                  </svg>
+                  <%= property.area %> м²
+                </div>
+                <% if property.rooms %>
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                  </svg>
+                  <%= property.rooms %> комн.
+                </div>
+                <% end %>
+                <% if property.floor %>
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                  </svg>
+                  <%= property.floor %>/<%= property.total_floors %>
+                </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</section>
+<% end %>
+
+<!-- Latest Properties -->
+<% if @latest_properties.present? %>
+<section class="py-16 bg-gray-50">
+  <div class="container mx-auto px-4">
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Новые предложения</h2>
+        <p class="text-gray-600">Свежие объявления за последнюю неделю</p>
+      </div>
+      <%= link_to "Смотреть все", properties_path(q: { created_at_gteq: 1.week.ago }), class: "text-primary-600 hover:text-primary-700 font-semibold" %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <% @latest_properties.take(8).each do |property| %>
+        <%= render partial: 'shared/property_card', locals: { property: property } %>
+      <% end %>
+    </div>
+  </div>
+</section>
+<% end %>
+
+<!-- Mortgage Calculator Widget -->
+<section class="py-16 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="max-w-4xl mx-auto bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl p-8 md:p-12 shadow-lg">
+      <div class="text-center mb-8">
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Калькулятор ипотеки</h2>
+        <p class="text-gray-600">Рассчитайте ежемесячный платеж за 30 секунд</p>
+      </div>
+
+      <div class="bg-white rounded-xl p-6 md:p-8 shadow" data-controller="mortgage-calculator">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Стоимость недвижимости (₽)</label>
+            <input type="number" data-mortgage-calculator-target="price" data-action="input->mortgage-calculator#calculate" placeholder="5 000 000" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Первоначальный взнос (₽)</label>
+            <input type="number" data-mortgage-calculator-target="initialPayment" data-action="input->mortgage-calculator#calculate" placeholder="1 000 000" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Процентная ставка (%)</label>
+            <input type="number" step="0.1" data-mortgage-calculator-target="rate" data-action="input->mortgage-calculator#calculate" value="<%= ENV['DEFAULT_MORTGAGE_RATE'] || '10.5' %>" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+          </div>
+          
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Срок кредита (лет)</label>
+            <input type="number" data-mortgage-calculator-target="term" data-action="input->mortgage-calculator#calculate" value="<%= ENV['DEFAULT_MORTGAGE_TERM_YEARS'] || '20' %>" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500">
+          </div>
+        </div>
+
+        <div class="bg-gray-50 rounded-lg p-6 mb-6">
+          <div class="text-center">
+            <div class="text-sm text-gray-600 mb-2">Ежемесячный платеж</div>
+            <div class="text-4xl font-bold text-primary-600" data-mortgage-calculator-target="result">
+              0 ₽
+            </div>
+          </div>
+        </div>
+
+        <%= link_to "Подробный расчет", services_mortgage_calculator_path, class: "block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-6 rounded-lg transition" %>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Virtual Tours -->
+<% if @virtual_tours.present? %>
+<section class="py-16 bg-gray-50">
+  <div class="container mx-auto px-4">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Виртуальные 3D-туры</h2>
+      <p class="text-xl text-gray-600">Осмотрите квартиру не выходя из дома</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <% @virtual_tours.each do |property| %>
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition group">
+          <%= link_to property_path(property), class: "block" do %>
+            <div class="relative h-48 bg-gray-200 overflow-hidden">
+              <% if property.primary_image %>
+                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover group-hover:scale-110 transition duration-300" %>
+              <% end %>
+              
+              <div class="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+                <div class="bg-white bg-opacity-90 p-4 rounded-full">
+                  <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div class="p-4">
+              <div class="font-bold text-primary-600 mb-1"><%= property.price_formatted %></div>
+              <div class="text-sm text-gray-600"><%= property.rooms_info %>, <%= property.area %> м²</div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="text-center mt-8">
+      <%= link_to "Все виртуальные туры", services_virtual_tours_path, class: "inline-block bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-8 rounded-lg transition" %>
+    </div>
+  </div>
+</section>
+<% end %>
+
+<!-- Customer Reviews -->
+<% if @reviews.present? %>
+<section class="py-16 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Отзывы наших клиентов</h2>
+      <p class="text-xl text-gray-600">Более 1000 довольных клиентов</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <% @reviews.take(3).each do |review| %>
+        <div class="bg-gray-50 rounded-lg p-6 shadow-sm hover:shadow-md transition">
+          <div class="flex items-center mb-4">
+            <% 5.times do |i| %>
+              <svg class="w-5 h-5 <%= i < review.rating ? 'text-yellow-400' : 'text-gray-300' %>" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+              </svg>
+            <% end %>
+          </div>
+          
+          <p class="text-gray-700 mb-4"><%= review.body.truncate(150) %></p>
+          
+          <div class="flex items-center">
+            <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 font-bold mr-3">
+              <%= review.user.initials %>
+            </div>
+            <div>
+              <div class="font-semibold text-gray-900"><%= review.user.full_name %></div>
+              <div class="text-sm text-gray-500"><%= l(review.created_at, format: :short) %></div>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="text-center mt-8">
+      <%= link_to "Все отзывы", reviews_path, class: "text-primary-600 hover:text-primary-700 font-semibold" %>
+    </div>
+  </div>
+</section>
+<% end %>
+
+<!-- CTA Form -->
+<section class="py-16 bg-gradient-to-r from-primary-600 to-primary-700 text-white">
+  <div class="container mx-auto px-4">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-4">Подберем квартиру за вас</h2>
+      <p class="text-xl mb-8 text-primary-100">Оставьте заявку и наш специалист свяжется с вами в течение 15 минут</p>
+
+      <%= form_with url: forms_quick_inquiry_path, method: :post, class: "bg-white bg-opacity-10 backdrop-blur rounded-xl p-6 md:p-8", data: { controller: "form-submit" } do |f| %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <%= f.text_field :name, placeholder: "Ваше имя", required: true, class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+          </div>
+          
+          <div>
+            <%= f.telephone_field :phone, placeholder: "+7 (___) ___-__-__", required: true, class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <%= f.text_area :message, rows: 3, placeholder: "Опишите, какую недвижимость ищете...", class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+        </div>
+
+        <div class="mb-6 text-left">
+          <label class="flex items-start text-sm">
+            <%= f.check_box :agreement, required: true, class: "mt-1 mr-2" %>
+            <span class="text-white text-opacity-90">
+              Я согласен с <%= link_to "политикой конфиденциальности", privacy_path, class: "underline hover:text-white", target: "_blank" %> и даю согласие на обработку персональных данных
+            </span>
+          </label>
+        </div>
+
+        <%= f.submit "Отправить заявку", class: "w-full bg-white text-primary-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-lg transition shadow-lg cursor-pointer" %>
+        
+        <p class="text-sm text-white text-opacity-80 mt-4">
+          Нажимая кнопку, вы соглашаетесь с условиями обработки персональных данных
+        </p>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<!-- Blog Section -->
+<% if @blog_posts.present? %>
+<section class="py-16 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="flex justify-between items-center mb-12">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Блог и новости</h2>
+        <p class="text-gray-600">Полезные статьи о недвижимости</p>
+      </div>
+      <%= link_to "Все статьи", blog_path, class: "text-primary-600 hover:text-primary-700 font-semibold" %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <% @blog_posts.each do |post| %>
+        <article class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+          <%= link_to blog_post_path(post), class: "block" do %>
+            <div class="h-48 bg-gray-200"></div>
+            <div class="p-6">
+              <div class="text-sm text-gray-500 mb-2"><%= l(post.created_at, format: :long) %></div>
+              <h3 class="text-xl font-bold text-gray-900 mb-3 line-clamp-2"><%= post.title %></h3>
+              <p class="text-gray-600 line-clamp-3"><%= post.excerpt %></p>
+            </div>
+          <% end %>
+        </article>
+      <% end %>
+    </div>
+  </div>
+</section>
+<% end %>
+
+<!-- Trust Signals -->
+<section class="py-12 bg-gray-100">
+  <div class="container mx-auto px-4">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8 items-center justify-items-center opacity-60">
+      <div class="text-center">
+        <div class="text-2xl font-bold text-gray-700">14 лет</div>
+        <div class="text-sm text-gray-600">на рынке</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-gray-700">5000+</div>
+        <div class="text-sm text-gray-600">сделок</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-gray-700">100%</div>
+        <div class="text-sm text-gray-600">безопасность</div>
+      </div>
+      <div class="text-center">
+        <div class="text-2xl font-bold text-gray-700">24/7</div>
+        <div class="text-sm text-gray-600">поддержка</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Helper Script for Tab Switching -->
+<%= content_for :scripts do %>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Show back to top button on scroll
+      const backToTopButton = document.getElementById('back-to-top');
+      if (backToTopButton) {
+        window.addEventListener('scroll', function() {
+          if (window.pageYOffset > 300) {
+            backToTopButton.classList.remove('hidden');
+          } else {
+            backToTopButton.classList.add('hidden');
+          }
+        });
+      }
+    });
+  </script>
+<% end %>

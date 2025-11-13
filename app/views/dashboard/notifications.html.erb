@@ -1,0 +1,125 @@
+<% content_for :title, "Уведомления" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-4xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Уведомления</h1>
+        <p class="mt-2 text-sm text-gray-600">
+          <% if @unread_count > 0 %>
+            У вас <%= @unread_count %> <%= Russian.p(@unread_count, 'новое уведомление', 'новых уведомления', 'новых уведомлений') %>
+          <% else %>
+            Нет новых уведомлений
+          <% end %>
+        </p>
+      </div>
+
+      <div class="flex space-x-3">
+        <% if @unread_count > 0 %>
+          <%= button_to mark_all_read_dashboard_notifications_path, 
+              method: :post,
+              class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Отметить все
+          <% end %>
+        <% end %>
+
+        <% if @notifications.any? %>
+          <%= button_to clear_all_dashboard_notifications_path, 
+              method: :delete,
+              data: { confirm: "Удалить все уведомления?" },
+              class: "inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Очистить все
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @notifications.any? %>
+      <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <ul class="divide-y divide-gray-200">
+          <% @notifications.each do |notification| %>
+            <li class="<%= notification.read_at.present? ? '' : 'bg-blue-50' %>">
+              <div class="px-6 py-4">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center mb-2">
+                      <div class="flex-shrink-0">
+                        <%= render partial: 'notification_icon', locals: { notification: notification } %>
+                      </div>
+                      <div class="ml-3 flex-1">
+                        <p class="text-sm font-medium text-gray-900">
+                          <%= notification.title %>
+                        </p>
+                      </div>
+                      <% unless notification.read_at.present? %>
+                        <span class="ml-2 h-2 w-2 rounded-full bg-blue-600"></span>
+                      <% end %>
+                    </div>
+
+                    <p class="text-sm text-gray-600 ml-10">
+                      <%= notification.message %>
+                    </p>
+
+                    <div class="mt-2 ml-10 flex items-center space-x-4">
+                      <p class="text-xs text-gray-400">
+                        <%= time_ago_in_words(notification.created_at) %> назад
+                      </p>
+
+                      <% unless notification.read_at.present? %>
+                        <%= button_to mark_read_dashboard_notification_path(notification), 
+                            method: :post,
+                            class: "text-xs text-primary-600 hover:text-primary-700 font-medium" do %>
+                          Отметить как прочитанное
+                        <% end %>
+                      <% end %>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+
+      <!-- Pagination -->
+      <div class="mt-6 flex justify-center">
+        <%= paginate @notifications, theme: 'tailwind' %>
+      </div>
+    <% else %>
+      <!-- Empty state -->
+      <div class="bg-white shadow rounded-lg p-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">Нет уведомлений</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            У вас пока нет уведомлений
+          </p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<!-- Notification icon partial placeholder -->
+<%# Render different icons based on notification type %>
+<% if false # Hidden partial template %>
+  <div class="notification-icon">
+    <svg class="h-6 w-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  </div>
+<% end %>
+

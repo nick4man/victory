@@ -1,0 +1,182 @@
+<!-- Viewing Schedule Modal -->
+<div id="viewingScheduleModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="viewing-modal-title" role="dialog" aria-modal="true">
+  <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <!-- Background overlay -->
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeModal('viewingScheduleModal')"></div>
+
+    <!-- Center modal -->
+    <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+    <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div class="bg-gradient-to-br from-accent-500 to-accent-700 px-6 py-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center text-white">
+            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mr-4">
+              <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-2xl font-bold" id="viewing-modal-title">
+                Записаться на показ
+              </h3>
+              <p class="text-accent-100">
+                Выберите удобное время для просмотра
+              </p>
+            </div>
+          </div>
+          <button type="button" onclick="closeModal('viewingScheduleModal')" class="text-white hover:text-accent-100 transition">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white px-6 py-6">
+        <!-- Property Info (if available) -->
+        <div id="viewingPropertyInfo" class="hidden mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <p class="text-sm text-gray-600">Объект:</p>
+          <p id="viewingPropertyTitle" class="font-semibold text-gray-900"></p>
+        </div>
+
+        <!-- Form -->
+        <%= form_with url: contact_forms_viewing_schedule_path, method: :post, local: false, html: { class: "space-y-4", id: "viewingScheduleForm" } do |f| %>
+          <%= hidden_field_tag 'property_id', '', id: 'viewing_property_id' %>
+          
+          <!-- Name -->
+          <div>
+            <%= label_tag 'viewing_schedule[name]', "Ваше имя *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_field_tag 'viewing_schedule[name]', '', 
+                placeholder: "Иван Иванов",
+                required: true,
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Phone -->
+          <div>
+            <%= label_tag 'viewing_schedule[phone]', "Телефон *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= telephone_field_tag 'viewing_schedule[phone]', '',
+                placeholder: "+7 (999) 123-45-67",
+                required: true,
+                data: { controller: "app", action: "input->app#formatPhone" },
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <%= label_tag 'viewing_schedule[email]', "Email (необязательно)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= email_field_tag 'viewing_schedule[email]', '',
+                placeholder: "your@email.com",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Date and Time -->
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <%= label_tag 'viewing_schedule[preferred_date]', "Дата *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= date_field_tag 'viewing_schedule[preferred_date]', Date.tomorrow,
+                  min: Date.tomorrow,
+                  required: true,
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= label_tag 'viewing_schedule[preferred_time]', "Время *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= select_tag 'viewing_schedule[preferred_time]',
+                  options_for_select([
+                    ['09:00', '09:00'],
+                    ['10:00', '10:00'],
+                    ['11:00', '11:00'],
+                    ['12:00', '12:00'],
+                    ['13:00', '13:00'],
+                    ['14:00', '14:00'],
+                    ['15:00', '15:00'],
+                    ['16:00', '16:00'],
+                    ['17:00', '17:00'],
+                    ['18:00', '18:00'],
+                    ['19:00', '19:00']
+                  ]),
+                  { include_blank: 'Выберите...' },
+                  required: true,
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+
+          <!-- Message -->
+          <div>
+            <%= label_tag 'viewing_schedule[message]', "Комментарий (необязательно)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_area_tag 'viewing_schedule[message]', '',
+                rows: 2,
+                placeholder: "Дополнительные пожелания...",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Info Box -->
+          <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-blue-700">
+                  Мы свяжемся с вами для подтверждения времени просмотра. 
+                  Продолжительность показа обычно составляет 30-60 минут.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="flex gap-3">
+            <button type="button" onclick="closeModal('viewingScheduleModal')" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition">
+              Отмена
+            </button>
+            <%= submit_tag "Записаться", class: "flex-1 px-4 py-3 bg-gradient-to-r from-accent-600 to-accent-700 text-white font-medium rounded-lg hover:from-accent-700 hover:to-accent-800 transition transform hover:scale-105 flex items-center justify-center" do %>
+              <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Записаться
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('viewingScheduleForm');
+    if (!form) return;
+
+    form.addEventListener('ajax:success', (event) => {
+      const [data, status, xhr] = event.detail;
+      closeModal('viewingScheduleModal');
+      showNotification('success', data.message || 'Запись на показ принята! Мы свяжемся с вами для подтверждения.');
+      form.reset();
+    });
+
+    form.addEventListener('ajax:error', (event) => {
+      const [data, status, xhr] = event.detail;
+      showNotification('error', data.errors ? data.errors.join(', ') : 'Произошла ошибка');
+    });
+  });
+
+  // Function to open viewing modal with property info
+  function openViewingModal(propertyId, propertyTitle) {
+    openModal('viewingScheduleModal');
+    
+    if (propertyId) {
+      document.getElementById('viewing_property_id').value = propertyId;
+    }
+    
+    if (propertyTitle) {
+      document.getElementById('viewingPropertyInfo').classList.remove('hidden');
+      document.getElementById('viewingPropertyTitle').textContent = propertyTitle;
+    }
+  }
+</script>
+

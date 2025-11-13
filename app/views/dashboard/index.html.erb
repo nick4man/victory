@@ -1,0 +1,338 @@
+<% content_for :title, "Личный кабинет" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">
+        Добро пожаловать, <%= current_user.first_name || current_user.email %>!
+      </h1>
+      <p class="mt-2 text-sm text-gray-600">
+        Вот обзор вашей активности
+      </p>
+    </div>
+
+    <!-- Statistics cards -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+      <!-- Favorites -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Избранное</dt>
+                <dd class="flex items-baseline">
+                  <div class="text-2xl font-semibold text-gray-900">
+                    <%= @statistics[:favorites_count] %>
+                  </div>
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-5 py-3">
+          <%= link_to dashboard_favorites_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+            Посмотреть все
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Inquiries -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Заявки</dt>
+                <dd class="flex items-baseline">
+                  <div class="text-2xl font-semibold text-gray-900">
+                    <%= @statistics[:inquiries_count] %>
+                  </div>
+                  <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
+                    <%= @statistics[:active_inquiries] %> активных
+                  </div>
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-5 py-3">
+          <%= link_to dashboard_inquiries_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+            Посмотреть все
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Сообщения</dt>
+                <dd class="flex items-baseline">
+                  <div class="text-2xl font-semibold text-gray-900">
+                    <%= @statistics[:unread_messages] %>
+                  </div>
+                  <div class="ml-2 text-sm text-gray-500">непрочитанных</div>
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-5 py-3">
+          <%= link_to dashboard_messages_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+            Посмотреть все
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Saved Searches -->
+      <div class="bg-white overflow-hidden shadow rounded-lg">
+        <div class="p-5">
+          <div class="flex items-center">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <div class="ml-5 w-0 flex-1">
+              <dl>
+                <dt class="text-sm font-medium text-gray-500 truncate">Сохраненные поиски</dt>
+                <dd class="flex items-baseline">
+                  <div class="text-2xl font-semibold text-gray-900">
+                    <%= @statistics[:saved_searches] %>
+                  </div>
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="bg-gray-50 px-5 py-3">
+          <%= link_to dashboard_saved_searches_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+            Посмотреть все
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two column layout -->
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <!-- Recent Favorites -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-5 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Недавно добавленное в избранное</h3>
+        </div>
+        <div class="px-6 py-4">
+          <% if @recent_favorites.any? %>
+            <ul class="divide-y divide-gray-200">
+              <% @recent_favorites.each do |favorite| %>
+                <li class="py-4">
+                  <div class="flex space-x-3">
+                    <% if favorite.property.primary_image %>
+                      <%= image_tag favorite.property.primary_image.url, 
+                          class: "h-16 w-16 rounded-lg object-cover" %>
+                    <% else %>
+                      <div class="h-16 w-16 rounded-lg bg-gray-200 flex items-center justify-center">
+                        <svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                      </div>
+                    <% end %>
+                    <div class="flex-1 min-w-0">
+                      <%= link_to property_path(favorite.property), class: "block hover:bg-gray-50 transition" do %>
+                        <p class="text-sm font-medium text-gray-900 truncate">
+                          <%= favorite.property.title %>
+                        </p>
+                        <p class="text-sm text-gray-500">
+                          <%= number_to_currency(favorite.property.price, unit: "₽", separator: ",", delimiter: " ", format: "%n %u") %>
+                        </p>
+                        <p class="text-xs text-gray-400">
+                          Добавлено <%= time_ago_in_words(favorite.created_at) %> назад
+                        </p>
+                      <% end %>
+                    </div>
+                  </div>
+                </li>
+              <% end %>
+            </ul>
+            <div class="mt-4">
+              <%= link_to dashboard_favorites_path, 
+                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+                Посмотреть все избранное →
+              <% end %>
+            </div>
+          <% else %>
+            <p class="text-sm text-gray-500 text-center py-8">
+              У вас пока нет избранных объектов
+            </p>
+            <%= link_to properties_path, 
+                class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+              Посмотреть каталог
+            <% end %>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Recent Inquiries -->
+      <div class="bg-white shadow rounded-lg">
+        <div class="px-6 py-5 border-b border-gray-200">
+          <h3 class="text-lg font-medium text-gray-900">Последние заявки</h3>
+        </div>
+        <div class="px-6 py-4">
+          <% if @recent_inquiries.any? %>
+            <ul class="divide-y divide-gray-200">
+              <% @recent_inquiries.each do |inquiry| %>
+                <li class="py-4">
+                  <div class="flex space-x-3">
+                    <div class="flex-1 space-y-1">
+                      <%= link_to dashboard_inquiry_path(inquiry), class: "block hover:bg-gray-50 transition" do %>
+                        <div class="flex items-center justify-between">
+                          <p class="text-sm font-medium text-gray-900">
+                            <%= inquiry.inquiry_type_humanized %>
+                          </p>
+                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                       <%= inquiry.status == 'new' ? 'bg-blue-100 text-blue-800' : 
+                                           inquiry.status == 'in_progress' ? 'bg-yellow-100 text-yellow-800' : 
+                                           inquiry.status == 'completed' ? 'bg-green-100 text-green-800' : 
+                                           'bg-gray-100 text-gray-800' %>">
+                            <%= inquiry.status_humanized %>
+                          </span>
+                        </div>
+                        <% if inquiry.property %>
+                          <p class="text-sm text-gray-500 truncate">
+                            <%= inquiry.property.title %>
+                          </p>
+                        <% end %>
+                        <p class="text-xs text-gray-400">
+                          <%= time_ago_in_words(inquiry.created_at) %> назад
+                        </p>
+                      <% end %>
+                    </div>
+                  </div>
+                </li>
+              <% end %>
+            </ul>
+            <div class="mt-4">
+              <%= link_to dashboard_inquiries_path, 
+                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+                Посмотреть все заявки →
+              <% end %>
+            </div>
+          <% else %>
+            <p class="text-sm text-gray-500 text-center py-8">
+              У вас пока нет заявок
+            </p>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recommendations -->
+    <% if @recommended_properties.any? %>
+      <div class="mt-8">
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-5 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Рекомендуем вам</h3>
+            <p class="text-sm text-gray-500 mt-1">
+              Подобраны на основе ваших предпочтений
+            </p>
+          </div>
+          <div class="p-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <% @recommended_properties.each do |property| %>
+                <%= render partial: 'properties/property_card', locals: { property: property } %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Recent Views -->
+    <% if @recent_views.any? %>
+      <div class="mt-8">
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
+            <h3 class="text-lg font-medium text-gray-900">Недавно просмотренные</h3>
+            <%= link_to dashboard_history_path, 
+                class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+              Вся история →
+            <% end %>
+          </div>
+          <div class="p-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <% @recent_views.first(3).each do |property| %>
+                <%= render partial: 'properties/property_card', locals: { property: property } %>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Active Saved Searches -->
+    <% if @active_saved_searches.any? %>
+      <div class="mt-8">
+        <div class="bg-white shadow rounded-lg">
+          <div class="px-6 py-5 border-b border-gray-200">
+            <h3 class="text-lg font-medium text-gray-900">Активные поиски</h3>
+            <p class="text-sm text-gray-500 mt-1">
+              Вы получите уведомление, когда появятся новые объекты
+            </p>
+          </div>
+          <div class="px-6 py-4">
+            <ul class="divide-y divide-gray-200">
+              <% @active_saved_searches.each do |search| %>
+                <li class="py-4">
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1">
+                      <p class="text-sm font-medium text-gray-900">
+                        <%= search.name || "Поиск ##{search.id}" %>
+                      </p>
+                      <p class="text-sm text-gray-500">
+                        <%= search.query_description %>
+                      </p>
+                    </div>
+                    <div class="ml-4 flex-shrink-0 flex space-x-2">
+                      <%= link_to properties_path(search.search_params), 
+                          class: "inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" do %>
+                        Открыть
+                      <% end %>
+                    </div>
+                  </div>
+                </li>
+              <% end %>
+            </ul>
+            <div class="mt-4">
+              <%= link_to dashboard_saved_searches_path, 
+                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
+                Все сохраненные поиски →
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+

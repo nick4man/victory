@@ -1,0 +1,307 @@
+<% content_for :title, "Результат оценки недвижимости - #{number_to_currency(@valuation.estimated_price, precision: 0)}" %>
+
+<div class="min-h-screen bg-gray-50 py-12">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    
+    <!-- Success Banner -->
+    <div class="mb-8 rounded-2xl bg-gradient-to-r from-green-500 to-green-600 p-8 shadow-xl text-white">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="flex items-center mb-2">
+            <svg class="w-8 h-8 mr-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            <h1 class="text-3xl font-bold">Оценка завершена!</h1>
+          </div>
+          <p class="text-green-100">Вот результат оценки вашей недвижимости</p>
+        </div>
+        <%= link_to property_valuation_download_pdf_path(@valuation.token, format: :pdf), 
+            class: "hidden sm:inline-flex items-center px-6 py-3 border-2 border-white rounded-lg text-white font-medium hover:bg-white hover:text-green-600 transition" do %>
+          <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Скачать PDF
+        <% end %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Main Content -->
+      <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Estimated Price Card -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Оценочная стоимость</h2>
+          
+          <div class="text-center py-8 bg-gradient-to-br from-primary-50 to-accent-50 rounded-xl mb-6">
+            <p class="text-sm font-medium text-gray-600 mb-2">Рыночная стоимость</p>
+            <p class="text-5xl font-extrabold text-primary-600 mb-3">
+              <%= number_to_currency(@valuation.estimated_price, precision: 0) %>
+            </p>
+            <p class="text-lg text-gray-600">
+              <%= number_to_currency(@valuation.estimated_price / @valuation.total_area, precision: 0) %> / м²
+            </p>
+          </div>
+
+          <div class="bg-gray-50 rounded-xl p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-sm font-medium text-gray-700">Диапазон стоимости:</span>
+              <span class="text-sm font-semibold text-gray-900">
+                <%= @valuation.price_range_formatted %>
+              </span>
+            </div>
+            
+            <!-- Price Range Slider -->
+            <div class="relative h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div class="absolute h-full bg-gradient-to-r from-primary-400 to-primary-600 rounded-full" 
+                   style="width: 100%;"></div>
+              <div class="absolute top-1/2 transform -translate-y-1/2 w-4 h-4 bg-white border-2 border-primary-600 rounded-full shadow-lg"
+                   style="left: 50%;"></div>
+            </div>
+            
+            <div class="flex justify-between mt-2 text-xs text-gray-500">
+              <span><%= number_to_currency(@valuation.min_price, precision: 0) %></span>
+              <span><%= number_to_currency(@valuation.max_price, precision: 0) %></span>
+            </div>
+          </div>
+
+          <!-- Confidence Level -->
+          <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-100">
+            <div class="flex items-center">
+              <svg class="w-5 h-5 text-blue-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span class="text-sm font-medium text-gray-700">Точность оценки:</span>
+            </div>
+            <div class="flex items-center">
+              <span class="text-lg font-bold text-blue-600 mr-2"><%= @valuation.confidence_percentage %>%</span>
+              <span class="px-3 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                <%= @valuation.accuracy_level %>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Property Info -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Информация об объекте</h2>
+          
+          <div class="grid grid-cols-2 gap-4">
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <p class="text-xs text-gray-500 mb-1">Тип недвижимости</p>
+              <p class="font-semibold text-gray-900"><%= t("property_types.#{@valuation.property_type}") %></p>
+            </div>
+
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <p class="text-xs text-gray-500 mb-1">Тип сделки</p>
+              <p class="font-semibold text-gray-900"><%= t("deal_types.#{@valuation.deal_type}") %></p>
+            </div>
+
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <p class="text-xs text-gray-500 mb-1">Общая площадь</p>
+              <p class="font-semibold text-gray-900"><%= @valuation.total_area %> м²</p>
+            </div>
+
+            <% if @valuation.rooms.present? %>
+              <div class="p-4 bg-gray-50 rounded-lg">
+                <p class="text-xs text-gray-500 mb-1">Комнат</p>
+                <p class="font-semibold text-gray-900"><%= @valuation.rooms %></p>
+              </div>
+            <% end %>
+
+            <% if @valuation.floor.present? && @valuation.total_floors.present? %>
+              <div class="p-4 bg-gray-50 rounded-lg">
+                <p class="text-xs text-gray-500 mb-1">Этаж</p>
+                <p class="font-semibold text-gray-900"><%= @valuation.floor %> / <%= @valuation.total_floors %></p>
+              </div>
+            <% end %>
+
+            <% if @valuation.metro_station.present? %>
+              <div class="p-4 bg-gray-50 rounded-lg">
+                <p class="text-xs text-gray-500 mb-1">Метро</p>
+                <p class="font-semibold text-gray-900">
+                  <%= @valuation.metro_station %>
+                  <% if @valuation.metro_distance.present? %>
+                    (<%= @valuation.metro_distance %> мин)
+                  <% end %>
+                </p>
+              </div>
+            <% end %>
+          </div>
+
+          <div class="mt-6 p-4 bg-gray-50 rounded-lg">
+            <p class="text-xs text-gray-500 mb-1">Адрес</p>
+            <p class="font-semibold text-gray-900"><%= @valuation.address %></p>
+          </div>
+        </div>
+
+        <!-- Price Factors -->
+        <% if @evaluation_result[:price_factors].present? %>
+          <div class="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Факторы влияния на цену</h2>
+            
+            <div class="space-y-4">
+              <% @evaluation_result[:price_factors].each do |factor| %>
+                <div class="flex items-start">
+                  <div class="flex-shrink-0 mt-0.5">
+                    <% if factor[:impact] == 'positive' %>
+                      <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 0l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414z" clip-rule="evenodd"/>
+                      </svg>
+                    <% elsif factor[:impact] == 'negative' %>
+                      <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v3.586L7.707 9.293a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 10.586V7z" clip-rule="evenodd"/>
+                      </svg>
+                    <% else %>
+                      <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 000 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+                      </svg>
+                    <% end %>
+                  </div>
+                  <div class="ml-3 flex-1">
+                    <p class="text-sm font-medium text-gray-900"><%= factor[:name] %></p>
+                    <p class="text-sm text-gray-600"><%= factor[:description] %></p>
+                  </div>
+                  <div class="ml-4 flex-shrink-0">
+                    <span class="<%= factor[:impact] == 'positive' ? 'text-green-600' : factor[:impact] == 'negative' ? 'text-red-600' : 'text-gray-600' %> text-sm font-semibold">
+                      <%= factor[:value] %>
+                    </span>
+                  </div>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+
+        <!-- Similar Properties -->
+        <% if @similar_properties.any? %>
+          <div class="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+            <h2 class="text-2xl font-bold text-gray-900 mb-6">Похожие объекты на рынке</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <% @similar_properties.each do |property| %>
+                <%= link_to property_path(property), class: "block group" do %>
+                  <div class="border border-gray-200 rounded-lg overflow-hidden hover:shadow-lg transition">
+                    <% if property.main_image.attached? %>
+                      <%= image_tag property.main_image.variant(resize_to_limit: [400, 300]), 
+                          class: "w-full h-48 object-cover", 
+                          alt: property.title %>
+                    <% else %>
+                      <div class="w-full h-48 bg-gray-200 flex items-center justify-center">
+                        <svg class="w-12 h-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                        </svg>
+                      </div>
+                    <% end %>
+                    <div class="p-4">
+                      <p class="text-lg font-bold text-primary-600 mb-1">
+                        <%= number_to_currency(property.price, precision: 0) %>
+                      </p>
+                      <p class="text-sm text-gray-600 mb-2">
+                        <%= property.total_area %> м² • <%= property.rooms %>к • <%= property.floor %>/<%= property.total_floors %> эт
+                      </p>
+                      <p class="text-xs text-gray-500 truncate">
+                        <%= property.address %>
+                      </p>
+                    </div>
+                  </div>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="lg:col-span-1 space-y-6">
+        <!-- CTA Card -->
+        <div class="bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl shadow-xl p-8 text-white sticky top-6">
+          <div class="text-center mb-6">
+            <div class="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+              </svg>
+            </div>
+            <h3 class="text-2xl font-bold mb-2">Хотите продать выгодно?</h3>
+            <p class="text-primary-100">Наши эксперты помогут вам получить максимальную цену</p>
+          </div>
+
+          <%= form_with url: request_call_property_valuation_path(@valuation.token), method: :post, local: true, class: "space-y-4" do %>
+            <%= button_tag type: 'submit', class: "w-full bg-white text-primary-600 px-6 py-3 rounded-lg font-semibold hover:bg-primary-50 transition flex items-center justify-center" do %>
+              <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+              </svg>
+              Заказать звонок
+            <% end %>
+          <% end %>
+
+          <div class="mt-6 space-y-3 text-sm">
+            <div class="flex items-center text-primary-100">
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+              Бесплатная консультация
+            </div>
+            <div class="flex items-center text-primary-100">
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+              Помощь в продаже
+            </div>
+            <div class="flex items-center text-primary-100">
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+              </svg>
+              Юридическое сопровождение
+            </div>
+          </div>
+        </div>
+
+        <!-- Share Card -->
+        <div class="bg-white rounded-2xl shadow-xl p-6 border border-gray-100">
+          <h3 class="text-lg font-semibold text-gray-900 mb-4">Поделиться результатом</h3>
+          
+          <div class="space-y-3">
+            <%= link_to property_valuation_download_pdf_path(@valuation.token, format: :pdf), 
+                class: "flex items-center justify-center w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition" do %>
+              <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Скачать PDF
+            <% end %>
+
+            <button type="button" 
+                    data-controller="app" 
+                    data-action="click->app#copyToClipboard" 
+                    data-text="<%= request.original_url %>"
+                    class="flex items-center justify-center w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+              <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              Копировать ссылку
+            </button>
+          </div>
+        </div>
+
+        <!-- Info Card -->
+        <div class="bg-blue-50 rounded-2xl p-6 border border-blue-100">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-blue-800 mb-2">О точности оценки</h3>
+              <p class="text-sm text-blue-700">
+                Оценка основана на анализе рыночных данных и может отличаться от реальной стоимости. 
+                Для точной оценки рекомендуем консультацию с экспертом.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

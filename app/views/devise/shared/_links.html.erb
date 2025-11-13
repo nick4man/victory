@@ -1,0 +1,41 @@
+<!-- Devise Shared Links -->
+<div class="mt-6 text-center space-y-2">
+  <%- if controller_name != 'sessions' %>
+    <div>
+      <%= link_to "Войти", new_session_path(resource_name), class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+    </div>
+  <% end %>
+
+  <%- if devise_mapping.registerable? && controller_name != 'registrations' %>
+    <div>
+      <%= link_to "Зарегистрироваться", new_registration_path(resource_name), class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+    </div>
+  <% end %>
+
+  <%- if devise_mapping.recoverable? && controller_name != 'passwords' && controller_name != 'registrations' %>
+    <div>
+      <%= link_to "Забыли пароль?", new_password_path(resource_name), class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+    </div>
+  <% end %>
+
+  <%- if devise_mapping.confirmable? && controller_name != 'confirmations' %>
+    <div>
+      <%= link_to "Не получили инструкции по подтверждению?", new_confirmation_path(resource_name), class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+    </div>
+  <% end %>
+
+  <%- if devise_mapping.lockable? && resource_class.unlock_strategy_enabled?(:email) && controller_name != 'unlocks' %>
+    <div>
+      <%= link_to "Не получили инструкции по разблокировке?", new_unlock_path(resource_name), class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+    </div>
+  <% end %>
+
+  <%- if devise_mapping.omniauthable? %>
+    <%- resource_class.omniauth_providers.each do |provider| %>
+      <div>
+        <%= button_to "Войти через #{OmniAuth::Utils.camelize(provider)}", omniauth_authorize_path(resource_name, provider), data: { turbo: false }, class: "font-medium text-primary-600 hover:text-primary-500 transition" %>
+      </div>
+    <% end %>
+  <% end %>
+</div>
+

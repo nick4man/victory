@@ -1,0 +1,261 @@
+ru:
+  app_name: "АН Виктори"
+  hello: "Привет"
+  
+  # Common
+  common:
+    save: "Сохранить"
+    cancel: "Отмена"
+    delete: "Удалить"
+    edit: "Редактировать"
+    back: "Назад"
+    search: "Поиск"
+    filter: "Фильтр"
+    sort: "Сортировка"
+    loading: "Загрузка..."
+    confirm: "Вы уверены?"
+    success: "Успешно"
+    error: "Ошибка"
+    warning: "Внимание"
+    info: "Информация"
+    or: "или"
+    and: "и"
+    from: "от"
+    to: "до"
+    rub: "₽"
+    m2: "м²"
+    
+  # Navigation
+  nav:
+    home: "Главная"
+    catalog: "Каталог"
+    buy: "Купить"
+    rent: "Снять"
+    sell: "Продать"
+    services: "Услуги"
+    about: "О нас"
+    contacts: "Контакты"
+    blog: "Блог"
+    dashboard: "Личный кабинет"
+    login: "Войти"
+    logout: "Выйти"
+    register: "Регистрация"
+    
+  # Property Types
+  property_types:
+    apartment: "Квартира"
+    house: "Дом"
+    land: "Участок"
+    commercial: "Коммерческая"
+    garage: "Гараж"
+    room: "Комната"
+    townhouse: "Таунхаус"
+    
+  # Deal Types
+  deal_types:
+    sale: "Продажа"
+    rent: "Аренда"
+    daily_rent: "Посуточно"
+    
+  # Property Status
+  property_status:
+    active: "Активен"
+    pending: "На модерации"
+    sold: "Продан"
+    rented: "Сдан"
+    archived: "В архиве"
+    
+  # Inquiry Types
+  inquiry_types:
+    viewing: "Показ"
+    call: "Звонок"
+    consultation: "Консультация"
+    valuation: "Оценка"
+    callback: "Обратный звонок"
+    
+  # Inquiry Status
+  inquiry_status:
+    new: "Новая"
+    in_progress: "В работе"
+    completed: "Завершена"
+    cancelled: "Отменена"
+    
+  # User Roles
+  user_roles:
+    client: "Клиент"
+    agent: "Агент"
+    admin: "Администратор"
+    
+  # Forms
+  forms:
+    required: "обязательное поле"
+    optional: "необязательное"
+    enter: "Введите"
+    select: "Выберите"
+    choose_file: "Выбрать файл"
+    no_file_chosen: "Файл не выбран"
+    
+  # Buttons
+  buttons:
+    submit: "Отправить"
+    send: "Отправить"
+    apply: "Применить"
+    reset: "Сбросить"
+    clear: "Очистить"
+    add: "Добавить"
+    remove: "Удалить"
+    update: "Обновить"
+    create: "Создать"
+    view: "Посмотреть"
+    show_more: "Показать еще"
+    show_less: "Скрыть"
+    download: "Скачать"
+    upload: "Загрузить"
+    share: "Поделиться"
+    print: "Печать"
+    favorite: "В избранное"
+    compare: "Сравнить"
+    contact: "Связаться"
+    
+  # Messages
+  messages:
+    success_save: "Успешно сохранено"
+    success_delete: "Успешно удалено"
+    success_update: "Успешно обновлено"
+    error_save: "Ошибка сохранения"
+    error_delete: "Ошибка удаления"
+    error_update: "Ошибка обновления"
+    no_results: "Ничего не найдено"
+    empty_list: "Список пуст"
+    loading: "Загрузка данных..."
+    
+  # Validation
+  errors:
+    messages:
+      not_saved:
+        one: "%{resource} не был сохранен из-за %{count} ошибки"
+        few: "%{resource} не был сохранен из-за %{count} ошибок"
+        many: "%{resource} не был сохранен из-за %{count} ошибок"
+        other: "%{resource} не был сохранен из-за %{count} ошибок"
+      required: "Обязательное поле"
+      blank: "Не может быть пустым"
+      invalid: "Неверное значение"
+      taken: "Уже занято"
+      too_short: "Слишком короткое"
+      too_long: "Слишком длинное"
+      invalid_email: "Неверный формат email"
+      invalid_phone: "Неверный формат телефона"
+      
+  # Datetime
+  date:
+    formats:
+      default: "%d.%m.%Y"
+      short: "%d %b"
+      long: "%d %B %Y"
+    day_names:
+      - Воскресенье
+      - Понедельник
+      - Вторник
+      - Среда
+      - Четверг
+      - Пятница
+      - Суббота
+    abbr_day_names:
+      - Вс
+      - Пн
+      - Вт
+      - Ср
+      - Чт
+      - Пт
+      - Сб
+    month_names:
+      - ~
+      - Январь
+      - Февраль
+      - Март
+      - Апрель
+      - Май
+      - Июнь
+      - Июль
+      - Август
+      - Сентябрь
+      - Октябрь
+      - Ноябрь
+      - Декабрь
+    abbr_month_names:
+      - ~
+      - янв.
+      - февр.
+      - марта
+      - апр.
+      - мая
+      - июня
+      - июля
+      - авг.
+      - сент.
+      - окт.
+      - нояб.
+      - дек.
+      
+  time:
+    formats:
+      default: "%d.%m.%Y %H:%M"
+      short: "%d %b %H:%M"
+      long: "%d %B %Y, %H:%M"
+    am: "утра"
+    pm: "вечера"
+    
+  # Numbers
+  number:
+    format:
+      separator: ","
+      delimiter: " "
+      precision: 2
+    currency:
+      format:
+        format: "%n %u"
+        unit: "₽"
+        separator: ","
+        delimiter: " "
+        precision: 0
+        
+  # Dashboard
+  dashboard:
+    title: "Личный кабинет"
+    welcome: "Добро пожаловать"
+    statistics: "Статистика"
+    favorites: "Избранное"
+    inquiries: "Мои заявки"
+    messages: "Сообщения"
+    settings: "Настройки"
+    profile: "Профиль"
+    saved_searches: "Сохраненные поиски"
+    history: "История просмотров"
+    notifications: "Уведомления"
+    
+  # Property
+  property:
+    title: "Объект недвижимости"
+    price: "Цена"
+    area: "Площадь"
+    rooms: "Комнат"
+    floor: "Этаж"
+    address: "Адрес"
+    description: "Описание"
+    features: "Особенности"
+    amenities: "Удобства"
+    characteristics: "Характеристики"
+    location: "Расположение"
+    infrastructure: "Инфраструктура"
+    similar: "Похожие объекты"
+    gallery: "Галерея"
+    virtual_tour: "3D-тур"
+    schedule_viewing: "Записаться на показ"
+    contact_agent: "Связаться с агентом"
+    
+  # Meta
+  meta:
+    default_title: "АН Виктори - Недвижимость в вашем городе"
+    default_description: "Купить, продать или снять недвижимость. Большой выбор квартир, домов и коммерческой недвижимости."
+    default_keywords: "недвижимость, купить квартиру, снять квартиру, продать квартиру, дом, коммерческая недвижимость"
+

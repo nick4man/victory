@@ -1,0 +1,203 @@
+<% content_for :title, "Сравнение объектов" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8 flex items-center justify-between">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Сравнение объектов</h1>
+        <p class="mt-2 text-sm text-gray-600">
+          Сравните до 4 объектов одновременно
+        </p>
+      </div>
+
+      <% if @properties.any? %>
+        <%= button_to clear_all_dashboard_comparisons_path, 
+            method: :delete,
+            data: { confirm: "Очистить список сравнения?" },
+            class: "inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50" do %>
+          Очистить все
+        <% end %>
+      <% end %>
+    </div>
+
+    <% if @properties.any? %>
+      <!-- Comparison table -->
+      <div class="bg-white shadow overflow-x-auto rounded-lg">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50">
+                Характеристика
+              </th>
+              <% @properties.each do |property| %>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Объект #<%= property.id %>
+                </th>
+              <% end %>
+            </tr>
+          </thead>
+          <tbody class="bg-white divide-y divide-gray-200">
+            <!-- Images -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                Фото
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4">
+                  <%= link_to property_path(property) do %>
+                    <% if property.primary_image %>
+                      <%= image_tag property.primary_image.url, class: "h-32 w-full object-cover rounded" %>
+                    <% else %>
+                      <div class="h-32 w-full bg-gray-200 rounded flex items-center justify-center">
+                        <span class="text-gray-400">Нет фото</span>
+                      </div>
+                    <% end %>
+                  <% end %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Title -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                Название
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4">
+                  <%= link_to property.title, property_path(property), class: "text-primary-600 hover:text-primary-700" %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Price -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-gray-50">
+                Цена
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm font-semibold text-gray-900 bg-gray-50">
+                  <%= number_to_currency(property.price, unit: "₽", separator: ",", delimiter: " ", format: "%n %u") %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Area -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                Площадь
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm text-gray-900">
+                  <%= property.area %> м²
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Rooms -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-gray-50">
+                Комнаты
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm text-gray-900 bg-gray-50">
+                  <%= property.rooms || "Н/Д" %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Floor -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                Этаж
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm text-gray-900">
+                  <%= property.floor ? "#{property.floor} из #{property.total_floors}" : "Н/Д" %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Type -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-gray-50">
+                Тип
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm text-gray-900 bg-gray-50">
+                  <%= property.property_type_humanized %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Address -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-white">
+                Адрес
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 text-sm text-gray-900">
+                  <%= property.address %>
+                </td>
+              <% end %>
+            </tr>
+
+            <!-- Actions -->
+            <tr>
+              <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 sticky left-0 bg-gray-50">
+                Действия
+              </td>
+              <% @properties.each do |property| %>
+                <td class="px-6 py-4 bg-gray-50">
+                  <%= link_to property_path(property), 
+                      class: "inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-primary-600 hover:bg-primary-700" do %>
+                    Подробнее
+                  <% end %>
+                </td>
+              <% end %>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Note -->
+      <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div class="flex">
+          <div class="flex-shrink-0">
+            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <div class="ml-3">
+            <p class="text-sm text-blue-700">
+              Вы сравниваете <strong><%= @properties.count %></strong> <%= Russian.p(@properties.count, 'объект', 'объекта', 'объектов') %>.
+              Максимум можно сравнить 4 объекта одновременно.
+            </p>
+          </div>
+        </div>
+      </div>
+    <% else %>
+      <!-- Empty state -->
+      <div class="bg-white shadow rounded-lg p-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">Нет объектов для сравнения</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Добавьте объекты в сравнение, чтобы увидеть их характеристики рядом
+          </p>
+          <div class="mt-6">
+            <%= link_to properties_path, 
+                class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700" do %>
+              Перейти к каталогу
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+

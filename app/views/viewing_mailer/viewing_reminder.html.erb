@@ -1,0 +1,116 @@
+<h1>⏰ Напоминание: показ завтра!</h1>
+
+<p>Здравствуйте, <%= @viewing.name %>!</p>
+
+<p>
+  Это дружественное напоминание о предстоящем показе недвижимости, 
+  который состоится <strong>завтра</strong>!
+</p>
+
+<div class="info-box success-box">
+  <h2 style="margin-top: 0;">📆 Детали показа</h2>
+  
+  <table class="data-table">
+    <tr>
+      <td>Дата и время:</td>
+      <td style="font-size: 18px; color: #667eea; font-weight: bold;">
+        <%= @date_time %>
+      </td>
+    </tr>
+    <tr>
+      <td>Адрес:</td>
+      <td><strong><%= @property.address %></strong></td>
+    </tr>
+    <% if @agent.present? %>
+    <tr>
+      <td>Ваш агент:</td>
+      <td>
+        <%= @agent.full_name %><br>
+        <a href="tel:<%= @agent.phone %>"><%= @agent.phone %></a>
+      </td>
+    </tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="property-card">
+  <% if @property.main_image.present? %>
+    <%= image_tag @property.main_image.url, class: 'property-image', alt: @property.title %>
+  <% end %>
+  
+  <h2 style="margin: 0;"><%= @property.title %></h2>
+  
+  <div class="property-price">
+    <%= number_to_currency(@property.price, precision: 0) %>
+  </div>
+</div>
+
+<h2>📱 Контакт агента</h2>
+
+<div style="text-align: center; background-color: #f7fafc; padding: 20px; border-radius: 8px; margin: 20px 0;">
+  <% if @agent.present? %>
+    <p style="margin: 0 0 10px 0;">
+      <strong style="font-size: 18px;"><%= @agent.full_name %></strong>
+    </p>
+    <p style="margin: 5px 0; font-size: 24px;">
+      <a href="tel:<%= @agent.phone %>" style="color: #667eea; text-decoration: none;">
+        <%= @agent.phone %>
+      </a>
+    </p>
+  <% else %>
+    <p style="margin: 5px 0; font-size: 24px;">
+      <a href="tel:<%= @contact_phone %>" style="color: #667eea; text-decoration: none;">
+        <%= @contact_phone %>
+      </a>
+    </p>
+  <% end %>
+</div>
+
+<h2>🗺️ Как добраться</h2>
+
+<p>
+  <strong>Адрес:</strong> <%= @property.address %>
+</p>
+
+<% if @property.metro_station.present? %>
+<p>
+  <strong>🚇 Метро:</strong> <%= @property.metro_station %> (<%= @property.metro_distance %> минут пешком)
+</p>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="https://yandex.ru/maps/?text=<%= CGI.escape(@property.address) %>" class="button" target="_blank">
+    🗺️ Открыть маршрут на карте
+  </a>
+  
+  <br>
+  
+  <a href="<%= @property_url %>" class="button button-secondary">
+    📄 Информация об объекте
+  </a>
+</div>
+
+<h2>💡 Полезные советы</h2>
+
+<div class="info-box">
+  <ul style="margin: 0; padding-left: 20px;">
+    <li>Выезжайте с запасом времени - пробки могут задержать</li>
+    <li>Возьмите с собой паспорт</li>
+    <li>Подготовьте список вопросов об объекте</li>
+    <li>Обратите внимание на состояние дома и двора</li>
+    <li>Оцените инфраструктуру района</li>
+  </ul>
+</div>
+
+<div class="warning-box" style="margin-top: 30px;">
+  <p style="margin: 0;">
+    <strong>⚠️ Важно:</strong><br>
+    Если ваши планы изменились, пожалуйста, сообщите нам как можно скорее, 
+    позвонив по номеру <a href="tel:<%= @contact_phone %>" style="color: #c53030;"><%= @contact_phone %></a>
+  </p>
+</div>
+
+<p style="color: #718096; font-size: 14px; margin-top: 40px; text-align: center;">
+  <strong>До встречи завтра! 🤝</strong>
+</p>
+

@@ -1,0 +1,174 @@
+<% content_for :title, "Избранное" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8 flex items-center justify-between flex-wrap gap-4">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Избранное</h1>
+        <p class="mt-2 text-sm text-gray-600">
+          Всего объектов: <%= @total_count %>
+        </p>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <% if @favorites.any? %>
+          <%= link_to export_dashboard_favorites_path(format: :pdf), 
+              class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Экспорт PDF
+          <% end %>
+
+          <%= link_to export_dashboard_favorites_path(format: :xlsx), 
+              class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Экспорт Excel
+          <% end %>
+
+          <%= button_to clear_all_dashboard_favorites_path, 
+              method: :delete,
+              data: { confirm: "Вы уверены? Все избранные объекты будут удалены." },
+              class: "inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" do %>
+            <svg class="-ml-1 mr-2 h-5 w-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            Очистить все
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @favorites.any? %>
+      <!-- Properties grid -->
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+        <% @favorites.each do |favorite| %>
+          <div class="bg-white shadow rounded-lg overflow-hidden relative group">
+            <!-- Remove button -->
+            <%= button_to dashboard_favorite_path(favorite), 
+                method: :delete,
+                data: { confirm: "Удалить из избранного?" },
+                class: "absolute top-2 right-2 z-10 p-2 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-red-50" do %>
+              <svg class="h-5 w-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            <% end %>
+
+            <%= link_to property_path(favorite.property), class: "block" do %>
+              <!-- Image -->
+              <div class="relative h-48 bg-gray-200">
+                <% if favorite.property.primary_image %>
+                  <%= image_tag favorite.property.primary_image.url, 
+                      class: "w-full h-full object-cover",
+                      loading: "lazy" %>
+                <% else %>
+                  <div class="flex items-center justify-center h-full">
+                    <svg class="h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                            d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                    </svg>
+                  </div>
+                <% end %>
+
+                <!-- Status badge -->
+                <% if favorite.property.is_featured? %>
+                  <span class="absolute top-2 left-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    VIP
+                  </span>
+                <% end %>
+              </div>
+
+              <!-- Content -->
+              <div class="p-4">
+                <h3 class="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                  <%= favorite.property.title %>
+                </h3>
+
+                <p class="text-2xl font-bold text-primary-600 mb-3">
+                  <%= number_to_currency(favorite.property.price, unit: "₽", separator: ",", delimiter: " ", format: "%n %u") %>
+                </p>
+
+                <!-- Features -->
+                <div class="flex items-center text-sm text-gray-500 space-x-4 mb-3">
+                  <span class="flex items-center">
+                    <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                    </svg>
+                    <%= favorite.property.area %> м²
+                  </span>
+                  
+                  <% if favorite.property.rooms.present? %>
+                    <span class="flex items-center">
+                      <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                      </svg>
+                      <%= favorite.property.rooms %> комн.
+                    </span>
+                  <% end %>
+                </div>
+
+                <!-- Address -->
+                <p class="text-sm text-gray-500 mb-2">
+                  <%= favorite.property.address %>
+                </p>
+
+                <!-- Added date -->
+                <p class="text-xs text-gray-400">
+                  Добавлено <%= time_ago_in_words(favorite.created_at) %> назад
+                </p>
+
+                <!-- Note -->
+                <% if favorite.note.present? %>
+                  <div class="mt-3 pt-3 border-t border-gray-200">
+                    <p class="text-sm text-gray-600">
+                      <span class="font-medium">Заметка:</span>
+                      <%= favorite.note %>
+                    </p>
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Pagination -->
+      <div class="flex justify-center">
+        <%= paginate @favorites, theme: 'tailwind' %>
+      </div>
+    <% else %>
+      <!-- Empty state -->
+      <div class="bg-white shadow rounded-lg p-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">Нет избранных объектов</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Начните добавлять понравившиеся объекты в избранное
+          </p>
+          <div class="mt-6">
+            <%= link_to properties_path, 
+                class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" do %>
+              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Перейти к каталогу
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</div>
+

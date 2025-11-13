@@ -1,0 +1,142 @@
+<!-- Callback Request Modal -->
+<div id="callbackModal" class="fixed inset-0 z-50 hidden overflow-y-auto" aria-labelledby="callback-modal-title" role="dialog" aria-modal="true">
+  <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+    <!-- Background overlay -->
+    <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeModal('callbackModal')"></div>
+
+    <!-- Center modal -->
+    <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+    <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+      <div class="bg-gradient-to-br from-primary-500 to-primary-700 px-6 py-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center text-white">
+            <div class="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mr-4">
+              <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+              </svg>
+            </div>
+            <div>
+              <h3 class="text-2xl font-bold" id="callback-modal-title">
+                Заказать звонок
+              </h3>
+              <p class="text-primary-100">
+                Перезвоним в течение 15 минут
+              </p>
+            </div>
+          </div>
+          <button type="button" onclick="closeModal('callbackModal')" class="text-white hover:text-primary-100 transition">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-white px-6 py-6">
+        <!-- Form -->
+        <%= form_with url: contact_forms_callback_path, method: :post, local: false, html: { class: "space-y-4", id: "callbackForm" } do |f| %>
+          
+          <!-- Name -->
+          <div>
+            <%= label_tag 'inquiry[name]', "Ваше имя *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_field_tag 'inquiry[name]', '', 
+                placeholder: "Иван Иванов",
+                required: true,
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Phone -->
+          <div>
+            <%= label_tag 'inquiry[phone]', "Телефон *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= telephone_field_tag 'inquiry[phone]', '',
+                placeholder: "+7 (999) 123-45-67",
+                required: true,
+                data: { controller: "app", action: "input->app#formatPhone" },
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Preferred Time -->
+          <div>
+            <%= label_tag 'inquiry[preferred_time]', "Удобное время для звонка", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= select_tag 'inquiry[preferred_time]',
+                options_for_select([
+                  ['Как можно скорее', 'asap'],
+                  ['Утро (9:00 - 12:00)', 'morning'],
+                  ['День (12:00 - 15:00)', 'afternoon'],
+                  ['Вечер (15:00 - 18:00)', 'evening'],
+                  ['После 18:00', 'late']
+                ], 'asap'),
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Message -->
+          <div>
+            <%= label_tag 'inquiry[message]', "Комментарий (необязательно)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= text_area_tag 'inquiry[message]', '',
+                rows: 2,
+                placeholder: "Опишите ваш вопрос...",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+
+          <!-- Benefits -->
+          <div class="bg-blue-50 rounded-lg p-4 border border-blue-100">
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center text-blue-700">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Звонок бесплатный
+              </div>
+              <div class="flex items-center text-blue-700">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Перезвоним в течение 15 минут
+              </div>
+              <div class="flex items-center text-blue-700">
+                <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+                Ответим на все вопросы
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="flex gap-3">
+            <button type="button" onclick="closeModal('callbackModal')" class="flex-1 px-4 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition">
+              Отмена
+            </button>
+            <%= submit_tag "Заказать звонок", class: "flex-1 px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white font-medium rounded-lg hover:from-primary-700 hover:to-primary-800 transition transform hover:scale-105 flex items-center justify-center" do %>
+              <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+              </svg>
+              Заказать звонок
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('callbackForm');
+    if (!form) return;
+
+    form.addEventListener('ajax:success', (event) => {
+      const [data, status, xhr] = event.detail;
+      closeModal('callbackModal');
+      showNotification('success', data.message || 'Заявка отправлена! Мы перезвоним вам в ближайшее время.');
+      form.reset();
+    });
+
+    form.addEventListener('ajax:error', (event) => {
+      const [data, status, xhr] = event.detail;
+      showNotification('error', data.errors ? data.errors.join(', ') : 'Произошла ошибка');
+    });
+  });
+</script>
+

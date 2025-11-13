@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full bg-gray-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="turbo-visit-control" content="reload">
+  
+  <title><%= content_for?(:title) ? "#{yield(:title)} | " : "" %>Личный кабинет | АН Виктори</title>
+  
+  <%= csrf_meta_tags %>
+  <%= csp_meta_tag %>
+  
+  <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
+  <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
+  
+  <%= yield :head %>
+</head>
+
+<body class="h-full" data-controller="app">
+  <!-- Dashboard Navigation -->
+  <div class="min-h-full">
+    <!-- Mobile menu button -->
+    <div class="lg:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-gray-200">
+      <div class="flex items-center justify-between px-4 py-3">
+        <%= link_to root_path, class: "flex-shrink-0" do %>
+          <span class="text-2xl font-bold text-primary-600">АН Виктори</span>
+        <% end %>
+        
+        <button type="button" 
+                data-action="click->app#toggleMobileMenu"
+                class="text-gray-500 hover:text-gray-600">
+          <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Desktop Sidebar -->
+    <div class="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
+      <div class="flex min-h-0 flex-1 flex-col border-r border-gray-200 bg-white">
+        <!-- Logo -->
+        <div class="flex flex-1 flex-col overflow-y-auto pt-5 pb-4">
+          <div class="flex flex-shrink-0 items-center px-4 mb-8">
+            <%= link_to root_path do %>
+              <span class="text-2xl font-bold text-primary-600">АН Виктори</span>
+            <% end %>
+          </div>
+
+          <!-- User info -->
+          <div class="px-4 mb-6">
+            <div class="flex items-center">
+              <div class="flex-shrink-0">
+                <% if current_user.avatar_url.present? %>
+                  <%= image_tag current_user.avatar_url, class: "h-10 w-10 rounded-full object-cover" %>
+                <% else %>
+                  <div class="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
+                    <span class="text-primary-600 font-semibold text-lg">
+                      <%= current_user.initials %>
+                    </span>
+                  </div>
+                <% end %>
+              </div>
+              <div class="ml-3 flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">
+                  <%= current_user.full_name %>
+                </p>
+                <p class="text-xs text-gray-500 truncate">
+                  <%= current_user.email %>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Navigation -->
+          <nav class="flex-1 space-y-1 px-2">
+            <%= link_to dashboard_root_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_root_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_root_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+              </svg>
+              Главная
+            <% end %>
+
+            <%= link_to dashboard_profile_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_profile_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_profile_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              Профиль
+            <% end %>
+
+            <%= link_to dashboard_favorites_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_favorites_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_favorites_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+              Избранное
+              <% if current_user.favorites_count > 0 %>
+                <span class="ml-auto inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                  <%= current_user.favorites_count %>
+                </span>
+              <% end %>
+            <% end %>
+
+            <%= link_to dashboard_inquiries_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_inquiries_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_inquiries_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              Мои заявки
+              <% if current_user.inquiries_count > 0 %>
+                <span class="ml-auto inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
+                  <%= current_user.inquiries_count %>
+                </span>
+              <% end %>
+            <% end %>
+
+            <%= link_to dashboard_saved_searches_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_saved_searches_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_saved_searches_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              Сохраненные поиски
+            <% end %>
+
+            <%= link_to dashboard_messages_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_messages_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_messages_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              Сообщения
+              <% if defined?(@unread_messages_count) && @unread_messages_count > 0 %>
+                <span class="ml-auto inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  <%= @unread_messages_count %>
+                </span>
+              <% end %>
+            <% end %>
+
+            <%= link_to dashboard_notifications_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_notifications_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_notifications_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              Уведомления
+              <% if defined?(@unread_notifications_count) && @unread_notifications_count > 0 %>
+                <span class="ml-auto inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  <%= @unread_notifications_count %>
+                </span>
+              <% end %>
+            <% end %>
+
+            <%= link_to dashboard_history_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_history_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_history_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              История просмотров
+            <% end %>
+
+            <%= link_to dashboard_comparisons_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_comparisons_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_comparisons_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              Сравнение
+            <% end %>
+
+            <!-- Divider -->
+            <div class="border-t border-gray-200 my-4"></div>
+
+            <%= link_to dashboard_settings_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md #{current_page?(dashboard_settings_path) ? 'bg-primary-50 text-primary-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 <%= current_page?(dashboard_settings_path) ? 'text-primary-600' : 'text-gray-400 group-hover:text-gray-500' %>" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Настройки
+            <% end %>
+
+            <%= link_to root_path, 
+                class: "group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 text-gray-400 group-hover:text-gray-500" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              На главную
+            <% end %>
+
+            <%= button_to destroy_user_session_path, method: :delete,
+                class: "group flex items-center w-full px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900" do %>
+              <svg class="mr-3 h-6 w-6 flex-shrink-0 text-gray-400 group-hover:text-gray-500" 
+                   fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Выйти
+            <% end %>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile sidebar -->
+    <div class="lg:hidden fixed inset-0 z-50 hidden" id="mobile-sidebar" data-app-target="mobileSidebar">
+      <div class="fixed inset-0 bg-gray-600 bg-opacity-75" data-action="click->app#closeMobileMenu"></div>
+      
+      <div class="fixed inset-y-0 left-0 flex flex-col max-w-xs w-full bg-white">
+        <div class="flex items-center justify-between px-4 pt-5 pb-4">
+          <span class="text-2xl font-bold text-primary-600">АН Виктори</span>
+          <button type="button" 
+                  data-action="click->app#closeMobileMenu"
+                  class="text-gray-500 hover:text-gray-600">
+            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="flex-1 h-0 overflow-y-auto">
+          <!-- Mobile navigation (same as desktop) -->
+          <nav class="px-2 space-y-1">
+            <!-- Copy the same navigation links as desktop -->
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="flex flex-1 flex-col lg:pl-64">
+      <main class="flex-1 pt-16 lg:pt-0">
+        <!-- Flash messages -->
+        <% if notice || alert %>
+          <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+            <% if notice %>
+              <div class="rounded-md bg-green-50 p-4 mb-4">
+                <div class="flex">
+                  <svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                  </svg>
+                  <p class="ml-3 text-sm font-medium text-green-800"><%= notice %></p>
+                </div>
+              </div>
+            <% end %>
+
+            <% if alert %>
+              <div class="rounded-md bg-red-50 p-4 mb-4">
+                <div class="flex">
+                  <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                  </svg>
+                  <p class="ml-3 text-sm font-medium text-red-800"><%= alert %></p>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+
+        <!-- Page content -->
+        <%= yield %>
+      </main>
+    </div>
+  </div>
+
+  <!-- Back to top button -->
+  <button data-action="click->app#scrollToTop"
+          data-app-target="backToTop"
+          class="fixed bottom-8 right-8 bg-primary-600 text-white p-3 rounded-full shadow-lg hover:bg-primary-700 transition-all duration-300 opacity-0 pointer-events-none z-50">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+    </svg>
+  </button>
+</body>
+</html>
+

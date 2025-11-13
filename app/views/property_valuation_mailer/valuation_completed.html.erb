@@ -1,0 +1,83 @@
+<h1>🎉 Оценка вашей недвижимости готова!</h1>
+
+<p>Здравствуйте, <%= @valuation.name %>!</p>
+
+<p>
+  Мы завершили анализ вашей недвижимости по адресу:<br>
+  <strong><%= @valuation.address %></strong>
+</p>
+
+<div class="info-box success-box">
+  <h2 style="margin-top: 0;">Результаты оценки</h2>
+  
+  <div class="property-price">
+    <%= number_to_currency(@valuation.estimated_price, precision: 0) %>
+  </div>
+  
+  <table class="data-table">
+    <tr>
+      <td>Тип недвижимости:</td>
+      <td><%= I18n.t("property_types.#{@valuation.property_type}") %></td>
+    </tr>
+    <tr>
+      <td>Площадь:</td>
+      <td><%= @valuation.area %> м²</td>
+    </tr>
+    <tr>
+      <td>Количество комнат:</td>
+      <td><%= @valuation.rooms %></td>
+    </tr>
+    <tr>
+      <td>Этаж:</td>
+      <td><%= @valuation.floor %> из <%= @valuation.total_floors %></td>
+    </tr>
+    <tr>
+      <td>Состояние:</td>
+      <td><%= I18n.t("property_conditions.#{@valuation.condition}") %></td>
+    </tr>
+  </table>
+</div>
+
+<div class="info-box">
+  <p style="margin: 0;">
+    <strong>💡 Рыночная ситуация:</strong><br>
+    <%= @evaluation_result[:market_analysis] %>
+  </p>
+</div>
+
+<div style="text-align: center;">
+  <a href="<%= @result_url %>" class="button">
+    📊 Посмотреть полный отчет
+  </a>
+  
+  <br>
+  
+  <a href="<%= @pdf_url %>" class="button button-secondary">
+    📥 Скачать PDF
+  </a>
+</div>
+
+<h2>🚀 Что дальше?</h2>
+
+<p>
+  Наши эксперты готовы помочь вам продать недвижимость по лучшей цене:
+</p>
+
+<ul>
+  <li>✅ Профессиональная фотосъемка</li>
+  <li>✅ Юридическое сопровождение</li>
+  <li>✅ Размещение на всех площадках</li>
+  <li>✅ Организация показов</li>
+  <li>✅ Помощь с ипотекой</li>
+</ul>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= property_valuation_request_call_url(@valuation.token) %>" class="button">
+    📞 Заказать звонок специалиста
+  </a>
+</div>
+
+<p style="color: #718096; font-size: 14px;">
+  Оценка действительна в течение 30 дней с момента составления.
+</p>
+

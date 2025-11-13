@@ -1,0 +1,192 @@
+<% content_for :title, "Создание нового пароля" %>
+
+<div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+  <div class="sm:mx-auto sm:w-full sm:max-w-md">
+    <!-- Logo -->
+    <div class="flex justify-center">
+      <%= link_to root_path, class: "flex items-center" do %>
+        <div class="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg">
+          <span class="text-2xl font-bold text-white">В</span>
+        </div>
+        <span class="ml-3 text-2xl font-bold text-gray-900">АН "Виктори"</span>
+      <% end %>
+    </div>
+
+    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+      Создание нового пароля
+    </h2>
+    <p class="mt-2 text-center text-sm text-gray-600">
+      Придумайте надежный пароль для вашего аккаунта
+    </p>
+  </div>
+
+  <div class="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+    <div class="bg-white py-8 px-4 shadow-xl sm:rounded-2xl sm:px-10 border border-gray-100">
+      <%= form_for(resource, as: resource_name, url: password_path(resource_name), html: { method: :put, class: "space-y-6" }) do |f| %>
+        <%= render "devise/shared/error_messages", resource: resource %>
+        <%= f.hidden_field :reset_password_token %>
+
+        <!-- Password Field -->
+        <div>
+          <%= f.label :password, "Новый пароль", class: "block text-sm font-medium text-gray-700 mb-2" %>
+          <% if @minimum_password_length %>
+            <p class="text-xs text-gray-500 mb-1">Минимум <%= @minimum_password_length %> символов</p>
+          <% end %>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <%= f.password_field :password,
+                autofocus: true,
+                autocomplete: "new-password",
+                placeholder: "Создайте надежный пароль",
+                data: { controller: "password-strength", action: "input->password-strength#check" },
+                class: "appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition sm:text-sm" %>
+          </div>
+          
+          <!-- Password Strength Indicator -->
+          <div class="mt-2" data-password-strength-target="indicator" style="display: none;">
+            <div class="flex items-center gap-2">
+              <div class="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div data-password-strength-target="bar" class="h-full transition-all duration-300 rounded-full"></div>
+              </div>
+              <span data-password-strength-target="text" class="text-xs font-medium"></span>
+            </div>
+            <div class="mt-2 space-y-1 text-xs" data-password-strength-target="requirements">
+              <div class="flex items-center text-gray-500">
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Минимум 6 символов
+              </div>
+              <div class="flex items-center text-gray-500">
+                <svg class="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Содержит буквы и цифры
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Password Confirmation Field -->
+        <div>
+          <%= f.label :password_confirmation, "Подтверждение пароля", class: "block text-sm font-medium text-gray-700 mb-2" %>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <%= f.password_field :password_confirmation,
+                autocomplete: "new-password",
+                placeholder: "Повторите пароль",
+                class: "appearance-none block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition sm:text-sm" %>
+          </div>
+        </div>
+
+        <!-- Security Tips -->
+        <div class="rounded-lg bg-blue-50 p-4 border border-blue-100">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-blue-800">Советы по безопасности</h3>
+              <div class="mt-2 text-sm text-blue-700">
+                <ul class="list-disc list-inside space-y-1">
+                  <li>Используйте уникальный пароль для каждого сайта</li>
+                  <li>Комбинируйте буквы, цифры и специальные символы</li>
+                  <li>Не используйте личную информацию (имя, дату рождения)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div>
+          <%= f.submit "Изменить пароль", class: "w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-all duration-200 transform hover:scale-[1.02]" %>
+        </div>
+      <% end %>
+
+      <!-- Additional Links -->
+      <div class="mt-6">
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-gray-300"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-2 bg-white text-gray-500">Или</span>
+          </div>
+        </div>
+
+        <div class="mt-6 space-y-3">
+          <%= link_to new_user_session_path, class: "w-full inline-flex justify-center items-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors" do %>
+            <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+            </svg>
+            Вернуться ко входу
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 text-center">
+      <%= link_to "← Вернуться на главную", root_path, class: "text-sm text-gray-500 hover:text-gray-700 transition inline-flex items-center" %>
+    </div>
+  </div>
+</div>
+
+<!-- Simple Password Strength Controller (inline) -->
+<script>
+  // Simple password strength checker
+  document.addEventListener('DOMContentLoaded', () => {
+    const passwordInput = document.querySelector('[data-controller="password-strength"]');
+    if (!passwordInput) return;
+
+    const indicator = passwordInput.closest('.relative').nextElementSibling;
+    if (!indicator) return;
+
+    const bar = indicator.querySelector('[data-password-strength-target="bar"]');
+    const text = indicator.querySelector('[data-password-strength-target="text"]');
+
+    passwordInput.addEventListener('input', (e) => {
+      const password = e.target.value;
+      if (password.length === 0) {
+        indicator.style.display = 'none';
+        return;
+      }
+
+      indicator.style.display = 'block';
+      let strength = 0;
+      
+      if (password.length >= 6) strength += 25;
+      if (password.length >= 10) strength += 25;
+      if (/[a-z]/.test(password) && /[A-Z]/.test(password)) strength += 25;
+      if (/\d/.test(password)) strength += 15;
+      if (/[@$!%*?&]/.test(password)) strength += 10;
+
+      bar.style.width = `${strength}%`;
+      
+      if (strength < 40) {
+        bar.className = 'h-full transition-all duration-300 rounded-full bg-red-500';
+        text.textContent = 'Слабый';
+        text.className = 'text-xs font-medium text-red-600';
+      } else if (strength < 70) {
+        bar.className = 'h-full transition-all duration-300 rounded-full bg-yellow-500';
+        text.textContent = 'Средний';
+        text.className = 'text-xs font-medium text-yellow-600';
+      } else {
+        bar.className = 'h-full transition-all duration-300 rounded-full bg-green-500';
+        text.textContent = 'Надежный';
+        text.className = 'text-xs font-medium text-green-600';
+      }
+    });
+  });
+</script>
+

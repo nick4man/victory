@@ -1,0 +1,114 @@
+<h1>📬 Новая заявка #<%= @inquiry.id %></h1>
+
+<div class="info-box" style="background-color: #fff5f5; border-left-color: #f56565;">
+  <h2 style="margin-top: 0; color: #c53030;">
+    🔥 Требует внимания: <%= I18n.t("inquiry_types.#{@inquiry.inquiry_type}") %>
+  </h2>
+</div>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">👤 Информация о клиенте</h2>
+  
+  <table class="data-table">
+    <tr>
+      <td>Имя:</td>
+      <td><strong><%= @inquiry.name %></strong></td>
+    </tr>
+    <tr>
+      <td>Email:</td>
+      <td><a href="mailto:<%= @inquiry.email %>"><%= @inquiry.email %></a></td>
+    </tr>
+    <tr>
+      <td>Телефон:</td>
+      <td>
+        <a href="tel:<%= @inquiry.phone %>" style="font-size: 18px; color: #667eea; font-weight: bold;">
+          <%= @inquiry.phone %>
+        </a>
+      </td>
+    </tr>
+    <tr>
+      <td>Дата заявки:</td>
+      <td><%= l(@inquiry.created_at, format: :long) %></td>
+    </tr>
+    <% if @user.present? %>
+    <tr>
+      <td>Статус клиента:</td>
+      <td><span style="color: #48bb78;">✅ Зарегистрирован</span></td>
+    </tr>
+    <% end %>
+  </table>
+</div>
+
+<% if @property.present? %>
+<div class="property-card">
+  <h2 style="margin-top: 0;">🏠 Объект интереса</h2>
+  
+  <% if @property.main_image.present? %>
+    <%= image_tag @property.main_image.url, class: 'property-image', alt: @property.title %>
+  <% end %>
+  
+  <h3><%= @property.title %></h3>
+  
+  <div class="property-price">
+    <%= number_to_currency(@property.price, precision: 0) %>
+  </div>
+  
+  <p><strong>Адрес:</strong> <%= @property.address %></p>
+  
+  <div style="text-align: center;">
+    <a href="<%= property_url(@property) %>" class="button button-secondary">
+      Открыть объект
+    </a>
+  </div>
+</div>
+<% end %>
+
+<% if @inquiry.message.present? %>
+<div class="info-box">
+  <h3 style="margin-top: 0;">💬 Сообщение клиента</h3>
+  <p style="margin: 0; white-space: pre-wrap;"><%= @inquiry.message %></p>
+</div>
+<% end %>
+
+<% if @inquiry.metadata.present? %>
+<div class="info-box">
+  <h3 style="margin-top: 0;">📋 Дополнительная информация</h3>
+  <table class="data-table">
+    <% @inquiry.metadata.each do |key, value| %>
+      <tr>
+        <td><%= key.humanize %>:</td>
+        <td><%= value %></td>
+      </tr>
+    <% end %>
+  </table>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">
+    🎯 Обработать заявку
+  </a>
+  
+  <br>
+  
+  <a href="tel:<%= @inquiry.phone %>" class="button" style="background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);">
+    📞 Позвонить прямо сейчас
+  </a>
+</div>
+
+<div class="warning-box">
+  <p style="margin: 0;">
+    <strong>⏰ SLA:</strong><br>
+    <%= case @inquiry.inquiry_type
+        when 'callback'
+          'Срок ответа: 15 минут'
+        when 'viewing'
+          'Срок ответа: 30 минут'
+        when 'consultation'
+          'Срок ответа: 1 час'
+        else
+          'Срок ответа: 2 часа'
+        end %>
+  </p>
+</div>
+

@@ -1,0 +1,92 @@
+<h1>🔔 Новая заявка на оценку недвижимости</h1>
+
+<p>Получена новая заявка на оценку недвижимости.</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Информация о клиенте</h2>
+  
+  <table class="data-table">
+    <tr>
+      <td>Имя:</td>
+      <td><strong><%= @valuation.name %></strong></td>
+    </tr>
+    <tr>
+      <td>Email:</td>
+      <td><a href="mailto:<%= @valuation.email %>"><%= @valuation.email %></a></td>
+    </tr>
+    <tr>
+      <td>Телефон:</td>
+      <td><a href="tel:<%= @valuation.phone %>"><%= @valuation.phone %></a></td>
+    </tr>
+    <tr>
+      <td>Дата заявки:</td>
+      <td><%= l(@valuation.created_at, format: :long) %></td>
+    </tr>
+  </table>
+</div>
+
+<div class="property-card">
+  <h2 style="margin-top: 0;">Информация об объекте</h2>
+  
+  <table class="data-table">
+    <tr>
+      <td>Адрес:</td>
+      <td><strong><%= @valuation.address %></strong></td>
+    </tr>
+    <tr>
+      <td>Тип:</td>
+      <td><%= I18n.t("property_types.#{@valuation.property_type}") %></td>
+    </tr>
+    <tr>
+      <td>Площадь:</td>
+      <td><%= @valuation.area %> м²</td>
+    </tr>
+    <tr>
+      <td>Комнат:</td>
+      <td><%= @valuation.rooms %></td>
+    </tr>
+    <tr>
+      <td>Этаж:</td>
+      <td><%= @valuation.floor %> / <%= @valuation.total_floors %></td>
+    </tr>
+    <tr>
+      <td>Состояние:</td>
+      <td><%= I18n.t("property_conditions.#{@valuation.condition}") %></td>
+    </tr>
+  </table>
+  
+  <% if @valuation.estimated_price.present? %>
+  <div class="property-price" style="margin-top: 20px;">
+    Оценочная стоимость: <%= number_to_currency(@valuation.estimated_price, precision: 0) %>
+  </div>
+  <% end %>
+</div>
+
+<% if @valuation.notes.present? %>
+<div class="info-box">
+  <p style="margin: 0;">
+    <strong>Комментарий клиента:</strong><br>
+    <%= simple_format(@valuation.notes) %>
+  </p>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">
+    📊 Открыть в админке
+  </a>
+  
+  <br>
+  
+  <a href="tel:<%= @valuation.phone %>" class="button button-secondary">
+    📞 Позвонить клиенту
+  </a>
+</div>
+
+<div class="warning-box">
+  <p style="margin: 0;">
+    <strong>⚠️ Действие требуется:</strong><br>
+    Свяжитесь с клиентом в течение 30 минут для уточнения деталей и назначения осмотра объекта.
+  </p>
+</div>
+

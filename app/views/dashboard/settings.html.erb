@@ -1,0 +1,240 @@
+<% content_for :title, "Настройки" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-3xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">Настройки</h1>
+      <p class="mt-2 text-sm text-gray-600">
+        Управление настройками аккаунта и уведомлений
+      </p>
+    </div>
+
+    <!-- Notification settings -->
+    <div class="bg-white shadow sm:rounded-lg mb-8">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">
+          Настройки уведомлений
+        </h3>
+
+        <%= form_with(model: @user, url: dashboard_settings_path, method: :patch) do |f| %>
+          <div class="space-y-4">
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= f.check_box :email_notifications, 
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <%= f.label :email_notifications, "Email уведомления", class: "font-medium text-gray-700" %>
+                <p class="text-gray-500">Получать уведомления на почту</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= f.check_box :sms_notifications, 
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <%= f.label :sms_notifications, "SMS уведомления", class: "font-medium text-gray-700" %>
+                <p class="text-gray-500">Получать SMS о важных событиях</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= f.check_box :push_notifications, 
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <%= f.label :push_notifications, "Push уведомления", class: "font-medium text-gray-700" %>
+                <p class="text-gray-500">Получать уведомления в браузере</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= f.check_box :newsletter, 
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <%= f.label :newsletter, "Новостная рассылка", class: "font-medium text-gray-700" %>
+                <p class="text-gray-500">Получать новости и специальные предложения</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <%= f.submit "Сохранить настройки", 
+                class: "inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <!-- Detailed notification settings -->
+    <div class="bg-white shadow sm:rounded-lg mb-8">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">
+          О чем уведомлять
+        </h3>
+
+        <%= form_with(model: @user, url: update_notification_settings_dashboard_settings_path, method: :patch) do |f| %>
+          <div class="space-y-4">
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= check_box_tag 'user[notification_settings][new_properties]', '1', 
+                    @user.notification_settings&.dig('new_properties'),
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <label class="font-medium text-gray-700">Новые объекты</label>
+                <p class="text-gray-500">Уведомлять о новых объектах по сохраненным поискам</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= check_box_tag 'user[notification_settings][price_changes]', '1', 
+                    @user.notification_settings&.dig('price_changes'),
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <label class="font-medium text-gray-700">Изменения цен</label>
+                <p class="text-gray-500">Уведомлять об изменении цен на избранные объекты</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= check_box_tag 'user[notification_settings][new_messages]', '1', 
+                    @user.notification_settings&.dig('new_messages'),
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <label class="font-medium text-gray-700">Новые сообщения</label>
+                <p class="text-gray-500">Уведомлять о новых сообщениях</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= check_box_tag 'user[notification_settings][inquiry_updates]', '1', 
+                    @user.notification_settings&.dig('inquiry_updates'),
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <label class="font-medium text-gray-700">Обновления заявок</label>
+                <p class="text-gray-500">Уведомлять об изменении статуса заявок</p>
+              </div>
+            </div>
+
+            <div class="flex items-start">
+              <div class="flex items-center h-5">
+                <%= check_box_tag 'user[notification_settings][saved_search_results]', '1', 
+                    @user.notification_settings&.dig('saved_search_results'),
+                    class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+              </div>
+              <div class="ml-3 text-sm">
+                <label class="font-medium text-gray-700">Результаты сохраненных поисков</label>
+                <p class="text-gray-500">Еженедельная сводка по сохраненным поискам</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <%= f.submit "Сохранить настройки", 
+                class: "inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+
+    <!-- Privacy settings -->
+    <div class="bg-white shadow sm:rounded-lg mb-8">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-2">
+          Приватность
+        </h3>
+        <p class="text-sm text-gray-500 mb-4">
+          Управление видимостью профиля и данных
+        </p>
+        
+        <div class="space-y-4">
+          <div class="flex items-start">
+            <div class="flex items-center h-5">
+              <%= check_box_tag 'profile_public', '1', false, 
+                  class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+            </div>
+            <div class="ml-3 text-sm">
+              <label class="font-medium text-gray-700">Публичный профиль</label>
+              <p class="text-gray-500">Сделать профиль видимым для других пользователей</p>
+            </div>
+          </div>
+
+          <div class="flex items-start">
+            <div class="flex items-center h-5">
+              <%= check_box_tag 'show_phone', '1', false, 
+                  class: "focus:ring-primary-500 h-4 w-4 text-primary-600 border-gray-300 rounded" %>
+            </div>
+            <div class="ml-3 text-sm">
+              <label class="font-medium text-gray-700">Показывать телефон</label>
+              <p class="text-gray-500">Отображать номер телефона в профиле</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Account actions -->
+    <div class="bg-white shadow sm:rounded-lg">
+      <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-lg font-medium text-gray-900 mb-4">
+          Управление аккаунтом
+        </h3>
+
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-900">Изменить пароль</p>
+              <p class="text-sm text-gray-500">Обновите пароль для входа</p>
+            </div>
+            <%= link_to edit_user_registration_path, 
+                class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" do %>
+              Изменить
+            <% end %>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-gray-900">Экспорт данных</p>
+                <p class="text-sm text-gray-500">Скачать все ваши данные</p>
+              </div>
+              <%= link_to "#", 
+                  class: "inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" do %>
+                Скачать
+              <% end %>
+            </div>
+          </div>
+
+          <div class="border-t border-gray-200 pt-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm font-medium text-red-900">Удалить аккаунт</p>
+                <p class="text-sm text-gray-500">Безвозвратно удалить аккаунт и все данные</p>
+              </div>
+              <%= button_to registration_path(resource_name), 
+                  method: :delete,
+                  data: { confirm: "Вы уверены? Это действие нельзя отменить!" },
+                  class: "inline-flex items-center px-4 py-2 border border-red-300 shadow-sm text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50" do %>
+                Удалить
+              <% end %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

@@ -1,0 +1,437 @@
+<% content_for :title, "Онлайн-оценка недвижимости" %>
+
+<div class="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 py-12">
+  <div class="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="text-4xl font-extrabold text-gray-900 sm:text-5xl mb-4">
+        Узнайте стоимость вашей недвижимости
+      </h1>
+      <p class="text-xl text-gray-600">
+        Бесплатная онлайн-оценка за 2 минуты с использованием AI
+      </p>
+    </div>
+
+    <!-- Progress Steps -->
+    <div class="mb-12">
+      <div class="flex items-center justify-between">
+        <% 4.times do |i| %>
+          <% step_num = i + 1 %>
+          <div class="flex items-center <%= 'flex-1' unless step_num == 4 %>">
+            <!-- Step Circle -->
+            <div class="relative flex items-center justify-center">
+              <div class="<%= step_num <= @step ? 'bg-primary-600' : 'bg-gray-300' %> h-12 w-12 rounded-full flex items-center justify-center transition-colors duration-300">
+                <% if step_num < @step %>
+                  <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                  </svg>
+                <% else %>
+                  <span class="text-lg font-bold <%= step_num <= @step ? 'text-white' : 'text-gray-600' %>">
+                    <%= step_num %>
+                  </span>
+                <% end %>
+              </div>
+            </div>
+
+            <!-- Connector Line -->
+            <% unless step_num == 4 %>
+              <div class="flex-1 h-1 <%= step_num < @step ? 'bg-primary-600' : 'bg-gray-300' %> mx-4 transition-colors duration-300"></div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <!-- Step Labels -->
+      <div class="flex justify-between mt-4">
+        <div class="text-center" style="width: 25%;">
+          <p class="text-sm font-medium text-gray-700">Тип и адрес</p>
+        </div>
+        <div class="text-center" style="width: 25%;">
+          <p class="text-sm font-medium text-gray-700">Характеристики</p>
+        </div>
+        <div class="text-center" style="width: 25%;">
+          <p class="text-sm font-medium text-gray-700">Детали</p>
+        </div>
+        <div class="text-center" style="width: 25%;">
+          <p class="text-sm font-medium text-gray-700">Контакты</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form Card -->
+    <div class="bg-white shadow-2xl rounded-2xl border border-gray-100 overflow-hidden">
+      <%= form_with model: @valuation, url: property_valuations_path, html: { class: "p-8 space-y-6", multipart: true } do |f| %>
+        <%= render "devise/shared/error_messages", resource: @valuation %>
+
+        <!-- Step 1: Property Type and Address -->
+        <div class="<%= @step == 1 ? '' : 'hidden' %>" data-step="1">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Тип недвижимости и адрес</h2>
+
+          <!-- Property Type -->
+          <div class="mb-6">
+            <%= f.label :property_type, "Тип недвижимости *", class: "block text-sm font-medium text-gray-700 mb-3" %>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <% PropertyValuation.property_types.keys.each do |type| %>
+                <label class="relative flex cursor-pointer rounded-lg border border-gray-300 bg-white p-4 shadow-sm hover:border-primary-500 transition">
+                  <%= f.radio_button :property_type, type, class: "sr-only peer" %>
+                  <span class="flex flex-1 flex-col items-center">
+                    <span class="text-3xl mb-2">
+                      <%= property_type_icon(type) %>
+                    </span>
+                    <span class="block text-sm font-medium text-gray-900">
+                      <%= t("property_types.#{type}") %>
+                    </span>
+                  </span>
+                  <span class="pointer-events-none absolute -inset-px rounded-lg border-2 border-transparent peer-checked:border-primary-600" aria-hidden="true"></span>
+                </label>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Deal Type -->
+          <div class="mb-6">
+            <%= f.label :deal_type, "Тип сделки *", class: "block text-sm font-medium text-gray-700 mb-3" %>
+            <div class="grid grid-cols-2 gap-4">
+              <% PropertyValuation.deal_types.keys.each do |type| %>
+                <label class="relative flex cursor-pointer rounded-lg border border-gray-300 bg-white p-4 shadow-sm hover:border-primary-500 transition">
+                  <%= f.radio_button :deal_type, type, class: "sr-only peer" %>
+                  <span class="flex flex-1 items-center justify-center">
+                    <span class="block text-sm font-medium text-gray-900">
+                      <%= t("deal_types.#{type}") %>
+                    </span>
+                  </span>
+                  <span class="pointer-events-none absolute -inset-px rounded-lg border-2 border-transparent peer-checked:border-primary-600" aria-hidden="true"></span>
+                </label>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Address -->
+          <div class="mb-6">
+            <%= f.label :address, "Адрес объекта *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= f.text_field :address, 
+                placeholder: "Город, улица, дом",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            <p class="mt-1 text-xs text-gray-500">Например: Москва, ул. Тверская, д. 1</p>
+          </div>
+
+          <!-- City and District -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+            <div>
+              <%= f.label :city, "Город", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.text_field :city,
+                  placeholder: "Москва",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :district, "Район", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.text_field :district,
+                  placeholder: "Центральный",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2: Characteristics -->
+        <div class="<%= @step == 2 ? '' : 'hidden' %>" data-step="2">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Основные характеристики</h2>
+
+          <!-- Areas -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
+            <div>
+              <%= f.label :total_area, "Общая площадь, м² *", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :total_area,
+                  step: 0.1,
+                  min: 1,
+                  placeholder: "50",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :living_area, "Жилая площадь, м²", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :living_area,
+                  step: 0.1,
+                  min: 1,
+                  placeholder: "30",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :kitchen_area, "Площадь кухни, м²", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :kitchen_area,
+                  step: 0.1,
+                  min: 1,
+                  placeholder: "10",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+
+          <!-- Rooms and Floors -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-6">
+            <div>
+              <%= f.label :rooms, "Количество комнат", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :rooms,
+                  min: 1,
+                  placeholder: "2",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :floor, "Этаж", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :floor,
+                  min: 1,
+                  placeholder: "5",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :total_floors, "Этажность дома", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :total_floors,
+                  min: 1,
+                  placeholder: "10",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+
+          <!-- Metro -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+            <div>
+              <%= f.label :metro_station, "Ближайшее метро", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.text_field :metro_station,
+                  placeholder: "Тверская",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :metro_distance, "Расстояние до метро, мин", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :metro_distance,
+                  min: 1,
+                  placeholder: "10",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3: Details -->
+        <div class="<%= @step == 3 ? '' : 'hidden' %>" data-step="3">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Детали объекта</h2>
+
+          <!-- Building Type -->
+          <div class="mb-6">
+            <%= f.label :building_type, "Тип дома", class: "block text-sm font-medium text-gray-700 mb-3" %>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <% PropertyValuation.building_types.keys.each do |type| %>
+                <label class="relative flex cursor-pointer rounded-lg border border-gray-300 bg-white p-3 shadow-sm hover:border-primary-500 transition">
+                  <%= f.radio_button :building_type, type, class: "sr-only peer" %>
+                  <span class="flex flex-1 items-center justify-center">
+                    <span class="block text-sm font-medium text-gray-900">
+                      <%= building_type_label(type) %>
+                    </span>
+                  </span>
+                  <span class="pointer-events-none absolute -inset-px rounded-lg border-2 border-transparent peer-checked:border-primary-600" aria-hidden="true"></span>
+                </label>
+              <% end %>
+            </div>
+          </div>
+
+          <!-- Building Year & Condition -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+            <div>
+              <%= f.label :building_year, "Год постройки", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.number_field :building_year,
+                  min: 1900,
+                  max: Date.current.year,
+                  placeholder: "2010",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <div>
+              <%= f.label :condition, "Состояние", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.select :condition,
+                  PropertyValuation.conditions.keys.map { |c| [condition_label(c), c] },
+                  { include_blank: "Выберите..." },
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+          </div>
+
+          <!-- Features -->
+          <div class="mb-6">
+            <p class="block text-sm font-medium text-gray-700 mb-3">Дополнительные особенности</p>
+            <div class="space-y-3">
+              <label class="flex items-center cursor-pointer">
+                <%= f.check_box :has_balcony, class: "h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded transition" %>
+                <span class="ml-2 text-sm text-gray-700">Балкон</span>
+              </label>
+
+              <label class="flex items-center cursor-pointer">
+                <%= f.check_box :has_loggia, class: "h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded transition" %>
+                <span class="ml-2 text-sm text-gray-700">Лоджия</span>
+              </label>
+
+              <label class="flex items-center cursor-pointer">
+                <%= f.check_box :has_garage, class: "h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded transition" %>
+                <span class="ml-2 text-sm text-gray-700">Гараж или парковка</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Photos Upload -->
+          <div class="mb-6">
+            <%= f.label :photos, "Фотографии объекта (до 10 шт.)", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= f.file_field :photos,
+                multiple: true,
+                accept: "image/*",
+                class: "block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer transition" %>
+            <p class="mt-1 text-xs text-gray-500">JPG, PNG или WebP. Максимум 5 МБ каждый файл.</p>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <%= f.label :description, "Дополнительная информация", class: "block text-sm font-medium text-gray-700 mb-2" %>
+            <%= f.text_area :description,
+                rows: 4,
+                placeholder: "Расскажите о преимуществах вашей недвижимости, особенностях района, инфраструктуре...",
+                class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+          </div>
+        </div>
+
+        <!-- Step 4: Contacts -->
+        <div class="<%= @step == 4 ? '' : 'hidden' %>" data-step="4">
+          <h2 class="text-2xl font-bold text-gray-900 mb-6">Контактная информация</h2>
+
+          <div class="space-y-6">
+            <!-- Name -->
+            <div>
+              <%= f.label :name, "Ваше имя", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.text_field :name,
+                  placeholder: "Иван Иванов",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <!-- Phone -->
+            <div>
+              <%= f.label :phone, "Телефон", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.telephone_field :phone,
+                  placeholder: "+7 (999) 123-45-67",
+                  data: { controller: "app", action: "input->app#formatPhone" },
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+            </div>
+
+            <!-- Email -->
+            <div>
+              <%= f.label :email, "Email", class: "block text-sm font-medium text-gray-700 mb-2" %>
+              <%= f.email_field :email,
+                  placeholder: "your@email.com",
+                  class: "block w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition" %>
+              <p class="mt-1 text-xs text-gray-500">Мы отправим результат оценки на этот адрес</p>
+            </div>
+          </div>
+
+          <!-- Privacy Notice -->
+          <div class="mt-6 rounded-lg bg-blue-50 p-4 border border-blue-100">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <p class="text-sm text-blue-700">
+                  Нажимая кнопку "Получить оценку", вы соглашаетесь с 
+                  <%= link_to "политикой конфиденциальности", pages_privacy_path, target: "_blank", class: "font-medium underline" %>
+                  и даете согласие на обработку персональных данных.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigation Buttons -->
+        <div class="flex justify-between pt-6 border-t border-gray-200">
+          <% if @step > 1 %>
+            <%= link_to "← Назад", new_property_valuation_path(step: @step - 1), class: "inline-flex items-center px-6 py-3 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition" %>
+          <% else %>
+            <div></div>
+          <% end %>
+
+          <% if @step < 4 %>
+            <%= link_to "Далее →", new_property_valuation_path(step: @step + 1), class: "inline-flex items-center px-6 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition" %>
+          <% else %>
+            <%= f.submit "Получить оценку", class: "inline-flex items-center px-8 py-3 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition transform hover:scale-105" %>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- Benefits Section -->
+    <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white rounded-xl p-6 shadow-md border border-gray-100">
+        <div class="w-12 h-12 bg-primary-100 rounded-lg flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-primary-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Мгновенный результат</h3>
+        <p class="text-sm text-gray-600">Получите оценку стоимости сразу после заполнения формы</p>
+      </div>
+
+      <div class="bg-white rounded-xl p-6 shadow-md border border-gray-100">
+        <div class="w-12 h-12 bg-accent-100 rounded-lg flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-accent-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Точная оценка с AI</h3>
+        <p class="text-sm text-gray-600">Искусственный интеллект анализирует рынок и аналоги</p>
+      </div>
+
+      <div class="bg-white rounded-xl p-6 shadow-md border border-gray-100">
+        <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+          <svg class="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 mb-2">Абсолютно бесплатно</h3>
+        <p class="text-sm text-gray-600">Никаких скрытых платежей и обязательств</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Helper Methods -->
+<% def property_type_icon(type)
+  icons = {
+    'apartment' => '🏢',
+    'house' => '🏠',
+    'land' => '🌳',
+    'commercial' => '🏪',
+    'garage' => '🚗',
+    'room' => '🚪'
+  }
+  icons[type] || '🏘️'
+end
+
+def building_type_label(type)
+  labels = {
+    'panel' => 'Панель',
+    'brick' => 'Кирпич',
+    'monolith' => 'Монолит',
+    'block' => 'Блочный',
+    'wood' => 'Дерево',
+    'stalin' => 'Сталинка'
+  }
+  labels[type] || type.capitalize
+end
+
+def condition_label(condition)
+  labels = {
+    'needs_repair' => 'Требует ремонта',
+    'average' => 'Среднее',
+    'good' => 'Хорошее',
+    'excellent' => 'Отличное',
+    'designer' => 'Дизайнерский'
+  }
+  labels[condition] || condition.capitalize
+end %>
+

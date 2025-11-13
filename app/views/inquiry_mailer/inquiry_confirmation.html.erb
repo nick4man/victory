@@ -1,0 +1,104 @@
+<h1>✅ Мы получили вашу заявку!</h1>
+
+<p>Здравствуйте, <%= @inquiry.name %>!</p>
+
+<p>
+  Спасибо за обращение в агентство недвижимости <strong>"Виктори"</strong>.
+  Ваша заявка принята и уже обрабатывается нашими специалистами.
+</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Детали заявки</h2>
+  
+  <table class="data-table">
+    <tr>
+      <td>Номер заявки:</td>
+      <td><strong>#<%= @inquiry.id %></strong></td>
+    </tr>
+    <tr>
+      <td>Дата:</td>
+      <td><%= l(@inquiry.created_at, format: :long) %></td>
+    </tr>
+    <tr>
+      <td>Тип заявки:</td>
+      <td><%= I18n.t("inquiry_types.#{@inquiry.inquiry_type}") %></td>
+    </tr>
+    <% if @property.present? %>
+    <tr>
+      <td>Объект:</td>
+      <td><%= @property.title %></td>
+    </tr>
+    <% end %>
+  </table>
+</div>
+
+<% if @inquiry.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;">
+    <strong>Ваше сообщение:</strong><br>
+    <%= simple_format(@inquiry.message) %>
+  </p>
+</div>
+<% end %>
+
+<h2>⏱️ Что дальше?</h2>
+
+<p>
+  Наш менеджер свяжется с вами в ближайшее время (обычно в течение 30 минут в рабочее время) 
+  для уточнения деталей и предоставления консультации.
+</p>
+
+<div class="info-box success-box">
+  <p style="margin: 0;">
+    <strong>💼 Рабочее время:</strong><br>
+    Пн-Пт: 9:00 - 20:00<br>
+    Сб-Вс: 10:00 - 18:00
+  </p>
+</div>
+
+<h2>📞 Нужна срочная помощь?</h2>
+
+<p>
+  Если ваш вопрос требует немедленного решения, вы можете связаться с нами прямо сейчас:
+</p>
+
+<div style="text-align: center; margin: 30px 0;">
+  <p style="margin: 10px 0;">
+    <strong style="font-size: 20px; color: #667eea;">
+      <%= @contact_phone %>
+    </strong>
+  </p>
+  
+  <p style="margin: 10px 0;">
+    <a href="mailto:<%= @contact_email %>" style="color: #667eea; text-decoration: none;">
+      <%= @contact_email %>
+    </a>
+  </p>
+</div>
+
+<% if @property.present? %>
+<div class="property-card">
+  <h3 style="margin-top: 0;"><%= @property.title %></h3>
+  
+  <% if @property.main_image.present? %>
+    <%= image_tag @property.main_image.url, class: 'property-image', alt: @property.title %>
+  <% end %>
+  
+  <div class="property-price">
+    <%= number_to_currency(@property.price, precision: 0) %>
+  </div>
+  
+  <p><%= @property.address %></p>
+  
+  <div style="text-align: center;">
+    <a href="<%= property_url(@property) %>" class="button button-secondary">
+      Смотреть объект
+    </a>
+  </div>
+</div>
+<% end %>
+
+<p style="color: #718096; font-size: 14px; margin-top: 40px;">
+  Мы ценим ваше доверие и сделаем всё возможное, чтобы помочь вам найти идеальное решение!
+</p>
+

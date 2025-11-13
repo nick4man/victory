@@ -1,0 +1,36 @@
+# Sidekiq configuration
+
+# Concurrency
+:concurrency: 5
+
+# Queues (format: queue_name: weight)
+# Higher weight = more priority
+:queues:
+  - critical
+  - mailers
+  - default
+  - scheduled
+  - low_priority
+
+# Redis connection
+:redis:
+  url: <%= ENV.fetch('REDIS_URL', 'redis://localhost:6379/0') %>
+  namespace: viktory_realty_sidekiq
+  pool: <%= ENV.fetch('RAILS_MAX_THREADS', 5) %>
+
+# Retry settings
+:max_retries: 3
+
+# Timeout
+:timeout: 25
+
+# Log level
+:verbose: false
+:logfile: ./log/sidekiq.log
+
+# Lifecycle events
+:lifecycle:
+  :startup: []
+  :quiet: []
+  :shutdown: []
+

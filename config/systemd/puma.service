@@ -1,0 +1,26 @@
+[Unit]
+Description=Puma HTTP Server for Viktory Realty
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=q
+WorkingDirectory=/home/q/site/project/viktory_realty
+Environment=RAILS_ENV=production
+Environment=RAILS_LOG_TO_STDOUT=true
+Environment=DATABASE_URL=postgresql://viktory_realty:viktory_realty_secure_password_2024@localhost:5432/viktory_realty_production
+Environment=DATABASE_NAME=viktory_realty_production
+Environment=DATABASE_USERNAME=viktory_realty
+Environment=DATABASE_PASSWORD=viktory_realty_secure_password_2024
+Environment=REDIS_URL=redis://localhost:6379/0
+Environment=SECRET_KEY_BASE=5c2e5dd1334b668a840e9f6e4e74434d0246edac140832e8b38d0e838a2c33cc7abf4b7532dbcc89a603a451c73030a98ea497d6113ac54d22f54a42f1c7eb3d
+Environment=DEVISE_SECRET_KEY=5c2e5dd1334b668a840e9f6e4e74434d0246edac140832e8b38d0e838a2c33cc7abf4b7532dbcc89a603a451c73030a98ea497d6113ac54d22f54a42f1c7eb3d
+ExecStart=/bin/bash -c 'cd /home/q/site/project/viktory_realty && eval "$(/home/q/.local/bin/mise activate bash)" && DATABASE_URL=postgresql://viktory_realty:viktory_realty_secure_password_2024@localhost:5432/viktory_realty_production SECRET_KEY_BASE=5c2e5dd1334b668a840e9f6e4e74434d0246edac140832e8b38d0e838a2c33cc7abf4b7532dbcc89a603a451c73030a98ea497d6113ac54d22f54a42f1c7eb3d DEVISE_SECRET_KEY=5c2e5dd1334b668a840e9f6e4e74434d0246edac140832e8b38d0e838a2c33cc7abf4b7532dbcc89a603a451c73030a98ea497d6113ac54d22f54a42f1c7eb3d RAILS_ENV=production bundle exec puma -C config/puma.rb'
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/q/site/project/viktory_realty/log/puma.stdout.log
+StandardError=append:/home/q/site/project/viktory_realty/log/puma.stderr.log
+
+[Install]
+WantedBy=multi-user.target
+

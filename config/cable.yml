@@ -1,0 +1,27 @@
+# Action Cable Configuration
+# 
+# For production, you should use Redis as the adapter
+# For development, you can use async (in-memory) or Redis
+
+development:
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL", "redis://localhost:6379/1") %>
+  channel_prefix: viktory_realty_cable_development
+
+test:
+  adapter: test
+
+production:
+  adapter: redis
+  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
+  channel_prefix: viktory_realty_cable_production
+  
+  # Connection pool settings
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  timeout: 5
+  
+  # Reconnect settings (removed - not supported in ActionCable with Redis 5.0)
+  # reconnect_attempts: 10
+  # reconnect_delay: 1
+  # reconnect_delay_max: 10
+

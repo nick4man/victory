@@ -1,0 +1,165 @@
+<% content_for :title, "Сохраненные поиски" %>
+
+<div class="py-6">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
+    <!-- Page header -->
+    <div class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-900">Сохраненные поиски</h1>
+      <p class="mt-2 text-sm text-gray-600">
+        Получайте уведомления о новых объектах
+      </p>
+    </div>
+
+    <% if @saved_searches.any? %>
+      <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+        <ul class="divide-y divide-gray-200">
+          <% @saved_searches.each do |search| %>
+            <li class="px-6 py-4 hover:bg-gray-50 transition">
+              <div class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center mb-2">
+                    <h3 class="text-sm font-medium text-gray-900">
+                      <%= search.name || "Поиск ##{search.id}" %>
+                    </h3>
+                    <% if search.active? %>
+                      <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                        Активен
+                      </span>
+                    <% else %>
+                      <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                        Неактивен
+                      </span>
+                    <% end %>
+                  </div>
+
+                  <p class="text-sm text-gray-600 mb-2">
+                    <%= search.query_description %>
+                  </p>
+
+                  <div class="flex items-center text-xs text-gray-400 space-x-4">
+                    <span class="flex items-center">
+                      <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Создан <%= time_ago_in_words(search.created_at) %> назад
+                    </span>
+
+                    <% if search.last_checked_at.present? %>
+                      <span class="flex items-center">
+                        <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Проверен <%= time_ago_in_words(search.last_checked_at) %> назад
+                      </span>
+                    <% end %>
+
+                    <% if search.new_results_count.to_i > 0 %>
+                      <span class="flex items-center text-primary-600 font-medium">
+                        <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <%= search.new_results_count %> новых
+                      </span>
+                    <% end %>
+                  </div>
+                </div>
+
+                <div class="ml-4 flex-shrink-0 flex space-x-2">
+                  <%= link_to properties_path(search.search_params), 
+                      class: "inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50" do %>
+                    <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    Открыть
+                  <% end %>
+
+                  <%= button_to check_new_dashboard_saved_search_path(search), 
+                      method: :post,
+                      class: "inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50" do %>
+                    <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Проверить
+                  <% end %>
+
+                  <% if search.active? %>
+                    <%= button_to deactivate_dashboard_saved_search_path(search), 
+                        method: :post,
+                        class: "inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50" do %>
+                      Деактивировать
+                    <% end %>
+                  <% else %>
+                    <%= button_to activate_dashboard_saved_search_path(search), 
+                        method: :post,
+                        class: "inline-flex items-center px-3 py-1.5 border border-primary-300 shadow-sm text-xs font-medium rounded text-primary-700 bg-white hover:bg-primary-50" do %>
+                      Активировать
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+
+      <!-- Pagination -->
+      <div class="mt-6 flex justify-center">
+        <%= paginate @saved_searches, theme: 'tailwind' %>
+      </div>
+    <% else %>
+      <!-- Empty state -->
+      <div class="bg-white shadow rounded-lg p-12">
+        <div class="text-center">
+          <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">Нет сохраненных поисков</h3>
+          <p class="mt-1 text-sm text-gray-500">
+            Сохраните поиск, чтобы получать уведомления о новых объектах
+          </p>
+          <div class="mt-6">
+            <%= link_to properties_path, 
+                class: "inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700" do %>
+              <svg class="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" %>
+              </svg>
+              Перейти к поиску
+            <% end %>
+          </div>
+        </div>
+      </div>
+    <% end %>
+
+    <!-- Info box -->
+    <div class="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div class="ml-3">
+          <h3 class="text-sm font-medium text-blue-800">
+            Как работают сохраненные поиски
+          </h3>
+          <div class="mt-2 text-sm text-blue-700">
+            <p>
+              Когда вы сохраняете поиск с определенными параметрами, мы автоматически проверяем
+              появление новых объектов и отправляем вам уведомления. Вы можете в любой момент
+              активировать или деактивировать поиск.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

@@ -1,0 +1,104 @@
+# PostgreSQL Database Configuration
+# 
+# For more information:
+# https://guides.rubyonrails.org/configuring.html#configuring-a-database
+
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  # For details on connection pooling, see Rails configuration guide
+  # https://guides.rubyonrails.org/configuring.html#database-pooling
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  timeout: 5000
+  
+  # Connection configuration
+  connect_timeout: 2
+  checkout_timeout: 5
+  reaping_frequency: 10
+  
+  # Performance settings
+  prepared_statements: true
+  advisory_locks: true
+  
+  # Variables used in shared configuration
+  variables:
+    statement_timeout: 30000  # 30 seconds
+    idle_in_transaction_session_timeout: 60000  # 60 seconds
+
+development:
+  <<: *default
+  database: viktory_realty_development
+  
+  # Database credentials for development
+  # You can specify these in .env file or here directly
+  username: <%= ENV.fetch("DATABASE_USERNAME", "postgres") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "") %>
+  host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+  port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+  
+  # Development-specific settings
+  min_messages: warning
+
+# Warning: The test database is wiped and recreated between test runs
+# Do not set this database to the same as development or production
+test:
+  <<: *default
+  database: viktory_realty_test
+  
+  # Test database credentials
+  username: <%= ENV.fetch("DATABASE_USERNAME", "postgres") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "") %>
+  host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+  port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+  
+  # Test-specific settings
+  min_messages: warning
+
+# Production database configuration
+# 
+# IMPORTANT: Use environment variables for sensitive data
+# Never commit production credentials to version control
+production:
+  <<: *default
+  
+  # Use DATABASE_URL environment variable if available, otherwise use direct config
+  # Format: postgresql://username:password@host:port/database
+  <% if ENV["DATABASE_URL"] %>
+  url: <%= ENV.fetch("DATABASE_URL") %>
+  <% else %>
+  database: <%= ENV.fetch("DATABASE_NAME", "viktory_realty_production") %>
+  username: <%= ENV.fetch("DATABASE_USERNAME", "viktory_realty") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "") %>
+  host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
+  port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
+  <% end %>
+  
+  # Connection pool size should match the number of threads
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  
+  # Production-specific settings
+  min_messages: warning
+  
+  # Recommended production settings
+  variables:
+    statement_timeout: 15000  # 15 seconds (shorter for production)
+    lock_timeout: 10000  # 10 seconds
+    idle_in_transaction_session_timeout: 30000  # 30 seconds
+  
+  # Connection retry settings
+  connect_timeout: 5
+  checkout_timeout: 5
+  reaping_frequency: 10
+  
+  # Enable prepared statements in production
+  prepared_statements: true
+  
+  # Advisory locks for migrations
+  advisory_locks: true
+
+# Staging environment (optional)
+staging:
+  <<: *default
+  url: <%= ENV.fetch("DATABASE_URL") %>
+  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
+  min_messages: warning
