@@ -1,0 +1,1350 @@
+# File: tasks_spec.yml
+# Logical specification задач CrewAI для проекта "CrewAI" (Contract Analysis, РФ)
+# version: 1.0
+# author: Архитектор решений CrewAI
+# date: 2026-02-03
+
+project: "CrewAI"
+domain: "Real Estate — Contract Analysis (агентство недвижимости, РФ)"
+version: "1.0"
+generated_by: "task_decomposer/Специалист по декомпозиции задач"
+
+tasks:
+  - id: orchestrator
+    name: "Orchestrator (Document Workflow Manager)"
+    type: "orchestrator"
+    role: "Оркестрация пайплайна"
+    description: >
+      Центральный координатор — принимает запросы от API Gateway / Web App,
+      создаёт и маршрутизирует задачи в worker_queue, управляет статусами документа и retries.
+    inputs:
+      - name: request
+        type: object
+        schema:
+          required: ["file_id","uploader_id","priority"]
+          properties:
+            file_id: { type: string, description: "Внутренний идентификатор файла" }
+            uploader_id: { type: string, description: "ID пользователя" }
+            priority: { type: string, enum: ["low","normal","high"] }
+            options: { type: object, description: "Опции обработки (force_ocr, legal_match_mode...)" }
+    outputs:
+      - name: orchestration_record
+        type: object
+        description: "Запись транзакции/задачи в БД метаданных и очереди"
+    expected_output:
+      type: object
+      required: ["workflow_id","file_id","stages","created_at","trace_id"]
+      properties:
+        workflow_id: { type: string }
+        file_id: { type: string }
+        trace_id: { type: string, description: "correlation id for distributed tracing" }
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage_id: { type: string }
+              task_id: { type: string }
+              status: { type: string, enum: ["pending","running","success","failed","skipped"] }
+              started_at: { type: string, format: date-time }
+              finished_at: { type: string, format: date-time }
+        retry_policy:
+          type: object
+          properties:
+            max_retries: { type: integer }
+            backoff_strategy: { type: string }
+        created_at: { type: string, format: date-time }
+        owner: { type: string, description: "uploader_id" }
+    dependencies: []
+    sla:
+      timeout_seconds: 600
+      processing_target: "acknowledge request within 5s"
+    retry_policy:
+      max_retries: 3
+      backoff: "exponential"
+    permissions:
+      - "write:metadata"
+      - "create:worker_tasks"
+    needs_internet: false
+    required_tools:
+      - "Task Queue (RabbitMQ/Redis Streams)"
+      - "State machine library"
+    audit_events:
+      - name: orchestrator.start
+      - name: orchestrator.update_stage
+      - name: orchestrator.finish
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        retryable: { type: boolean }
+        details: { type: object }
+
+  - id: ingest_agent
+    name: "Ingest Agent (File Intake)"
+    type: "worker"
+    role: "Приём и предварительная проверка файла"
+    description: >
+      Валидация формата, вычисление хэша, первичная классификация (скан/цифра),
+      создание записи документа, инициирование загрузки в Nextcloud через connector.
+    inputs:
+      - name: file_payload
+        type: object
+        required: ["filename","content_type","raw_bytes" ]
+        properties:
+          filename: { type: string }
+          content_type: { type: string }
+          raw_bytes: { type: string, format: byte }
+          uploader_id: { type: string }
+    outputs:
+      - name: file_id
+        type: string
+      - name: storage_location
+        type: object
+        properties:
+          nextcloud_id: { type: string }
+          path: { type: string }
+    expected_output:
+      type: object
+      required: ["file_id","nextcloud_file_id","sha256","is_scanned","mime_type","created_at","trace_id"]
+      properties:
+        file_id: { type: string }
+        nextcloud_file_id: { type: string, description: "id from Nextcloud Connector" }
+        sha256: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer }
+        is_scanned: { type: boolean, description: "true если PDF-скан или изображение" }
+        detected_language: { type: string, example: "ru" }
+        provenance:
+          type: object
+          properties:
+            uploader_id: { type: string }
+            source: { type: string, example: "web_app" }
+        created_at: { type: string, format: date-time }
+        trace_id: { type: string }
+    dependencies:
+      - orchestrator
+    sla:
+      timeout_seconds: 120
+    retry_policy:
+      max_retries: 2
+      backoff: "linear"
+    permissions:
+      - "write:metadata"
+      - "call:nextcloud_connector"
+    needs_internet: false
+    required_tools:
+      - "file validator"
+      - "sha256 lib"
+      - "virus scanner (optional)"
+    audit_events:
+      - name: ingest.uploaded
+      - name: ingest.validated
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["INVALID_FORMAT","TOO_LARGE","VIRUS_DETECTED","STORAGE_ERROR"] }
+        message: { type: string }
+        retryable: { type: boolean }
+
+  - id: nextcloud_upload
+    name: "Nextcloud Connector (upload)"
+    type: "integration"
+    role: "Сохранение исходного файла и управление версиями"
+    description: "Инкапсулирует все операции с Nextcloud (upload/download/versioning)."
+    inputs:
+      - name: file_id
+        type: string
+      - name: file_bytes
+        type: string
+    outputs:
+      - name: nextcloud_file_id
+        type: string
+      - name: version_history
+        type: array
+    expected_output:
+      type: object
+      required: ["nextcloud_file_id","version_id","url","uploaded_at","checksum"]
+      properties:
+        nextcloud_file_id: { type: string }
+        version_id: { type: string }
+        url: { type: string }
+        uploaded_at: { type: string, format: date-time }
+        checksum: { type: string }
+        storage_region: { type: string, description: "e.g., RU-region" }
+    dependencies:
+      - ingest_agent
+    sla:
+      timeout_seconds: 90
+    retry_policy:
+      max_retries: 3
+      backoff: "exponential"
+    permissions:
+      - "call:nextcloud_api"
+    needs_internet: true
+    required_tools:
+      - "Nextcloud API client"
+      - "WebDAV client fallback"
+    audit_events:
+      - name: nextcloud.upload
+      - name: nextcloud.versioned
+    security:
+      - "TLS"
+      - "tokens stored in vault"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["AUTH_ERROR","NETWORK_ERROR","API_LIMIT","UNKNOWN"] }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: ocr_agent
+    name: "OCR Agent"
+    type: "worker"
+    role: "Оптическое распознавание текста"
+    description: >
+      Выполняет OCR для отсканированных документов; возвращает структурированный текст (page-level),
+      layout (bounding boxes) и per-page confidence.
+    inputs:
+      - name: nextcloud_file_id
+        type: string
+      - name: pages_range
+        type: object
+        properties:
+          from: { type: integer }
+          to: { type: integer }
+    outputs:
+      - name: ocr_text
+        type: object
+      - name: layout_info
+        type: object
+      - name: ocr_confidence_metrics
+        type: object
+    expected_output:
+      type: object
+      required: ["text_representation","format","pages","average_confidence","trace_id"]
+      properties:
+        text_representation:
+          type: object
+          description: "HOCR/ALTO/JSON per page"
+          example: { "page_1": { "text": "...", "blocks": [ ... ] } }
+        format: { type: string, enum: ["hocr","alto","plain_text","json"] }
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              page_number: { type: integer }
+              text: { type: string }
+              bounding_boxes: { type: array }
+              confidence: { type: number }
+        average_confidence: { type: number, minimum: 0, maximum: 1 }
+        language: { type: string, example: "ru" }
+        trace_id: { type: string }
+        generated_by: { type: string, example: "tesseract-5.3.1" }
+    dependencies:
+      - nextcloud_upload
+    sla:
+      timeout_seconds: 600
+    retry_policy:
+      max_retries: 2
+      backoff: "linear"
+    permissions:
+      - "temporary_read:nextcloud"
+    needs_internet: false
+    required_tools:
+      - "Tesseract / ABBYY SDK"
+      - "layout-parser"
+    audit_events:
+      - name: ocr.started
+      - name: ocr.completed
+    escalation_rules:
+      - condition: "average_confidence < OCR_CONF_THRESHOLD"
+        action: "create human_review task"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["OCR_TIMEOUT","OCR_ENGINE_ERROR","FILE_CORRUPT"] }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: parser_agent
+    name: "Structure Parser"
+    type: "worker"
+    role: "Парсинг структуры договора"
+    description: >
+      Разбивает документ на разделы/пункты, извлекает реквизиты сторон, даты и суммы, формирует canonical JSON структуры.
+    inputs:
+      - name: doc_text
+        type: object
+        description: "plain text or OCR JSON per page"
+      - name: layout_info
+        type: object
+    outputs:
+      - name: document_structure_json
+        type: object
+      - name: section_map
+        type: object
+      - name: extracted_requisites
+        type: object
+    expected_output:
+      type: object
+      required: ["document_id","structure_version","sections","extracted_requisites","trace_id"]
+      properties:
+        document_id: { type: string }
+        structure_version: { type: string }
+        sections:
+          type: array
+          items:
+            type: object
+            properties:
+              section_id: { type: string }
+              title: { type: string }
+              start_offset: { type: integer }
+              end_offset: { type: integer }
+              text_snippet: { type: string }
+        extracted_requisites:
+          type: object
+          properties:
+            parties:
+              type: array
+              items:
+                type: object
+                properties:
+                  party_id: { type: string }
+                  name: { type: string }
+                  inn: { type: string, nullable: true }
+                  ogrn: { type: string, nullable: true }
+                  address: { type: string, nullable: true }
+            dates: { type: array, items: { type: string, format: date } }
+            amounts: { type: array, items: { type: object, properties: { value: { type: number }, currency: { type: string } } } }
+        provenance:
+          created_by: { type: string, example: "parser_v1.0" }
+          created_at: { type: string, format: date-time }
+        trace_id: { type: string }
+    dependencies:
+      - ocr_agent
+      - nextcloud_upload
+    sla:
+      timeout_seconds: 300
+    retry_policy:
+      max_retries: 2
+      backoff: "exponential"
+    permissions:
+      - "read:text"
+      - "write:structure"
+    needs_internet: false
+    required_tools:
+      - "pdfminer / python-docx / pandoc"
+      - "rule engine + ML clause boundary model"
+    audit_events:
+      - name: parser.structure_saved
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["PARSE_ERROR","MODEL_ERROR"] }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: ner_agent
+    name: "NER & Fact Extraction Agent"
+    type: "worker"
+    role: "Извлечение сущностей и фактов"
+    description: >
+      Извлекает сущности (стороны, суммы, даты, штрафы), нормализует значения, формирует факты и confidence per entity.
+    inputs:
+      - name: document_structure_json
+        type: object
+      - name: doc_text
+        type: object
+    outputs:
+      - name: entities_json
+        type: object
+      - name: facts_json
+        type: object
+      - name: confidence_report
+        type: object
+    expected_output:
+      type: object
+      required: ["entities","facts","model_version","average_confidence","trace_id"]
+      properties:
+        entities:
+          type: array
+          items:
+            type: object
+            properties:
+              entity_id: { type: string }
+              type: { type: string, description: "e.g., PARTY, INN, DATE, AMOUNT, PENALTY" }
+              text: { type: string }
+              normalized: { type: string }
+              span: { type: object, properties: { start: { type: integer }, end: { type: integer } } }
+              confidence: { type: number }
+              pii: { type: boolean }
+        facts:
+          type: array
+          items:
+            type: object
+            properties:
+              fact_id: { type: string }
+              subject: { type: string }
+              predicate: { type: string }
+              object: { type: object }
+              confidence: { type: number }
+        model_version: { type: string }
+        average_confidence: { type: number }
+        trace_id: { type: string }
+        provenance:
+          created_at: { type: string, format: date-time }
+          model_id: { type: string }
+    dependencies:
+      - parser_agent
+    sla:
+      timeout_seconds: 240
+    retry_policy:
+      max_retries: 1
+      backoff: "none"
+    permissions:
+      - "read:structure"
+      - "write:entities"
+    needs_internet: false
+    required_tools:
+      - "spaCy/DeepPavlov/transformers (ru models)"
+      - "morphological analyzer"
+    audit_events:
+      - name: ner.entities_extracted
+    escalation_rules:
+      - condition: "average_confidence < NER_CONF_THRESHOLD"
+        action: "create human_review task"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["MODEL_FAILURE","INVALID_INPUT"] }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: risk_agent
+    name: "Risk Analysis Agent"
+    type: "worker"
+    role: "Классификация и оценка рисков"
+    description: >
+      Классификация пунктов по категориям риска, присвоение уровней критичности и
+      объяснение причины (explainability data) для каждой пометки.
+    inputs:
+      - name: entities_json
+        type: object
+      - name: facts_json
+        type: object
+      - name: document_structure_json
+        type: object
+    outputs:
+      - name: risk_report_json
+        type: object
+      - name: highlighted_sections
+        type: object
+    expected_output:
+      type: object
+      required: ["risk_items","summary","generation_time","trace_id"]
+      properties:
+        risk_items:
+          type: array
+          items:
+            type: object
+            properties:
+              risk_id: { type: string }
+              section_id: { type: string }
+              risk_category: { type: string, enum: ["financial","legal","operational","compliance"] }
+              severity: { type: string, enum: ["low","medium","high"] }
+              reason: { type: string }
+              evidence: { type: array, items: { type: string } }
+              explainability: { type: object }
+              recommendation: { type: string }
+              confidence: { type: number }
+        summary:
+          type: object
+          properties:
+            high: { type: integer }
+            medium: { type: integer }
+            low: { type: integer }
+        trace_id: { type: string }
+        created_by: { type: string, example: "risk_model_v1.2" }
+    dependencies:
+      - ner_agent
+      - parser_agent
+    sla:
+      timeout_seconds: 180
+    retry_policy:
+      max_retries: 1
+    permissions:
+      - "read:entities"
+      - "write:risk_reports"
+    needs_internet: false
+    required_tools:
+      - "clause_classifier_model"
+      - "explainability module"
+    audit_events:
+      - name: risk.report_generated
+    escalation_rules:
+      - condition: "any risk_item.severity == 'high' AND confidence < RISK_CONF_THRESHOLD"
+        action: "create human_review task (Legal Expert)"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: legal_matcher
+    name: "Legal Matcher"
+    type: "worker"
+    role: "Сопоставление с нормативной базой РФ"
+    description: >
+      Поиск релевантных нормативных актов и судебной практики по фактам и текстовым фрагментам,
+      возврат ссылок, выдержек и confidence. Может использовать локальную legal_db и web_search.
+    inputs:
+      - name: facts_json
+        type: object
+      - name: highlighted_sections
+        type: object
+      - name: query_params
+        type: object
+        properties:
+          scopes: { type: array, items: { type: string } }
+          max_results: { type: integer }
+    outputs:
+      - name: legal_matches_json
+        type: object
+      - name: legal_references
+        type: object
+    expected_output:
+      type: object
+      required: ["matches","source_snapshots","trace_id"]
+      properties:
+        matches:
+          type: array
+          items:
+            type: object
+            properties:
+              match_id: { type: string }
+              query: { type: string }
+              source: { type: string, description: "e.g., local_db, consultant_plus, garant, gov portal" }
+              source_url: { type: string }
+              excerpt: { type: string }
+              relevance_score: { type: number }
+              source_date: { type: string, format: date }
+        source_snapshots:
+          type: array
+          items:
+            type: object
+            properties:
+              source: { type: string }
+              snapshot_id: { type: string }
+              fetched_at: { type: string, format: date-time }
+        trace_id: { type: string }
+        used_cache: { type: boolean }
+    dependencies:
+      - risk_agent
+      - legal_db_updater
+    sla:
+      timeout_seconds: 300
+    retry_policy:
+      max_retries: 2
+    permissions:
+      - "read:legal_db"
+      - "call:web_search"   # subject to whitelist + audit
+    needs_internet: true
+    required_tools:
+      - "web_search client (proxy, whitelist)"
+      - "semantic search (bm25 + embeddings)"
+    audit_events:
+      - name: legal_match.query_executed
+      - name: legal_match.external_call_logged
+    security_constraints:
+      - "log all external calls (who/when/query/response_summary)"
+      - "cache results in legal_db with timestamp+source"
+    escalation_rules:
+      - condition: "no_matches_found"
+        action: "create human_review task (Legal Expert)"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string, enum: ["NO_RESULTS","EXTERNAL_API_ERROR","AUTH_ERROR"] }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: legal_db_updater
+    name: "Legal DB Updater (Scheduler & Verifier)"
+    type: "scheduled"
+    role: "Обновление локальной правовой базы"
+    description: >
+      Периодические обновления legal_db через scraping/API, версионирование, diff и alerts при существенных изменениях.
+    inputs:
+      - name: schedule
+        type: object
+        properties:
+          cron: { type: string }
+      - name: manual_trigger
+        type: boolean
+    outputs:
+      - name: legal_db_snapshot
+        type: object
+      - name: change_log
+        type: object
+      - name: impact_alerts
+        type: object
+    expected_output:
+      type: object
+      required: ["snapshot_id","snapshot_date","change_summary","trace_id"]
+      properties:
+        snapshot_id: { type: string }
+        snapshot_date: { type: string, format: date-time }
+        change_summary: { type: string }
+        diffs:
+          type: array
+          items:
+            type: object
+            properties:
+              doc_id: { type: string }
+              change_type: { type: string, enum: ["added","modified","removed"] }
+              diff_excerpt: { type: string }
+        impact_alerts:
+          type: array
+        trace_id: { type: string }
+    dependencies:
+      - admin_agent
+    sla:
+      timeout_seconds: 3600
+    retry_policy:
+      max_retries: 3
+    permissions:
+      - "write:legal_db"
+      - "call:web_search"
+    needs_internet: true
+    required_tools:
+      - "web.run / scraper"
+      - "diff engine"
+    audit_events:
+      - name: legal_db.update_started
+      - name: legal_db.snapshot_created
+    security:
+      - "log all external calls"
+      - "sign snapshots (optional)"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: search_indexer
+    name: "Search Indexer"
+    type: "worker"
+    role: "Индексирование для полнотекстового поиска"
+    description: >
+      Индексирует document_structure, entities, legal_db_snapshot и risk_reports в поисковый индекс (text + vectors).
+    inputs:
+      - name: document_structure_json
+        type: object
+      - name: entities_json
+        type: object
+      - name: legal_db_snapshot
+        type: object
+      - name: risk_report_json
+        type: object
+    outputs:
+      - name: search_index_updates
+        type: object
+      - name: search_metrics
+        type: object
+    expected_output:
+      type: object
+      required: ["indexed_documents","index_version","trace_id"]
+      properties:
+        indexed_documents: { type: integer }
+        index_version: { type: string }
+        failures: { type: integer }
+        trace_id: { type: string }
+        metrics:
+          type: object
+          properties:
+            indexing_time_seconds: { type: number }
+            vector_count: { type: integer }
+    dependencies:
+      - parser_agent
+      - ner_agent
+      - legal_matcher
+      - risk_agent
+    sla:
+      timeout_seconds: 180
+    retry_policy:
+      max_retries: 2
+    permissions:
+      - "write:search_index"
+    needs_internet: false
+    required_tools:
+      - "Elasticsearch/OpenSearch + vector plugin"
+    audit_events:
+      - name: index.update
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: human_review_agent
+    name: "Human Review Assistant"
+    type: "interactive"
+    role: "Помощь и таски для аналитика/юриста"
+    description: >
+      Генерация задач для ревью при низкой конфиденции/высоком риске, сбор правок и создание human_corrections.
+    inputs:
+      - name: review_trigger
+        type: object
+        properties:
+          reason: { type: string }
+          related_items: { type: array }
+    outputs:
+      - name: review_tasks
+        type: object
+      - name: human_corrections
+        type: object
+    expected_output:
+      type: object
+      required: ["task_id","assigned_to","due_date","context","trace_id"]
+      properties:
+        task_id: { type: string }
+        assigned_to: { type: string }
+        due_date: { type: string, format: date-time }
+        context:
+          type: object
+          properties:
+            snippets: { type: array }
+            risk_report_refs: { type: array }
+            legal_matches_refs: { type: array }
+        human_corrections:
+          type: array
+          items:
+            type: object
+            properties:
+              correction_id: { type: string }
+              author: { type: string }
+              change_summary: { type: string }
+              applied: { type: boolean }
+        trace_id: { type: string }
+    dependencies:
+      - risk_agent
+      - ner_agent
+      - legal_matcher
+    sla:
+      timeout_seconds: 86400   # UI-driven; default 24h for action
+    retry_policy:
+      max_retries: 0
+    permissions:
+      - "create:review_tasks"
+      - "write:human_corrections"
+    needs_internet: false
+    required_tools:
+      - "web UI annotations"
+      - "diff viewer"
+    audit_events:
+      - name: human_review.created
+      - name: human_review.completed
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: version_manager
+    name: "Version Manager"
+    type: "service"
+    role: "Версионирование и восстановление"
+    description: "Управляет версионной историей структур/контента, обеспечивает restore operations."
+    inputs:
+      - name: human_corrections
+        type: object
+      - name: nextcloud_file_versions
+        type: object
+      - name: automated_changes
+        type: object
+    outputs:
+      - name: version_history
+        type: object
+      - name: restore_operations
+        type: object
+    expected_output:
+      type: object
+      required: ["version_id","snapshot_reference","diff_summary","created_at","trace_id"]
+      properties:
+        version_id: { type: string }
+        snapshot_reference: { type: string }
+        diff_summary: { type: string }
+        created_at: { type: string, format: date-time }
+        signed: { type: boolean }
+        trace_id: { type: string }
+    dependencies:
+      - human_review_agent
+      - nextcloud_upload
+    sla:
+      timeout_seconds: 120
+    retry_policy:
+      max_retries: 1
+    permissions:
+      - "write:version_history"
+    needs_internet: false
+    required_tools:
+      - "diff engine"
+    audit_events:
+      - name: version.created
+      - name: version.restored
+    security:
+      - "optional crypto signing of versions"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: api_gateway
+    name: "API Gateway & OpenAPI Spec Agent"
+    type: "gateway"
+    role: "Экспозиция API и авторизация входящих запросов"
+    description: >
+      Маршрутизация запросов, rate limiting, generation/serving OpenAPI, auth delegation to auth_audit.
+    inputs:
+      - name: external_request
+        type: object
+    outputs:
+      - name: proxied_request
+        type: object
+      - name: api_metrics
+        type: object
+    expected_output:
+      type: object
+      required: ["request_id","route","auth_decision","response_status","trace_id"]
+      properties:
+        request_id: { type: string }
+        route: { type: string }
+        auth_decision: { type: string, enum: ["allow","deny"] }
+        response_status: { type: integer }
+        trace_id: { type: string }
+    dependencies:
+      - auth_audit
+    sla:
+      timeout_seconds: 30
+    retry_policy:
+      max_retries: 0
+    permissions:
+      - "proxy to internal services"
+    needs_internet: true
+    required_tools:
+      - "Kong/Traefik/Express Gateway"
+      - "OpenAPI generator"
+    audit_events:
+      - name: api.request_logged
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: auth_audit
+    name: "Auth & Audit Service"
+    type: "service"
+    role: "Аутентификация, авторизация и централизованный аудит"
+    description: >
+      Управляет пользователями, ролями, MFA, интеграциями SSO/AD и хранит immutable audit logs.
+    inputs:
+      - name: auth_request
+        type: object
+    outputs:
+      - name: token
+        type: string
+      - name: audit_log
+        type: object
+    expected_output:
+      type: object
+      required: ["access_decision","token_or_error","audit_entry","trace_id"]
+      properties:
+        access_decision: { type: string, enum: ["allow","deny"] }
+        token_or_error: { type: object }
+        audit_entry:
+          type: object
+          properties:
+            actor: { type: string }
+            action: { type: string }
+            document_id: { type: string, nullable: true }
+            timestamp: { type: string, format: date-time }
+            before_hash: { type: string, nullable: true }
+            after_hash: { type: string, nullable: true }
+        trace_id: { type: string }
+    dependencies: []
+    sla:
+      timeout_seconds: 5
+    retry_policy:
+      max_retries: 0
+    permissions:
+      - "manage:users"
+    needs_internet: false
+    required_tools:
+      - "Keycloak/FreeIPA/LDAP"
+      - "vault/HSM"
+    audit_events:
+      - name: auth.login
+      - name: auth.access_decision
+    security:
+      - "MFA mandatory for admins"
+      - "immutable audit logs"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: backup_and_monitoring
+    name: "Backup & Monitoring Agent"
+    type: "service"
+    role: "Резервирование, мониторинг, алерты"
+    description: >
+      Управляет бекапами (шифрование AES-256), метриками (Prometheus), дашбордами (Grafana) и тестами восстановления.
+    inputs:
+      - name: system_metrics
+        type: object
+      - name: backup_triggers
+        type: object
+    outputs:
+      - name: backups
+        type: object
+      - name: alerts
+        type: object
+      - name: monitoring_dashboards
+        type: object
+    expected_output:
+      type: object
+      required: ["backup_id","status","retention_policy","trace_id"]
+      properties:
+        backup_id: { type: string }
+        status: { type: string, enum: ["ok","failed","partial"] }
+        retention_policy: { type: object }
+        last_test_restore: { type: string, format: date-time }
+        trace_id: { type: string }
+    dependencies:
+      - nextcloud_upload
+      - version_manager
+    sla:
+      timeout_seconds: 7200
+    retry_policy:
+      max_retries: 3
+    permissions:
+      - "read:all_for_backup"
+    needs_internet: false
+    required_tools:
+      - "Prometheus/Grafana"
+      - "Restic/Borg or enterprise backup"
+    audit_events:
+      - name: backup.created
+      - name: backup.restore_test
+    security:
+      - "backups encrypted AES-256"
+      - "offsite storage in RF if required"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: admin_agent
+    name: "Admin Agent"
+    type: "operator"
+    role: "Оперативное управление и конфигурация"
+    description: "Управление конфигурациями, whitelist доменов, политиками, CI/CD integration tasks."
+    inputs:
+      - name: change_request
+        type: object
+    outputs:
+      - name: config_changes
+        type: object
+      - name: security_reports
+        type: object
+    expected_output:
+      type: object
+      required: ["change_id","applied_by","applied_at","trace_id"]
+      properties:
+        change_id: { type: string }
+        applied_by: { type: string }
+        applied_at: { type: string, format: date-time }
+        diff: { type: string }
+        trace_id: { type: string }
+    dependencies:
+      - auth_audit
+      - backup_and_monitoring
+    sla:
+      timeout_seconds: 86400
+    retry_policy:
+      max_retries: 0
+    permissions:
+      - "manage:config"
+    needs_internet: true
+    required_tools:
+      - "admin console"
+      - "vault"
+    audit_events:
+      - name: admin.config_changed
+    security:
+      - "2FA required; admin actions logged"
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+  - id: data_privacy_agent
+    name: "Data Privacy Agent"
+    type: "service"
+    role: "Контроль ПДн и маскировка"
+    description: >
+      Маркирует PII, управляет маскированием/анонимизацией, генерирует отчёты по соответствию локальным требованиям.
+    inputs:
+      - name: entities_json
+        type: object
+      - name: policy_config
+        type: object
+    outputs:
+      - name: pii_reports
+        type: object
+      - name: compliance_checks
+        type: object
+    expected_output:
+      type: object
+      required: ["pii_count","masked_items","compliance_status","trace_id"]
+      properties:
+        pii_count: { type: integer }
+        masked_items:
+          type: array
+          items:
+            type: object
+            properties:
+              entity_id: { type: string }
+              mask_method: { type: string }
+        compliance_status: { type: string, enum: ["ok","warning","violation"] }
+        trace_id: { type: string }
+    dependencies:
+      - ner_agent
+      - admin_agent
+    sla:
+      timeout_seconds: 120
+    retry_policy:
+      max_retries: 1
+    permissions:
+      - "read:entities"
+      - "update:policy_config"
+    needs_internet: false
+    required_tools:
+      - "DLP tools"
+      - "masking libs"
+    audit_events:
+      - name: data_privacy.report_generated
+    error_schema:
+      type: object
+      properties:
+        code: { type: string }
+        retryable: { type: boolean }
+        message: { type: string }
+
+# End of tasks_spec.yml
+
+---
+# File: dag.yml
+# Directed Acyclic Graph (DAG) описывающий зависимости задач/стадий пайплайна
+
+dag:
+  root: orchestrator
+  nodes:
+    - id: orchestrator
+      type: orchestrator
+    - id: ingest_agent
+      type: worker
+    - id: nextcloud_upload
+      type: integration
+    - id: ocr_agent
+      type: worker
+    - id: parser_agent
+      type: worker
+    - id: ner_agent
+      type: worker
+    - id: risk_agent
+      type: worker
+    - id: legal_matcher
+      type: worker
+    - id: legal_db_updater
+      type: scheduled
+    - id: search_indexer
+      type: worker
+    - id: human_review_agent
+      type: interactive
+    - id: version_manager
+      type: service
+    - id: api_gateway
+      type: gateway
+    - id: auth_audit
+      type: service
+    - id: backup_and_monitoring
+      type: service
+    - id: admin_agent
+      type: operator
+    - id: data_privacy_agent
+      type: service
+
+  edges:
+    # Standard happy path
+    - from: orchestrator
+      to: ingest_agent
+      condition: "on_new_upload"
+    - from: ingest_agent
+      to: nextcloud_upload
+      condition: "after_validation"
+    - from: nextcloud_upload
+      to: orchestrator
+      condition: "upload_confirmed"
+    # OCR branch: conditional on is_scanned == true OR force_ocr option
+    - from: orchestrator
+      to: ocr_agent
+      condition: "if is_scanned OR options.force_ocr"
+    - from: ocr_agent
+      to: parser_agent
+      condition: "ocr_success"
+    # Parser receives doc text either from OCR or direct text extraction
+    - from: orchestrator
+      to: parser_agent
+      condition: "if not is_scanned (direct text available)"
+    - from: parser_agent
+      to: ner_agent
+      condition: "structure_parsed"
+    - from: ner_agent
+      to: risk_agent
+      condition: "entities_extracted"
+    - from: risk_agent
+      to: legal_matcher
+      condition: "risk_items_present"
+    - from: legal_matcher
+      to: search_indexer
+      condition: "matches_or_fallback"
+    - from: parser_agent
+      to: search_indexer
+      condition: "always_index_structure"
+    - from: ner_agent
+      to: data_privacy_agent
+      condition: "post_ner_check"
+    - from: data_privacy_agent
+      to: orchestrator
+      condition: "pii_policy_applied"
+
+    # Human in the loop / escalations
+    - from: ocr_agent
+      to: human_review_agent
+      condition: "average_confidence < OCR_CONF_THRESHOLD"
+    - from: ner_agent
+      to: human_review_agent
+      condition: "average_confidence < NER_CONF_THRESHOLD"
+    - from: risk_agent
+      to: human_review_agent
+      condition: "high_risk_or_low_confidence"
+
+    - from: human_review_agent
+      to: version_manager
+      condition: "after_review_finalize"
+    - from: version_manager
+      to: nextcloud_upload
+      condition: "persist_version"
+
+    # Legal DB updater independent scheduled path
+    - from: admin_agent
+      to: legal_db_updater
+      condition: "schedule_or_manual_trigger"
+    - from: legal_db_updater
+      to: legal_matcher
+      condition: "snapshot_ready"
+
+    # Monitoring & backup paths
+    - from: backup_and_monitoring
+      to: admin_agent
+      condition: "backup_alerts"
+    - from: backup_and_monitoring
+      to: orchestrator
+      condition: "system_health_alert"
+
+    # API/auth integration
+    - from: api_gateway
+      to: auth_audit
+      condition: "auth_required"
+    - from: auth_audit
+      to: orchestrator
+      condition: "auth_allow"
+
+  notes:
+    - "Orchestrator является единственной точкой входа для автоматического старта обработки;"
+    - "Human review paths не блокируют индексирование и бэкап — процессы могут выполняться параллельно;"
+    - "Все внешние web_search вызовы проходят от имени legal_matcher / legal_db_updater через прокси и логируются (см. tasks_spec)."
+
+# End of dag.yml
+
+---
+# File: config/tasks.yaml
+# Базовая основа конфигурации для runtime (очереди, concurrency, ресурсы)
+# Эта конфигурация служит шаблоном и должна быть применена в окружении CI/CD или вручную администратором.
+
+defaults:
+  queue_backend: "redis_streams"        # options: rabbitmq | redis_streams
+  trace_id_header: "X-Trace-Id"
+  logging:
+    format: "json"
+    level: "info"
+  retry:
+    default_max_retries: 3
+    default_backoff: "exponential"
+  security:
+    vault_path: "/vault/secrets/crewai"
+    tokens_rotation_days: 90
+
+task_runtimes:
+  orchestrator:
+    queue: "orchestrator_queue"
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 1024
+    environment:
+      ON_PREM: true
+  ingest_agent:
+    queue: "ingest_queue"
+    concurrency: 4
+    resources:
+      cpu: 1
+      memory_mb: 2048
+    validate_file_size_mb: 100
+  nextcloud_upload:
+    queue: "io_queue"
+    concurrency: 2
+    resources:
+      cpu: 1
+      memory_mb: 1024
+    network:
+      allow_external: true
+      whitelist_domains: []   # <-- to be filled: list of Nextcloud domains / allowed legal sources
+  ocr_agent:
+    queue: "cpu_intensive_queue"
+    concurrency: 2
+    resources:
+      cpu: 4
+      memory_mb: 8192
+    engine: "tesseract"
+    ocr_conf_threshold: 0.85
+  parser_agent:
+    queue: "parser_queue"
+    concurrency: 3
+    resources:
+      cpu: 2
+      memory_mb: 4096
+  ner_agent:
+    queue: "nlp_queue"
+    concurrency: 4
+    resources:
+      cpu: 4
+      memory_mb: 8192
+    model_download_allowed: false
+  risk_agent:
+    queue: "nlp_queue"
+    concurrency: 2
+    resources:
+      cpu: 2
+      memory_mb: 4096
+  legal_matcher:
+    queue: "legal_queue"
+    concurrency: 1
+    resources:
+      cpu: 2
+      memory_mb: 4096
+    web_search:
+      proxy: "http://proxy.corp:3128"   # to be configured by Admin
+      whitelist_domains: []            # to be specified by customer
+    max_external_calls_per_doc: 10
+  legal_db_updater:
+    schedule: "0 3 * * *" # default daily at 03:00
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 2048
+  search_indexer:
+    queue: "indexer_queue"
+    concurrency: 2
+    resources:
+      cpu: 2
+      memory_mb: 4096
+  human_review_agent:
+    concurrency: 0   # interactive; tasks show in UI, processed by humans
+  version_manager:
+    queue: "io_queue"
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 2048
+  api_gateway:
+    concurrency: 4
+    rate_limit:
+      requests_per_minute: 1200
+  auth_audit:
+    concurrency: 2
+    resources:
+      cpu: 1
+      memory_mb: 2048
+  backup_and_monitoring:
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 4096
+  admin_agent:
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 2048
+  data_privacy_agent:
+    concurrency: 1
+    resources:
+      cpu: 1
+      memory_mb: 2048
+
+observability:
+  metrics:
+    push_to: "prometheus_pushgateway"
+  tracing:
+    provider: "jaeger"
+  log_retention_days: 365
+  audit_log_retention_days: 1825
+
+security_defaults:
+  encryption_at_rest: "AES-256"
+  tls_required: true
+  keys_storage: "/vault/keys"
+  pii_handling:
+    mask_on_index: true
+    full_masking_for_export_roles: ["analyst","legal_expert"]
+
+notes:
+  - "Заполнить whitelist_domains в nextcloud_upload и legal_matcher перед подключением web_search."
+  - "Параметры resources и concurrency — ориентировочные. Требуется уточнить expected volume (docs/month) для тонкой настройки."
+  - "Если on-premise требование подтверждено, установить ON_PREM:true и обеспечить локальные модели (no external downloads)."
+
+# End of config/tasks.yaml
+
+# IMPORTANT:
+# - Каждый task возвращает structured expected_output и structured error (см. error_schema), что упрощает downstream потребление и автоматическое агрегирование.
+# - Все outputs включают trace_id и provenance, чтобы обеспечить корреляцию и возможность достоверного аудита.
+# - Перед развёртыванием необходимо заполнить поля whitelist_domains, параметры хранения в РФ (если применимо), и согласовать использование внешних платных правовых баз (КонсультантПлюс/Гарант).
+# - Если требуется, могу сгенерировать OpenAPI модели для API Gateway, шаблоны очередей (RabbitMQ / Redis Streams) и CI/CD job'ы для автоматической регистрации задач.

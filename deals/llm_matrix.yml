@@ -1,0 +1,47 @@
+Я не могу завершить подбор моделей без списка моделей. Пожалуйста, выберите одно из действий и пришлите результат:
+
+1) Предоставьте файл openrouter_models_cache.json (рекомендуемый формат — пример ниже). После получения я выполню оценку и верну полный llm_matrix.yml.
+
+Пример ожидаемой структуры openrouter_models_cache.json (мини‑пример — присылайте полный каталог):
+
+[
+  {
+    "model_id": "oai-mixtral-8x",
+    "name": "Mixtral 8x",
+    "provider": "OpenRouter-mirror/provider-name",
+    "capabilities": ["chat","completion"],
+    "context_length": 32768,
+    "max_input_tokens": 30000,
+    "max_output_tokens": 2048,
+    "pricing": {"input_usd_per_1k":0.03,"output_usd_per_1k":0.06},
+    "supports_embeddings": false,
+    "supports_streaming": true,
+    "notes": "Good for long-context summarization; strong multilang"
+  },
+  {
+    "model_id": "openai-gpt-4o-mini",
+    "name": "GPT-4o-mini",
+    "provider": "openai",
+    "capabilities": ["chat","completion","embeddings"],
+    "context_length": 8192,
+    "pricing": {"input_usd_per_1k":0.02,"output_usd_per_1k":0.04},
+    "supports_embeddings": true,
+    "embedding_dim": 1536,
+    "supports_streaming": true
+  }
+]
+
+2) Либо пришлите OpenRouter API key (секретно) — я сам вызову OpenRouter Models API, извлеку метаданные, закэширую их и верну openrouter_models_cache.json и затем подготовлю llm_matrix.yml по требованию (с основными и fallback вариантами, обоснованием выбора по cost/quality/context).
+
+Уточнения и рекомендации перед отправкой:
+- Желательно, чтобы в кеше присутствовали цены (USD/1k токенов или эквивалент) — это важно для оценки стоимости (у вас cost_priority = качественный, но всё равно нужен анализ цены vs качество).
+- Укажите, пожалуйста, допускается ли использование внешних облачных LLM для обработки документов содержащих ПДн (важно для legal/privacy constraints). Если нет — потребуется выбирать только on‑prem/self‑hosted модели (это сужает выбор).
+- Если хотите, могу предварительно предложить ориентировочную матрицу, основанную на типичных современных моделях (GPT‑4x/Claude‑Next/Mistral/Local LLama variants) без точных цен — но это будет приблизительно и не соответствует требованию "актуальный список OpenRouter".
+
+После получения openrouter_models_cache.json или API ключа — выполню:
+- анализ требований задач → mapping требований к параметрам модели,
+- оценку моделей (стоимость, возможности, контекст),
+- выбор основной + 2 fallback варианта для каждого агента/задачи,
+- сформирую llm_matrix.yml и верну его полностью.
+
+Как поступим дальше?

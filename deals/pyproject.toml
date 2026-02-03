@@ -1,0 +1,38 @@
+[project]
+name = "real-estate-deals"
+version = "0.1.0"
+description = "Real Estate Deals CrewAI project"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+ "crewai[tools]>=1.9.0",
+ "fastapi-sso>=0.19.0",
+ "pydantic[email]>=2.11.10",
+ "python-dotenv>=1.0.0",
+ "pyyaml>=6.0",
+ "requests>=2.31.0",
+]
+readme = "README.md"
+keywords = [ "crewai", "agents", "ai",]
+classifiers = [ "Development Status :: 3 - Alpha", "Intended Audience :: Developers", "License :: OSI Approved :: MIT License", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3.10", "Programming Language :: Python :: 3.11", "Programming Language :: Python :: 3.12", "Programming Language :: Python :: 3.13",]
+[[project.authors]]
+name = "CrewAI Generator"
+email = "generated@crewai.ai"
+
+["project.scripts"]
+run_real_estate_deals = "real-estate-deals.main:run"
+train = "real-estate-deals.main:train"
+replay = "real-estate-deals.main:replay"
+test = "real-estate-deals.main:test"
+
+[build-system]
+requires = [ "hatchling",]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/real-estate-deals"]
+
+["project.optional-dependencies"]
+dev = [ "pytest>=7.4.0", "pytest-asyncio>=0.21.0", "black>=23.0.0", "isort>=5.12.0", "flake8>=6.0.0", "mypy>=1.5.0", "pre-commit>=3.4.0",]
+
+[tool.crewai]
+type = "crew"
