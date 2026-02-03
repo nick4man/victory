@@ -1,0 +1,193 @@
+|
+  # llm_matrix.yml
+  # Mapping: agent/task -> chosen LLM model + 2 fallback options
+  # Generated: 2026-02-03
+  # Project: CrewAI — Аналитика договоров купли-продажи (РФ)
+  
+  version: "1.0"
+  generated_at: "2026-02-03T00:00:00Z"
+  cost_priority: "сбалансированный"
+  notes:
+    - "Все внешние вызовы к облачным LLM обязаны проходить через DataProtectionAgent (task_redact) и иметь approval AdminAgent per BR1."
+    - "По умолчанию use_external_llm: false (см. config/tasks.yaml). External LLMs используются только после redaction и explicit approval."
+    - "Для extraction/classification/rule-based tasks — приоритет локальным моделям (offline) для PII minimization и reproducibility."
+  
+  matrix:
+    # Core orchestration / control (does not call LLM directly)
+    orchestrator_agent:
+      task: "WorkflowOrchestrator / orchestration"
+      recommended_model: "none (internal service)"
+      fallback: ["none"]
+      rationale: "Orchestrator uses deterministic logic / queue; no LLM required."
+  
+    ingestion_agent:
+      task: "IngestDocument"
+      recommended_model: "none (pipeline service)"
+      fallback: ["none"]
+      rationale: "Pure file ingestion / validation; no LLM."
+  
+    parser_agent:
+      task: "ParseDocument (DOCX/PDF parsing)"
+      recommended_model: "none (libreoffice/pdfminer/mupdf local parsers)"
+      fallback: ["none"]
+      rationale: "Use local deterministic parsers. OCR delegated to OCRAgent."
+  
+    ocr_agent:
+      task: "OCRPages"
+      recommended_model: "none (Tesseract local)"
+      fallback: ["commercial OCR via approved proxy (if licensed and redacted)"]
+      rationale: "Default: Tesseract with RU dictionaries. External OCR allowed only after redaction and Admin approval."
+  
+    data_protection_agent:
+      task: "RedactPII"
+      recommended_model: "none (local NER/regex + ru-NER models like spaCy/DeepPavlov)"
+      fallback: ["liquid/lfm-2.5-1.2b-thinking (edge)"]
+      rationale: "Redaction must run locally (no external calls). Use deterministic + local ML. If needing model assistance for ambiguous redactions in offline mode, use small edge LFM2.5 as fallback (keeps PII in infra)."
+  
+    nlp_orchestrator_agent:
+      task: "RunNLPPipeline (orchestration + selective LLM calls)"
+      recommended_model:
+        primary: "mistralai/mixtral-8x7b-instruct"
+        reason: "balanced cost-quality, instruction-tuned, good context (131k) for multi-block documents; practical production choice when external LLM allowed."
+      fallback:
+        - "meta-llama/llama-3-70b-instruct"
+        - "openrouter/free (router) for development / cost-free experiments"
+      constraints: 
+        - "Prefer local deterministic components for entity/clause/risk; use LLM only for aggregation/synthesis and where redaction present."
+  
+    entity_extractor_agent:
+      task: "ExtractEntities (NER, normalization)"
+      recommended_model:
+        primary: "local spaCy / DeepPavlov / ru-transformers (offline)"
+        reason: "High precision required; offline models ensure data privacy and reproducibility (meets 'offline_models_only')."
+      fallback:
+        - "liquid/lfm-2.5-1.2b-thinking (free) — small, reasoning-capable for ambiguous cases"
+        - "mistralai/mixtral-8x7b-instruct — if allowed and need LLM-assisted normalization"
+      notes:
+        - "Default policy: do not send raw PII to external LLMs — redaction required."
+  
+    clause_classifier_agent:
+      task: "ClassifyClauses"
+      recommended_model:
+        primary: "local supervised classifier (fine-tuned transformer on ru-contracts) — offline"
+      fallback:
+        - "mistralai/mixtral-8x7b-instruct"
+        - "meta-llama/llama-3-70b-instruct"
+      rationale: "Clause classification is deterministic/ML classification — prefer local fine-tuned models for coverage and speed; LLM as fallback for ambiguous or novel clause types."
+  
+    risk_detector_agent:
+      task: "DetectRisks (rules + ML)"
+      recommended_model:
+        primary: "rule-engine + local ML ensemble (Drools + local models)"
+        reason: "High sensitivity to false positives; rules + local ML preferred for auditability."
+      fallback:
+        - "mistralai/mixtral-8x7b-instruct (for justification text generation & explanation enrichment)"
+        - "anthropic/claude-3.5-sonnet (for safer, well-justified explanations if allowed)"
+      notes:
+        - "If laws_snapshot referenced: LawsUpdater snapshot is authoritative and used locally; do not rely solely on external LLM for legal citations."
+  
+    redline_agent:
+      task: "GenerateRedlines (primary generative LLM usage)"
+      recommended_model:
+        primary:
+          id: "google/gemini-pro"
+          rationale: "Best trade-off for high-quality legal reasoning + very long context (1,040,000) — allows operating on entire contract + law snippets; strong multilingual capacity. Use when AdminAgent approved external calls and redaction is applied."
+        note: "Use structured_outputs option to receive JSON {clause_id, suggested_text, redline_diff, confidence, justification, references}."
+      fallback:
+        - "openai/gpt-5.2"
+        - "anthropic/claude-3.5-sonnet"
+        - "writer/palmyra-x5 (cost-effective long-context alternative)"
+      constraints:
+        - "External calls allowed only after DataProtectionAgent redaction and AdminAgent approval."
+        - "Severity >= medium OR redline confidence < 0.75 => human review required (HumanAnalystAgent)."
+  
+    redline_exporting:
+      task: "Prepare redlined DOCX/PDF (docx templating + LLM text parts)"
+      recommended_model:
+        primary: "mistralai/mixtral-8x7b-instruct (if small LLM needed to paraphrase snippets) or local templates"
+      fallback:
+        - "writer/palmyra-x5"
+      rationale: "Prefer deterministic docx templating for tracked-changes; LLM only for natural-language paraphrases and justifications."
+  
+    search_index_agent:
+      task: "Embeddings & Retrieval"
+      recommended_model:
+        primary: "cohere/command-r-08-2024"
+        reason: "Designed for retrieval/RAG. Cost-effective and optimized for semantic search/embedding+RAG flows."
+      fallback:
+        - "deepseek/deepseek-r1"
+        - "openai/embedding (if locked-in and allowed) — not listed in OpenRouter cache but consider provider embeddings"
+      notes:
+        - "Embeddings should be generated locally where possible (on-prem models) if data_localization mandates it; otherwise use approved provider behind proxy."
+  
+    laws_updater_agent:
+      task: "UpdateLawsSnapshot (fetch + summarise)"
+      recommended_model:
+        primary: "writer/palmyra-x5"
+        reason: "Excellent long-context support and cost-effective for summarizing many legal documents and building a versioned snapshot; good for digesting law corpora."
+      fallback:
+        - "google/gemini-pro (higher cost but stronger reasoning)"
+        - "openai/gpt-5.2 (if org prefers OpenAI)"
+      constraints:
+        - "External fetching requires AdminAgent approval; summaries should be stored in law-store and versioned."
+  
+    nlp_orchestrator_aux_synthesis:
+      task: "Long-form synthesis (e.g., overall contract summary, change-log, audit narrative)"
+      recommended_model:
+        primary: "writer/palmyra-x5"
+      fallback:
+        - "google/gemini-pro"
+        - "openai/gpt-5.2"
+      rationale: "Long-document summarization benefits from very large context windows and reasonable cost."
+  
+    auth_and_audit_agent:
+      task: "Auth decisions / Immutable audit messages"
+      recommended_model: "none (Auth service + OpenSearch)"
+      fallback: ["none"]
+      rationale: "No LLM involvement. All decisions must be stored immutably and provably."
+  
+    ui_agent:
+      task: "User-facing prompts, assistive help (non-sensitive)"
+      recommended_model:
+        primary: "openrouter/free (router) for development"
+      fallback:
+        - "mistralai/mixtral-8x7b-instruct (production cheap chat)"
+        - "anthropic/claude-3.5-sonnet (if conversational quality prioritized)"
+      constraints:
+        - "UI suggestions should avoid sending PII to external models; redaction required."
+  
+    human_analyst_agent:
+      task: "Human-in-loop review (assisted suggestions)"
+      recommended_model:
+        primary: "none (human role)"
+      fallback:
+        - "mistralai/mixtral-8x7b-instruct (assistants for drafting comments; local/intranet allowed)"
+      rationale: "Humans remain final sign-off. LLMs only assist with drafts if allowed and redacted."
+  
+    backup_agent:
+      task: "Backup orchestration"
+      recommended_model: "none"
+      fallback: ["none"]
+      rationale: "No LLM."
+  
+    monitoring_agent:
+      task: "Monitoring, alerts, diagnostics"
+      recommended_model:
+        primary: "none"
+      fallback: ["none"]
+      rationale: "Monitoring uses Prometheus/Grafana; LLMs not required. Optional: small local model for automated incident summarization (liquid/lfm-2.5) if desired."
+  
+  operational_recommendations:
+    - "Model selection policy: tag each model in production with: provider_id, pricing_tier, max_context, moderated(bool), approvals_required(boolean). Keep llm_matrix.yml in repo and enforce via AdminAgent config."
+    - "Cost control: prefer writer/palmyra-x5 or mistral variants for routine batch jobs; use Gemini/GP5.2 only for high-value redlines or large-law cross-references."
+    - "Safety & compliance: always run DataProtectionAgent redaction and persist redaction_log in audit before any external LLM call. Keep logs for reproducibility and compliance."
+    - "A/B & evaluation: run pilot A/B on a representative Russian contracts corpus comparing primary vs fallback models for redline quality, track metrics: human-acceptance-rate, hallucination_rate, token_cost_per_doc."
+    - "Fallback rules: if primary LLM latency > SLA or error rate high, automatically switch to fallback 1; if fallback1 fails, use fallback2; for critical risk items escalate to HumanAnalystAgent."
+  
+  deliverables:
+    - "llm_matrix.yml (this file) — mapping + rationales"
+    - "next actions: run pilot on 200 doc sample to calibrate prompt templates, thresholds (confidence), and token budgeting."
+  
+  signatures:
+    author: "Инженер подбора LLM — CrewAI"
+    contact: "ops@crewai.local"

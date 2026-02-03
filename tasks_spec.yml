@@ -1,0 +1,982 @@
+---
+# tasks_spec.yml
+# Логическая спецификация задач CrewAI для проекта:
+# "Аналитика договоров купли-продажи (недвижимость, РФ)"
+# created_at: 2026-02-03
+spec_version: "1.0"
+project: "CrewAI — Аналитика договоров купли-продажи (недвижимость, РФ)"
+language: "ru"
+
+# Общие определения ожидаемого формата выходных данных (стандартизированная обёртка)
+common_output_schema:
+  description: >
+    Стандартная обёртка для всех задач. Все агенты обязаны возвращать payload
+   , совместимый с этой структурой, чтобы downstream компоненты могли
+    надёжно парсить результаты.
+  type: object
+  required:
+    - output_version
+    - producer_task_id
+    - status
+    - timestamp_utc
+    - artifacts
+    - metadata
+  properties:
+    output_version:
+      type: string
+      description: "Версия схемы выхода (semver)"
+    producer_task_id:
+      type: string
+      description: "Уникальный ID выполненной задачи (UUID)"
+    status:
+      type: string
+      enum: [success, partial_success, failed, needs_human_review]
+    timestamp_utc:
+      type: string
+      format: date-time
+    duration_seconds:
+      type: number
+    artifacts:
+      type: array
+      description: "Список артефактов, созданных задачей (файлы/объекты)."
+      items:
+        type: object
+        required: [type, storage_path, checksum]
+        properties:
+          type:
+            type: string
+            description: "Тип артефакта: original, converted_text, canonical_document, ocr_page, embedding, extracted_fields, risk_report, diff_report, export_file, audit_event, other"
+          storage_path:
+            type: string
+            description: "Внутренный путь/URI (например nextcloud://... или s3://..., /mnt/...)"
+          public_url:
+            type: string
+            description: "Опциональная ссылкa для UI (короткий срок действия, через Nextcloud Connector)"
+          checksum:
+            type: string
+            description: "SHA256 checksum файла"
+          size_bytes:
+            type: integer
+          mime_type:
+            type: string
+          metadata:
+            type: object
+    metadata:
+      type: object
+      description: "Машиночитаемые метаданные для downstream (ключи: document_id, file_type, agent_id, model_version, confidence_overall, provenance)"
+      properties:
+        document_id: { type: string }
+        file_id: { type: string }
+        file_type: { type: string }
+        agent_id: { type: string }
+        model_version: { type: string }
+        confidence_overall: { type: number }
+        provenance:
+          type: object
+          description: "Ссылка на audit_event / список событий (IDs) и offsets"
+          properties:
+            audit_event_id: { type: string }
+            offsets: { type: array, items: { type: object } }
+    warnings:
+      type: array
+      items:
+        type: object
+        properties:
+          code: { type: string }
+          message: { type: string }
+
+# Спецификация задач (каждая задача — единица работы, которую оркестратор ставит в очередь)
+tasks:
+  - id: orchestrator.dispatch
+    name: "Orchestrator: Dispatch new_document_event"
+    description: "Главная задача — инициирует пайплайн для нового документа, распределяет задачи по очередям и следит за статусом."
+    queue: orchestration_queue
+    consumer_agent: orchestrator
+    inputs:
+      - new_document_event:
+          schema:
+            document_id: string
+            source: string
+            uploader_id: string
+            nextcloud_path: string
+            original_filename: string
+    outputs:
+      - created_tasks:         # список назначенных задач (task_id, queue)
+          type: array
+    expected_output_schema: { $ref: "#/common_output_schema" }
+    retries: 3
+    sla: "ack < 30s"
+    resources:
+      cpu: "0.5-2"
+      memory: "512MB-2GB"
+    privacy_constraints:
+      - "не хранить содержимое документа в metadata дольше, чем нужно"
+
+  - id: ingestion.register
+    name: "Ingestion: register and store original"
+    description: "Приём файла, базовая валидация, антивирус, запись метаданных и регистрация в БД."
+    queue: ingestion_queue
+    consumer_agent: ingestion_agent
+    inputs:
+      - file_binary: { type: "binary", storage_hint: "nextcloud" }
+      - uploader_metadata: { uploader_id: string, source: string, received_at: string }
+    outputs:
+      - registered_document:
+          document_id: string
+          file_id: string
+          nextcloud_path: string
+          initial_file_type: string
+          registered_at: string
+          virus_scan: { status: string, engine: string, report_path?: string }
+      - created_task: { task_id: string, queue: conversion_queue }
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    expected_output_addendum:
+      metadata:
+        required: [document_id, file_id, file_type]
+    retries: 2
+    sla: "ack file ingestion < 5s"
+    resources:
+      cpu: "0.5-1"
+      memory: "256MB-1GB"
+    privacy_constraints:
+      - "upload via TLS; store original in Nextcloud path with service-account ACL"
+
+  - id: conversion.convert
+    name: "Conversion: office/pdf -> text / identify scan"
+    description: "Конвертация DOC/DOCX/PDF в машинно-читаемый текст, извлечение изображений и определение необходимости OCR."
+    queue: conversion_queue
+    consumer_agent: converter_agent
+    inputs:
+      - file_pointer: { nextcloud_path: string, file_id: string }
+      - file_type: string
+    outputs:
+      - converted_text_artifact:
+          storage_path: string
+          text_encoding: string
+          page_count: integer
+          images_extracted: integer
+      - conversion_logs: string (path)
+      - ocr_required: boolean
+      - extraction_hint: { suspect_tables: boolean, complex_layout: boolean }
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 1
+    fallback: "if converter fails -> retry with alternate converter; if still fails -> mark needs_human_review"
+    sla: "30-120s per doc (depend on size)"
+    resources:
+      cpu: "1-2"
+      memory: "1-3GB"
+    privacy_constraints:
+      - "temporary files on encrypted volumes; auto-delete after completion"
+
+  - id: ocr.recognize
+    name: "OCR: распознавание страниц"
+    description: "Распознавание текста и сохранение layout (page, bbox). Выбор провайдера по качеству и политике."
+    queue: ocr_queue
+    consumer_agent: ocr_agent
+    inputs:
+      - images_or_pdf_pages: { storage_path: string[], pages: integer }
+      - language_hint: { default: "ru" }
+      - quality_profile: { prefer_local: boolean, commercial_fallback: boolean }
+    outputs:
+      - ocr_pages:
+          - page_number: integer
+            text: string
+            bboxes: [ { left, top, width, height } ]
+            confidence: number
+            words_count: integer
+      - ocr_confidence_summary: { avg_confidence: number, low_confidence_pages: [int] }
+      - ocr_artifact_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 2
+    fallback: "on low confidence -> commercial OCR -> human_reviewer"
+    sla: "OCR per page < 10s (provider dep.)"
+    resources:
+      cpu: "1-4"
+      memory: "1-4GB"
+    privacy_constraints:
+      - "commercial OCR allowed only if policy permits; redact PII before external calls"
+
+  - id: normalizer.normalize
+    name: "Normalizer: очистка и структурирование текста"
+    description: "Удаление артефактов, восстановление структуры статей/пунктов/таблиц, выдача canonical_document."
+    queue: normalization_queue
+    consumer_agent: normalizer_agent
+    inputs:
+      - converted_text_artifact: { storage_path: string }
+      - ocr_pages_artifact?: { storage_path: string }   # optional if OCR done
+    outputs:
+      - canonical_document:
+          id: string
+          blocks:
+            - id: string
+              type: enum [header, article, paragraph, clause, table, list, annex, footer]
+              text: string
+              start_offset: int
+              end_offset: int
+              page: int
+              bbox?: { left, top, width, height }
+          normalized_text: string
+          derived_dates: [ { raw: string, normalized: date } ]
+          derived_sums: [ { raw: string, normalized: number, currency: string } ]
+      - canonical_artifact_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 0
+    escalates_on: "structural failures -> needs_human_review"
+    sla: "30s-2min"
+    resources:
+      cpu: "0.5-2"
+      memory: "512MB-2GB"
+    privacy_constraints:
+      - "PII redaction hooks available prior to storing canonical_document"
+
+  - id: extractor.extract_fields
+    name: "Extractor: извлечение полей и клауз"
+    description: "NER + rules + (опционально) LLM для извлечения сторон, предмета, цены, сроков и ключевых клауз."
+    queue: extraction_queue
+    consumer_agent: extractor_agent
+    inputs:
+      - canonical_document_path: string
+      - legal_terms_dictionary_version: string
+      - extraction_config: { field_list: [string], use_llm: boolean }
+    outputs:
+      - extracted_fields:
+          - name: string
+            value: any
+            normalized_value?: any
+            confidence: number
+            provenance:
+              block_ids: [string]
+              start_offset: int
+              end_offset: int
+        summary_confidence: number
+      - extraction_logs_path: string
+      - vector_embeddings_refs: [ { embedding_id: string, vector_store: string } ]
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 1
+    fallback: "if low_confidence -> call qa_agent for retrieval-only; else mark needs_human_review"
+    sla: "10-60s"
+    resources:
+      cpu: "1-4"
+      memory: "2-8GB"
+    privacy_constraints:
+      - "When use_llm==true: mask PII before sending to external LLMs"
+
+  - id: risk.classify
+    name: "Risk Classifier: оценка рисков и чек-лист"
+    description: "Оценивает риски по извлечённым полям и тексту, ранжирует и создаёт checklist."
+    queue: risk_queue
+    consumer_agent: risk_classifier
+    inputs:
+      - canonical_document_path: string
+      - extracted_fields_path: string
+      - context_legal_updates?: string
+      - risk_config: { taxonomy_version: string, thresholds: { high: number, medium: number } }
+    outputs:
+      - risk_report:
+          risks:
+            - id: string
+              category: string
+              severity: enum [high, medium, low]
+              score: number
+              evidence_refs: [ { artifact: string, block_id: string, offset: {start,end} } ]
+              explanation: string
+          checklist: [ { action_id, description, priority } ]
+          overall_risk_score: number
+          model_version: string
+      - risk_artifact_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 0
+    sla: "10-30s"
+    resources:
+      cpu: "1-4"
+      memory: "2-8GB"
+    persistent_state: true
+    privacy_constraints:
+      - "log explanations without raw PII"
+
+  - id: diff.compare_versions
+    name: "Diff Agent: сравнение версий документа"
+    description: "Структурный и семантический diff; ранжирование изменения по влиянию на риск."
+    queue: diff_queue
+    consumer_agent: diff_agent
+    inputs:
+      - canonical_document_v1_path: string
+      - canonical_document_v2_path: string
+      - extracted_fields_v1_path?: string
+      - extracted_fields_v2_path?: string
+    outputs:
+      - diff_report:
+          changes:
+            - change_id: string
+              change_type: enum [addition, deletion, modification, move]
+              old_text: string
+              new_text: string
+              context: string
+              risk_impact: enum [increased, decreased, unchanged, unknown]
+              risk_score_delta: number
+              provenance_refs: [ { block_id_v1, block_id_v2, offsets } ]
+          summary: { total_changes: int, high_impact: int, medium_impact: int }
+      - diff_artifact_path: string
+      - suggested_review_items: [ { block_id, comment } ]
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 0
+    sla: "30s-2min"
+    resources:
+      cpu: "0.5-2"
+      memory: "512MB-2GB"
+    privacy_constraints:
+      - "Diffs доступны согласно RBAC; могут содержать PII"
+
+  - id: legal_monitor.match_and_index
+    name: "Legal Monitor: мониторинг и сопоставление НПА"
+    description: "Периодический опрос источников, индексирование норм, сопоставление упоминаний в документах."
+    queue: legal_monitor_queue
+    consumer_agent: legal_monitor
+    inputs:
+      - monitoring_config: { sources: [], queries: [] }
+      - document_context_batch?: [ { document_id, excerpt_text } ]
+    outputs:
+      - matched_norms:
+          - norm_id: string
+            title: string
+            source: string
+            publication_date: date
+            link: string
+            matched_snippets: [ { document_id, excerpt, offsets } ]
+            relevance_score: number
+      - legal_kb_update_path: string
+      - change_alerts: [ { norm_id, severity, description } ]
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: "exponential backoff on web errors"
+    sla: "index refresh daily (configurable); real-time for critical sources"
+    resources:
+      cpu: "0.5-2"
+      memory: "1-4GB"
+    persistent_state: true
+    needs_internet: true
+    privacy_constraints:
+      - "Respect licensing of legal sources; store source attribution"
+
+  - id: qa.respond
+    name: "QA Agent: RAG-based ответы с источниками"
+    description: "Интерактивные ответы на вопросы аналитиков, возвращает ответ с цитатами и confidence."
+    queue: qa_queue
+    consumer_agent: qa_agent
+    inputs:
+      - user_question: string
+      - session_context: { user_id, document_id?, recent_queries?: [] }
+      - retrieval_params: { top_k: int, use_llm: boolean }
+    outputs:
+      - answer:
+          text: string
+          confidence: number
+          citations:
+            - { type: enum [document, legal_kb], id: string, excerpt: string, offsets: {start,end}, source_url?: string }
+          provenance_trace: [ { retriever_id, timestamp } ]
+      - followup_suggestions: [string]
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: 0
+    fallback: "retrieval-only answer if LLM fails"
+    sla: "retrieval < 3s; generated < 10-30s"
+    resources:
+      cpu: "1-8"
+      memory: "2-16GB"
+    privacy_constraints:
+      - "Не включать PII в prompts при вызове внешних моделей"
+
+  - id: nextcloud.sync
+    name: "Nextcloud Connector: sync artifacts & versions"
+    description: "Синхронизация артефактов в Nextcloud, выдача защищённых публичных ссылок для UI."
+    queue: nextcloud_queue
+    consumer_agent: nextcloud_connector
+    inputs:
+      - artifact_write_requests: [ { storage_path, target_nextcloud_path, metadata } ]
+    outputs:
+      - file_urls:
+          - nextcloud_path: string
+            version: string
+            public_sharing_link?: string
+            checksum: string
+      - sync_logs_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: "exponential backoff on network errors"
+    sla: "file sync 10-30s typical"
+    resources:
+      cpu: "0.2-1"
+      memory: "256MB-1GB"
+    needs_internet: true
+
+  - id: rbac.audit_log
+    name: "RBAC/Audit: запись действий и принятие решений"
+    description: "Запись всех значимых событий: доступы, перезапуски, апрувы, чтения/записи."
+    queue: audit_queue
+    consumer_agent: rbac_audit_agent
+    inputs:
+      - events: [ { actor_id, action, target, timestamp } ]
+    outputs:
+      - audit_event_id: string
+      - immutable_log_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: "buffer to encrypted local store on failure"
+    sla: "high durability; sync to durable storage"
+    persistent_state: true
+    privacy_constraints:
+      - "logs шифруются; доступ по роли"
+
+  - id: human_review.process
+    name: "Human Reviewer task (HITL)"
+    description: "Интерфейсная задача: человек получает пакет с доказательствами, вносит корректировки и возвращает решение."
+    queue: human_review_queue
+    consumer_agent: human_reviewer
+    inputs:
+      - review_package:
+          document_id: string
+          evidence_artifacts: [ { type, storage_path } ]
+          reason: string
+          suggested_actions?: [string]
+    outputs:
+      - decision:
+          decision_id: string
+          outcome: enum [approved, corrected, rejected, escalate]
+          corrections: [ { field_name, old_value, new_value, comment } ]
+          reviewer_id: string
+          reviewed_at: string
+      - rule_updates?: { dictionary_edits: path, training_examples: path }
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    sla: "per org policy (e.g., 4 business hours)"
+    privacy_constraints:
+      - "Все действия логируются; доступ по роли"
+
+  - id: admin.model_deploy
+    name: "Admin: deploy / manage models and dictionaries"
+    description: "Деплой моделей, управление версиями, rollback, A/B config."
+    queue: admin_queue
+    consumer_agent: admin_agent
+    inputs:
+      - model_artifact: { path, version, checksum, manifest }
+      - deploy_policy: { canary_percent, rollout_strategy }
+    outputs:
+      - deployment_record: { model_version, deployed_at, target_services }
+      - rollback_commands?: [string]
+      - admin_audit_log_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    persistent_state: true
+    privacy_constraints:
+      - "Models must not embed raw PII in artifacts"
+    resources:
+      cpu: "varies"
+
+  - id: export.generate
+    name: "Export: формирование отчётов и шаблонов"
+    description: "Генерация Word/PDF/XLS отчётов на базе результатов анализа и комментариев."
+    queue: export_queue
+    consumer_agent: export_agent
+    inputs:
+      - export_request:
+          document_id: string
+          template_id: string
+          include_fields: [string]
+          include_risk_report: boolean
+          requested_by: string
+    outputs:
+      - exported_file:
+          file_path: string
+          mime_type: string
+          template_id: string
+          checksum: string
+      - delivery_hints: { email_to?: string, webhook?: string }
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: "retry on transient delivery errors"
+    resources:
+      cpu: "0.5-2"
+      memory: "512MB-2GB"
+    privacy_constraints:
+      - "exports encrypted on rest when containing PII"
+
+  - id: notification.send
+    name: "Notification: отправка email/webhook"
+    description: "Доставка уведомлений о событиях пайплайна, изменениях законодательства и ошибках."
+    queue: notification_queue
+    consumer_agent: notification_agent
+    inputs:
+      - notification_event:
+          type: enum [processing_complete, legal_update, pipeline_error, human_escalation]
+          payload: object
+          recipients: [ { type: enum [user, group, webhook], id_or_url } ]
+    outputs:
+      - deliveries:
+          - recipient: string
+            status: enum [sent, failed, queued]
+            message_id?: string
+      - notification_logs_path: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    retries: "backoff -> DLQ"
+    privacy_constraints:
+      - "Never include raw PII in notification body; use links to secured UI"
+
+  - id: monitoring.backup
+    name: "Monitoring & Backup: metrics and backups"
+    description: "Сбор метрик, orchestration backups (Postgres/Nextcloud), валидация резервных копий."
+    queue: backup_queue
+    consumer_agent: monitoring_agent
+    inputs:
+      - backup_policy: { targets: [postgres, nextcloud], schedule: cron }
+      - metrics_poll_request?: boolean
+    outputs:
+      - backup_archive_paths: [ string ]
+      - backup_verification_report: { ok: boolean, details: string }
+      - monitoring_metrics_paths: string
+    expected_output_schema:
+      $ref: "#/common_output_schema"
+    persistent_state: true
+    sla: "as per schedule"
+    resources:
+      cpu: "0.5-2"
+      memory: "1-4GB"
+    privacy_constraints:
+      - "Backup archives encrypted; retention policy applied"
+
+# Mapping задач к очередям/сервисам (логическая основа для config/tasks.yaml)
+task_to_queue_map:
+  orchestrator.dispatch: orchestration_queue
+  ingestion.register: ingestion_queue
+  conversion.convert: conversion_queue
+  ocr.recognize: ocr_queue
+  normalizer.normalize: normalization_queue
+  extractor.extract_fields: extraction_queue
+  risk.classify: risk_queue
+  diff.compare_versions: diff_queue
+  legal_monitor.match_and_index: legal_monitor_queue
+  qa.respond: qa_queue
+  nextcloud.sync: nextcloud_queue
+  rbac.audit_log: audit_queue
+  human_review.process: human_review_queue
+  admin.model_deploy: admin_queue
+  export.generate: export_queue
+  notification.send: notification_queue
+  monitoring.backup: backup_queue
+
+# Примеры полей expected_output для downstream (образец JSON-поля, сокращённо)
+expected_output_examples:
+  extractor.extract_fields:
+    example:
+      output_version: "1.0"
+      producer_task_id: "uuid-1234"
+      status: "partial_success"
+      timestamp_utc: "2026-02-03T12:00:00Z"
+      duration_seconds: 12.4
+      artifacts:
+        - type: extracted_fields
+          storage_path: "pg://vectors/documents/1234/extracted_fields.json"
+          checksum: "sha256:..."
+          size_bytes: 4321
+          mime_type: "application/json"
+      metadata:
+        document_id: "doc-1234"
+        file_type: "pdf"
+        agent_id: "extractor_agent:v1.3.0"
+        model_version: "ner_v2.1"
+        confidence_overall: 0.86
+        provenance:
+          audit_event_id: "audit-789"
+      warnings:
+        - code: "low_confidence_party_name"
+          message: "Confidence for party 'Иванов И.И.' < 0.5; suggested manual review."
+  risk.classify:
+    example:
+      output_version: "1.0"
+      producer_task_id: "uuid-2345"
+      status: "success"
+      timestamp_utc: "2026-02-03T12:02:00Z"
+      artifacts:
+        - type: risk_report
+          storage_path: "pg://reports/risk/doc-1234/risk_report_v3.json"
+          checksum: "sha256:..."
+      metadata:
+        document_id: "doc-1234"
+        agent_id: "risk_classifier:v1.0"
+        model_version: "risk_v2026-02"
+        confidence_overall: 0.78
+
+# Конец tasks_spec.yml
+---
+# config/tasks.yaml (логическая основа — mapping tasks -> runtime_service / container / queue)
+# Этот файл — основа для дальнейшего генерирования Docker Compose / k8s manifests.
+version: "1.0"
+project: "CrewAI — Аналитика договоров купли-продажи (недвижимость, РФ)"
+generated_at: "2026-02-03T00:00:00Z"
+services:
+  orchestrator:
+    service_name: orchestrator
+    task_ids:
+      - orchestrator.dispatch
+    image: "crewai/orchestrator:latest"
+    replicas: 1
+    queue: orchestration_queue
+    env:
+      - ORCHESTRATOR_DB=postgres://...
+      - BROKER_URL=amqp://rabbitmq
+    resources: { cpu: "0.5-2", memory: "512MB-2GB" }
+    restart_policy: "on-failure"
+  ingestion:
+    service_name: ingestion_service
+    task_ids:
+      - ingestion.register
+    image: "crewai/ingestion:stable"
+    replicas: 2
+    queue: ingestion_queue
+    env: [ NEXTCLOUD_URL, NEXTCLOUD_ACCOUNT, VIRUS_SCAN=true ]
+    resources: { cpu: "0.5-1", memory: "256MB-1GB" }
+  converter:
+    service_name: converter_service
+    task_ids:
+      - conversion.convert
+    image: "crewai/converter:stable"
+    replicas: 3
+    queue: conversion_queue
+    env: [ LIBREOFFICE_PATH=/usr/bin/libreoffice ]
+    resources: { cpu: "1-2", memory: "1-3GB" }
+  ocr:
+    service_name: ocr_service
+    task_ids:
+      - ocr.recognize
+    image: "crewai/ocr:latest"
+    replicas: 2
+    queue: ocr_queue
+    env: [ TESSERACT_LANG=rus ]
+    resources: { cpu: "1-4", memory: "1-4GB" }
+    needs_internet: false # configurable
+  normalizer:
+    service_name: normalizer_service
+    task_ids:
+      - normalizer.normalize
+    image: "crewai/normalizer:stable"
+    replicas: 2
+    queue: normalization_queue
+    resources: { cpu: "0.5-2", memory: "512MB-2GB" }
+  extractor:
+    service_name: extractor_service
+    task_ids:
+      - extractor.extract_fields
+    image: "crewai/extractor:stable"
+    replicas: 3
+    queue: extraction_queue
+    env: [ VECTOR_STORE=pgvector, NER_MODEL_PATH=/models/ner_ru ]
+    resources: { cpu: "1-4", memory: "2-8GB" }
+  risk:
+    service_name: risk_service
+    task_ids:
+      - risk.classify
+    image: "crewai/risk:stable"
+    replicas: 2
+    queue: risk_queue
+    resources: { cpu: "1-4", memory: "2-8GB" }
+  diff:
+    service_name: diff_service
+    task_ids:
+      - diff.compare_versions
+    image: "crewai/diff:stable"
+    replicas: 1
+    queue: diff_queue
+    resources: { cpu: "0.5-2", memory: "512MB-2GB" }
+  legal_monitor:
+    service_name: legal_monitor_service
+    task_ids:
+      - legal_monitor.match_and_index
+    image: "crewai/legal_monitor:stable"
+    replicas: 1
+    queue: legal_monitor_queue
+    needs_internet: true
+    env: [ MONITOR_SOURCES_CONF=/etc/legal/sources.yml ]
+    resources: { cpu: "0.5-2", memory: "1-4GB" }
+  qa:
+    service_name: qa_service
+    task_ids:
+      - qa.respond
+    image: "crewai/qa:stable"
+    replicas: 2
+    queue: qa_queue
+    resources: { cpu: "1-8", memory: "2-16GB" }
+  nextcloud_connector:
+    service_name: nextcloud_connector
+    task_ids:
+      - nextcloud.sync
+    image: "crewai/nextcloud-connector:stable"
+    replicas: 1
+    queue: nextcloud_queue
+    needs_internet: true
+  rbac_audit:
+    service_name: rbac_audit_service
+    task_ids:
+      - rbac.audit_log
+    image: "crewai/rbac_audit:stable"
+    replicas: 1
+    queue: audit_queue
+    persistent_volumes: [ "/var/lib/crewai/audit" ]
+  human_review_ui:
+    service_name: human_review_ui
+    task_ids:
+      - human_review.process
+    image: "crewai/human_review_ui:stable"
+    replicas: 1
+    queue: human_review_queue
+    needs_internet: true
+  admin:
+    service_name: admin_service
+    task_ids:
+      - admin.model_deploy
+    image: "crewai/admin:stable"
+    replicas: 1
+    queue: admin_queue
+    persistent_volumes: [ "/var/lib/crewai/models" ]
+  export:
+    service_name: export_service
+    task_ids:
+      - export.generate
+    image: "crewai/export:stable"
+    replicas: 1
+    queue: export_queue
+  notification:
+    service_name: notification_service
+    task_ids:
+      - notification.send
+    image: "crewai/notification:stable"
+    replicas: 1
+    queue: notification_queue
+    needs_internet: true
+  monitoring:
+    service_name: monitoring_service
+    task_ids:
+      - monitoring.backup
+    image: "crewai/monitoring:stable"
+    replicas: 1
+    queue: backup_queue
+    persistent_volumes: [ "/var/lib/crewai/backups" ]
+
+# Queue and retry policy defaults (можно переопределять per-task)
+queues:
+  default:
+    broker: rabbitmq
+    dlq_enabled: true
+    retry_policy:
+      attempts: 3
+      backoff: exponential
+  orchestration_queue:
+    consumer: orchestrator
+  ingestion_queue:
+    consumer: ingestion
+  conversion_queue:
+    consumer: converter
+  ocr_queue:
+    consumer: ocr
+  normalization_queue:
+    consumer: normalizer
+  extraction_queue:
+    consumer: extractor
+  risk_queue:
+    consumer: risk
+  diff_queue:
+    consumer: diff
+  legal_monitor_queue:
+    consumer: legal_monitor
+  qa_queue:
+    consumer: qa
+  nextcloud_queue:
+    consumer: nextcloud_connector
+  audit_queue:
+    consumer: rbac_audit
+  human_review_queue:
+    consumer: human_review_ui
+  admin_queue:
+    consumer: admin
+  export_queue:
+    consumer: export
+  notification_queue:
+    consumer: notification
+  backup_queue:
+    consumer: monitoring
+
+# RBAC hints (имена ролей, требуемые права для сервис-аккаунтов)
+service_accounts:
+  orchestrator_sa: { roles: [system_service], permissions: [enqueue, dequeue, read_task_meta, write_task_meta] }
+  ingestion_sa: { roles: [system_service], permissions: [write_nextcloud, insert_postgres] }
+  ocr_sa: { roles: [system_service], permissions: [use_commercial_ocr?] } # ? — зависит от клиентской политики
+
+# Конец config/tasks.yaml
+---
+# dag.yml
+# Directed Acyclic Graph описания зависимостей задач и ветвлений пайплайна
+# Условные обозначения:
+#  - „->“ означает основную последовательность
+#  - условия в квадратных скобках — ветвление по флагу/результату
+#  - all downstream consumers перечислены для наблюдаемости
+
+dag:
+  entrypoint: orchestrator.dispatch
+  nodes:
+    - id: orchestrator.dispatch
+      title: "Orchestrator dispatch"
+      produces: [ created_tasks ]
+    - id: ingestion.register
+      title: "Ingestion register"
+      consumes: [ new_document_event ]
+      produces: [ registered_document, created_task ]
+    - id: conversion.convert
+      title: "Conversion"
+      consumes: [ registered_document ]
+      produces: [ converted_text_artifact, ocr_required ]
+    - id: ocr.recognize
+      title: "OCR"
+      consumes: [ converted_images_or_pages ]
+      produces: [ ocr_pages, ocr_confidence_summary ]
+    - id: normalizer.normalize
+      title: "Normalizer"
+      consumes: [ converted_text_artifact, ocr_pages? ]
+      produces: [ canonical_document ]
+    - id: extractor.extract_fields
+      title: "Extractor"
+      consumes: [ canonical_document ]
+      produces: [ extracted_fields ]
+    - id: risk.classify
+      title: "Risk Classifier"
+      consumes: [ canonical_document, extracted_fields ]
+      produces: [ risk_report ]
+    - id: diff.compare_versions
+      title: "Diff Agent"
+      consumes: [ canonical_document_v1, canonical_document_v2 ]
+      produces: [ diff_report ]
+    - id: legal_monitor.match_and_index
+      title: "Legal Monitor"
+      consumes: [ monitoring_schedule, document_context_batch? ]
+      produces: [ matched_norms, change_alerts ]
+    - id: qa.respond
+      title: "QA Agent"
+      consumes: [ user_question, retrieval_context ]
+      produces: [ answer ]
+    - id: nextcloud.sync
+      title: "Nextcloud sync"
+      consumes: [ artifacts_to_sync ]
+      produces: [ file_urls ]
+    - id: rbac.audit_log
+      title: "RBAC/Audit"
+      consumes: [ events ]
+      produces: [ audit_event_id ]
+    - id: human_review.process
+      title: "Human Review"
+      consumes: [ flagged_tasks_package ]
+      produces: [ decision, rule_updates ]
+    - id: export.generate
+      title: "Export"
+      consumes: [ extracted_fields, risk_report, reviewer_comments? ]
+      produces: [ exported_file ]
+    - id: notification.send
+      title: "Notification"
+      consumes: [ events_for_notifications ]
+      produces: [ deliveries ]
+    - id: monitoring.backup
+      title: "Monitoring & Backup"
+      consumes: [ backup_policy, metrics_poll_request? ]
+      produces: [ backup_archive_paths, backup_verification_report ]
+
+edges:
+  - from: orchestrator.dispatch
+    to: ingestion.register
+    reason: "Orchestrator создаёт задачу ingestion при новом документе"
+  - from: ingestion.register
+    to: conversion.convert
+    reason: "После регистрации добавляется задача на конвертацию"
+  - from: conversion.convert
+    to:
+      - normalizer.normalize
+    conditional:
+      - condition: "ocr_required == false"
+        to: normalizer.normalize
+      - condition: "ocr_required == true"
+        to:
+          - ocr.recognize
+  - from: ocr.recognize
+    to: normalizer.normalize
+    reason: "После OCR -> нормализация с layout-aware входом"
+  - from: normalizer.normalize
+    to: extractor.extract_fields
+    reason: "Canonical документ -> извлечение полей"
+  - from: extractor.extract_fields
+    to:
+      - risk.classify
+      - qa.respond
+    conditional:
+      - condition: "extraction_confidence >= threshold"
+        to: risk.classify
+      - condition: "extraction_confidence < threshold"
+        to: qa.respond
+  - from: risk.classify
+    to:
+      - human_review.process
+    conditional:
+      - condition: "any risk.severity == high OR overall_score >= critical_threshold"
+        to: human_review.process
+  - from: diff.compare_versions
+    to:
+      - risk.classify
+      - human_review.process
+    reason: "Diff может инициировать перерасчёт рисков и/или запрос на ручной просмотр"
+  - from: legal_monitor.match_and_index
+    to:
+      - notification.send
+      - admin.model_deploy
+    conditional:
+      - condition: "change_alert.severity == critical"
+        to: [ notification.send, admin.model_deploy ]
+  - from: qa.respond
+    to:
+      - human_review.process
+    conditional:
+      - condition: "qa.confidence < qa_threshold"
+        to: human_review.process
+  - from: extractor.extract_fields
+    to:
+      - nextcloud.sync
+    reason: "Синхронизация extracted_fields/artifacts в Nextcloud для доступа UI"
+  - from: any
+    to: rbac.audit_log
+    condition: "every significant event emits audit event to audit_queue"
+  - from: human_review.process
+    to:
+      - orchestrator.dispatch
+    reason: "Human Reviewer может инициировать reprocess или возвращать workflow результат"
+  - from: risk.classify
+    to:
+      - export.generate
+    condition: "if export_requested_by_user or automated_report_rule"
+  - from: export.generate
+    to:
+      - nextcloud.sync
+      - notification.send
+    reason: "Export -> sync to Nextcloud и отправить уведомление"
+  - from: monitoring.backup
+    to:
+      - notification.send
+    reason: "Результат бэкапа (успех/ошибка) -> уведомление админу"
+
+notes:
+  - "Orchestrator — единственный компонент, который создает и рассылает задачи в очереди в нормальном режиме."
+  - "Ветвления: ocr_required, extraction_confidence, risk severity и qa confidence определяют маршруты."
+  - "Все ветвления должны быть выражены как явные условия в event-payload (boolean flags, numeric scores) чтобы брокер/оркестратор мог принимать решение без дополнительного запроса."
+
+# Конец dag.yml
+---

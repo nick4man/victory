@@ -1,0 +1,670 @@
+project_name: "CrewAI"
+domain: "Real estate — анализ договоров купли‑продажи (Россия)"
+version: "1.0"
+date_generated: "2026-02-03"
+author: "Архитектор решений CrewAI"
+summary: >
+  Спецификация состава агентов (crew_design_spec.yml) для системы аналитики договоров купли‑продажи.
+  Документ описывает области экспертизы, роли агентов с чёткими границами, цели/предысторию, инструменты,
+  точки интеграции и правила взаимодействия/делегирования между агентами.
+
+# 1. Необходимые области предметной экспертизы (обобщённый набор компетенций для команды агентов)
+expertise_areas:
+  - Информационный менеджмент (ingest, хранение, версионирование)
+  - Обработка документов (DOCX/DOC, PDF, сканированные PDF, OCR)
+  - NLP для русского языка (NER, токенизация, морфология, синтаксис)
+  - Юриспруденция РФ (гражданское право, права собственности, нормы по договорной практике)
+  - Правовой мониторинг (поиск/сопоставление нормативных актов, цитирование)
+  - Классификация/оценка рисков (правила, скоринг, explainable AI)
+  - Семантический поиск и векторные представления (embeddings, vector DB)
+  - Интеграции (Nextcloud, OCR API, внешние правовые API, SSO/OAuth)
+  - Безопасность и комплаенс (шифрование, аудит, RBAC, ФЗ-152)
+  - Архитектура фоновых задач и очередей (batch processing, retry, idempotency)
+  - UX/Frontend (взаимодействие сотрудника агентства, аннотации документов)
+  - Мониторинг и эксплуатация (логирование, резервное копирование, SLA‑метрики)
+
+# 2. Роли агентов с чёткими границами и полной спецификацией
+agents:
+  document_ingest_agent:
+    id: "document_ingest_agent"
+    title: "Агент приёма документов"
+    предыстория: >
+      Первая точка входа для файлов от сотрудников и Nextcloud. Должен безопасно принять документ,
+      валидировать тип, присвоить ID, сохранить метаданные и инициировать конвейер обработки.
+    цели:
+      - Принять файлы из веб-интерфейса и Nextcloud (webhook/поллинг).
+      - Выполнить базовую валидацию (тип, размер, хеш, антивирусная проверка).
+      - Создать запись в БД (metadata), сохранить копию в хранилище и поместить задачу в очередь.
+    входы:
+      - webhook от Nextcloud
+      - загрузка из web-frontend
+      - ручной импорт администратора
+    выходы:
+      - task_id в очереди (document_processing_queue)
+      - metadata в Postgres
+      - документ в хранилище (Nextcloud / object storage)
+    границы:
+      - Не выполняет глубокого NLP/правового анализа.
+      - Не отправляет внешние запросы к web_search напрямую (см. правила доступа).
+    инструменты:
+      - Nextcloud API (WebDAV/REST)
+      - RDBMS (Postgres) для метаданных
+      - Object storage или FS для временного хранения
+      - Queue (Redis/Celery/RQ)
+      - Anti-virus / file validation lib
+    permissions_scope:
+      - Доступ на чтение/запись в Nextcloud с учётной записью сервиса
+      - Запись в metadata_schema.Document
+    expected_latency: "sync: <2s to acknowledge; async: handoff immediate"
+    assigned_service: "nextcloud_connector (integration) + api_backend"
+
+  ocr_agent:
+    id: "ocr_agent"
+    title: "Агент OCR и предобработки изображений"
+    предыстория: >
+      Обрабатывает сканированные PDF и изображения, извлекает текст через Tesseract или облачные OCR
+      (по политике доступа в интернет — конфигурируемо). Выполняет выравнивание, deskew, повышение контраста.
+    цели:
+      - Определить, требуется ли OCR (по mime/structural hints).
+      - Выполнить OCR с заданной конфигурацией и вернуть текст/постпроцессинг.
+      - Сохранить машиночитаемую версию документа и лог качества (OCR confidence).
+    входы:
+      - task от document_ingest_agent / worker_orchestrator
+    выходы:
+      - текстовый файл / normalized PDF
+      - ocr_quality_metrics
+      - возможно: bounding boxes для аннотации
+    границы:
+      - Не выполняет юридической интерпретации.
+      - Не должен использовать облачный OCR без разрешения администратора.
+    инструменты:
+      - Tesseract (локально) и/или облачные OCR (опция)
+      - imagemagick / opencv для предобработки
+      - queue worker
+    permissions_scope:
+      - Доступ к объектному хранилищу / временной папке
+    expected_latency: "batch: minutes (зависит от размера); configurable timeouts"
+    assigned_service: "document_processor_worker"
+
+  structure_parser_agent:
+    id: "structure_parser_agent"
+    title: "Агент нормализации структуры документа"
+    предыстория: >
+      Преобразует DOCX/PDF/TXT в нормализованную иерархию: разделы, пункты, заголовки, подпункты, приложения.
+      Работает поверх OCR-результатов для сканов.
+    цели:
+      - Выделить секции, номера пунктов, заголовки, таблицы и вложенные объекты.
+      - Построить canonical representation (doc_json) с сохранением оффсетов/ориентиров для аннотаций.
+    входы:
+      - Машиночитаемый текст/документ из ocr_agent или прямой DOCX/PDF.
+    выходы:
+      - doc_structure.json (разделы->пункты->текст)
+      - map for original file offsets (для аннотаций)
+    границы:
+      - Не делает семантической классификации.
+    инструменты:
+      - python-docx / pdf parsing libs
+      - layout analysis, heuristics, regex
+      - NLP light (для определения заголовков)
+    permissions_scope:
+      - Чтение файла; запись doc_structure в DB
+    expected_latency: "<5s для типичных документов; зависит от длины"
+    assigned_service: "document_processor_worker"
+
+  ner_extraction_agent:
+    id: "ner_extraction_agent"
+    title: "Агент извлечения сущностей (NER) и правил"
+    предыстория: >
+      Отвечает за точное извлечение ключевых сущностей: имена, стороны, адреса, суммы, даты, сроки,
+      обязанности, штрафы, условия перехода прав. Комбинирует ML‑модели, регулярные выражения и шаблоны.
+    цели:
+      - Извлечь и нормализовать ключевые поля (dates/sums/parties/addresses).
+      - Проставить confidence и provenance (правило/модель/regex).
+      - Выполнить PII-tagging и маскирование для логов.
+    входы:
+      - doc_structure.json
+    выходы:
+      - entities.json (список сущностей с типами, нормализованными значениями, offsets, confidence)
+      - structured_fields (дата заключения, цена, продавец, покупатель и т.д.)
+    границы:
+      - Не выбирает юридические нормы и не даёт рекомендации — только извлечение.
+    инструменты:
+      - spaCy (ru), rule-based pipelines, custom regex, normalization libs (dateparser локально, валюты)
+      - PII detection module
+    permissions_scope:
+      - Доступ к локальным моделям; запись извлечений в metadata/field_tables
+    expected_accuracy_note: >
+      - Целевой уровень точности должен быть согласован заказчиком; в спецификации: high for dates/sums/parties.
+    assigned_service: "document_processor_worker"
+
+  clause_classifier_agent:
+    id: "clause_classifier_agent"
+    title: "Агент классификации клаузул и сопоставления с нормативами"
+    предыстория: >
+      Классифицирует каждый участок текста по типу клаузулы (ответственность, переход прав, сроки, штрафы, обременения)
+      и пытается сопоставить её с релевантными нормами РФ (статьи, пункты).
+    цели:
+      - Присвоить каждому клаузулу метки категории и вероятность.
+      - Предложить релевантные нормативные акты (с ссылками/источниками).
+      - Генерировать justification для подборки норм.
+    входы:
+      - entities.json
+      - doc_structure.json (параграфы с offsets)
+      - legal_kb (локальная база/кеш нормативов)
+    выходы:
+      - clauses.json (id, type, confidence, matched_norms[])
+      - evidence (фрагменты законодательных текстов или ссылки)
+    границы:
+      - Может обращаться к web_search/legal_api только через контролируемый интерфейс (см. политика доступа).
+      - Не изменяет содержимое договора.
+    инструменты:
+      - LLM / классификаторы + rule engine
+      - legal_kb (Postgres / searchable index)
+      - web_search adapter (с белым списком доменов; конфигурируемо)
+    permissions_scope:
+      - Доступ к legal_kb и web_search_proxy (если разрешён)
+    expected_latency: "seconds (обычно <5s per clause batch)"
+    assigned_service: "api_backend + scheduler(for periodic reclassification triggers)"
+
+  legal_update_agent:
+    id: "legal_update_agent"
+    title: "Агент обновления правовой базы (LawUpdater)"
+    предыстория: >
+      Периодически и по запросу проверяет изменения в законодательстве РФ, подтягивает официальные тексты/извещает систему
+      об обновлении и инициирует переоценку соответствующих документов.
+    цели:
+      - Регулярно (cron) проверять список доверенных источников на предмет изменений.
+      - Ингестировать и версионировать нормативные акты в local legal_kb.
+      - При существенных изменениях триггерить reclassification/re‑scoring документов.
+    входы:
+      - scheduler triggers
+      - ad-hoc requests from admin
+    выходы:
+      - обновлённая legal_kb с версионированием
+      - audit events и список документов, требующих пересмотра
+    границы:
+      - Доступ в интернет должен быть явной конфигурацией; агент использует web_search API/правовые API только в рамках whitelist.
+    инструменты:
+      - Web search / legal API adapters
+      - Postgres / versioned storage for legal_kb
+      - scheduler (cron)
+    permissions_scope:
+      - Доступ к внешним ресурсам по белому списку (настраивается)
+      - Права изменения legal_kb
+    expected_latency: "batch (зависит от числа источников)"
+    assigned_service: "scheduler + api_backend"
+
+  risk_scoring_agent:
+    id: "risk_scoring_agent"
+    title: "Агент оценки рисков и приоритизации"
+    предыстория: >
+      На основе классификации клаузул и извлечённых сущностей выполняет скоринг риска для документа и для отдельных клаузул,
+      формирует rationale и рекомендации по приоритету действий пользователя.
+    цели:
+      - Выдать общий risk_score документа и per-clause risk_score.
+      - Обосновать оценку (правила/пороговые значения).
+      - Отметить критические точки для human-in-the-loop проверки.
+    входы:
+      - clauses.json
+      - entities.json
+      - legal_kb (актуальные нормы)
+    выходы:
+      - risk_report.json (score, reasons, remediation_priority)
+      - flags for escalation (например, high_risk -> human_review_queue)
+    границы:
+      - Не предлагает конкретные формулировки (это задача recommendations_agent), но может ссылаться на шаблоны как «рекомендация обратиться к шаблону».
+    инструменты:
+      - Rule engine + ML models for scoring
+      - Explainability module (trace of rules)
+    permissions_scope:
+      - Чтение клаузул/нормативов
+      - Создание задач в human_review_queue
+    expected_latency: "<5s typical"
+    assigned_service: "api_backend"
+
+  recommendations_agent:
+    id: "recommendations_agent"
+    title: "Агент рекомендаций и шаблонов"
+    предыстория: >
+      На базе risk_report и классификации предоставляет:
+      - шаблоны формулировок для правок,
+      - чек-листы для сотрудника агентства,
+      - пример redline (diff) при необходимости.
+    цели:
+      - Генерировать краткие и развёрнутые рекомендации.
+      - Предоставлять готовые шаблоны/фразы для вставки.
+      - Формировать контрольные чек-листы.
+    входы:
+      - risk_report.json
+      - clauses.json
+      - template_store (локальные шаблоны/precedents)
+    выходы:
+      - recommendations.json
+      - doc_redline.suggestions (опционально)
+    границы:
+      - Не публикует нормативные ссылки без источника.
+    инструменты:
+      - LLM в конфигурируемом режиме, templates db, redlining library
+    permissions_scope:
+      - Доступ к template_store; запись рекомендаций в DB
+    assigned_service: "api_backend + web_frontend"
+
+  summary_agent:
+    id: "summary_agent"
+    title: "Агент генерации резюме и подсказок"
+    предыстория: >
+      Формирует краткие (TL;DR) и развёрнутые резюме для сотрудников: что важно, на что обратить внимание, сроки и суммы.
+    цели:
+      - Создавать краткие карточки (для UI) и расширенные отчёты.
+      - Поддерживать двумерный формат: кратко/развернуто + checklist/next_steps.
+    входы:
+      - entities.json, clauses.json, risk_report.json
+    выходы:
+      - short_summary.txt
+      - long_summary.md
+      - checklist.json
+    границы:
+      - Не заменяет юриста; содержит disclaimer.
+    инструменты:
+      - LLM (с возможностью контроля length/style), templates
+    permissions_scope:
+      - Доступ для read-only к анализу; запись summary в DB
+    expected_latency: "<5s for short summary; longer for full"
+    assigned_service: "web_frontend + api_backend"
+
+  vectorizer_agent:
+    id: "vectorizer_agent"
+    title: "Агент векторизации и индексирования"
+    предыстория: >
+      Отвечает за генерацию эмбеддингов для параграфов, клаузул и precedents, загрузку в vector_store для семантического поиска.
+    цели:
+      - Генерировать embeddings для текста и метаданных.
+      - Обновлять векторный индекс и поддерживать синхронизацию с search_index.
+    входы:
+      - doc_structure.json, clauses.json, legal_kb snippets
+    выходы:
+      - embeddings -> vector_store
+      - mapping to document ids and offsets
+    границы:
+      - Не делает классификаций; только векторизация и апдейт индекса.
+    инструменты:
+      - Embedding models (локальные/облачные — по политике)
+      - Vector DB (Milvus/Pinecone/аналог)
+    permissions_scope:
+      - Доступ к vector_store; write/update indexes
+    assigned_service: "vector_store"
+
+  search_agent:
+    id: "search_agent"
+    title: "Агент полнотекстового и семантического поиска"
+    предыстория: >
+      Обеспечивает пользовательский поиск по контенту документов, по клаузулам и по прецедентам (семантика + полнотекст).
+    цели:
+      - Обрабатывать запросы от UI: keyword и semantic search.
+      - Возвращать релевантные документы/параграфы с highlight и score.
+    входы:
+      - поисковые запросы из web_frontend
+    выходы:
+      - ranked results; snippets; link to doc offsets
+    границы:
+      - Не выполняет анализ документов — использует индексы.
+    инструменты:
+      - Elasticsearch/OpenSearch, vector_store access, ranking layer
+    permissions_scope:
+      - Чтение search_index и vector_store; фильтрация по правам доступа
+    expected_latency: "<500ms target for simple queries"
+    assigned_service: "search_index + vector_store"
+
+  nextcloud_connector_agent:
+    id: "nextcloud_connector_agent"
+    title: "Агент интеграции с Nextcloud"
+    предыстория: >
+      Управляет синхронизацией, webhook-подписками, аутентификацией и версионированием файлов между Nextcloud и системой.
+    цели:
+      - Получать файлы и изменения (webhook/поллинг), записывать результаты анализа обратно в Nextcloud.
+      - Поддерживать корректное отображение версий и ссылок.
+    входы:
+      - webhooks/поллинг от Nextcloud, команды export_agent
+    выходы:
+      - передачa файлов/версионирование/лог синхронизации
+    границы:
+      - Работает по авторизованным сервисным учеткам; не хранит долгосрочные пароли в незащищённых местах.
+    инструменты:
+      - Nextcloud API (WebDAV/REST), OAuth/SSO adapter, webhook listener
+    permissions_scope:
+      - Чтение/запись в заданных папках Nextcloud; создавать webhooks
+    assigned_service: "nextcloud_connector"
+
+  worker_orchestrator:
+    id: "worker_orchestrator"
+    title: "Агент оркестрации фоновых задач и очередей"
+    предыстория: >
+      Управляет распределением фоновых задач (OCR, парсинг, векторизация), следит за retry/backoff и распределением ресурсов.
+    цели:
+      - Управлять очередями, таймаутами, ретраями, rate-limits.
+      - Обеспечивать idempotency и мониторить SLA очередей.
+    входы:
+      - tasks из document_ingest_agent, scheduler, manual triggers
+    выходы:
+      - dispatch к ocr_agent/structure_parser_agent/ner_extraction_agent/vectorizer_agent и т.д.
+    границы:
+      - Не делает анализа, только orchestration.
+    инструменты:
+      - Redis, Celery/RQ/Sidekiq аналог, Prometheus metrics
+    permissions_scope:
+      - Механизмы управления очередями и worker nodes
+    assigned_service: "scheduler + document_processor_worker"
+
+  human_review_agent:
+    id: "human_review_agent"
+    title: "Агент Human‑in‑the‑loop (корректировка и подтверждение)"
+    предыстория: >
+      Координирует задачи, требующие участия сотрудника агентства или юриста: отображает претензии, собирает решения, применяет правки.
+    цели:
+      - Создавать задачи для сотрудников и юристов, агрегировать ответы и применять утверждённые правки.
+      - Хранить историю решений и rationale.
+    входы:
+      - flags от risk_scoring_agent / clause_classifier_agent
+    выходы:
+      - human_decision events, updated document annotations, re-trigger обработки
+    границы:
+      - Не принимает автоматические решения без human confirm при high_risk.
+    инструменты:
+      - web_frontend task queue, audit logging
+    permissions_scope:
+      - Создание задач, чтение/запись аннотаций (в пределах RBAC)
+    assigned_service: "web_frontend + api_backend"
+
+  export_agent:
+    id: "export_agent"
+    title: "Агент экспорта и отчётности"
+    предыстория: >
+      Генерирует выгрузки (PDF/DOCX) итоговых отчётов, redlines и экспорт в Nextcloud/локально.
+    цели:
+      - Экспортировать отчёты в требуемых форматах.
+      - Сохранять версионированные отчёты в Nextcloud и/или отдавать пользователю.
+    входы:
+      - summary, recommendations, annotated document
+    выходы:
+      - PDF/DOCX отчёт, ссылка в Nextcloud
+    границы:
+      - Не хранит оригиналы вне домена хранения
+    инструменты:
+      - docx/PDF libs, templating engine, nextcloud_connector
+    permissions_scope:
+      - Права записи в Nextcloud для service account
+    assigned_service: "api_backend + nextcloud_connector"
+
+  audit_agent:
+    id: "audit_agent"
+    title: "Агент логирования и аудита"
+    предыстория: >
+      Централизует логи активностей пользователей и агентов, хранит immutable audit trail и поддерживает retention policy.
+    цели:
+      - Записывать действия, версии аннотаций, изменения метаданных, запросы к внешним API.
+      - Поддерживать поиск по логу и экспорт для проверки.
+    входы:
+      - events from all agents
+    выходы:
+      - audit_records in Postgres/ELK, alerts to monitoring
+    границы:
+      - Должен маскировать/шифровать PII в логах, соответствовать retention.
+    инструменты:
+      - ELK/OpenSearch, Postgres, KMS для шифрования
+    permissions_scope:
+      - Append-only write to audit store
+    assigned_service: "monitoring_logging"
+
+  auth_rbac_agent:
+    id: "auth_rbac_agent"
+    title: "Агент аутентификации и управления правами (RBAC/SSO)"
+    предыстория: >
+      Управляет пользователями, ролями, токенами и интеграцией с корпоративным SSO (если требуется).
+    цели:
+      - Обеспечить RBAC, SSO/OAuth интеграцию, проксирование учётных данных для сервис‑аккаунтов.
+      - Передавать права доступа для search_agent и nextcloud_connector_agent.
+    входы:
+      - identity provider, admin UI
+    выходы:
+      - access tokens, roles, permission checks
+    границы:
+      - Не хранит пароли в открытом виде (использовать секретный менеджер)
+    инструменты:
+      - OAuth2 provider, LDAP/SSO adapters, secret manager
+    permissions_scope:
+      - Управление понятиями идентификации и авторизации по системе
+    assigned_service: "api_backend + auth_infrastructure"
+
+  monitoring_agent:
+    id: "monitoring_agent"
+    title: "Агент мониторинга и оповещений"
+    предыстория: >
+      Наблюдает за здоровьем сервисов, очередей, метриками производительности, дисковым пространством и т.д.
+    цели:
+      - Собирать метрики, строить дашборды и триггерить алерты.
+      - Интеграция с SRE/DevOps каналами.
+    входы:
+      - metrics/events from infrastructure and agents
+    выходы:
+      - alerts, dashboards, uptime reports
+    инструменты:
+      - Prometheus, Grafana, alertmanager
+    permissions_scope:
+      - Read metrics; send alerts
+    assigned_service: "monitoring_logging"
+
+# 3. Взаимодействия агентов и правила делегирования (dataflow / delegation rules)
+interactions_and_delegation:
+  high_level_flow:
+    - "1. document_ingest_agent принимает файл -> сохраняет metadata + документ -> push task в document_processing_queue."
+    - "2. worker_orchestrator распределяет задачу: если документ требует OCR -> ocr_agent; иначе -> structure_parser_agent."
+    - "3. structure_parser_agent нормализует структуру и отдаёт doc_structure.json."
+    - "4. ner_extraction_agent извлекает сущности и возвращает entities.json."
+    - "5. clause_classifier_agent классифицирует клаузулы и запрашивает legal_kb / web_search_proxy при необходимости."
+    - "6. vectorizer_agent генерирует embeddings для параграфов и обновляет vector_store."
+    - "7. risk_scoring_agent использует outputs (clauses, entities, norms) -> формирует risk_report. Если high_risk -> human_review_agent."
+    - "8. recommendations_agent и summary_agent формируют рекомендации и резюме."
+    - "9. export_agent создаёт отчёт; nextcloud_connector_agent сохраняет результат."
+    - "10. audit_agent фиксирует все ключевые события; monitoring_agent наблюдает за SLA/задержкой."
+  delegation_rules:
+    - "Правило 1 — единая точка входа: document_ingest_agent является единственной сущностью, уполномоченной инициировать processing pipeline для новых файлов. Другие агенты не принимают raw uploads напрямую."
+    - "Правило 2 — OCR decision: только worker_orchestrator на основании mime/heuristics и config может делегировать задачу ocr_agent. Документы с text layer пропускаются."
+    - "Правило 3 — параллелизм: ner_extraction_agent и vectorizer_agent могут выполняться параллельно после structure_parser_agent (side-by-side), но risk_scoring_agent ждёт окончания clause_classifier_agent."
+    - "Правило 4 — доступ к web_search/внешним правовым API: только clause_classifier_agent и legal_update_agent могут инициировать внешние запросы через web_search_proxy, и только по белому списку доменов и с учетом лимитов. Все внешние обращения логируются audit_agent."
+    - "Правило 5 — escalation: если risk_scoring_agent помечает high_risk (threshold configurable), то автоматически создаётся таск в human_review_queue и уведомляется human_review_agent; автоматические исправления без human_confirm запрещены для high_risk."
+    - "Правило 6 — секреты и ключи: агенты не хранят креды локально — доступ к внешним сервисам идёт через секретный менеджер под контролем auth_rbac_agent."
+    - "Правило 7 — idempotency: все задачи должны использовать document_version_id + task_nonce для обеспечения идемпотентности при ретраях."
+    - "Правило 8 — privacy-by-design: audit_agent и логи должны маскировать PII. Любой агент, пишущий логи, обязан использовать PII-masking API."
+    - "Правило 9 — rate limits & quotas: worker_orchestrator управляет request throttling для OCR/cloud APIs в соответствии с политикой доступа в интернет."
+    - "Правило 10 — reclassification triggers: legal_update_agent при изменениях нормативов создаёт batch reclassification tasks через worker_orchestrator."
+
+# 4. Инструменты, доступы и интеграционные точки по агентам (краткий справочник)
+tools_catalog:
+  common_services:
+    - name: "Postgres"
+      purpose: "metadata, users, audit references, legal_kb (частично)"
+    - name: "Nextcloud (WebDAV/REST)"
+      purpose: "хранилище исходных файлов и versioned exports"
+    - name: "Object Storage / Filesystem"
+      purpose: "временное/постоянное хранение артефактов"
+    - name: "Vector Store (Milvus/Pinecone/аналог)"
+      purpose: "семантический поиск/embeddings"
+    - name: "Search Index (Elasticsearch/OpenSearch)"
+      purpose: "полнотекстовый поиск"
+    - name: "Redis + Queue (Celery/RQ)"
+      purpose: "очереди задач и кэш"
+    - name: "OCR (Tesseract локально / Cloud OCR по разрешению)"
+      purpose: "извлечение текста из сканов"
+    - name: "Web Search / Legal API adapters"
+      purpose: "правовые источники (по белому списку)"
+    - name: "Secret Manager / KMS"
+      purpose: "хранение ключей/токенов"
+    - name: "Prometheus/Grafana"
+      purpose: "мониторинг"
+    - name: "ELK / OpenSearch (logs)"
+      purpose: "централизованное логирование и аудит"
+  per_agent_tools_summary:
+    document_ingest_agent: ["Nextcloud API", "Postgres", "object_storage", "queue", "antivirus"]
+    ocr_agent: ["Tesseract (local)", "cloud OCR (opt-in)", "imagemagick/opencv", "queue"]
+    structure_parser_agent: ["pdf/docx parsing libs", "layout heuristics", "queue"]
+    ner_extraction_agent: ["ru-NLP models (spaCy/other)", "rule engine", "PII-masking", "Postgres"]
+    clause_classifier_agent: ["LLM/classifier", "legal_kb", "web_search_proxy (whitelist)", "rule engine"]
+    legal_update_agent: ["web_search_adapter", "legal_api", "scheduler", "Postgres (legal_kb)"]
+    risk_scoring_agent: ["scoring engine", "explainability module", "rule-set store"]
+    recommendations_agent: ["LLM (templating)", "template_store", "redline lib"]
+    summary_agent: ["LLM", "templating"]
+    vectorizer_agent: ["embedding model", "vector_store"]
+    search_agent: ["Elasticsearch/OpenSearch", "vector_store", "ranking engine"]
+    nextcloud_connector_agent: ["Nextcloud API", "webhooks", "oauth adapter"]
+    worker_orchestrator: ["Redis/Celery", "monitoring", "metrics"]
+    human_review_agent: ["web_frontend tasks", "audit logging"]
+    export_agent: ["docx/pdf libs", "template engine", "nextcloud_connector"]
+    audit_agent: ["ELK/OpenSearch", "Postgres", "KMS"]
+    auth_rbac_agent: ["OAuth/SSO adapters", "secret manager", "Postgres (users/roles)"]
+    monitoring_agent: ["Prometheus", "Grafana", "alertmanager"]
+
+# 5. Политики доступа, безопасность и соответствие (основные положения)
+security_and_compliance:
+  data_location_note: >
+    Организация располагается в РФ — по умолчанию конфигурируем хранение персональных данных на серверах,
+    расположенных в РФ. Требуется подтверждение заказчика и корпоративной политики хостинга.
+  encryption:
+    - "Все данные at-rest шифруются (KMS)."
+    - "TLS для всех каналов (in-transit)."
+  audit:
+    - "audit_agent записывает append-only логи; retention policy настраивается администратором."
+    - "Все внешние обращения (web_search, OCR cloud) логируются с указанием request_id и маскированными PII."
+  internet_access_policy:
+    - "Доступ в интернет должен быть явно разрешён. По умолчанию: только legal_update_agent и clause_classifier_agent могут делать HTTP запросы к внешним правовым API через web_search_proxy."
+    - "Белый список доменов и лимиты: настраиваются администратором (рекомендуется: официальные правовые порталы, Yandex/Google search API, лицензированные правовые агрегаторы)."
+    - "Опция: оффлайн‑режим (полный локальный режим) — отключает web_search и cloud OCR, использует локальные модели и локальную legal_kb."
+  secrets_and_keys:
+    - "Любые API-ключи и пароли хранятся в секретном менеджере; агенты получают временные токены."
+  pii_handling:
+    - "Поля PII маскируются в логах и в экспортируемых результатах по политике."
+  legal_compliance_refs:
+    - "Требуется уточнить требования по ФЗ-152 и иным профильным нормативам — включить в open_questions."
+
+# 6. SLA / производительность и метрики (рекомендации)
+sla_and_metrics:
+  interactive:
+    - "Целевая задержка для короткого резюме по одному документу: <5s (configurable)."
+    - "Поиск: p95 < 500ms для простых запросов."
+  batch:
+    - "Пакетная обработка (OCR/векторизация/переиндексация): в рамках очередей, SLAs зависят от ресусров; предусмотреть масштабирование воркеров."
+  metrics_to_collect:
+    - "time_to_first_ack (ingest)"
+    - "time_to_full_analysis (end-to-end)"
+    - "ocr_quality_metrics"
+    - "ner_precision_recall (sampled)"
+    - "risk_score_distribution"
+    - "search_latency, search_throughput"
+    - "queue lengths and retry rates"
+  alerting_thresholds_examples:
+    - "queue_length > X for 15m -> alert"
+    - "error_rate > 2% in 5m -> alert"
+    - "ocr_confidence < threshold for > N docs/day -> alert"
+
+# 7. Надёжность, отказоустойчивость и обработка ошибок
+resilience_and_error_handling:
+  - "Все фоновые задачи должны быть idempotent и иметь retry/backoff policy, dead-letter queue для ручной проверки."
+  - "worker_orchestrator контролирует concurrency и rate-limits для внешних API."
+  - "При ошибках внешних API clause_classifier_agent должен использовать кэшированную версию legal_kb и пометить источник как stale."
+  - "human_review_agent получает уведомления из dead-letter queue для ручной обработки."
+  - "audit_agent фиксирует все исключения с трассировкой request_id."
+
+# 8. Паттерны оркестрации (recommended)
+orchestration_patterns:
+  - "Event-driven pipeline через queues: document_ingest -> queue -> worker_orchestrator -> агенты."
+  - "Fan-out parallelism: после structure_parser запускаются ner_extraction и vectorizer параллельно."
+  - "Saga-подобная координация для long-running workflows (transactional steps + compensating actions при rollback)."
+  - "Feature flags / config-driven behaviour: выбор OCR cloud/local, включение web_search, thresholds risk-scoring."
+  - "Human-in-the-loop gates: для high_risk требуется подтверждение перед изменениями."
+
+# 9. Механизмы тестирования и валидации агентов
+testing_and_validation:
+  - "Unit + integration tests для каждого агента; mock adapters для Nextcloud, OCR и legal_api."
+  - "End-to-end тесты с sample corpus (DOCX, PDF, сканы)."
+  - "Quality gates: acceptance criteria for NER (precision/recall), date/amount extraction accuracy."
+  - "Regression tests for legal_update_agent чтобы убедиться, что обновления не ломают классификатор."
+  - "Security tests: penetration tests for web_frontend and API, secret leakage checks."
+
+# 10. Mapping агентов к сервисам/деплойменту
+service_mapping:
+  web_frontend: ["summary_agent", "human_review_agent", "auth_rbac_agent", "export_agent"]
+  api_backend: ["clause_classifier_agent", "risk_scoring_agent", "recommendations_agent", "document_ingest_agent", "auth_rbac_agent"]
+  document_processor_worker: ["ocr_agent", "structure_parser_agent", "ner_extraction_agent", "vectorizer_agent", "worker_orchestrator"]
+  nextcloud_connector: ["nextcloud_connector_agent", "document_ingest_agent", "export_agent"]
+  database: ["audit_agent", "legal_update_agent", "document_ingest_agent"]
+  vector_store: ["vectorizer_agent", "search_agent"]
+  search_index: ["search_agent", "structure_parser_agent"]
+  scheduler: ["legal_update_agent", "worker_orchestrator"]
+  monitoring_logging: ["monitoring_agent", "audit_agent"]
+  backup_service: ["document_ingest_agent", "nextcloud_connector_agent"]
+
+# 11. Open Questions (требуют подтверждения заказчика/архитектора)
+open_questions_and_decisions_needed:
+  - "Подтвердите необходимость доступа в интернет: Да/Нет. Если Да — предоставить whitelist доменов/сервисов (официальные правовые порталы, Yandex/Google API, облачные OCR)."
+  - "Требование по локализации данных: обязательно ли всё персональные данные хранить на серверах в РФ?"
+  - "Nextcloud: self-hosted или облачный? Версия Nextcloud и метод аутентификации (логин/пароль, OAuth, SSO)?"
+  - "Ожидаемые ежедневные/пиковые нагрузки (кол-во документов/день, средний размер) — для capacity planning."
+  - "Можно ли предусмотреть опциональную контейнеризацию (Docker+Compose) для тестовой/staging среды? (пользователь ранее отказался, но рекомендуется)."
+  - "Нужны ли интеграции с внутренними CRM/ERP — и если да, какие API/поля требуются?"
+  - "Требуется ли сертификация/соответствие (ISO, ФЗ‑152) на старте или постепенно?"
+  - "Какие внешние правовые API предпочтительны (например, ГАРАНТ/КонсультантПлюс/официальные правовые порталы) — лицензирование/подписка?"
+  - "Политика хранения логов и retention: время хранения audit logs, документов, старых версий?"
+
+# 12. Рекомендации по следующему шагу (implementation / practical)
+next_steps_recommendations:
+  - "1) Уточнить open_questions с заказчиком (интернет/хостинг/Nextcloud/нагрузки/комплаенс)."
+  - "2) Подготовить PoC: ingest -> OCR(local) -> parser -> NER -> simple risk scoring -> UI card; тестовый набор 50 реальных договоров."
+  - "3) Настроить секретный менеджер и policy для web_search proxy до подключения внешних правовых API."
+  - "4) Подготовить тестовую legal_kb (версионированную) и набор правил для clause_classifier_agent."
+  - "5) Опционально: подготовить Docker Compose для локальной тестовой среды (рекомендуется, даже если в production docker_required=false)."
+  - "6) Сформировать acceptance criteria для ключевых модулей (NER accuracy, date/amount extraction, response times)."
+
+# 13. Контроль качества агентов — метрики и требования к результатам
+quality_control:
+  ner_accuracy_targets:
+    - "dates: 98% (точность для дат/сроков — критично)"
+    - "amounts: 98% (точность для сумм)"
+    - "parties: 95%+ (в том числе нормализация ФИО/названий)"
+  ocr_quality:
+    - "ocr_confidence_mean > threshold (настраивается), failover to human_review for low quality"
+  risk_scoring:
+    - "precision for high_risk flags > configurable threshold; false positives logged and reviewed"
+  monitoring:
+    - "E2E processing errors < 1% daily"
+  human_in_loop:
+    - "time_to_resolution for human_review tasks: SLA configurable (e.g., 24h)"
+
+# 14. Пример JSON-схемы (коротко) для описания агента (для dev_onboarding)
+agent_schema_example:
+  fields:
+    - name: "id"
+      type: "string"
+    - name: "title"
+      type: "string"
+    - name: "предыстория"
+      type: "string"
+    - name: "цели"
+      type: "array[string]"
+    - name: "входы"
+      type: "array[string]"
+    - name: "выходы"
+      type: "array[string]"
+    - name: "инструменты"
+      type: "array[string]"
+    - name: "permissions_scope"
+      type: "object"
+    - name: "assigned_service"
+      type: "string"
+
+notes:
+  - "Этот YAML — полнофункциональная спецификация для проектирования команды агентов и рабочих процессов."
+  - "После согласования open_questions можно формализовать конфигурацию web_search_proxy (whitelist/domains/credentials) и подготовить роль доступа (IAM) для каждого агента."
+  - "При переходе к реализации рекомендую параллельно подготовить тестовый корпус (реальные/анонимизированные договоры) для валидации NER/конфигураций."
+
+contact_for_followup:
+  role: "Архитектор решений CrewAI"
+  note: "Готов уточнить детали по любому агенту и адаптировать состав под ограничения заказчика (локальный режим, отключение внешнего доступа и т.д.)."
