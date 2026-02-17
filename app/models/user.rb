@@ -400,7 +400,7 @@ class User < ApplicationRecord
   end
 
   def send_welcome_notification
-    # UserMailer.welcome_email(self).deliver_later
+    UserMailer.welcome_email(self).deliver_later
   end
 
   # Validations
