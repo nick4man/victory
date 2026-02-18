@@ -32,6 +32,9 @@ mise trust
 mise install
 # Установить гемы
 bundle install
+# Установить зависимости для pg_dump
+sudo apt install pgcopydb
+export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/victory_dev"
 ```
 
 ---
