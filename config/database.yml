@@ -27,12 +27,12 @@ default: &default
 
 development:
   <<: *default
-  database: viktory_realty_development
+  database: viktory
   
   # Database credentials for development
   # You can specify these in .env file or here directly
   username: <%= ENV.fetch("DATABASE_USERNAME", "postgres") %>
-  password: <%= ENV.fetch("DATABASE_PASSWORD", "") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "postgres") %>
   host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
   port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
   
@@ -43,11 +43,11 @@ development:
 # Do not set this database to the same as development or production
 test:
   <<: *default
-  database: viktory_realty_test
+  database: viktory_test
   
   # Test database credentials
   username: <%= ENV.fetch("DATABASE_USERNAME", "postgres") %>
-  password: <%= ENV.fetch("DATABASE_PASSWORD", "") %>
+  password: <%= ENV.fetch("DATABASE_PASSWORD", "postgres") %>
   host: <%= ENV.fetch("DATABASE_HOST", "localhost") %>
   port: <%= ENV.fetch("DATABASE_PORT", 5432) %>
   
@@ -99,6 +99,6 @@ production:
 # Staging environment (optional)
 staging:
   <<: *default
-  url: <%= ENV.fetch("DATABASE_URL") %>
+#  url: <%= ENV.fetch("DATABASE_URL") %>
   pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
   min_messages: warning

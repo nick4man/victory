@@ -22,7 +22,14 @@
 # Клонировать репозиторий
 git clone <url-репозитория>
 cd victory
-
+# Установить ruby
+sudo apt update
+sudo apt install build-essential rustup libssl-dev libyaml-dev zlib1g-dev libgmp-dev 
+rustup default stable
+curl -L mise.run | bash
+mise settings ruby.compile=false
+mise trust
+mise install
 # Установить гемы
 bundle install
 ```

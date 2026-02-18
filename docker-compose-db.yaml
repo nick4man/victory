@@ -1,0 +1,48 @@
+---
+services:
+  rubydb:
+    image: ${NEXTCLOUD_POSTGRES_IMAGE_TAG}
+    container_name: rubydb
+    volumes: [./data:/var/lib/postgresql/data]
+    environment:
+      POSTGRES_DB: ${NEXTCLOUD_DB_NAME}
+      POSTGRES_USER: ${NEXTCLOUD_DB_USER}
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD}
+    networks:
+      rubynet:
+        aliases: [db, rubydb]
+    ports:
+      - 127.0.0.1:5432:5432/tcp
+    healthcheck:
+      test:
+        - CMD
+        - pg_isready
+        - -q
+        - -d
+        - ${NEXTCLOUD_DB_NAME}
+        - -U
+        - ${NEXTCLOUD_DB_USER}
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+  rubyredis:
+    image: ${NEXTCLOUD_REDIS_IMAGE_TAG}
+    container_name: rubyredis
+    volumes: [./redis-data:/data]
+    networks:
+      rubynet:
+        aliases: [redis, redis-server]
+    ports:
+      - 127.0.0.1:6379:6379 
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+networks:
+  rubynet:
+    external: true

@@ -8,6 +8,12 @@
 /.bundle
 
 # Ignore all logfiles and tempfiles.
+/data/
+/data/*
+/redis-data/*
+/redis-data/
+
+
 /log/*
 /tmp/*
 !/log/.keep

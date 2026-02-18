@@ -22,7 +22,7 @@ gem 'turbo-rails'
 gem 'jbuilder'
 
 # CSS
-gem 'tailwindcss-rails'
+gem 'tailwindcss-rails', '~> 3.3.1'
 
 # Minimal auth  
 gem 'bcrypt', '~> 3.1.7'
