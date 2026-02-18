@@ -35,3 +35,12 @@ gem 'rack-cors', '~> 2.0'
 
 # Performance
 gem 'bootsnap', require: false
+gem 'friendly_id', '~> 5.5'
+gem 'pg_search', '~> 2.3'
+gem 'geocoder', '~> 1.8'
+
+gem "devise", "~> 5.0"
+
+gem "omniauth", "~> 2.1"
+
+gem "aasm", "~> 5.5"
