@@ -1,0 +1,164 @@
+<%# Разместить объявление — новое %>
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Разместить объявление</h1>
+    <p class="text-gray-600 mt-1">Заполните информацию о вашей недвижимости</p>
+  </div>
+
+  <%= form_with model: @property, url: sell_listings_path, class: "space-y-8" do |f| %>
+    <% if @property.errors.any? %>
+      <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+        <h3 class="text-red-800 font-medium mb-2">Исправьте ошибки:</h3>
+        <ul class="text-red-700 text-sm list-disc pl-4 space-y-1">
+          <% @property.errors.full_messages.each do |msg| %>
+            <li><%= msg %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <%# Основная информация %>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-xl font-semibold text-gray-800 mb-5">Основная информация</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div class="md:col-span-2">
+          <%= f.label :title, "Заголовок объявления", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :title, placeholder: "Напр.: 2-комнатная квартира в центре",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
+        </div>
+
+        <div>
+          <%= f.label :deal_type, "Тип сделки", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.select :deal_type,
+              [["Продажа", "sale"], ["Аренда", "rent"], ["Посуточная аренда", "daily"]],
+              { prompt: "Выберите тип" },
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :price, "Цена (₽)", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.number_field :price, min: 0, placeholder: "Например: 5000000",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div class="md:col-span-2">
+          <%= f.label :description, "Описание", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_area :description, rows: 5,
+              placeholder: "Подробное описание объекта недвижимости...",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+      </div>
+    </div>
+
+    <%# Характеристики %>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-xl font-semibold text-gray-800 mb-5">Характеристики</h2>
+      <div class="grid grid-cols-2 md:grid-cols-3 gap-5">
+        <div>
+          <%= f.label :area, "Общая площадь (м²)", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.number_field :area, min: 0, step: 0.1,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :rooms, "Количество комнат", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.select :rooms,
+              [["Студия", 0], ["1", 1], ["2", 2], ["3", 3], ["4", 4], ["5+", 5]],
+              { prompt: "Выберите" },
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :floor, "Этаж", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.number_field :floor, min: 1,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :total_floors, "Этажей в доме", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.number_field :total_floors, min: 1,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :condition, "Состояние", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.select :condition,
+              [["Требует ремонта", "needs_repair"], ["Обычное", "normal"],
+               ["После ремонта", "renovated"], ["Евроремонт", "euro"], ["Дизайнерский", "designer"]],
+              { prompt: "Выберите" },
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :building_year, "Год постройки", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.number_field :building_year, min: 1900, max: Date.current.year,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+      </div>
+
+      <%# Удобства %>
+      <div class="mt-5">
+        <p class="block text-sm font-medium text-gray-700 mb-3">Удобства</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <% {has_balcony: "Балкон", has_parking: "Парковка", has_elevator: "Лифт",
+              has_security: "Охрана", has_concierge: "Консьерж", pets_allowed: "Можно с животными",
+              has_gas: "Газ", has_heating: "Отопление"}.each do |field, label| %>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <%= f.check_box field, class: "rounded border-gray-300 text-primary-600" %>
+              <span class="text-sm text-gray-700"><%= label %></span>
+            </label>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <%# Адрес %>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-xl font-semibold text-gray-800 mb-5">Адрес</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div class="md:col-span-2">
+          <%= f.label :address, "Адрес", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :address, placeholder: "Улица, дом, квартира",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :district, "Район", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :district, placeholder: "Район города",
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+
+        <div>
+          <%= f.label :metro_station, "Ближайшее метро", class: "block text-sm font-medium text-gray-700 mb-1" %>
+          <%= f.text_field :metro_station,
+              class: "w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary-500" %>
+        </div>
+      </div>
+    </div>
+
+    <%# Фотографии %>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-xl font-semibold text-gray-800 mb-5">Фотографии</h2>
+      <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary-400 transition-colors">
+        <%= f.file_field :images, multiple: true, accept: "image/*",
+            class: "hidden", id: "images_upload" %>
+        <label for="images_upload" class="cursor-pointer">
+          <div class="text-4xl mb-3">📷</div>
+          <p class="text-gray-600 font-medium">Нажмите для загрузки фото</p>
+          <p class="text-gray-400 text-sm mt-1">JPG, PNG до 10 МБ каждое</p>
+        </label>
+      </div>
+    </div>
+
+    <div class="flex gap-4">
+      <%= f.submit "Опубликовать объявление",
+          class: "bg-primary-600 text-white px-8 py-3 rounded-lg hover:bg-primary-700 font-semibold cursor-pointer transition-colors" %>
+      <button type="submit" name="draft" value="1"
+          class="bg-gray-100 text-gray-700 px-8 py-3 rounded-lg hover:bg-gray-200 font-semibold transition-colors">
+        Сохранить как черновик
+      </button>
+      <%= link_to "Отмена", dashboard_root_path,
+          class: "px-8 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors" %>
+    </div>
+  <% end %>
+</div>

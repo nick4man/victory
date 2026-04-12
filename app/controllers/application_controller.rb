@@ -11,14 +11,14 @@ class ApplicationController < ActionController::Base
   # ============================================
   # INCLUDES
   # ============================================
-  # include Pundit::Authorization
-  
+  include Pundit::Authorization
+
   # ============================================
   # BEFORE ACTIONS
   # ============================================
   before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
-  # before_action :track_user_activity
+  before_action :track_user_activity
   # before_action :setup_meta_tags
   # Временно отключено: требуется gem browser
   # before_action :detect_device_type
@@ -31,7 +31,7 @@ class ApplicationController < ActionController::Base
   # ============================================
   # RESCUE FROM
   # ============================================
-  # rescue_from Pundit::NotAuthorizedError, with: :user_not_authorized
+  rescue_from Pundit::NotAuthorizedError, with: :user_not_authorized
   rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
   rescue_from ActionController::RoutingError, with: :render_404
   

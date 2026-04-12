@@ -1,0 +1,12 @@
+<%# Тариф — детальный просмотр %>
+<div class="container mx-auto px-4 py-8 max-w-2xl">
+  <div class="mb-6">
+    <%= link_to "← Все тарифы", sell_plans_path, class: "text-primary-600 hover:underline text-sm" %>
+  </div>
+  <div class="bg-white rounded-xl shadow p-8 text-center">
+    <h1 class="text-3xl font-bold text-gray-900 mb-4">Тариф</h1>
+    <p class="text-gray-600 mb-8">Подробная информация о тарифе</p>
+    <%= link_to "Разместить объявление", new_sell_listing_path,
+        class: "bg-primary-600 text-white px-8 py-3 rounded-lg hover:bg-primary-700 font-semibold" %>
+  </div>
+</div>

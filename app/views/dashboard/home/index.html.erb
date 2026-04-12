@@ -1,41 +1,223 @@
-<%# Dashboard - Главная страница %>
+<%# Dashboard — Главная страница %>
 <div class="container mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold text-gray-900 mb-8">Личный кабинет</h1>
 
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-    <div class="bg-white rounded-lg shadow p-6">
-      <h3 class="text-lg font-semibold text-gray-700">Мои объявления</h3>
-      <p class="text-3xl font-bold text-primary-600 mt-2"><%= current_user.properties.count %></p>
-      <%= link_to "Управлять", properties_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
-    </div>
-
-    <div class="bg-white rounded-lg shadow p-6">
-      <h3 class="text-lg font-semibold text-gray-700">Избранное</h3>
-      <p class="text-3xl font-bold text-primary-600 mt-2"><%= @favorites_count %></p>
-      <%= link_to "Просмотреть", dashboard_favorites_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
-    </div>
-
-    <div class="bg-white rounded-lg shadow p-6">
-      <h3 class="text-lg font-semibold text-gray-700">Заявки</h3>
-      <p class="text-3xl font-bold text-primary-600 mt-2"><%= @inquiries_count %></p>
-      <%= link_to "Просмотреть", dashboard_inquiries_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
-    </div>
+  <%# Приветствие %>
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">
+      Добро пожаловать, <%= current_user.first_name %>!
+    </h1>
+    <p class="text-gray-500 mt-1">
+      <% if current_user.admin? %>
+        <span class="inline-flex items-center bg-red-100 text-red-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">Администратор</span>
+      <% elsif current_user.agent? %>
+        <span class="inline-flex items-center bg-blue-100 text-blue-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">Агент / Собственник</span>
+      <% else %>
+        <span class="inline-flex items-center bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-0.5 rounded-full">Клиент</span>
+      <% end %>
+      &nbsp;Ваш личный кабинет
+    </p>
   </div>
 
-  <% if @properties.any? %>
-    <div class="bg-white rounded-lg shadow p-6">
-      <h2 class="text-xl font-bold text-gray-900 mb-4">Последние объявления</h2>
-      <div class="space-y-3">
-        <% @properties.each do |property| %>
-          <div class="flex justify-between items-center py-3 border-b last:border-b-0">
-            <div>
-              <%= link_to property.title, property_path(property), class: "font-medium text-gray-900 hover:text-primary-600" %>
-              <p class="text-sm text-gray-500"><%= property.address %></p>
-            </div>
-            <span class="text-sm font-semibold text-gray-700"><%= property.price_formatted %></span>
-          </div>
-        <% end %>
+  <% if current_user.agent? || current_user.admin? %>
+    <%# === КАБИНЕТ СОБСТВЕННИКА / АГЕНТА === %>
+
+    <%# Статистика собственника %>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <p class="text-sm text-gray-500 mb-1">Активные</p>
+        <p class="text-3xl font-bold text-green-600"><%= @active_properties_count %></p>
+        <p class="text-xs text-gray-400 mt-1">объявления</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <p class="text-sm text-gray-500 mb-1">На модерации</p>
+        <p class="text-3xl font-bold text-yellow-600"><%= @pending_properties_count %></p>
+        <p class="text-xs text-gray-400 mt-1">объявления</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <p class="text-sm text-gray-500 mb-1">Черновики</p>
+        <p class="text-3xl font-bold text-gray-600"><%= @draft_properties_count %></p>
+        <p class="text-xs text-gray-400 mt-1">объявления</p>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <p class="text-sm text-gray-500 mb-1">Просмотры</p>
+        <p class="text-3xl font-bold text-primary-600"><%= @total_views %></p>
+        <p class="text-xs text-gray-400 mt-1">всего</p>
       </div>
     </div>
+
+    <%# Быстрые действия для собственника %>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+      <%= link_to new_sell_listing_path,
+          class: "bg-primary-600 hover:bg-primary-700 text-white rounded-xl p-5 flex items-center gap-4 transition-colors" do %>
+        <div class="text-3xl">➕</div>
+        <div>
+          <p class="font-semibold text-lg">Разместить объявление</p>
+          <p class="text-primary-200 text-sm">Продажа или аренда</p>
+        </div>
+      <% end %>
+
+      <%= link_to properties_path(user_id: current_user.id),
+          class: "bg-white hover:bg-gray-50 border border-gray-200 rounded-xl p-5 flex items-center gap-4 transition-colors" do %>
+        <div class="text-3xl">🏠</div>
+        <div>
+          <p class="font-semibold text-lg text-gray-900">Мои объявления</p>
+          <p class="text-gray-500 text-sm">Всего: <%= current_user.properties.count %></p>
+        </div>
+      <% end %>
+
+      <%= link_to sell_plans_path,
+          class: "bg-white hover:bg-gray-50 border border-gray-200 rounded-xl p-5 flex items-center gap-4 transition-colors" do %>
+        <div class="text-3xl">💎</div>
+        <div>
+          <p class="font-semibold text-lg text-gray-900">Тарифы</p>
+          <p class="text-gray-500 text-sm">Продвижение объявлений</p>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Последние объявления собственника %>
+    <% if @properties.any? %>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold text-gray-900">Мои объявления</h2>
+          <%= link_to "Все объявления →", properties_path, class: "text-primary-600 hover:underline text-sm" %>
+        </div>
+        <div class="space-y-3">
+          <% @properties.each do |property| %>
+            <div class="flex items-center justify-between py-3 border-b last:border-b-0">
+              <div class="flex-1 min-w-0">
+                <%= link_to property.title, property_path(property),
+                    class: "font-medium text-gray-900 hover:text-primary-600 truncate block" %>
+                <div class="flex items-center gap-3 mt-0.5">
+                  <span class="text-xs text-gray-500"><%= property.address %></span>
+                  <span class="text-xs text-gray-400">👁 <%= property.views_count %></span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 ml-4">
+                <% status_colors = { 'active' => 'bg-green-100 text-green-700', 'pending' => 'bg-yellow-100 text-yellow-700',
+                   'draft' => 'bg-gray-100 text-gray-600', 'sold' => 'bg-blue-100 text-blue-700',
+                   'archived' => 'bg-red-100 text-red-700', 'rejected' => 'bg-red-100 text-red-700' } %>
+                <% status_labels = { 'active' => 'Активно', 'pending' => 'Модерация', 'draft' => 'Черновик',
+                   'sold' => 'Продано', 'archived' => 'Архив', 'rejected' => 'Отклонено' } %>
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full <%= status_colors[property.status] || 'bg-gray-100 text-gray-600' %>">
+                  <%= status_labels[property.status] || property.status %>
+                </span>
+                <span class="font-semibold text-gray-800 text-sm"><%= property.price_formatted %></span>
+                <%= link_to "✏️", edit_sell_listing_path(property), class: "text-gray-400 hover:text-primary-600 text-sm" %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% else %>
+      <div class="bg-gray-50 rounded-xl border border-dashed border-gray-300 p-10 text-center mb-6">
+        <div class="text-5xl mb-4">🏠</div>
+        <h3 class="text-xl font-semibold text-gray-700 mb-2">У вас ещё нет объявлений</h3>
+        <p class="text-gray-500 mb-6">Разместите своё первое объявление о продаже или аренде</p>
+        <%= link_to "Разместить объявление", new_sell_listing_path,
+            class: "bg-primary-600 text-white px-6 py-3 rounded-lg hover:bg-primary-700 font-semibold transition-colors" %>
+      </div>
+    <% end %>
+
+    <%# Последние заявки по объявлениям %>
+    <% if @recent_inquiries&.any? %>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-xl font-bold text-gray-900">Заявки на мои объекты</h2>
+          <%= link_to "Все заявки →", dashboard_inquiries_path, class: "text-primary-600 hover:underline text-sm" %>
+        </div>
+        <div class="space-y-3">
+          <% @recent_inquiries.each do |inquiry| %>
+            <div class="flex items-center justify-between py-3 border-b last:border-b-0">
+              <div>
+                <p class="font-medium text-gray-900"><%= inquiry.name %></p>
+                <p class="text-sm text-gray-500"><%= inquiry.property&.title %></p>
+              </div>
+              <div class="text-right">
+                <p class="text-sm text-gray-500"><%= inquiry.phone %></p>
+                <p class="text-xs text-gray-400"><%= time_ago_in_words(inquiry.created_at) %> назад</p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+  <% else %>
+    <%# === КАБИНЕТ КЛИЕНТА === %>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold text-gray-700">Избранное</h3>
+          <span class="text-2xl">❤️</span>
+        </div>
+        <p class="text-3xl font-bold text-primary-600 mb-3"><%= @favorites_count %></p>
+        <%= link_to "Просмотреть →", dashboard_favorites_path,
+            class: "text-sm text-primary-600 hover:underline font-medium" %>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold text-gray-700">Мои заявки</h3>
+          <span class="text-2xl">📋</span>
+        </div>
+        <p class="text-3xl font-bold text-primary-600 mb-3"><%= @inquiries_count %></p>
+        <%= link_to "Просмотреть →", dashboard_inquiries_path,
+            class: "text-sm text-primary-600 hover:underline font-medium" %>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-lg font-semibold text-gray-700">Сообщения</h3>
+          <span class="text-2xl">💬</span>
+        </div>
+        <p class="text-3xl font-bold text-primary-600 mb-3"><%= @unread_messages_count %></p>
+        <%= link_to "Перейти →", dashboard_messages_path,
+            class: "text-sm text-primary-600 hover:underline font-medium" %>
+      </div>
+    </div>
+
+    <%# Быстрые действия для клиента %>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <%= link_to properties_path,
+          class: "bg-white hover:bg-gray-50 border border-gray-200 rounded-xl p-5 flex items-center gap-4 transition-colors" do %>
+        <div class="text-3xl">🔍</div>
+        <div>
+          <p class="font-semibold text-lg text-gray-900">Поиск недвижимости</p>
+          <p class="text-gray-500 text-sm">Квартиры, дома, коммерция</p>
+        </div>
+      <% end %>
+
+      <%= link_to new_property_valuation_path,
+          class: "bg-white hover:bg-gray-50 border border-gray-200 rounded-xl p-5 flex items-center gap-4 transition-colors" do %>
+        <div class="text-3xl">📊</div>
+        <div>
+          <p class="font-semibold text-lg text-gray-900">Оценить недвижимость</p>
+          <p class="text-gray-500 text-sm">Бесплатная онлайн-оценка</p>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Последние просмотренные объекты %>
+    <% if @properties.any? %>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 class="text-xl font-bold text-gray-900 mb-4">Недавно просмотренные</h2>
+        <div class="space-y-3">
+          <% @properties.each do |property| %>
+            <div class="flex justify-between items-center py-3 border-b last:border-b-0">
+              <div>
+                <%= link_to property.title, property_path(property),
+                    class: "font-medium text-gray-900 hover:text-primary-600" %>
+                <p class="text-sm text-gray-500"><%= property.address %></p>
+              </div>
+              <span class="text-sm font-semibold text-gray-700"><%= property.price_formatted %></span>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
   <% end %>
+
 </div>
