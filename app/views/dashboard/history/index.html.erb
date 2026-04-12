@@ -1,0 +1,30 @@
+<%# Dashboard - История просмотров %>
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">История просмотров</h1>
+    <% if @property_views.any? %>
+      <%= link_to "Очистить историю", clear_dashboard_history_index_path, method: :delete,
+          data: { confirm: "Очистить всю историю?" },
+          class: "text-red-600 hover:underline text-sm" %>
+    <% end %>
+  </div>
+
+  <% if @property_views.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">История просмотров пуста</p>
+    </div>
+  <% else %>
+    <div class="space-y-3">
+      <% @property_views.each do |view| %>
+        <% next unless view.property %>
+        <div class="bg-white rounded-lg shadow p-4 flex justify-between items-center">
+          <div>
+            <%= link_to view.property.title, property_path(view.property), class: "font-medium text-gray-900 hover:text-primary-600" %>
+            <p class="text-sm text-gray-500"><%= view.property.address %></p>
+          </div>
+          <span class="text-sm text-gray-400"><%= l view.created_at, format: :short %></span>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

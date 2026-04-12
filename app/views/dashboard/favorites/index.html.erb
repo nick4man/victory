@@ -1,0 +1,32 @@
+<%# Dashboard - Избранное %>
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Избранное</h1>
+    <% if @properties.any? %>
+      <%= link_to "Очистить всё", clear_all_dashboard_favorites_path, method: :delete,
+          data: { confirm: "Удалить все из избранного?" },
+          class: "text-red-600 hover:underline text-sm" %>
+    <% end %>
+  </div>
+
+  <% if @properties.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">У вас нет избранных объектов</p>
+      <%= link_to "Перейти в каталог", properties_path, class: "mt-4 inline-block bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700" %>
+    </div>
+  <% else %>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <% @properties.each do |property| %>
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+          <div class="p-4">
+            <h3 class="font-semibold text-gray-900 mb-1">
+              <%= link_to property.title, property_path(property), class: "hover:text-primary-600" %>
+            </h3>
+            <p class="text-sm text-gray-500 mb-2"><%= property.address %></p>
+            <p class="text-lg font-bold text-primary-600"><%= property.price_formatted %></p>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

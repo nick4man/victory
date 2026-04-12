@@ -1,0 +1,41 @@
+<%# Dashboard - Главная страница %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-8">Личный кабинет</h1>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-lg font-semibold text-gray-700">Мои объявления</h3>
+      <p class="text-3xl font-bold text-primary-600 mt-2"><%= current_user.properties.count %></p>
+      <%= link_to "Управлять", properties_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-lg font-semibold text-gray-700">Избранное</h3>
+      <p class="text-3xl font-bold text-primary-600 mt-2"><%= @favorites_count %></p>
+      <%= link_to "Просмотреть", dashboard_favorites_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
+    </div>
+
+    <div class="bg-white rounded-lg shadow p-6">
+      <h3 class="text-lg font-semibold text-gray-700">Заявки</h3>
+      <p class="text-3xl font-bold text-primary-600 mt-2"><%= @inquiries_count %></p>
+      <%= link_to "Просмотреть", dashboard_inquiries_path, class: "text-sm text-primary-600 hover:underline mt-2 inline-block" %>
+    </div>
+  </div>
+
+  <% if @properties.any? %>
+    <div class="bg-white rounded-lg shadow p-6">
+      <h2 class="text-xl font-bold text-gray-900 mb-4">Последние объявления</h2>
+      <div class="space-y-3">
+        <% @properties.each do |property| %>
+          <div class="flex justify-between items-center py-3 border-b last:border-b-0">
+            <div>
+              <%= link_to property.title, property_path(property), class: "font-medium text-gray-900 hover:text-primary-600" %>
+              <p class="text-sm text-gray-500"><%= property.address %></p>
+            </div>
+            <span class="text-sm font-semibold text-gray-700"><%= property.price_formatted %></span>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+</div>

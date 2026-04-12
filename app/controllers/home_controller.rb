@@ -57,7 +57,7 @@ class HomeController < ApplicationController
     @featured_properties = Rails.cache.fetch('homepage/featured_properties', expires_in: 30.minutes) do
       Property.published
               .featured
-              .includes(:property_type, :property_images, :user)
+              .includes(:property_type, :user)
               .limit(6)
               .to_a
     end
@@ -68,7 +68,7 @@ class HomeController < ApplicationController
     @latest_properties = Rails.cache.fetch('homepage/latest_properties', expires_in: 15.minutes) do
       Property.published
               .recent
-              .includes(:property_type, :property_images)
+              .includes(:property_type)
               .limit(12)
               .to_a
     end
@@ -166,7 +166,7 @@ class HomeController < ApplicationController
       rooms: property.rooms,
       address: property.address,
       url: property_url(property),
-      image_url: property.primary_image&.url || view_context.asset_url('placeholder-property.jpg'),
+      image_url: property.primary_image&.url,
       deal_type: property.deal_type,
       is_featured: property.is_featured
     }

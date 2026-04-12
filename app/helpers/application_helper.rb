@@ -255,6 +255,44 @@ module ApplicationHelper
     end
   end
   
+  # Property type icon (used in valuation form)
+  def property_type_icon(type)
+    icons = {
+      'apartment' => '🏢',
+      'house'     => '🏠',
+      'land'      => '🌳',
+      'commercial' => '🏪',
+      'garage'    => '🚗',
+      'room'      => '🚪'
+    }
+    icons[type.to_s] || '🏘️'
+  end
+
+  # Building type label (used in valuation form)
+  def building_type_label(type)
+    labels = {
+      'panel'    => 'Панель',
+      'brick'    => 'Кирпич',
+      'monolith' => 'Монолит',
+      'block'    => 'Блочный',
+      'wood'     => 'Дерево',
+      'stalin'   => 'Сталинка'
+    }
+    labels[type.to_s] || type.to_s.capitalize
+  end
+
+  # Condition label (used in valuation form)
+  def condition_label(condition)
+    labels = {
+      'needs_repair' => 'Требует ремонта',
+      'average'      => 'Среднее',
+      'good'         => 'Хорошее',
+      'excellent'    => 'Отличное',
+      'designer'     => 'Дизайнерский'
+    }
+    labels[condition.to_s] || condition.to_s.capitalize
+  end
+
   # Loading spinner
   def loading_spinner(size: 'medium')
     sizes = {

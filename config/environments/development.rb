@@ -45,9 +45,9 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_caching = false
   
-  # Use letter_opener for development
-  config.action_mailer.delivery_method = :letter_opener
-  config.action_mailer.perform_deliveries = true
+  # Use :test delivery method (letter_opener not installed)
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = false
   
   # Set default URL options
   config.action_mailer.default_url_options = {
@@ -84,6 +84,7 @@ Rails.application.configure do
 
   # Allow all hosts for Replit proxy compatibility
   config.hosts.clear
+
   
   # Uncomment if you wish to allow Action Cable access from any origin.
   config.action_cable.disable_request_forgery_protection = true

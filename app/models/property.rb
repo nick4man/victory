@@ -56,15 +56,14 @@ class Property < ApplicationRecord
   belongs_to :property_type, optional: true
   belongs_to :moderated_by, class_name: 'User', optional: true
 
-  has_many :property_images, dependent: :destroy
   has_many :favorites, dependent: :destroy
   has_many :favorited_by_users, through: :favorites, source: :user
   has_many :property_views, dependent: :destroy
   has_many :inquiries, dependent: :destroy
   has_many :viewing_schedules, dependent: :destroy
   has_many :price_histories, dependent: :destroy
-  has_one :virtual_tour, dependent: :destroy
   has_many :documents, dependent: :destroy
+  has_many :reviews, dependent: :destroy
   has_many_attached :images
   has_many_attached :floor_plans
 
@@ -123,7 +122,9 @@ class Property < ApplicationRecord
   # GEOCODING
   # ============================================
   geocoded_by :address
-  after_validation :geocode, if: ->(obj) { obj.address.present? && obj.address_changed? }
+  after_validation :geocode, if: ->(obj) {
+    obj.address.present? && obj.address_changed? && Rails.env.production?
+  }
 
   # ============================================
   # SEARCH (PgSearch)
@@ -353,6 +354,23 @@ class Property < ApplicationRecord
     favorites.exists?(user_id: user.id)
   end
 
+  # I18n helpers
+  def deal_type_i18n
+    case deal_type
+    when 'sale' then 'продажа'
+    when 'rent' then 'аренда'
+    when 'daily' then 'посуточно'
+    end
+  end
+
+  def status_i18n
+    I18n.t("activerecord.attributes.property.statuses.#{status}", default: status)
+  end
+
+  def condition_i18n
+    I18n.t("activerecord.attributes.property.conditions.#{condition}", default: condition.to_s)
+  end
+
   # Display helpers
   def short_description(length = 150)
     return unless description
@@ -390,7 +408,7 @@ class Property < ApplicationRecord
 
   # Images
   def primary_image
-    property_images.order(:position).first || images.first
+    images.first
   end
 
   def image_urls
@@ -429,15 +447,20 @@ class Property < ApplicationRecord
 
   def track_price_change
     return unless saved_change_to_price?
-    
+
+    old_price = price_before_last_save
+    new_price = price
+    change_type = new_price > old_price ? 'increase' : 'decrease'
+
     price_histories.create(
-      price: price,
-      changed_from: price_before_last_save,
-      changed_at: Time.current
+      new_price: new_price,
+      old_price: old_price,
+      price_change: new_price - old_price,
+      price_change_percent: old_price > 0 ? ((new_price - old_price) / old_price * 100).round(2) : 0,
+      change_type: change_type,
+      effective_date: Time.current,
+      auto_generated: true
     )
-    
-    self.price_changed_at = Time.current
-    self.original_price ||= price_before_last_save
   end
 
   def update_search_index
@@ -468,26 +491,11 @@ class Property < ApplicationRecord
   end
 
   def published_properties_must_be_complete
+    return unless Rails.env.production?
     return unless status == 'active' && published_at.present?
-    
-    errors.add(:base, 'Необходимо добавить хотя бы одно изображение') if images.blank? && property_images.blank?
+
+    errors.add(:base, 'Необходимо добавить хотя бы одно изображение') if images.blank?
     errors.add(:description, 'не может быть пустым для опубликованных объектов') if description.blank?
   end
 
-  # I18n helpers
-  def deal_type_i18n
-    case deal_type
-    when 'sale' then 'продажа'
-    when 'rent' then 'аренда'
-    when 'daily' then 'посуточно'
-    end
-  end
-
-  def status_i18n
-    I18n.t("activerecord.attributes.property.statuses.#{status}")
-  end
-
-  def condition_i18n
-    I18n.t("activerecord.attributes.property.conditions.#{condition}")
-  end
 end

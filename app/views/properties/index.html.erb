@@ -33,7 +33,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
           </svg>
         </button>
-        <%= link_to properties_map_path(q: params[:q]), class: "p-2 rounded hover:bg-gray-200 transition", title: "Карта" do %>
+        <%= link_to map_properties_path(q: params[:q]), class: "p-2 rounded hover:bg-gray-200 transition", title: "Карта" do %>
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
           </svg>
@@ -285,10 +285,7 @@
                 Показано <%= @properties.offset_value + 1 %>-<%= [@properties.offset_value + @properties.size, @total_count].min %> из <%= number_with_delimiter(@total_count) %>
               </div>
 
-              <%= paginate @properties, theme: 'twitter-bootstrap-4', 
-                  pagination_class: "flex items-center space-x-2",
-                  page_class: "px-3 py-2 border border-gray-300 rounded hover:bg-gray-50 transition",
-                  current_page_class: "px-3 py-2 bg-primary-600 text-white border border-primary-600 rounded" %>
+              <%= paginate @properties %>
             </div>
           </div>
 

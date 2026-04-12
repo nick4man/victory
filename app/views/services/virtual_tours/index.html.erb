@@ -1,0 +1,14 @@
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Виртуальные туры</h1>
+  <% if @properties.empty? %>
+    <p class="text-gray-500">Виртуальные туры недоступны.</p>
+  <% else %>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <% @properties.each do |property| %>
+        <div class="bg-white rounded-lg shadow p-4">
+          <%= link_to property.title, property_path(property), class: "font-semibold text-gray-900 hover:text-primary-600" %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

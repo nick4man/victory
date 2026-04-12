@@ -339,7 +339,7 @@
               <div class="ml-3">
                 <p class="text-sm text-blue-700">
                   Нажимая кнопку "Получить оценку", вы соглашаетесь с 
-                  <%= link_to "политикой конфиденциальности", pages_privacy_path, target: "_blank", class: "font-medium underline" %>
+                  <%= link_to "политикой конфиденциальности", privacy_path, target: "_blank", class: "font-medium underline" %>
                   и даете согласие на обработку персональных данных.
                 </p>
               </div>
@@ -399,39 +399,5 @@
   </div>
 </div>
 
-<!-- Helper Methods -->
-<% def property_type_icon(type)
-  icons = {
-    'apartment' => '🏢',
-    'house' => '🏠',
-    'land' => '🌳',
-    'commercial' => '🏪',
-    'garage' => '🚗',
-    'room' => '🚪'
-  }
-  icons[type] || '🏘️'
-end
-
-def building_type_label(type)
-  labels = {
-    'panel' => 'Панель',
-    'brick' => 'Кирпич',
-    'monolith' => 'Монолит',
-    'block' => 'Блочный',
-    'wood' => 'Дерево',
-    'stalin' => 'Сталинка'
-  }
-  labels[type] || type.capitalize
-end
-
-def condition_label(condition)
-  labels = {
-    'needs_repair' => 'Требует ремонта',
-    'average' => 'Среднее',
-    'good' => 'Хорошее',
-    'excellent' => 'Отличное',
-    'designer' => 'Дизайнерский'
-  }
-  labels[condition] || condition.capitalize
-end %>
+<%# Вспомогательные методы перенесены в ApplicationHelper %>
 

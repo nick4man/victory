@@ -202,8 +202,8 @@ clients.first(3).each do |client|
   SavedSearch.create!(
     user:       client,
     name:       "#{%w[Квартира Дом Студия].sample} в #{districts.sample}",
-    filters:    { deal_type: 'sale', district: districts.sample, max_price: rand(10..30) * 1_000_000 }.to_json,
-    is_active:  true
+    filters:    { deal_type: 'sale', district: districts.sample, max_price: rand(10..30) * 1_000_000 },
+    active:     true
   )
 end
 puts 'Сохранённые поиски созданы.'

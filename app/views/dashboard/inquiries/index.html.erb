@@ -1,0 +1,45 @@
+<%# Dashboard - Заявки %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Мои заявки</h1>
+
+  <% if @inquiries.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">У вас нет заявок</p>
+    </div>
+  <% else %>
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Объект</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Статус</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Дата</th>
+            <th class="px-6 py-3"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          <% @inquiries.each do |inquiry| %>
+            <tr>
+              <td class="px-6 py-4">
+                <% if inquiry.property %>
+                  <%= link_to inquiry.property.title, property_path(inquiry.property), class: "text-primary-600 hover:underline" %>
+                <% else %>
+                  <span class="text-gray-400">Объект удалён</span>
+                <% end %>
+              </td>
+              <td class="px-6 py-4">
+                <span class="text-sm text-gray-600"><%= inquiry.status %></span>
+              </td>
+              <td class="px-6 py-4 text-sm text-gray-500">
+                <%= l inquiry.created_at, format: :short %>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <%= link_to "Детали", dashboard_inquiry_path(inquiry), class: "text-sm text-primary-600 hover:underline" %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</div>

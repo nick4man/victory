@@ -16,7 +16,7 @@ class ApplicationController < ActionController::Base
   # ============================================
   # BEFORE ACTIONS
   # ============================================
-  # before_action :configure_permitted_parameters, if: :devise_controller?
+  before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
   # before_action :track_user_activity
   # before_action :setup_meta_tags
@@ -47,13 +47,18 @@ class ApplicationController < ActionController::Base
   helper_method :tablet_device?
   helper_method :desktop_device?
   
-  # Stub methods for Devise (temporarily disabled)
-  def user_signed_in?
-    false
+  # Devise helpers доступны автоматически через devise,
+  # но переопределяем для совместимости с кастомной логикой
+  def current_user_admin?
+    current_user&.role_admin?
   end
-  
-  def current_user
-    nil
+
+  def current_user_agent?
+    current_user&.role_agent?
+  end
+
+  def current_user_client?
+    current_user&.role_client?
   end
   
   protected
@@ -110,6 +115,10 @@ class ApplicationController < ActionController::Base
   # ============================================
   # META TAGS
   # ============================================
+
+  # Заглушка: метод появится когда подключим гем meta-tags
+  def set_meta_tags(_options = {}); end
+
   def setup_meta_tags
     set_meta_tags site: 'АН "Виктори"',
                   reverse: true,

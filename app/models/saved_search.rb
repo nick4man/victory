@@ -11,7 +11,8 @@ class SavedSearch < ApplicationRecord
   # VALIDATIONS
   # ============================================
   
-  validates :search_params, presence: true
+  validates :name, presence: true
+  validates :filters, presence: true
   
   # ============================================
   # SCOPES
@@ -21,12 +22,6 @@ class SavedSearch < ApplicationRecord
   scope :inactive, -> { where(active: false) }
   scope :recent, -> { order(created_at: :desc) }
   scope :by_user, ->(user_id) { where(user_id: user_id) }
-  
-  # ============================================
-  # SERIALIZATION
-  # ============================================
-  
-  serialize :search_params, coder: JSON
   
   # ============================================
   # CALLBACKS
@@ -40,7 +35,7 @@ class SavedSearch < ApplicationRecord
   
   # Get search parameters as hash
   def params_hash
-    search_params.is_a?(Hash) ? search_params : {}
+    filters.is_a?(Hash) ? filters : (JSON.parse(filters) rescue {})
   end
   
   # Build query description from params

@@ -1,0 +1,27 @@
+<%# Dashboard - Сохранённые поиски %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Сохранённые поиски</h1>
+
+  <% if @saved_searches.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">У вас нет сохранённых поисков</p>
+      <%= link_to "Перейти в каталог", properties_path, class: "mt-4 inline-block bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700" %>
+    </div>
+  <% else %>
+    <div class="space-y-4">
+      <% @saved_searches.each do |search| %>
+        <div class="bg-white rounded-lg shadow p-6 flex justify-between items-center">
+          <div>
+            <h3 class="font-semibold text-gray-900"><%= search.name %></h3>
+            <p class="text-sm text-gray-500"><%= l search.created_at, format: :short %></p>
+          </div>
+          <div class="flex gap-3">
+            <%= link_to "Запустить", results_dashboard_saved_search_path(search), class: "text-primary-600 hover:underline text-sm" %>
+            <%= link_to "Удалить", dashboard_saved_search_path(search), method: :delete,
+                data: { confirm: "Удалить поиск?" }, class: "text-red-600 hover:underline text-sm" %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

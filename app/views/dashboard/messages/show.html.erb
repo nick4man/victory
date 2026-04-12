@@ -1,0 +1,9 @@
+<%# Dashboard - Сообщение %>
+<div class="container mx-auto px-4 py-8">
+  <%= link_to "← Назад", dashboard_messages_path, class: "text-primary-600 hover:underline mb-6 inline-block" %>
+
+  <div class="bg-white rounded-lg shadow p-6">
+    <p class="text-gray-900"><%= @message.body %></p>
+    <p class="text-sm text-gray-500 mt-4"><%= l @message.created_at, format: :long %></p>
+  </div>
+</div>

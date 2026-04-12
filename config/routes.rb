@@ -13,14 +13,13 @@ Rails.application.routes.draw do
   # ActiveAdmin.routes(self)
 
   # ============================================
-  # USER AUTHENTICATION (Devise) - Temporarily disabled
+  # USER AUTHENTICATION (Devise)
   # ============================================
-  # devise_for :users, controllers: {
-  #   registrations: 'users/registrations',
-  #   sessions: 'users/sessions',
-  #   passwords: 'users/passwords',
-  #   omniauth_callbacks: 'users/omniauth_callbacks'
-  # }
+  devise_for :users, controllers: {
+    registrations: 'users/registrations',
+    sessions:      'users/sessions',
+    passwords:     'users/passwords'
+  }
 
   # ============================================
   # MAIN ROUTES
@@ -201,14 +200,14 @@ Rails.application.routes.draw do
     # Legal services
     resources :legal_services, only: [:index, :show] do
       member do
-        post :request
+        post :submit_request
       end
     end
-    
+
     # Document assistance
     resources :document_services, only: [:index] do
       collection do
-        post :request
+        post :submit_request
       end
     end
     
@@ -362,6 +361,7 @@ Rails.application.routes.draw do
       
       # Recommendations
       get 'recommendations', to: 'recommendations#index'
+      get 'recommendations/popular', to: 'recommendations#popular'
       
       # Stats
       get 'stats', to: 'stats#index'

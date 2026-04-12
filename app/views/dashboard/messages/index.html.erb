@@ -1,0 +1,19 @@
+<%# Dashboard - Сообщения %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Сообщения</h1>
+
+  <% if @messages.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">Сообщений нет</p>
+    </div>
+  <% else %>
+    <div class="bg-white rounded-lg shadow divide-y">
+      <% @messages.each do |message| %>
+        <div class="p-4">
+          <p class="text-gray-900"><%= message.body&.truncate(100) %></p>
+          <p class="text-sm text-gray-500 mt-1"><%= l message.created_at, format: :short %></p>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

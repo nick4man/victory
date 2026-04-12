@@ -37,13 +37,13 @@ class PropertyValuation < ApplicationRecord
     stalin: 'stalin'
   }
   
-  enum property_condition: {
+  enum condition: {
     needs_repair: 'needs_repair',
     average: 'average',
     good: 'good',
     excellent: 'excellent',
     designer: 'designer'
-  }, _prefix: :property_condition
+  }, _prefix: :condition
   
   # Validations
   validates :property_type, presence: true

@@ -73,10 +73,6 @@ class User < ApplicationRecord
   has_many :saved_searches, dependent: :destroy
   has_many :active_saved_searches, -> { active }, class_name: 'SavedSearch'
   
-  # Notifications
-  has_many :notifications, dependent: :destroy
-  has_many :unread_notifications, -> { unread }, class_name: 'Notification'
-  
   # Messages
   has_many :sent_messages, class_name: 'Message', foreign_key: 'sender_id', dependent: :destroy
   has_many :received_messages, class_name: 'Message', foreign_key: 'recipient_id', dependent: :destroy

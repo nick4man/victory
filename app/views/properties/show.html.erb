@@ -44,8 +44,8 @@
                 <div class="h-96 md:h-[500px] flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
                   <svg class="w-32 h-32 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-+                  </svg>
-+                </div>
+                  </svg>
+                </div>
               <% end %>
 
               <!-- Gallery Navigation Arrows -->
@@ -189,12 +189,12 @@
                   <span data-favorite-target="text"><%= @is_favorited ? 'В избранном' : 'В избранное' %></span>
                 </button>
               <% else %>
-                <%= link_to new_user_session_path, class: "flex items-center justify-center bg-white border-2 border-gray-300 hover:border-red-500 text-gray-700 hover:text-red-500 font-bold py-4 px-6 rounded-lg transition shadow-lg" do %>
+                <a href="<%= new_user_session_path %>" class="flex items-center justify-center bg-white border-2 border-gray-300 hover:border-red-500 text-gray-700 hover:text-red-500 font-bold py-4 px-6 rounded-lg transition shadow-lg">
                   <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
                   </svg>
                   В избранное
-                <% end %>
+                </a>
               <% end %>
             </div>
           </div>
@@ -412,273 +412,273 @@
               <div class="text-center p-4 bg-gray-50 rounded-lg">
                 <svg class="w-8 h-8 text-red-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.871 4A17.926 17.926 0 003 12c0 2.874.673 5.59 1.871 8m14.13 0a17.926 17.926 0 001.87-8c0-2.874-.673-5.59-1.87-8M9 9h1.246a1 1 0 01.961.725l1.586 5.55a1 1 0 00.961.725H15m1-7h-.08a2 2 0 00-1.519.698L9.6 15.302A2 2 0 018.08 16H5"/>
-+                </svg>
-+                <div class="text-sm text-gray-600">Аптеки</div>
-+              </div>
-+
-+              <div class="text-center p-4 bg-gray-50 rounded-lg">
-+                <svg class="w-8 h-8 text-green-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-+                </svg>
-+                <div class="text-sm text-gray-600">Парки</div>
-+              </div>
-+            </div>
-+          </div>
-+
-+          <!-- Price History -->
-+          <% if defined?(@price_history) && @price_history.present? %>
-+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-+              <h2 class="text-2xl font-bold text-gray-900 mb-6">История изменения цены</h2>
-+              
-+              <div class="space-y-3">
-+                <% @price_history.each do |history| %>
-+                  <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-+                    <div>
-+                      <div class="font-semibold text-gray-900"><%= number_to_currency(history.price, unit: '₽', separator: ',', delimiter: ' ') %></div>
-+                      <div class="text-sm text-gray-500"><%= l(history.changed_at, format: :long) %></div>
-+                    </div>
-+                    <% if history.changed_from %>
-+                      <% change = ((history.price - history.changed_from) / history.changed_from * 100).round(1) %>
-+                      <div class="<%= change > 0 ? 'text-red-600' : 'text-green-600' %> font-semibold">
-+                        <%= change > 0 ? '+' : '' %><%= change %>%
-+                      </div>
-+                    <% end %>
-+                  </div>
-+                <% end %>
-+              </div>
-+            </div>
-+          <% end %>
-+
-+          <!-- Similar Properties -->
-+          <% if @similar_properties.present? %>
-+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-+              <h2 class="text-2xl font-bold text-gray-900 mb-6">Похожие объекты</h2>
-+              
-+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-+                <% @similar_properties.each do |similar| %>
-+                  <%= render partial: 'properties/property_card', locals: { property: similar } %>
-+                <% end %>
-+              </div>
-+            </div>
-+          <% end %>
-+        </div>
-+
-+        <!-- Right Column: Sidebar -->
-+        <div class="lg:col-span-1">
-+          <div class="sticky top-24 space-y-6">
-+            <!-- Contact Form -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-xl font-bold text-gray-900 mb-4">Заинтересовала недвижимость?</h3>
-+              
-+              <%= form_with url: property_inquiries_path(@property), method: :post, class: "space-y-4", data: { controller: "form-submit" } do |f| %>
-+                <%= hidden_field_tag 'inquiry[property_id]', @property.id %>
-+                <%= hidden_field_tag 'inquiry[inquiry_type]', 'contact_agent' %>
-+                
-+                <div>
-+                  <%= text_field_tag 'inquiry[name]', nil, placeholder: "Ваше имя", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= telephone_field_tag 'inquiry[phone]', nil, placeholder: "+7 (___) ___-__-__", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= email_field_tag 'inquiry[email]', nil, placeholder: "Email (опционально)", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= text_area_tag 'inquiry[message]', nil, rows: 3, placeholder: "Ваш вопрос или комментарий...", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+
-+                <div class="text-xs text-gray-500">
-+                  Нажимая кнопку, вы соглашаетесь с <%= link_to "политикой конфиденциальности", privacy_path, class: "text-primary-600 hover:underline", target: "_blank" %>
-+                </div>
-+                
-+                <%= submit_tag "Отправить заявку", class: "w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-6 rounded-lg transition cursor-pointer" %>
-+              <% end %>
-+            </div>
-+
-+            <!-- Mortgage Calculator Widget -->
-+            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-md p-6 border border-blue-200">
-+              <h3 class="text-xl font-bold text-gray-900 mb-4">Калькулятор ипотеки</h3>
-+              
-+              <div class="space-y-4" data-controller="mortgage-calculator" data-mortgage-calculator-price-value="<%= @property.price %>">
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Первоначальный взнос</label>
-+                  <input type="number" data-mortgage-calculator-target="initialPayment" value="<%= (@property.price * 0.2).to_i %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+                
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Ставка (%)</label>
-+                  <input type="number" step="0.1" data-mortgage-calculator-target="rate" value="<%= ENV['DEFAULT_MORTGAGE_RATE'] || '10.5' %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+                
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Срок (лет)</label>
-+                  <input type="number" data-mortgage-calculator-target="term" value="20" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+
-+                <div class="bg-white rounded-lg p-4 text-center">
-+                  <div class="text-sm text-gray-600 mb-1">Ежемесячный платеж</div>
-+                  <div class="text-2xl font-bold text-primary-600" data-mortgage-calculator-target="result">
-+                    0 ₽
-+                  </div>
-+                </div>
-+
-+                <%= link_to "Подробный расчет", services_mortgage_calculator_path, class: "block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm" %>
-+              </div>
-+            </div>
-+
-+            <!-- Property Stats -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-lg font-bold text-gray-900 mb-4">Статистика просмотров</h3>
-+              
-+              <div class="space-y-3">
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">Просмотров:</span>
-+                  <span class="font-semibold text-gray-900"><%= @property.views_count %></span>
-+                </div>
-+                
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">В избранном:</span>
-+                  <span class="font-semibold text-gray-900"><%= @property.favorites_count %></span>
-+                </div>
-+                
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">Опубликовано:</span>
-+                  <span class="font-semibold text-gray-900"><%= time_ago_in_words(@property.created_at) %> назад</span>
-+                </div>
-+              </div>
-+            </div>
-+
-+            <!-- Share Buttons -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-lg font-bold text-gray-900 mb-4">Поделиться</h3>
-+              
-+              <div class="grid grid-cols-3 gap-3">
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition" data-action="click->property-detail#shareVk">
-+                  <svg class="w-6 h-6 text-blue-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">VK</span>
-+                </button>
-+
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition" data-action="click->property-detail#shareTelegram">
-+                  <svg class="w-6 h-6 text-blue-400 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">Telegram</span>
-+                </button>
+                </svg>
+                <div class="text-sm text-gray-600">Аптеки</div>
+              </div>
 
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-green-600 hover:bg-green-50 transition" data-action="click->property-detail#shareWhatsapp">
-+                  <svg class="w-6 h-6 text-green-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">WhatsApp</span>
-+                </button>
-+              </div>
+              <div class="text-center p-4 bg-gray-50 rounded-lg">
+                <svg class="w-8 h-8 text-green-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                </svg>
+                <div class="text-sm text-gray-600">Парки</div>
+              </div>
+            </div>
+          </div>
 
-+              <button type="button" class="mt-3 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm" data-action="click->property-detail#copyLink">
-+                <svg class="w-4 h-4 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-+                </svg>
-+                Скопировать ссылку
-+              </button>
-+            </div>
+          <!-- Price History -->
+          <% if defined?(@price_history) && @price_history.present? %>
+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
+              <h2 class="text-2xl font-bold text-gray-900 mb-6">История изменения цены</h2>
+              
+              <div class="space-y-3">
+                <% @price_history.each do |history| %>
+                  <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                    <div>
+                      <div class="font-semibold text-gray-900"><%= number_to_currency(history.new_price, unit: '₽', separator: ',', delimiter: ' ') %></div>
+                      <div class="text-sm text-gray-500"><%= l(history.effective_date, format: :long) %></div>
+                    </div>
+                    <% if history.old_price %>
+                      <% change = history.price_change_percent || 0 %>
+                      <div class="<%= change > 0 ? 'text-red-600' : 'text-green-600' %> font-semibold">
+                        <%= change > 0 ? '+' : '' %><%= change %>%
+                      </div>
+                    <% end %>
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
 
-+            <!-- Report Problem -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <button type="button" class="w-full text-left text-sm text-gray-600 hover:text-red-600 transition flex items-center" data-action="click->property-detail#openReportModal">
-+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-+                </svg>
-+                Пожаловаться на объявление
-+              </button>
-+            </div>
-+          </div>
-+        </div>
-+      </div>
-+    </div>
-+  </section>
-+</div>
+          <!-- Similar Properties -->
+          <% if @similar_properties.present? %>
+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
+              <h2 class="text-2xl font-bold text-gray-900 mb-6">Похожие объекты</h2>
+              
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <% @similar_properties.each do |similar| %>
+                  <%= render partial: 'properties/property_card', locals: { property: similar } %>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
 
-+<!-- Schedule Viewing Modal -->
-+<div class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" data-property-detail-target="scheduleModal">
-+  <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-+    <div class="flex items-center justify-between mb-4">
-+      <h3 class="text-xl font-bold text-gray-900">Записаться на показ</h3>
-+      <button type="button" data-action="click->property-detail#closeScheduleModal" class="text-gray-400 hover:text-gray-600">
-+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-+        </svg>
-+      </button>
-+    </div>
+        <!-- Right Column: Sidebar -->
+        <div class="lg:col-span-1">
+          <div class="sticky top-24 space-y-6">
+            <!-- Contact Form -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <h3 class="text-xl font-bold text-gray-900 mb-4">Заинтересовала недвижимость?</h3>
+              
+              <%= form_with url: property_inquiries_path(@property), method: :post, class: "space-y-4", data: { controller: "form-submit" } do |f| %>
+                <%= hidden_field_tag 'inquiry[property_id]', @property.id %>
+                <%= hidden_field_tag 'inquiry[inquiry_type]', 'contact_agent' %>
+                
+                <div>
+                  <%= text_field_tag 'inquiry[name]', nil, placeholder: "Ваше имя", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
+                </div>
+                
+                <div>
+                  <%= telephone_field_tag 'inquiry[phone]', nil, placeholder: "+7 (___) ___-__-__", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
+                </div>
+                
+                <div>
+                  <%= email_field_tag 'inquiry[email]', nil, placeholder: "Email (опционально)", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
+                </div>
+                
+                <div>
+                  <%= text_area_tag 'inquiry[message]', nil, rows: 3, placeholder: "Ваш вопрос или комментарий...", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
+                </div>
 
-+    <%= form_with url: property_schedule_viewing_path(@property), method: :post, class: "space-y-4" do |f| %>
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Имя</label>
-+        <%= text_field_tag 'name', nil, required: true, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
-+
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Телефон</label>
-+        <%= telephone_field_tag 'phone', nil, required: true, placeholder: "+7 (___) ___-__-__", class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
+                <div class="text-xs text-gray-500">
+                  Нажимая кнопку, вы соглашаетесь с <%= link_to "политикой конфиденциальности", privacy_path, class: "text-primary-600 hover:underline", target: "_blank" %>
+                </div>
+                
+                <%= submit_tag "Отправить заявку", class: "w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-6 rounded-lg transition cursor-pointer" %>
+              <% end %>
+            </div>
 
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Предпочтительная дата</label>
-+        <%= date_field_tag 'preferred_date', nil, min: Date.current, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
+            <!-- Mortgage Calculator Widget -->
+            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-md p-6 border border-blue-200">
+              <h3 class="text-xl font-bold text-gray-900 mb-4">Калькулятор ипотеки</h3>
+              
+              <div class="space-y-4" data-controller="mortgage-calculator" data-mortgage-calculator-price-value="<%= @property.price %>">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Первоначальный взнос</label>
+                  <input type="number" data-mortgage-calculator-target="initialPayment" value="<%= (@property.price * 0.2).to_i %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Ставка (%)</label>
+                  <input type="number" step="0.1" data-mortgage-calculator-target="rate" value="<%= ENV['DEFAULT_MORTGAGE_RATE'] || '10.5' %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
+                </div>
+                
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Срок (лет)</label>
+                  <input type="number" data-mortgage-calculator-target="term" value="20" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
+                </div>
 
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Время</label>
-+        <%= select_tag 'preferred_time', options_for_select([
-+          ['9:00 - 10:00', '09:00'],
-+          ['10:00 - 11:00', '10:00'],
-+          ['11:00 - 12:00', '11:00'],
-+          ['12:00 - 13:00', '12:00'],
-+          ['14:00 - 15:00', '14:00'],
-+          ['15:00 - 16:00', '15:00'],
-+          ['16:00 - 17:00', '16:00'],
-+          ['17:00 - 18:00', '17:00'],
-+          ['18:00 - 19:00', '18:00']
-+        ]), class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
+                <div class="bg-white rounded-lg p-4 text-center">
+                  <div class="text-sm text-gray-600 mb-1">Ежемесячный платеж</div>
+                  <div class="text-2xl font-bold text-primary-600" data-mortgage-calculator-target="result">
+                    0 ₽
+                  </div>
+                </div>
 
-+      <div class="flex space-x-3">
-+        <%= submit_tag "Записаться", class: "flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer" %>
-+        <button type="button" data-action="click->property-detail#closeScheduleModal" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition">
-+          Отмена
-+        </button>
-+      </div>
-+    <% end %>
-+  </div>
-+</div>
+                <%= link_to "Подробный расчет", services_mortgage_calculator_path, class: "block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm" %>
+              </div>
+            </div>
 
-+<!-- Schema.org Markup for SEO -->
-+<script type="application/ld+json">
-+{
-+  "@context": "https://schema.org",
-+  "@type": "RealEstateListing",
-+  "name": "<%= @property.title %>",
-+  "description": "<%= @property.short_description %>",
-+  "url": "<%= property_url(@property) %>",
-+  "price": "<%= @property.price %>",
-+  "priceCurrency": "RUB",
-+  "address": {
-+    "@type": "PostalAddress",
-+    "streetAddress": "<%= @property.address %>",
-+    "addressLocality": "<%= @property.district %>"
-+  },
-+  "numberOfRooms": "<%= @property.rooms %>",
-+  "floorSize": {
-+    "@type": "QuantitativeValue",
-+    "value": "<%= @property.area %>",
-+    "unitCode": "MTK"
-+  }
-+  <% if @property.images.attached? && @property.images.first %>
-+  ,
-+  "image": "<%= url_for(@property.images.first) %>"
-+  <% end %>
-+}
-+</script>
+            <!-- Property Stats -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <h3 class="text-lg font-bold text-gray-900 mb-4">Статистика просмотров</h3>
+              
+              <div class="space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 text-sm">Просмотров:</span>
+                  <span class="font-semibold text-gray-900"><%= @property.views_count %></span>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 text-sm">В избранном:</span>
+                  <span class="font-semibold text-gray-900"><%= @property.favorites_count %></span>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-600 text-sm">Опубликовано:</span>
+                  <span class="font-semibold text-gray-900"><%= time_ago_in_words(@property.created_at) %> назад</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Share Buttons -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <h3 class="text-lg font-bold text-gray-900 mb-4">Поделиться</h3>
+              
+              <div class="grid grid-cols-3 gap-3">
+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition" data-action="click->property-detail#shareVk">
+                  <svg class="w-6 h-6 text-blue-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2z"/>
+                  </svg>
+                  <span class="text-xs text-gray-600">VK</span>
+                </button>
+
+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition" data-action="click->property-detail#shareTelegram">
+                  <svg class="w-6 h-6 text-blue-400 mb-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+                  </svg>
+                  <span class="text-xs text-gray-600">Telegram</span>
+                </button>
+
+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-green-600 hover:bg-green-50 transition" data-action="click->property-detail#shareWhatsapp">
+                  <svg class="w-6 h-6 text-green-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771z"/>
+                  </svg>
+                  <span class="text-xs text-gray-600">WhatsApp</span>
+                </button>
+              </div>
+
+              <button type="button" class="mt-3 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm" data-action="click->property-detail#copyLink">
+                <svg class="w-4 h-4 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                Скопировать ссылку
+              </button>
+            </div>
+
+            <!-- Report Problem -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+              <button type="button" class="w-full text-left text-sm text-gray-600 hover:text-red-600 transition flex items-center" data-action="click->property-detail#openReportModal">
+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Пожаловаться на объявление
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- Schedule Viewing Modal -->
+<div class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" data-property-detail-target="scheduleModal">
+  <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-bold text-gray-900">Записаться на показ</h3>
+      <button type="button" data-action="click->property-detail#closeScheduleModal" class="text-gray-400 hover:text-gray-600">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+
+    <%= form_with url: schedule_viewing_property_path(@property), method: :post, class: "space-y-4" do |f| %>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Имя</label>
+        <%= text_field_tag 'name', nil, required: true, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Телефон</label>
+        <%= telephone_field_tag 'phone', nil, required: true, placeholder: "+7 (___) ___-__-__", class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Предпочтительная дата</label>
+        <%= date_field_tag 'preferred_date', nil, min: Date.current, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Время</label>
+        <%= select_tag 'preferred_time', options_for_select([
+          ['9:00 - 10:00', '09:00'],
+          ['10:00 - 11:00', '10:00'],
+          ['11:00 - 12:00', '11:00'],
+          ['12:00 - 13:00', '12:00'],
+          ['14:00 - 15:00', '14:00'],
+          ['15:00 - 16:00', '15:00'],
+          ['16:00 - 17:00', '16:00'],
+          ['17:00 - 18:00', '17:00'],
+          ['18:00 - 19:00', '18:00']
+        ]), class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
+      </div>
+
+      <div class="flex space-x-3">
+        <%= submit_tag "Записаться", class: "flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer" %>
+        <button type="button" data-action="click->property-detail#closeScheduleModal" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition">
+          Отмена
+        </button>
+      </div>
+    <% end %>
+  </div>
+</div>
+
+<!-- Schema.org Markup for SEO -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "RealEstateListing",
+  "name": "<%= @property.title %>",
+  "description": "<%= @property.short_description %>",
+  "url": "<%= property_url(@property) %>",
+  "price": "<%= @property.price %>",
+  "priceCurrency": "RUB",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "<%= @property.address %>",
+    "addressLocality": "<%= @property.district %>"
+  },
+  "numberOfRooms": "<%= @property.rooms %>",
+  "floorSize": {
+    "@type": "QuantitativeValue",
+    "value": "<%= @property.area %>",
+    "unitCode": "MTK"
+  }
+  <% if @property.images.attached? && @property.images.first %>
+  ,
+  "image": "<%= url_for(@property.images.first) %>"
+  <% end %>
+}
+</script>

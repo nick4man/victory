@@ -105,7 +105,7 @@
       <div>
         <h2 class="text-2xl font-bold text-gray-900 mb-8">Напишите нам</h2>
         
-        <%= form_with url: send_contact_form_path, method: :post, class: "space-y-6" do |f| %>
+        <%= form_with url: contacts_path, method: :post, class: "space-y-6" do |f| %>
           <div>
             <%= label_tag :name, "Ваше имя *", class: "block text-sm font-medium text-gray-700" %>
             <%= text_field_tag :name, nil, 

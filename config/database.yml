@@ -99,6 +99,6 @@ production:
 # Staging environment (optional)
 staging:
   <<: *default
-#  url: <%= ENV.fetch("DATABASE_URL") %>
+  url: <%= ENV.fetch("DATABASE_URL", nil) %>
   pool: <%= ENV.fetch("RAILS_MAX_THREADS", 10) %>
   min_messages: warning

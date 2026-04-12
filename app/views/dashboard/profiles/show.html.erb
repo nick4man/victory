@@ -1,0 +1,28 @@
+<%# Dashboard - Профиль %>
+<div class="container mx-auto px-4 py-8">
+  <div class="flex justify-between items-center mb-6">
+    <h1 class="text-3xl font-bold text-gray-900">Мой профиль</h1>
+    <%= link_to "Редактировать", edit_dashboard_profile_path, class: "bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700" %>
+  </div>
+
+  <div class="bg-white rounded-lg shadow p-6">
+    <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <dt class="text-sm text-gray-500">Имя</dt>
+        <dd class="font-medium text-gray-900"><%= current_user.first_name %></dd>
+      </div>
+      <div>
+        <dt class="text-sm text-gray-500">Фамилия</dt>
+        <dd class="font-medium text-gray-900"><%= current_user.last_name %></dd>
+      </div>
+      <div>
+        <dt class="text-sm text-gray-500">Email</dt>
+        <dd class="font-medium text-gray-900"><%= current_user.email %></dd>
+      </div>
+      <div>
+        <dt class="text-sm text-gray-500">Телефон</dt>
+        <dd class="font-medium text-gray-900"><%= current_user.phone.presence || 'Не указан' %></dd>
+      </div>
+    </dl>
+  </div>
+</div>

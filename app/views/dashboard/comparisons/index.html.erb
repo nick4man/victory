@@ -1,0 +1,36 @@
+<%# Dashboard - Сравнение объектов %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Сравнение объектов</h1>
+
+  <% if @properties.empty? %>
+    <div class="bg-white rounded-lg shadow p-12 text-center">
+      <p class="text-gray-500 text-lg">Нет объектов для сравнения</p>
+      <%= link_to "Перейти в каталог", properties_path, class: "mt-4 inline-block bg-primary-600 text-white px-6 py-2 rounded-lg hover:bg-primary-700" %>
+    </div>
+  <% else %>
+    <div class="grid grid-cols-1 md:grid-cols-<%= @properties.size %> gap-6">
+      <% @properties.each do |property| %>
+        <div class="bg-white rounded-lg shadow p-6">
+          <h3 class="font-semibold text-gray-900 mb-2">
+            <%= link_to property.title, property_path(property), class: "hover:text-primary-600" %>
+          </h3>
+          <p class="text-2xl font-bold text-primary-600 mb-3"><%= property.price_formatted %></p>
+          <dl class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <dt class="text-gray-500">Площадь</dt>
+              <dd class="font-medium"><%= property.area %> м²</dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-gray-500">Комнат</dt>
+              <dd class="font-medium"><%= property.rooms || '—' %></dd>
+            </div>
+            <div class="flex justify-between">
+              <dt class="text-gray-500">Этаж</dt>
+              <dd class="font-medium"><%= property.floor_info || '—' %></dd>
+            </div>
+          </dl>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>

@@ -150,7 +150,7 @@ class PropertyValuationsController < ApplicationController
   
   def set_breadcrumbs
     add_breadcrumb 'Главная', root_path
-    add_breadcrumb 'Продать недвижимость', sell_path
+    add_breadcrumb 'Продать недвижимость', new_sell_evaluation_path
     
     case action_name
     when 'new', 'create'

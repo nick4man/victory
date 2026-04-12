@@ -78,10 +78,10 @@ class PropertiesController < ApplicationController
     
     # Load related data
     @similar_properties = Property.similar_to(@property, 4)
-    @property_images = @property.property_images.order(:position)
+    @property_images = @property.images
     
     # Price history
-    @price_history = @property.price_histories.order(changed_at: :desc).limit(10)
+    @price_history = @property.price_histories.order(effective_date: :desc).limit(10)
     
     # Reviews
     @reviews = @property.reviews.approved.order(created_at: :desc).limit(5) if defined?(Review)
@@ -446,7 +446,7 @@ class PropertiesController < ApplicationController
       og: {
         title: @property.title,
         description: @property.short_description(200),
-        image: @property.primary_image&.url || view_context.asset_url('placeholder.jpg'),
+        image: @property.primary_image&.url || "#{request.base_url}/og-placeholder.png",
         url: property_url(@property),
         type: 'product'
       },

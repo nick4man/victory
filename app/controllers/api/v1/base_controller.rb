@@ -120,15 +120,18 @@ module Api
       # RESPONSE HELPERS
       # ============================================
       
-      def render_success(data = {}, message: nil, status: :ok, meta: {})
+      def render_success(data = nil, message: nil, status: :ok, meta: {}, **extra_data)
+        # В Ruby 3 хэш-данные, переданные как keyword args, попадают в extra_data
+        resolved_data = data || (extra_data.empty? ? {} : extra_data)
+
         response_data = {
           success: true,
-          data: data
+          data: resolved_data
         }
-        
+
         response_data[:message] = message if message.present?
         response_data[:meta] = meta if meta.present?
-        
+
         render json: response_data, status: status
       end
       
