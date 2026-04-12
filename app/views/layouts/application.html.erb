@@ -88,7 +88,7 @@
                 </svg>
                 <%= current_user.first_name %>
               <% end %>
-              <%= link_to "Выход", destroy_user_session_path, method: :delete, class: "hover:text-primary-600 transition" %>
+              <%= link_to "Выход", destroy_user_session_path, data: { turbo_method: :delete }, class: "hover:text-primary-600 transition" %>
             <% else %>
               <%= link_to "Войти", new_user_session_path, class: "hover:text-primary-600 transition" %>
               <span class="text-gray-400">|</span>

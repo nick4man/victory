@@ -38,28 +38,12 @@ class ApplicationController < ActionController::Base
   # ============================================
   # HELPER METHODS
   # ============================================
-  helper_method :user_signed_in?
-  helper_method :current_user
   helper_method :current_user_admin?
   helper_method :current_user_agent?
   helper_method :current_user_client?
   helper_method :mobile_device?
   helper_method :tablet_device?
   helper_method :desktop_device?
-  
-  # Devise helpers доступны автоматически через devise,
-  # но переопределяем для совместимости с кастомной логикой
-  def current_user_admin?
-    current_user&.role_admin?
-  end
-
-  def current_user_agent?
-    current_user&.role_agent?
-  end
-
-  def current_user_client?
-    current_user&.role_client?
-  end
   
   protected
   

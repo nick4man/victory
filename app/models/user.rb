@@ -51,7 +51,7 @@ class User < ApplicationRecord
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable,
          :trackable, :confirmable, :lockable,
-         :omniauthable, omniauth_providers: %i[google_oauth2 yandex]
+         :omniauthable, omniauth_providers: %i[google_oauth2]
 
   # ============================================
   # ASSOCIATIONS

@@ -40,8 +40,13 @@ gem 'pg_search', '~> 2.3'
 gem 'geocoder', '~> 1.8'
 
 gem "devise", "~> 5.0"
+gem "devise-i18n", "~> 1.12"
 
 gem "omniauth", "~> 2.1"
+gem "omniauth-google-oauth2", "~> 1.1"
+# omniauth-yandex несовместим с omniauth 2.x, используем кастомную стратегию
+# gem "omniauth-yandex"
+gem "omniauth-rails_csrf_protection", "~> 1.0"
 
 gem "aasm", "~> 5.5"
 
@@ -69,4 +74,5 @@ end
 
 group :development do
   gem 'annotate', '~> 3.2'
+  gem 'letter_opener', '~> 1.10'
 end

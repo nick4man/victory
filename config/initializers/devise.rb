@@ -24,7 +24,7 @@ Devise.setup do |config|
   # Configure the e-mail address which will be shown in Devise::Mailer,
   # note that it will be overwritten if you use your own mailer class
   # with default "from" parameter.
-  config.mailer_sender = 'please-change-me-at-config-initializers-devise@example.com'
+  config.mailer_sender = ENV.fetch('DEVISE_MAILER_SENDER', 'noreply@victory-realty.ru')
 
   # Configure the class responsible to send e-mails.
   # config.mailer = 'Devise::Mailer'
@@ -272,9 +272,19 @@ Devise.setup do |config|
   config.sign_out_via = :delete
 
   # ==> OmniAuth
-  # Add a new OmniAuth provider. Check the wiki for more information on setting
-  # up on your models and hooks.
-  # config.omniauth :github, 'APP_ID', 'APP_SECRET', scope: 'user,public_repo'
+  # Google OAuth2
+  config.omniauth :google_oauth2,
+                  ENV.fetch('GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_ID_NOT_SET'),
+                  ENV.fetch('GOOGLE_CLIENT_SECRET', 'GOOGLE_CLIENT_SECRET_NOT_SET'),
+                  scope: 'email,profile',
+                  prompt: 'select_account',
+                  image_aspect_ratio: 'square',
+                  image_size: 200
+
+  # Yandex OAuth (требует YANDEX_CLIENT_ID и YANDEX_CLIENT_SECRET)
+  # config.omniauth :yandex,
+  #                 ENV.fetch('YANDEX_CLIENT_ID', ''),
+  #                 ENV.fetch('YANDEX_CLIENT_SECRET', '')
 
   # ==> Warden configuration
   # If you want to use other strategies, that are not supported by Devise, or

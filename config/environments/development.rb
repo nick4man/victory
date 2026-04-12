@@ -45,9 +45,10 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_caching = false
   
-  # Use :test delivery method (letter_opener not installed)
-  config.action_mailer.delivery_method = :test
-  config.action_mailer.perform_deliveries = false
+  # Сохранять письма в tmp/mails/ (headless-среда без браузера)
+  config.action_mailer.delivery_method = :file
+  config.action_mailer.file_settings = { location: Rails.root.join('tmp/mails') }
+  config.action_mailer.perform_deliveries = true
   
   # Set default URL options
   config.action_mailer.default_url_options = {
