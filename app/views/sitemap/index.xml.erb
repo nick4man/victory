@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+          http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+
+  <%# Статические страницы %>
+  <% @static_pages.each do |page| %>
+  <url>
+    <loc><%= page[:loc] %></loc>
+    <priority><%= page[:priority] %></priority>
+    <changefreq><%= page[:changefreq] %></changefreq>
+  </url>
+  <% end %>
+
+  <%# Объекты недвижимости %>
+  <% @properties.each do |property| %>
+  <url>
+    <loc><%= property_url(property) %></loc>
+    <lastmod><%= property.updated_at.utc.strftime('%Y-%m-%d') %></lastmod>
+    <priority>0.8</priority>
+    <changefreq>weekly</changefreq>
+  </url>
+  <% end %>
+
+</urlset>

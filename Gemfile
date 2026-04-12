@@ -3,7 +3,7 @@
 source 'https://rubygems.org'
 git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
-ruby '3.2.2'
+ruby '~> 3.2'
 
 # Core Rails
 gem 'rails', '~> 7.1.0'
@@ -44,3 +44,29 @@ gem "devise", "~> 5.0"
 gem "omniauth", "~> 2.1"
 
 gem "aasm", "~> 5.5"
+
+# Search & filtering
+gem 'ransack', '~> 4.1'
+
+# Authorization
+gem 'pundit', '~> 2.3'
+
+# JWT for API authentication
+gem 'jwt', '~> 2.7'
+
+# Testing
+group :development, :test do
+  gem 'rspec-rails', '~> 6.1'
+  gem 'factory_bot_rails', '~> 6.4'
+  gem 'faker', '~> 3.2'
+  gem 'database_cleaner-active_record', '~> 2.1'
+end
+
+group :test do
+  gem 'shoulda-matchers', '~> 6.0'
+  gem 'capybara', '~> 3.39'
+end
+
+group :development do
+  gem 'annotate', '~> 3.2'
+end
