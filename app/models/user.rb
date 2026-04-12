@@ -369,6 +369,15 @@ class User < ApplicationRecord
     'active'
   end
 
+  # Override Devise methods
+  def active_for_authentication?
+    super && active? && !deleted?
+  end
+
+  def inactive_message
+    deleted? ? :deleted_account : super
+  end
+
   private
 
   # Callbacks
@@ -408,12 +417,4 @@ class User < ApplicationRecord
     end
   end
 
-  # Override Devise methods
-  def active_for_authentication?
-    super && active? && !deleted?
-  end
-
-  def inactive_message
-    deleted? ? :deleted_account : super
-  end
 end

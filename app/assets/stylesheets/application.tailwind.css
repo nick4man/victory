@@ -211,9 +211,9 @@
 
   /* Property Card */
   .property-card {
-    @apply bg-white rounded-lg shadow-md overflow-hidden 
-           hover:shadow-xl transition-all duration-300 
-           transform hover:-translate-y-1 group;
+    @apply bg-white rounded-lg shadow-md overflow-hidden
+           hover:shadow-xl transition-all duration-300
+           transform hover:-translate-y-1;
   }
 
   .property-card-image {

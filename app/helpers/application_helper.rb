@@ -71,6 +71,16 @@ module ApplicationHelper
     I18n.l(datetime, format: format)
   end
   
+  # Flash message color (returns Tailwind color name)
+  def flash_color(type)
+    case type.to_sym
+    when :notice, :success then 'green'
+    when :alert, :error    then 'red'
+    when :warning          then 'yellow'
+    else                        'blue'
+    end
+  end
+
   # Flash message CSS classes
   def flash_class(type)
     case type.to_sym

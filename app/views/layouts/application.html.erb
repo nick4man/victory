@@ -21,14 +21,13 @@
     <%#= favicon_link_tag 'apple-touch-icon.png', rel: 'apple-touch-icon', sizes: '180x180' %>
     
     <!-- Stylesheets -->
-    <%# Временно отключено: assets не скомпилированы %>
-    <%#= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
-    <%#= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
-    
-    <!-- JavaScript -->
-    <%= javascript_importmap_tags %>
-    <%# Временно отключено: assets не скомпилированы %>
-    <%#= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
+    <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
+
+    <!-- JavaScript: Hotwire -->
+    <script type="module">
+      import hotwireTurbo from 'https://cdn.skypack.dev/@hotwired/turbo';
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/dist/stimulus.umd.js"></script>
     
     <!-- Yandex.Metrika -->
     <% if ENV['YANDEX_METRIKA_ID'].present? %>
