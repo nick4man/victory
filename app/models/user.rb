@@ -152,9 +152,19 @@ class User < ApplicationRecord
   # Search users
   def self.search(query)
     return none if query.blank?
-    
+
     where('first_name ILIKE ? OR last_name ILIKE ? OR email ILIKE ?',
           "%#{query}%", "%#{query}%", "%#{query}%")
+  end
+
+  # Ransack allowlist
+  def self.ransackable_attributes(_auth_object = nil)
+    %w[id email first_name last_name phone role active confirmed_at
+       sign_in_count last_sign_in_at created_at updated_at]
+  end
+
+  def self.ransackable_associations(_auth_object = nil)
+    %w[properties favorites inquiries reviews]
   end
 
   # ============================================

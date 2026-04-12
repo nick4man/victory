@@ -56,6 +56,10 @@ gem 'ransack', '~> 4.1'
 # Authorization
 gem 'pundit', '~> 2.3'
 
+# Admin panel
+gem 'activeadmin', '~> 3.2'
+gem 'sassc-rails', '~> 2.1'
+
 # JWT for API authentication
 gem 'jwt', '~> 2.7'
 

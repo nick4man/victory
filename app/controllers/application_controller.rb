@@ -169,6 +169,22 @@ class ApplicationController < ActionController::Base
   # ============================================
   # AUTHORIZATION HELPERS
   # ============================================
+
+  # Used by ActiveAdmin to authenticate admin access
+  def authenticate_admin_user!
+    authenticate_user!
+    unless current_user&.admin?
+      flash[:alert] = 'У вас нет прав для доступа к панели администрирования'
+      redirect_to root_path
+    end
+  end
+
+  # Called by ActiveAdmin on unauthorized access
+  def access_denied(_exception)
+    flash[:alert] = 'Доступ запрещён'
+    redirect_to root_path
+  end
+
   def require_admin!
     unless current_user_admin?
       flash[:alert] = 'У вас нет прав для выполнения этого действия'

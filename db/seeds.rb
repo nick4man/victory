@@ -217,3 +217,4 @@ puts "Агент:         agent@viktory-realty.ru / Password123!"
 puts "Клиент:        client1@example.com / Password123!"
 puts "Объектов:      #{Property.count}"
 puts "Заявок:        #{Inquiry.count}"
+User.create!(email: 'admin@example.com', password: 'password', password_confirmation: 'password') if Rails.env.development?
