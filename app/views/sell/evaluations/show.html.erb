@@ -1,0 +1,57 @@
+<% content_for :title, "Оценка недвижимости" %>
+
+<div class="bg-white">
+  <!-- Hero section -->
+  <div class="relative bg-gradient-to-r from-primary-600 to-primary-800 py-16">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="text-center">
+        <h1 class="text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+          Онлайн-оценка недвижимости
+        </h1>
+        <p class="mx-auto mt-6 max-w-2xl text-xl text-primary-100">
+          Узнайте рыночную стоимость вашей квартиры или дома за 5 минут — бесплатно
+        </p>
+        <div class="mt-10">
+          <%= link_to new_sell_evaluation_path, class: "inline-flex items-center px-8 py-4 border border-transparent text-lg font-medium rounded-md text-primary-700 bg-white hover:bg-primary-50 shadow-lg" do %>
+            Оценить мою недвижимость
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="py-16">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="text-center">
+        <h2 class="text-3xl font-extrabold text-gray-900">Как это работает</h2>
+      </div>
+      <div class="mt-12 grid gap-8 lg:grid-cols-3">
+        <div class="text-center">
+          <div class="flex items-center justify-center h-16 w-16 rounded-full bg-primary-100 text-primary-700 text-2xl font-bold mx-auto">1</div>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">Укажите характеристики</h3>
+          <p class="mt-2 text-gray-500">Введите площадь, адрес, этаж и состояние объекта</p>
+        </div>
+        <div class="text-center">
+          <div class="flex items-center justify-center h-16 w-16 rounded-full bg-primary-100 text-primary-700 text-2xl font-bold mx-auto">2</div>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">Анализ рынка</h3>
+          <p class="mt-2 text-gray-500">Система анализирует тысячи сделок в вашем районе</p>
+        </div>
+        <div class="text-center">
+          <div class="flex items-center justify-center h-16 w-16 rounded-full bg-primary-100 text-primary-700 text-2xl font-bold mx-auto">3</div>
+          <h3 class="mt-4 text-lg font-medium text-gray-900">Получите результат</h3>
+          <p class="mt-2 text-gray-500">Рыночная стоимость с диапазоном цен и рекомендациями</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div class="bg-gray-50 py-12">
+    <div class="mx-auto max-w-3xl px-4 text-center">
+      <%= link_to new_sell_evaluation_path, class: "inline-flex items-center px-8 py-4 border border-transparent text-lg font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 shadow" do %>
+        Начать оценку бесплатно
+      <% end %>
+    </div>
+  </div>
+</div>

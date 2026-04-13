@@ -41,7 +41,8 @@
               </p>
               <% end %>
               <div class="mt-4 flex items-center gap-4 text-sm text-gray-500">
-                <span><%= pluralize(agent.properties.active.count, 'объект', 'объекта', 'объектов') %></span>
+                <% count = agent.properties.active.count %>
+                <span><%= count %> <%= count == 1 ? 'объект' : (count.between?(2, 4) ? 'объекта' : 'объектов') %></span>
               </div>
             </div>
           </div>
