@@ -1,0 +1,32 @@
+<h1>🏠 Как продвигается продажа?</h1>
+
+<p>Здравствуйте, <%= @valuation.name.presence || 'уважаемый клиент' %>!</p>
+
+<p>Несколько дней назад вы получили оценку стоимости своей недвижимости на нашем сайте. Мы хотели узнать — нашли ли вы покупателя или арендатора?</p>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Объект:</td><td><strong><%= @valuation.address %></strong></td></tr>
+    <tr><td>Тип:</td><td><%= @valuation.property_type %></td></tr>
+    <% if @valuation.estimated_price.present? %>
+    <tr><td>Расчётная стоимость:</td><td><strong><%= number_to_currency(@valuation.estimated_price.to_i, precision: 0) %></strong></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<p>Мы готовы помочь вам:</p>
+<ul style="line-height: 1.8;">
+  <li>Разместить объявление в нашем каталоге</li>
+  <li>Провести профессиональную фотосъёмку объекта</li>
+  <li>Организовать показы и найти покупателя быстрее</li>
+  <li>Обеспечить юридическое сопровождение сделки</li>
+</ul>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @result_url %>" class="button" style="margin-right: 10px;">Посмотреть оценку</a>
+  <a href="<%= @contact_url %>" class="button button-secondary">Связаться с нами</a>
+</div>
+
+<p style="color: #718096; font-size: 14px;">
+  Если вы уже решили вопрос — просто проигнорируйте это письмо. Удачи!
+</p>

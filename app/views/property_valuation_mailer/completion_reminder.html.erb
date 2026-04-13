@@ -1,0 +1,27 @@
+<h1>📊 Завершите оценку недвижимости</h1>
+
+<p>Здравствуйте, <%= @valuation.name.presence || 'уважаемый клиент' %>!</p>
+
+<p>Вы начали оценку своей недвижимости, но не завершили её. Ваши данные сохранены — осталось сделать ещё несколько шагов.</p>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Адрес объекта:</td><td><strong><%= @valuation.address %></strong></td></tr>
+    <tr><td>Тип:</td><td><%= @valuation.property_type %></td></tr>
+    <% if @valuation.total_area.present? %>
+    <tr><td>Площадь:</td><td><%= @valuation.total_area %> м²</td></tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="info-box success-box" style="text-align: center;">
+  <p style="margin: 0; font-size: 16px; font-weight: bold;">Получите точную оценку рыночной стоимости бесплатно!</p>
+</div>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @continue_url %>" class="button">Продолжить оценку</a>
+</div>
+
+<p style="color: #718096; font-size: 14px;">
+  Если у вас возникли вопросы, просто ответьте на это письмо — мы поможем.
+</p>

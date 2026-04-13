@@ -20,7 +20,7 @@ class InquiryNotificationJob < ApplicationJob
     end
     
     # Update inquiry
-    inquiry.update(confirmation_email_sent: true, confirmation_email_sent_at: Time.current)
+    inquiry.update(notifications_sent: true, last_notification_at: Time.current)
     
     Rails.logger.info "Inquiry notifications sent for inquiry ##{inquiry_id}"
   rescue ActiveRecord::RecordNotFound => e

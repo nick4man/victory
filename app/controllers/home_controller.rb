@@ -7,19 +7,16 @@ class HomeController < ApplicationController
   # caches_action :index, expires_in: 15.minutes, cache_path: proc { |c| c.params }
   
   def index
-    # Simplified for now - just render the homepage
-    # TODO: Re-enable features after gem dependencies are resolved
-    
-    # Provide default empty data to prevent view errors
-    @statistics = { total_properties: 0, total_deals: 0, happy_clients: 0 }
-    @featured_properties = []
-    @latest_properties = []
-    @reviews = []
-    @blog_posts = []
-    @virtual_tours = []
-    
+    load_featured_properties
+    load_latest_properties
+    load_statistics
+    load_reviews
+    load_blog_posts
+    load_virtual_tours
+
     respond_to do |format|
       format.html
+      format.json { render json: homepage_data }
     end
   end
   

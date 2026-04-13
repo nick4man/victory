@@ -1,0 +1,24 @@
+<h1>🏠 Подобрали объекты по вашим критериям</h1>
+
+<p>Здравствуйте, <%= @inquiry.name %>!</p>
+
+<p>Мы подобрали для вас <strong><%= @properties.count %></strong> объектов, соответствующих вашим критериям.</p>
+
+<% @properties.each do |property| %>
+<div class="property-card" style="margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px;">
+  <h3 style="margin-top: 0;"><%= property.title %></h3>
+  <p style="color: #dc2626; font-size: 18px; font-weight: bold;"><%= property.price_formatted %></p>
+  <p style="color: #718096;"><%= property.address %></p>
+  <a href="<%= "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/properties/#{property.id}" %>" class="button button-secondary" style="font-size: 14px;">
+    Посмотреть объект
+  </a>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @search_url %>" class="button">Все результаты поиска</a>
+</div>
+
+<p style="color: #718096; font-size: 14px;">
+  Если ни один из вариантов не подошёл — позвоните нам, и мы поможем подобрать именно то, что нужно.
+</p>

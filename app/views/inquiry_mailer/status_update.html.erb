@@ -1,0 +1,28 @@
+<h1>📋 Статус вашей заявки изменён</h1>
+
+<p>Здравствуйте, <%= @inquiry.name %>!</p>
+
+<p>Статус вашей заявки <strong>#<%= @inquiry.id %></strong> изменён на:</p>
+
+<div class="info-box success-box" style="text-align: center;">
+  <p style="font-size: 20px; font-weight: bold; margin: 0;"><%= @status_text %></p>
+</div>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Номер заявки:</td><td><strong>#<%= @inquiry.id %></strong></td></tr>
+    <tr><td>Дата заявки:</td><td><%= l(@inquiry.created_at, format: :long) %></td></tr>
+    <% if @inquiry.property.present? %>
+    <tr><td>Объект:</td><td><%= @inquiry.property.title %></td></tr>
+    <% end %>
+    <% if @inquiry.message.present? %>
+    <tr><td>Ваш запрос:</td><td><%= @inquiry.message.truncate(100) %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @dashboard_url %>" class="button">Открыть заявку</a>
+</div>
+
+<p>Если у вас есть вопросы — просто позвоните нам или напишите в ответ на это письмо.</p>

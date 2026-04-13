@@ -1,0 +1,27 @@
+<h1>📞 Запрос обратного звонка</h1>
+
+<p><strong>Клиент просит перезвонить как можно скорее.</strong></p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Данные клиента</h2>
+  <table class="data-table">
+    <tr><td>Имя:</td><td><strong><%= @inquiry.name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><strong><%= @inquiry.phone %></strong></td></tr>
+    <% if @inquiry.email.present? %>
+    <tr><td>Email:</td><td><%= @inquiry.email %></td></tr>
+    <% end %>
+    <tr><td>Удобное время:</td><td><%= @preferred_time %></td></tr>
+    <tr><td>Заявка №:</td><td>#<%= @inquiry.id %></td></tr>
+    <tr><td>Дата:</td><td><%= l(@inquiry.created_at, format: :long) %></td></tr>
+  </table>
+</div>
+
+<% if @inquiry.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;"><strong>Комментарий:</strong><br><%= simple_format(@inquiry.message) %></p>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">Открыть заявку в системе</a>
+</div>

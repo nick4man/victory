@@ -1,0 +1,40 @@
+<h1>🏦 Заявка на ипотеку</h1>
+
+<p>Поступила новая заявка на ипотечное консультирование.</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Данные заявителя</h2>
+  <table class="data-table">
+    <tr><td>Имя:</td><td><strong><%= @inquiry.name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><%= @inquiry.phone %></td></tr>
+    <% if @inquiry.email.present? %>
+    <tr><td>Email:</td><td><%= @inquiry.email %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<% if @property_price.present? || @down_payment.present? %>
+<div class="info-box">
+  <h2 style="margin-top: 0;">Параметры ипотеки</h2>
+  <table class="data-table">
+    <% if @property_price.present? %>
+    <tr><td>Стоимость объекта:</td><td><%= number_to_currency(@property_price.to_i, precision: 0) %></td></tr>
+    <% end %>
+    <% if @down_payment.present? %>
+    <tr><td>Первоначальный взнос:</td><td><%= number_to_currency(@down_payment.to_i, precision: 0) %></td></tr>
+    <% end %>
+    <% if @loan_term.present? %>
+    <tr><td>Срок кредита:</td><td><%= @loan_term %> лет</td></tr>
+    <% end %>
+    <% if @monthly_income.present? %>
+    <tr><td>Ежемесячный доход:</td><td><%= number_to_currency(@monthly_income.to_i, precision: 0) %></td></tr>
+    <% end %>
+  </table>
+</div>
+<% end %>
+
+<% if @inquiry.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;"><strong>Комментарий:</strong><br><%= simple_format(@inquiry.message) %></p>
+</div>
+<% end %>

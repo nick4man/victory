@@ -1,0 +1,24 @@
+<h1>📞 Заявка на звонок получена</h1>
+
+<p>Здравствуйте, <%= @valuation.name.presence || 'уважаемый клиент' %>!</p>
+
+<p>Мы получили вашу заявку на консультацию по оценке объекта. Наш специалист свяжется с вами в ближайшее время.</p>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Адрес объекта:</td><td><strong><%= @valuation.address %></strong></td></tr>
+    <tr><td>Тип:</td><td><%= @valuation.property_type %></td></tr>
+    <% if @valuation.phone.present? %>
+    <tr><td>Ваш телефон:</td><td><%= @valuation.phone %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="info-box" style="text-align: center;">
+  <p style="margin: 0;">Если вопрос срочный — позвоните нам сами:</p>
+  <p style="font-size: 22px; font-weight: bold; color: #dc2626; margin: 8px 0 0 0;"><%= @contact_phone %></p>
+</div>
+
+<p style="color: #718096; font-size: 14px; margin-top: 20px;">
+  Режим работы: Пн–Пт 9:00–21:00, Сб–Вс 10:00–18:00
+</p>

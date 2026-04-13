@@ -1,0 +1,29 @@
+<h1>💬 Запрос консультации</h1>
+
+<p>Поступил запрос на консультацию от клиента.</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Детали запроса</h2>
+  <table class="data-table">
+    <tr><td>Клиент:</td><td><strong><%= @inquiry.name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><%= @inquiry.phone %></td></tr>
+    <% if @inquiry.email.present? %>
+    <tr><td>Email:</td><td><%= @inquiry.email %></td></tr>
+    <% end %>
+    <tr><td>Тип консультации:</td><td><%= @consultation_type %></td></tr>
+    <% if @preferred_date.present? %>
+    <tr><td>Удобная дата:</td><td><%= @preferred_date %></td></tr>
+    <% end %>
+    <tr><td>Заявка №:</td><td>#<%= @inquiry.id %></td></tr>
+  </table>
+</div>
+
+<% if @inquiry.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;"><strong>Сообщение клиента:</strong><br><%= simple_format(@inquiry.message) %></p>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">Открыть заявку</a>
+</div>

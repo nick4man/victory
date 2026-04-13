@@ -1,0 +1,35 @@
+<h1>🏠 Еженедельный дайджест недвижимости</h1>
+
+<p>Здравствуйте, <%= @user.first_name.presence || @user.email %>!</p>
+
+<p>Предлагаем вашему вниманию свежие объекты, появившиеся на этой неделе.</p>
+
+<% if @new_properties.any? %>
+  <% @new_properties.each do |property| %>
+  <div class="property-card" style="margin-bottom: 20px; padding: 15px; border: 1px solid #e2e8f0; border-radius: 8px;">
+    <h3 style="margin-top: 0; font-size: 16px;"><%= property.title %></h3>
+    <p style="color: #dc2626; font-size: 18px; font-weight: bold; margin: 4px 0;"><%= property.price_formatted %></p>
+    <p style="color: #718096; margin: 4px 0; font-size: 14px;"><%= property.address %></p>
+    <% if property.area.present? || property.rooms.present? %>
+    <p style="margin: 4px 0; font-size: 14px;">
+      <% if property.rooms.present? %><span><%= property.rooms %> комн. </span><% end %>
+      <% if property.area.present? %><span><%= property.area %> м²</span><% end %>
+    </p>
+    <% end %>
+    <a href="<%= "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/properties/#{property.slug}" %>" class="button button-secondary" style="font-size: 14px; margin-top: 8px;">
+      Посмотреть
+    </a>
+  </div>
+  <% end %>
+<% else %>
+  <p style="color: #718096;">На этой неделе новых объектов пока нет — загляните позже!</p>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @properties_url %>" class="button">Все объекты</a>
+</div>
+
+<p style="color: #718096; font-size: 13px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 20px;">
+  Вы получаете этот дайджест, потому что подписались на рассылку.
+  Управление подпиской доступно в <a href="<%= @dashboard_url %>/settings" style="color: #4a6cf7;">личном кабинете</a>.
+</p>

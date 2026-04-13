@@ -1,0 +1,24 @@
+<h1>❌ Показ отменён</h1>
+
+<p>Здравствуйте, <%= @viewing.name %>!</p>
+
+<p>К сожалению, показ объекта был отменён.</p>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Объект:</td><td><strong><%= @property.title %></strong></td></tr>
+    <tr><td>Адрес:</td><td><%= @property.address %></td></tr>
+    <tr><td>Дата и время:</td><td><%= @date_time.presence || "не указано" %></td></tr>
+    <tr><td>Причина:</td><td><%= @cancellation_reason %></td></tr>
+  </table>
+</div>
+
+<p>Вы можете записаться на другое удобное время — позвоните нам по номеру <strong><%= @contact_phone %></strong> или выберите объект на сайте.</p>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @property_url %>" class="button">Вернуться к объекту</a>
+</div>
+
+<p style="color: #718096; font-size: 14px;">
+  Приносим извинения за доставленные неудобства.
+</p>

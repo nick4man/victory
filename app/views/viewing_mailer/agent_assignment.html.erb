@@ -1,0 +1,43 @@
+<h1>📋 Вам назначен показ</h1>
+
+<p>Здравствуйте!</p>
+
+<p>Вам назначен показ объекта. Ознакомьтесь с деталями.</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Данные клиента</h2>
+  <table class="data-table">
+    <% if @client %>
+    <tr><td>Клиент:</td><td><strong><%= @client.full_name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><%= @client.phone %></td></tr>
+    <% else %>
+    <tr><td>Клиент:</td><td><strong><%= @viewing.name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><%= @viewing.phone %></td></tr>
+    <% end %>
+    <% if @viewing.email.present? %>
+    <tr><td>Email:</td><td><%= @viewing.email %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Объект и время</h2>
+  <table class="data-table">
+    <tr><td>Объект:</td><td><strong><%= @property.title %></strong></td></tr>
+    <tr><td>Адрес:</td><td><%= @property.address %></td></tr>
+    <tr><td>Время показа:</td><td><strong><%= @date_time %></strong></td></tr>
+    <% if @viewing.viewing_type.present? %>
+    <tr><td>Тип показа:</td><td><%= @viewing.viewing_type %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<% if @viewing.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;"><strong>Пожелания клиента:</strong><br><%= simple_format(@viewing.message) %></p>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">Открыть в системе</a>
+</div>

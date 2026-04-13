@@ -86,7 +86,11 @@ class User < ApplicationRecord
   
   # Viewing Schedules
   has_many :viewing_schedules, dependent: :destroy
-  
+
+  # Notifications
+  has_many :notifications, dependent: :destroy
+  has_many :unread_notifications, -> { unread }, class_name: 'Notification'
+
   # Avatar
   has_one_attached :avatar
 

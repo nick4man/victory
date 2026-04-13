@@ -1,0 +1,35 @@
+<h1>🏠 Спасибо за визит!</h1>
+
+<p>Здравствуйте, <%= @viewing.name %>!</p>
+
+<p>Благодарим вас за то, что посетили наш объект. Надеемся, что показ прошёл успешно!</p>
+
+<div class="info-box">
+  <table class="data-table">
+    <tr><td>Объект:</td><td><strong><%= @property.title %></strong></td></tr>
+    <tr><td>Адрес:</td><td><%= @property.address %></td></tr>
+  </table>
+</div>
+
+<div class="info-box success-box" style="text-align: center;">
+  <p style="margin: 0; font-size: 16px;">Понравился объект? Оставьте отзыв о работе нашего агента — это очень помогает нам стать лучше.</p>
+</div>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @feedback_url %>" class="button">Оставить отзыв</a>
+</div>
+
+<% if @similar_properties.any? %>
+<h2 style="font-size: 18px;">Похожие объекты</h2>
+<% @similar_properties.each do |property| %>
+<div style="margin-bottom: 15px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px;">
+  <h3 style="margin: 0 0 5px 0; font-size: 16px;"><%= property.title %></h3>
+  <p style="margin: 0; color: #dc2626; font-weight: bold;"><%= property.price_formatted %></p>
+  <p style="margin: 4px 0 0 0; color: #718096; font-size: 14px;"><%= property.address %></p>
+</div>
+<% end %>
+<% end %>
+
+<p style="color: #718096; font-size: 14px; margin-top: 30px;">
+  Если объект вас заинтересовал или у вас есть вопросы — позвоните нам, мы всегда рады помочь.
+</p>

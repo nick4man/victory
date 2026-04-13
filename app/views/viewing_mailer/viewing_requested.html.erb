@@ -1,0 +1,36 @@
+<h1>📅 Новая запись на показ</h1>
+
+<p>Поступила новая заявка на просмотр объекта.</p>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Данные клиента</h2>
+  <table class="data-table">
+    <tr><td>Имя:</td><td><strong><%= @viewing.name %></strong></td></tr>
+    <tr><td>Телефон:</td><td><strong><%= @viewing.phone %></strong></td></tr>
+    <% if @viewing.email.present? %>
+    <tr><td>Email:</td><td><%= @viewing.email %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Объект и время</h2>
+  <table class="data-table">
+    <tr><td>Объект:</td><td><strong><%= @property.title %></strong></td></tr>
+    <tr><td>Адрес:</td><td><%= @property.address %></td></tr>
+    <tr><td>Желаемое время:</td><td><strong><%= @date_time %></strong></td></tr>
+    <% if @viewing.viewing_type.present? %>
+    <tr><td>Тип показа:</td><td><%= @viewing.viewing_type %></td></tr>
+    <% end %>
+  </table>
+</div>
+
+<% if @viewing.message.present? %>
+<div class="info-box">
+  <p style="margin: 0;"><strong>Комментарий клиента:</strong><br><%= simple_format(@viewing.message) %></p>
+</div>
+<% end %>
+
+<div style="text-align: center; margin: 30px 0;">
+  <a href="<%= @admin_url %>" class="button">Открыть в системе</a>
+</div>
