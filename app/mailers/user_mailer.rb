@@ -3,6 +3,23 @@
 # User Mailer
 # Sends transactional emails related to user accounts
 class UserMailer < ApplicationMailer
+  # Send weekly digest of new properties to subscribed users
+  # @param user [User]
+  def weekly_digest(user)
+    @user = user
+    @new_properties = Property.published.order(created_at: :desc).limit(6)
+    @properties_url = "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/properties"
+    @dashboard_url  = "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/dashboard"
+
+    attach_logo
+    track_email("digest_#{user.id}_#{Date.current.cweek}")
+
+    mail(
+      to:      user.email,
+      subject: 'АН "Виктори" — еженедельный дайджест недвижимости'
+    )
+  end
+
   # Send welcome email after registration
   # @param user [User]
   def welcome_email(user)

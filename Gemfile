@@ -63,6 +63,16 @@ gem 'sassc-rails', '~> 2.1'
 # JWT for API authentication
 gem 'jwt', '~> 2.7'
 
+# Background jobs
+gem 'sidekiq', '~> 7.3'
+gem 'sidekiq-cron', '~> 1.12'
+
+# Redis (for Sidekiq and cache store)
+gem 'redis', '~> 5.0'
+
+# Cron scheduling
+gem 'whenever', '~> 1.0', require: false
+
 # Testing
 group :development, :test do
   gem 'rspec-rails', '~> 6.1'

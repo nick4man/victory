@@ -1,0 +1,32 @@
+# Sidekiq-cron recurring jobs schedule
+# Format: name: { cron: "...", class: "...", queue: "..." }
+
+send_viewing_reminders:
+  cron: "0 * * * *"           # Every hour
+  class: "SendViewingRemindersJob"
+  queue: "scheduled"
+  description: "Send reminders for upcoming viewings"
+
+update_property_statistics:
+  cron: "0 3 * * *"           # Daily at 03:00 MSK
+  class: "UpdatePropertyStatisticsJob"
+  queue: "low_priority"
+  description: "Recalculate views/inquiries/favorites counters on properties"
+
+property_valuation_follow_ups:
+  cron: "0 10 * * *"          # Daily at 10:00 MSK
+  class: "PropertyValuationFollowUpJob"
+  queue: "low_priority"
+  description: "Send follow-up emails for valuations older than 3 days"
+
+user_weekly_digest:
+  cron: "0 9 * * 0"           # Every Sunday at 09:00
+  class: "UserDigestJob"
+  queue: "low_priority"
+  description: "Send weekly digest email to subscribed users"
+
+market_analytics_update:
+  cron: "0 5 * * *"           # Daily at 05:00
+  class: "MarketAnalyticsUpdateJob"
+  queue: "low_priority"
+  description: "Update market analytics and price trend data"
