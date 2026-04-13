@@ -351,16 +351,20 @@ class ApplicationController < ActionController::Base
       token = request.headers['Authorization'].split(' ').last
       @current_api_user = decode_jwt_token(token)
     end
-  rescue
+  rescue StandardError
     @current_api_user = nil
   end
-  
+
   def decode_jwt_token(token)
     return unless token
-    
+
+    secret = ENV['JWT_SECRET_KEY'].presence ||
+             Rails.application.credentials.jwt_secret_key ||
+             raise('JWT_SECRET_KEY не установлен')
+
     decoded = JWT.decode(
       token,
-      ENV['JWT_SECRET_KEY'] || Rails.application.credentials.secret_key_base,
+      secret,
       true,
       algorithm: 'HS256'
     )

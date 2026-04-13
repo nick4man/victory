@@ -8,6 +8,9 @@ class Dashboard::MessagesController < Dashboard::BaseController
 
   def show
     @message = Message.find(params[:id])
+    unless @message.sender_id == current_user.id || @message.recipient_id == current_user.id
+      redirect_to dashboard_messages_path, alert: 'Доступ запрещён'
+    end
   end
 
   def create

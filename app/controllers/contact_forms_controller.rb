@@ -31,12 +31,12 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.' }
+        format.html { redirect_to root_path, notice: 'Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.' }
         format.json { render json: { success: true, message: 'Заявка принята', inquiry_id: @inquiry.id }, status: :created }
       end
     else
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
+        format.html { redirect_to root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
         format.json { render json: { success: false, errors: @inquiry.errors.full_messages }, status: :unprocessable_entity }
       end
     end
@@ -101,12 +101,12 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на звонок принята! Мы перезвоним вам в течение 15 минут.' }
+        format.html { redirect_to root_path, notice: 'Заявка на звонок принята! Мы перезвоним вам в течение 15 минут.' }
         format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
       end
     else
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
+        format.html { redirect_to root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
         format.json { render json: { success: false, errors: @inquiry.errors.full_messages }, status: :unprocessable_entity }
       end
     end
@@ -133,12 +133,12 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на консультацию принята! Мы свяжемся с вами для согласования времени.' }
+        format.html { redirect_to root_path, notice: 'Заявка на консультацию принята! Мы свяжемся с вами для согласования времени.' }
         format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
       end
     else
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
+        format.html { redirect_to root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
         format.json { render json: { success: false, errors: @inquiry.errors.full_messages }, status: :unprocessable_entity }
       end
     end
@@ -166,12 +166,12 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на ипотеку принята! Мы подберем для вас лучшие предложения.' }
+        format.html { redirect_to root_path, notice: 'Заявка на ипотеку принята! Мы подберем для вас лучшие предложения.' }
         format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
       end
     else
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
+        format.html { redirect_to root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
         format.json { render json: { success: false, errors: @inquiry.errors.full_messages }, status: :unprocessable_entity }
       end
     end
@@ -199,12 +199,12 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка принята! Мы подберем для вас подходящие варианты и пришлем на email.' }
+        format.html { redirect_to root_path, notice: 'Заявка принята! Мы подберем для вас подходящие варианты и пришлем на email.' }
         format.json { render json: { success: true, message: 'Заявка принята', matching_count: matching_properties.count }, status: :created }
       end
     else
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
+        format.html { redirect_to root_path, alert: "Ошибка: #{@inquiry.errors.full_messages.join(', ')}" }
         format.json { render json: { success: false, errors: @inquiry.errors.full_messages }, status: :unprocessable_entity }
       end
     end

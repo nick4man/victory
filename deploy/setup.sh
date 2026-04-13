@@ -101,11 +101,35 @@ log "PostgreSQL запущен"
 
 # Создание базы и пользователя
 info "Создание БД и пользователя"
-sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';" 2>/dev/null || \
-  sudo -u postgres psql -c "ALTER USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
-sudo -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null || \
-  warn "База ${DB_NAME} уже существует"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
+
+# Валидация идентификаторов (только буквы, цифры, _)
+[[ "$DB_USER" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,62}$ ]] || \
+  error "DB_USER содержит недопустимые символы: '$DB_USER'. Используйте только буквы, цифры и _"
+[[ "$DB_NAME" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,62}$ ]] || \
+  error "DB_NAME содержит недопустимые символы: '$DB_NAME'. Используйте только буквы, цифры и _"
+
+# Экранирование пароля (удвоение одиночных кавычек для SQL)
+DB_PASSWORD_ESCAPED="${DB_PASSWORD//\'/\'\'}"
+
+# Передаём SQL через heredoc + переменные, чтобы избежать shell-interpolation в psql-строке
+sudo -u postgres psql <<SQL 2>/dev/null || true
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN
+    CREATE USER "${DB_USER}" WITH PASSWORD '${DB_PASSWORD_ESCAPED}';
+  ELSE
+    ALTER USER "${DB_USER}" WITH PASSWORD '${DB_PASSWORD_ESCAPED}';
+  END IF;
+END
+\$\$;
+SELECT 1;
+SQL
+
+sudo -u postgres psql <<SQL 2>/dev/null || warn "База ${DB_NAME} уже существует"
+CREATE DATABASE "${DB_NAME}" OWNER "${DB_USER}";
+SQL
+
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE \"${DB_NAME}\" TO \"${DB_USER}\";"
 log "База данных готова"
 
 # ─── Redis ────────────────────────────────────────────────────────────────────

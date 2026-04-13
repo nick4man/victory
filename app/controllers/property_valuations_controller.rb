@@ -8,7 +8,7 @@ class PropertyValuationsController < ApplicationController
   # GET /sell/valuation/new
   def new
     @valuation = PropertyValuation.new
-    @step = params[:step]&.to_i || 1
+    @step = (params[:step]&.to_i || 1).clamp(1, 4)
     
     set_meta_tags(
       title: 'Онлайн-оценка недвижимости - АН Виктори',
@@ -62,26 +62,29 @@ class PropertyValuationsController < ApplicationController
   # GET /sell/valuation/:token/result
   def result
     @valuation = PropertyValuation.find_by!(token: params[:token])
-    @evaluation_result = JSON.parse(@valuation.evaluation_data, symbolize_names: true)
+    @evaluation_result = JSON.parse(@valuation.evaluation_data.presence || '{}', symbolize_names: true)
     @similar_properties = find_similar_properties(@valuation)
-    
+
     set_meta_tags(
       title: "Результат оценки недвижимости - #{number_to_currency(@valuation.estimated_price, precision: 0)}",
       description: "Оценочная стоимость вашей недвижимости составляет #{number_to_currency(@valuation.estimated_price, precision: 0)}"
     )
-    
+
     track_event('valuation_result_viewed', {
       valuation_id: @valuation.id,
       estimated_price: @valuation.estimated_price
     })
   rescue ActiveRecord::RecordNotFound
     redirect_to new_property_valuation_path, alert: 'Оценка не найдена'
+  rescue JSON::ParserError => e
+    Rails.logger.error "Valuation #{params[:token]} has corrupt evaluation_data: #{e.message}"
+    @evaluation_result = {}
   end
   
   # GET /sell/valuation/:token/download
   def download_pdf
     @valuation = PropertyValuation.find_by!(token: params[:token])
-    @evaluation_result = JSON.parse(@valuation.evaluation_data, symbolize_names: true)
+    @evaluation_result = JSON.parse(@valuation.evaluation_data.presence || '{}', symbolize_names: true)
     
     respond_to do |format|
       format.pdf do

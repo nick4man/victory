@@ -21,8 +21,9 @@ class Users::OmniauthCallbacksController < Devise::OmniauthCallbacksController
       set_flash_message(:notice, :success, kind: provider_name) if is_navigational_format?
     else
       session['devise.omniauth_data'] = request.env['omniauth.auth'].except(:extra)
+      # Не раскрываем конкретные ошибки — они могут содержать информацию о существующих аккаунтах
       redirect_to new_user_registration_url,
-                  alert: @user.errors.full_messages.join(', ')
+                  alert: 'Не удалось завершить регистрацию. Попробуйте ещё раз или обратитесь в поддержку.'
     end
   end
 end

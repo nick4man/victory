@@ -94,6 +94,8 @@ class User < ApplicationRecord
   # Avatar
   has_one_attached :avatar
 
+  validate :avatar_content_type
+
   # ============================================
   # ENUMS
   # ============================================
@@ -393,6 +395,19 @@ class User < ApplicationRecord
   end
 
   private
+
+  ALLOWED_AVATAR_TYPES = %w[image/jpeg image/png image/webp].freeze
+  MAX_AVATAR_SIZE      = 5.megabytes
+
+  def avatar_content_type
+    return unless avatar.attached?
+
+    if avatar.byte_size > MAX_AVATAR_SIZE
+      errors.add(:avatar, 'не должен превышать 5 МБ')
+    elsif !avatar.content_type.in?(ALLOWED_AVATAR_TYPES)
+      errors.add(:avatar, 'должен быть в формате JPEG, PNG или WebP')
+    end
+  end
 
   # Callbacks
   def normalize_phone

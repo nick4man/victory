@@ -53,9 +53,17 @@ module ViktoryRealty
     config.action_cable.url = ENV.fetch('ACTION_CABLE_URL', 'ws://localhost:3000/cable')
 
     # CORS configuration (for API)
+    # SECURITY: в production установите CORS_ORIGINS=https://your-domain.com
+    # Wildcard '*' допустим только если API полностью публичное и без credentials.
+    cors_origins = ENV.fetch('CORS_ORIGINS', Rails.env.production? ? '' : '*')
+                      .split(',')
+                      .map(&:strip)
+                      .reject(&:empty?)
+    cors_origins = ['null'] if cors_origins.empty? # блокируем все в prod без явной настройки
+
     config.middleware.insert_before 0, Rack::Cors do
       allow do
-        origins ENV.fetch('CORS_ORIGINS', '*').split(',')
+        origins(*cors_origins)
         resource '/api/*',
                  headers: :any,
                  methods: [:get, :post, :put, :patch, :delete, :options, :head],

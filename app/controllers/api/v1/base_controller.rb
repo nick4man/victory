@@ -85,7 +85,9 @@ module Api
       end
       
       def jwt_secret_key
-        ENV.fetch('JWT_SECRET_KEY', Rails.application.credentials.secret_key_base)
+        ENV['JWT_SECRET_KEY'].presence ||
+          Rails.application.credentials.jwt_secret_key ||
+          raise('JWT_SECRET_KEY не установлен. Добавьте его в .env или credentials.')
       end
       
       # ============================================

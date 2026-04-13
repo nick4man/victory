@@ -16,8 +16,16 @@ class Dashboard::SettingsController < Dashboard::BaseController
     render :show
   end
 
+  ALLOWED_NOTIFICATION_KEYS = %i[
+    new_properties price_changes new_messages inquiry_updates
+    saved_search_results viewing_reminders newsletter
+  ].freeze
+
   def update_notification_settings
-    settings = params.permit(notification_settings: {}).to_h[:notification_settings] || {}
+    raw = params.permit(notification_settings: ALLOWED_NOTIFICATION_KEYS)
+                .to_h.fetch('notification_settings', {})
+    # Приводим значения к булевым, игнорируя любые другие типы
+    settings = raw.transform_values { |v| ActiveModel::Type::Boolean.new.cast(v) }
     current_user.update(notification_settings: settings)
     redirect_to notifications_dashboard_settings_path, notice: 'Настройки уведомлений сохранены'
   end

@@ -67,6 +67,9 @@ class Property < ApplicationRecord
   has_many_attached :images
   has_many_attached :floor_plans
 
+  validate :images_content_type
+  validate :floor_plans_content_type
+
   # ============================================
   # ENUMS
   # ============================================
@@ -433,6 +436,34 @@ class Property < ApplicationRecord
   end
 
   private
+
+  # ============================================
+  # FILE UPLOAD VALIDATIONS
+  # ============================================
+  ALLOWED_IMAGE_TYPES   = %w[image/jpeg image/png image/webp image/gif].freeze
+  ALLOWED_PLAN_TYPES    = %w[image/jpeg image/png image/webp application/pdf].freeze
+  MAX_IMAGE_SIZE        = 10.megabytes
+  MAX_PLAN_SIZE         = 20.megabytes
+
+  def images_content_type
+    images.each do |image|
+      if image.byte_size > MAX_IMAGE_SIZE
+        errors.add(:images, "«#{image.filename}» превышает 10 МБ")
+      elsif !image.content_type.in?(ALLOWED_IMAGE_TYPES)
+        errors.add(:images, "«#{image.filename}» должна быть в формате JPEG, PNG, WebP или GIF")
+      end
+    end
+  end
+
+  def floor_plans_content_type
+    floor_plans.each do |file|
+      if file.byte_size > MAX_PLAN_SIZE
+        errors.add(:floor_plans, "«#{file.filename}» превышает 20 МБ")
+      elsif !file.content_type.in?(ALLOWED_PLAN_TYPES)
+        errors.add(:floor_plans, "«#{file.filename}» должна быть в формате JPEG, PNG, WebP или PDF")
+      end
+    end
+  end
 
   # Callbacks
   def normalize_attributes
