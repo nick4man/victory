@@ -1,0 +1,85 @@
+<%# Предпросмотр объявления перед публикацией %>
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <div class="mb-6 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900">Предпросмотр объявления</h1>
+      <p class="text-gray-500 text-sm mt-1">Так будет выглядеть ваше объявление для покупателей</p>
+    </div>
+    <div class="flex gap-3">
+      <%= link_to edit_sell_listing_path(@property), class: "px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 text-sm" do %>
+        Редактировать
+      <% end %>
+      <% if @property.status_draft? || @property.status_pending? %>
+        <%= button_to publish_sell_listing_path(@property), method: :post,
+            class: "px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm font-medium" do %>
+          Опубликовать
+        <% end %>
+      <% elsif @property.status_active? %>
+        <%= button_to unpublish_sell_listing_path(@property), method: :post,
+            class: "px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 text-sm font-medium" do %>
+          Снять с публикации
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <%# Status badge %>
+  <div class="mb-6">
+    <% status_colors = { 'draft' => 'bg-gray-100 text-gray-600', 'pending' => 'bg-yellow-100 text-yellow-700',
+        'active' => 'bg-green-100 text-green-700', 'sold' => 'bg-blue-100 text-blue-700',
+        'rented' => 'bg-purple-100 text-purple-700', 'archived' => 'bg-gray-100 text-gray-500' } %>
+    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium <%= status_colors[@property.status.to_s] || 'bg-gray-100 text-gray-600' %>">
+      <%= @property.status %>
+    </span>
+  </div>
+
+  <%# Property card preview %>
+  <div class="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+    <% if @property.images.attached? %>
+    <div class="h-64 bg-gray-200">
+      <%= image_tag @property.images.first, class: "w-full h-full object-cover" %>
+    </div>
+    <% else %>
+    <div class="h-64 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+      <span class="text-6xl text-gray-300">🏠</span>
+    </div>
+    <% end %>
+
+    <div class="p-6">
+      <h2 class="text-2xl font-bold text-gray-900"><%= @property.title %></h2>
+      <p class="text-red-600 text-2xl font-bold mt-2"><%= @property.price_formatted %></p>
+      <p class="text-gray-500 mt-2"><%= @property.address %></p>
+
+      <div class="mt-4 flex flex-wrap gap-4 text-sm text-gray-600 border-t border-gray-100 pt-4">
+        <% if @property.area.present? %>
+          <span>Площадь: <strong><%= @property.area %> м²</strong></span>
+        <% end %>
+        <% if @property.rooms.present? %>
+          <span>Комнат: <strong><%= @property.rooms %></strong></span>
+        <% end %>
+        <% if @property.floor.present? %>
+          <span>Этаж: <strong><%= @property.floor %><%= "/#{@property.total_floors}" if @property.total_floors.present? %></strong></span>
+        <% end %>
+        <% if @property.condition.present? %>
+          <span>Состояние: <strong><%= @property.condition %></strong></span>
+        <% end %>
+      </div>
+
+      <% if @property.description.present? %>
+      <div class="mt-4 border-t border-gray-100 pt-4">
+        <h3 class="font-medium text-gray-900 mb-2">Описание</h3>
+        <p class="text-gray-600 text-sm leading-relaxed"><%= @property.description.truncate(400) %></p>
+      </div>
+      <% end %>
+    </div>
+  </div>
+
+  <div class="mt-6 flex gap-3">
+    <%= link_to edit_sell_listing_path(@property), class: "px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50" do %>
+      ← Вернуться к редактированию
+    <% end %>
+    <%= link_to property_path(@property), class: "px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200", target: "_blank" do %>
+      Открыть в каталоге ↗
+    <% end %>
+  </div>
+</div>
