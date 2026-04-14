@@ -344,7 +344,7 @@ module Api
       end
       
       def filtered_params
-        params.except(:controller, :action, :format).to_unsafe_h
+        request.filtered_parameters.except('controller', 'action', 'format')
       end
     end
   end

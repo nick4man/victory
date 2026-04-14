@@ -136,7 +136,7 @@ class HomeController < ApplicationController
            .pluck(:created_at, :processed_at)
            .map { |created, processed| (processed - created) / 3600.0 }
            .then { |times| times.empty? ? 0 : (times.sum / times.size).round(1) }
-  rescue
+  rescue StandardError
     0
   end
   
@@ -178,7 +178,7 @@ class HomeController < ApplicationController
       body: review.body,
       created_at: review.created_at
     }
-  rescue
+  rescue StandardError
     nil
   end
 end

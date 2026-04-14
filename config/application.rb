@@ -165,6 +165,7 @@ module ViktoryRealty
     end
 
     # Precompile additional assets
+    config.assets.paths << Rails.root.join('app', 'assets', 'builds')
     config.assets.paths << Rails.root.join('app', 'assets', 'fonts')
     config.assets.paths << Rails.root.join('app', 'javascript')
     config.assets.precompile += %w[*.png *.jpg *.jpeg *.gif *.svg]

@@ -300,14 +300,18 @@ class ContactFormsController < ApplicationController
   end
   
   def find_matching_properties(inquiry)
-    criteria = inquiry.metadata
-    
-    Property.active
-            .where(property_type: criteria['property_type'])
-            .where(deal_type: criteria['deal_type'])
-            .where('price >= ? AND price <= ?', criteria['min_price'], criteria['max_price'])
-            .where(rooms: criteria['rooms']) if criteria['rooms'].present?
-            .limit(10)
+    criteria = inquiry.metadata || {}
+
+    scope = Property.active
+    scope = scope.where(property_type: criteria['property_type']) if criteria['property_type'].present?
+    scope = scope.where(deal_type: criteria['deal_type']) if criteria['deal_type'].present?
+    if criteria['min_price'].present? && criteria['max_price'].present?
+      scope = scope.where('price >= ? AND price <= ?',
+                          criteria['min_price'].to_f,
+                          criteria['max_price'].to_f)
+    end
+    scope = scope.where(rooms: criteria['rooms']) if criteria['rooms'].present?
+    scope.limit(10)
   end
   
   def create_crm_lead(inquiry)

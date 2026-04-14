@@ -284,7 +284,7 @@ class PropertiesController < ApplicationController
     track_event('property_favorited', { property_id: @property.id })
     
     respond_to do |format|
-      format.html { redirect_back fallback_location: @property, notice: 'Добавлено в избранное' }
+      format.html { redirect_to @property, notice: 'Добавлено в избранное' }
       format.json { render json: { success: true, favorited: true } }
     end
   end
@@ -296,24 +296,25 @@ class PropertiesController < ApplicationController
     track_event('property_unfavorited', { property_id: @property.id })
     
     respond_to do |format|
-      format.html { redirect_back fallback_location: @property, notice: 'Удалено из избранного' }
+      format.html { redirect_to @property, notice: 'Удалено из избранного' }
       format.json { render json: { success: true, favorited: false } }
     end
   end
   
   # POST /properties/:id/schedule_viewing
   def schedule_viewing
-    @viewing = ViewingSchedule.new(
-      property: @property,
-      user: current_user,
-      preferred_date: params[:preferred_date],
-      preferred_time: params[:preferred_time],
-      message: params[:message]
-    )
-    
+    @viewing = ViewingSchedule.new(viewing_schedule_params)
+    @viewing.property = @property
+    @viewing.user = current_user
+    # Pre-fill contact info from authenticated user if not provided
+    if current_user
+      @viewing.name  ||= current_user.full_name
+      @viewing.phone ||= current_user.phone
+      @viewing.email ||= current_user.email
+    end
+
     if @viewing.save
       track_event('viewing_scheduled', { property_id: @property.id })
-      
       redirect_to @property, notice: 'Заявка на просмотр отправлена'
     else
       redirect_to @property, alert: 'Ошибка при отправке заявки'
@@ -383,6 +384,10 @@ class PropertiesController < ApplicationController
   # STRONG PARAMETERS
   # ============================================
   
+  def viewing_schedule_params
+    params.permit(:name, :phone, :email, :preferred_date, :preferred_time, :message)
+  end
+
   def property_params
     params.require(:property).permit(
       :title, :description, :price, :deal_type, :property_type_id,

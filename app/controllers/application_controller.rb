@@ -232,7 +232,14 @@ class ApplicationController < ActionController::Base
   # REDIRECT HELPERS
   # ============================================
   def redirect_back_or_to(default_path, **options)
-    redirect_to(request.referer || default_path, **options)
+    referer = request.referer
+    if referer.present? && URI.parse(referer).host == request.host
+      redirect_to(referer, **options)
+    else
+      redirect_to(default_path, **options)
+    end
+  rescue URI::InvalidURIError
+    redirect_to(default_path, **options)
   end
   
   def store_location
@@ -253,7 +260,7 @@ class ApplicationController < ActionController::Base
                       default: 'У вас нет прав для выполнения этого действия')
     
     if current_user
-      redirect_to(request.referer || root_path)
+      redirect_to root_path
     else
       redirect_to new_user_session_path
     end

@@ -55,8 +55,8 @@ Rails.application.configure do
   ]
 
   # Force all access to the app over SSL, use Strict-Transport-Security, and use secure cookies.
-  # Временно отключено до настройки SSL сертификатов
-  config.force_ssl = false
+  # Требует настроенного SSL сертификата (Let's Encrypt в deploy/setup.sh).
+  config.force_ssl = ENV.fetch('FORCE_SSL', 'true') == 'true'
 
   # Include generic and useful information about system operation, but avoid logging too much
   # information to avoid inadvertent exposure of personally identifiable information (PII).

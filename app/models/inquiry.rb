@@ -186,9 +186,18 @@ class Inquiry < ApplicationRecord
     %w[user property agent]
   end
 
+  STATISTICS_PERIODS = %i[all today this_week this_month].freeze
+
   def self.statistics(period = :all)
-    scope = period == :all ? all : send(period)
-    
+    period = period.to_sym
+    scope = if period == :all
+              all
+            elsif STATISTICS_PERIODS.include?(period)
+              send(period)
+            else
+              all
+            end
+
     {
       total: scope.count,
       by_type: scope.group(:inquiry_type).count,

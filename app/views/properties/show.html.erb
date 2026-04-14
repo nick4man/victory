@@ -656,29 +656,27 @@
 </div>
 
 <!-- Schema.org Markup for SEO -->
-<script type="application/ld+json">
-{
-  "@context": "https://schema.org",
-  "@type": "RealEstateListing",
-  "name": "<%= @property.title %>",
-  "description": "<%= @property.short_description %>",
-  "url": "<%= property_url(@property) %>",
-  "price": "<%= @property.price %>",
-  "priceCurrency": "RUB",
-  "address": {
-    "@type": "PostalAddress",
-    "streetAddress": "<%= @property.address %>",
-    "addressLocality": "<%= @property.district %>"
-  },
-  "numberOfRooms": "<%= @property.rooms %>",
-  "floorSize": {
-    "@type": "QuantitativeValue",
-    "value": "<%= @property.area %>",
-    "unitCode": "MTK"
+<%
+  _schema_data = {
+    '@context'      => 'https://schema.org',
+    '@type'         => 'RealEstateListing',
+    'name'          => @property.title.to_s,
+    'description'   => @property.short_description.to_s,
+    'url'           => property_url(@property),
+    'price'         => @property.price.to_s,
+    'priceCurrency' => 'RUB',
+    'address'       => {
+      '@type'         => 'PostalAddress',
+      'streetAddress' => @property.address.to_s,
+      'addressLocality' => @property.district.to_s
+    },
+    'numberOfRooms' => @property.rooms.to_s,
+    'floorSize'     => {
+      '@type'    => 'QuantitativeValue',
+      'value'    => @property.area.to_s,
+      'unitCode' => 'MTK'
+    }
   }
-  <% if @property.images.attached? && @property.images.first %>
-  ,
-  "image": "<%= url_for(@property.images.first) %>"
-  <% end %>
-}
-</script>
+  _schema_data['image'] = url_for(@property.images.first) if @property.images.attached? && @property.images.first
+%>
+<script type="application/ld+json"><%= json_escape(_schema_data.to_json) %></script>
