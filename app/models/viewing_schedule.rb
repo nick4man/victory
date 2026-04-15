@@ -9,7 +9,9 @@ class ViewingSchedule < ApplicationRecord
   belongs_to :agent, class_name: 'User', optional: true
   
   # Enums
+  # NOTE: 'scheduled' is the DB default but treated as 'pending' semantically
   enum status: {
+    scheduled: 'scheduled',
     pending: 'pending',
     confirmed: 'confirmed',
     completed: 'completed',
@@ -33,11 +35,11 @@ class ViewingSchedule < ApplicationRecord
   after_create :send_notifications
   after_update :handle_status_change, if: :saved_change_to_status?
   
-  # Scopes
+  # Scopes — use the actual DB column scheduled_at (not virtual preferred_date)
   scope :recent, -> { order(created_at: :desc) }
-  scope :upcoming, -> { where('preferred_date >= ?', Date.current).where(status: [:pending, :confirmed]) }
-  scope :past, -> { where('preferred_date < ?', Date.current) }
-  scope :today, -> { where(preferred_date: Date.current) }
+  scope :upcoming, -> { where('scheduled_at >= ?', Date.current).where(status: [:pending, :confirmed, :scheduled]) }
+  scope :past, -> { where('scheduled_at < ?', Date.current) }
+  scope :today, -> { where(scheduled_at: Date.current.all_day) }
   scope :for_property, ->(property_id) { where(property_id: property_id) }
   scope :for_user, ->(user_id) { where(user_id: user_id) }
   
@@ -63,11 +65,37 @@ class ViewingSchedule < ApplicationRecord
     update(status: 'no_show')
   end
   
+  # Virtual accessors: the DB stores a single scheduled_at datetime,
+  # but the model exposes preferred_date (Date) and preferred_time (HH:MM string)
+  # for the booking form and mailer templates.
+  def preferred_date
+    scheduled_at&.to_date
+  end
+
+  def preferred_date=(value)
+    return if value.blank?
+
+    time_part = preferred_time || '10:00'
+    self.scheduled_at = Time.zone.parse("#{value} #{time_part}")
+  end
+
+  def preferred_time
+    scheduled_at&.strftime('%H:%M')
+  end
+
+  def preferred_time=(value)
+    return if value.blank?
+
+    date_part = preferred_date || Date.tomorrow
+    self.scheduled_at = Time.zone.parse("#{date_part} #{value}")
+  end
+
+  def duration_minutes
+    duration
+  end
+
   def datetime
-    return nil unless preferred_date && preferred_time
-    
-    time_parts = preferred_time.split(':')
-    preferred_date.to_time + time_parts[0].to_i.hours + time_parts[1].to_i.minutes
+    scheduled_at
   end
   
   def datetime_formatted
@@ -105,19 +133,16 @@ class ViewingSchedule < ApplicationRecord
   end
   
   def time_slot_available
-    return unless preferred_date.present? && preferred_time.present? && property_id.present?
-    
-    # Check if time slot is available (not booked by another viewing)
-    conflicting = ViewingSchedule.where(
-      property_id: property_id,
-      preferred_date: preferred_date,
-      preferred_time: preferred_time,
-      status: [:pending, :confirmed]
-    ).where.not(id: id)
-    
-    if conflicting.exists?
-      errors.add(:preferred_time, 'уже занято. Пожалуйста, выберите другое время')
-    end
+    return unless scheduled_at.present? && property_id.present?
+
+    # Check if a viewing is already booked within ±30 minutes of the same slot
+    window = 30.minutes
+    conflicting = ViewingSchedule
+                  .where(property_id: property_id, status: [:scheduled, :pending, :confirmed])
+                  .where(scheduled_at: (scheduled_at - window)..(scheduled_at + window))
+                  .where.not(id: id)
+
+    errors.add(:preferred_time, 'уже занято. Пожалуйста, выберите другое время') if conflicting.exists?
   end
   
   def send_notifications

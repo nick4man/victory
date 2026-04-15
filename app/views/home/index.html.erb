@@ -466,10 +466,10 @@
           
           <div class="flex items-center">
             <div class="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center text-gray-600 font-bold mr-3">
-              <%= review.user.initials %>
+              <%= review.user&.initials %>
             </div>
             <div>
-              <div class="font-semibold text-gray-900"><%= review.user.full_name %></div>
+              <div class="font-semibold text-gray-900"><%= review.user&.full_name %></div>
               <div class="text-sm text-gray-500"><%= l(review.created_at, format: :short) %></div>
             </div>
           </div>

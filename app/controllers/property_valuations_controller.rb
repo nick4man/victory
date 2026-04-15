@@ -28,16 +28,22 @@ class PropertyValuationsController < ApplicationController
     
     if @valuation.save
       # Perform valuation using AI service
-      result = PropertyEvaluationService.new(@valuation.to_property_params).call
-      
-      @valuation.update(
-        estimated_price: result[:estimated_price],
-        min_price: result[:price_range][:min],
-        max_price: result[:price_range][:max],
-        confidence_level: result[:confidence_level],
-        evaluation_data: result.to_json,
-        status: 'completed'
-      )
+      result = PropertyEvaluationService.new(@valuation).call
+      result_data = result[:data] || {}
+
+      if result[:success]
+        @valuation.update(
+          estimated_price: result_data[:estimated_price],
+          min_price: result_data[:min_price],
+          max_price: result_data[:max_price],
+          confidence_level: result_data[:confidence_level].to_f / 100,
+          evaluation_data: result_data.to_json,
+          status: 'completed'
+        )
+      else
+        Rails.logger.error "Valuation #{@valuation.id} failed: #{result[:error]}"
+        @valuation.update(status: 'failed')
+      end
       
       # Send email with results if email provided
       PropertyValuationMailer.valuation_completed(@valuation).deliver_later if @valuation.email.present?

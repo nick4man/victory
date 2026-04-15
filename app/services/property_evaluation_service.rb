@@ -35,15 +35,15 @@ class PropertyEvaluationService
   
   def valid_input?
     valuation.present? &&
-      valuation.area.to_f > 0 &&
+      valuation.total_area.to_f > 0 &&
       valuation.property_type.present? &&
       valuation.address.present?
   end
-  
+
   # Calculate base price using average market price per sqm
   def calculate_base_price
     @base_price_per_sqm = get_base_price_per_sqm
-    @base_price = @base_price_per_sqm * valuation.area.to_f
+    @base_price = @base_price_per_sqm * valuation.total_area.to_f
     
     @result[:base_price] = @base_price
     @result[:base_price_per_sqm] = @base_price_per_sqm
@@ -156,20 +156,20 @@ class PropertyEvaluationService
   
   # Apply amenities coefficient
   def apply_amenities_coefficient
-    return unless valuation.amenities.present?
-    
+    return unless derived_amenities.present?
+
     @amenities_coefficient = calculate_amenities_coefficient
     @base_price *= @amenities_coefficient
-    
+
     @result[:amenities_coefficient] = @amenities_coefficient
     @result[:amenities_impact] = (@amenities_coefficient - 1.0) * 100
   end
-  
+
   def calculate_amenities_coefficient
     bonus = 0.0
-    
-    amenities = valuation.amenities
-    
+
+    amenities = derived_amenities
+
     # Major amenities
     bonus += 0.05 if amenities.include?('parking')
     bonus += 0.03 if amenities.include?('balcony')
@@ -199,12 +199,12 @@ class PropertyEvaluationService
   def calculate_confidence_level
     # Higher confidence for more complete data
     confidence = 70
-    
+
     confidence += 10 if valuation.floor.present?
-    confidence += 10 if valuation.amenities.present?
-    confidence += 5 if valuation.year_built.present?
+    confidence += 10 if derived_amenities.present?
+    confidence += 5 if valuation.building_year.present?
     confidence += 5 if valuation.metro_station.present?
-    
+
     [confidence, 95].min
   end
   
@@ -230,7 +230,7 @@ class PropertyEvaluationService
     end
     
     # Area analysis
-    area_per_room = valuation.rooms.present? ? valuation.area.to_f / valuation.rooms.to_i : 0
+    area_per_room = valuation.rooms.present? ? valuation.total_area.to_f / valuation.rooms.to_i : 0
     if area_per_room > 25
       analysis << 'Просторные комнаты являются преимуществом объекта. '
     end
@@ -280,7 +280,7 @@ class PropertyEvaluationService
     end
     
     # Staging recommendations
-    if valuation.amenities.blank? || valuation.amenities.size < 3
+    if derived_amenities.size < 3
       recommendations << {
         type: 'staging',
         priority: 'medium',
@@ -332,5 +332,13 @@ class PropertyEvaluationService
       success: false,
       error: message
     }
+  end
+
+  # Build amenities list from PropertyValuation boolean fields
+  def derived_amenities
+    @derived_amenities ||= [].tap do |list|
+      list << 'balcony' if valuation.has_balcony? || valuation.has_loggia?
+      list << 'parking' if valuation.has_garage?
+    end
   end
 end

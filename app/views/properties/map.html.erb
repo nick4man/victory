@@ -3,7 +3,7 @@
   <h1 class="text-3xl font-bold text-gray-900 mb-6">Карта объектов</h1>
   <div id="properties-map" class="w-full h-[600px] bg-gray-200 rounded-lg flex items-center justify-center"
        data-controller="yandex-map"
-       data-yandex-map-properties-value="<%= @properties.to_json %>">
+       data-yandex-map-properties-value="<%= json_escape(@properties.to_json) %>">
     <p class="text-gray-500">Карта загружается...</p>
   </div>
 </div>

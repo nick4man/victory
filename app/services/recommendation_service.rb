@@ -52,8 +52,8 @@ class RecommendationService
   # Get properties matching user's saved search criteria
   def from_saved_search(saved_search)
     return Property.none unless saved_search
-    
-    criteria = saved_search.criteria
+
+    criteria = saved_search.params_hash
     scope = Property.active
     
     scope = scope.where(property_type: criteria['property_type']) if criteria['property_type'].present?
@@ -88,7 +88,7 @@ class RecommendationService
   # Get price reduced properties
   def price_reductions
     Property.active
-            .where('EXISTS (SELECT 1 FROM property_price_histories WHERE property_id = properties.id AND old_price > new_price)')
+            .where('EXISTS (SELECT 1 FROM price_histories WHERE property_id = properties.id AND old_price > new_price)')
             .order(updated_at: :desc)
             .limit(limit)
   end
@@ -186,7 +186,7 @@ class RecommendationService
     # From searches
     if user.saved_searches.any?
       user.saved_searches.each do |search|
-        criteria = search.criteria
+        criteria = search.params_hash
         preferences[:property_types] << criteria['property_type'] if criteria['property_type'].present?
         preferences[:deal_types] << criteria['deal_type'] if criteria['deal_type'].present?
         preferences[:districts] << criteria['district'] if criteria['district'].present?

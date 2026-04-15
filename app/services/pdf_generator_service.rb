@@ -109,13 +109,13 @@ class PdfGeneratorService
     data = [
       ['Адрес:', valuation.address],
       ['Тип недвижимости:', I18n.t("property_types.#{valuation.property_type}")],
-      ['Площадь:', "#{valuation.area} м²"],
+      ['Площадь:', "#{valuation.total_area} м²"],
       ['Количество комнат:', valuation.rooms.to_s],
       ['Этаж:', "#{valuation.floor} из #{valuation.total_floors}"],
       ['Состояние:', I18n.t("property_conditions.#{valuation.condition}")]
     ]
     
-    data << ['Год постройки:', valuation.year_built.to_s] if valuation.year_built.present?
+    data << ['Год постройки:', valuation.building_year.to_s] if valuation.building_year.present?
     data << ['Метро:', "#{valuation.metro_station} (#{valuation.metro_distance} мин)"] if valuation.metro_station.present?
     
     pdf.table(data, width: pdf.bounds.width, cell_style: { borders: [] }) do
@@ -157,7 +157,7 @@ class PdfGeneratorService
       
       breakdown_data = [
         ['Базовая цена за м²:', format_price(evaluation_data[:base_price_per_sqm])],
-        ['Площадь:', "#{valuation.area} м²"],
+        ['Площадь:', "#{valuation.total_area} м²"],
         ['Базовая стоимость:', format_price(evaluation_data[:base_price])]
       ]
       

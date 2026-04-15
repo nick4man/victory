@@ -14,9 +14,8 @@ class SendViewingRemindersJob < ApplicationJob
     # Find confirmed viewings scheduled for tomorrow that haven't received reminder
     viewings = ViewingSchedule.where(
       status: 'confirmed',
-      preferred_date: tomorrow,
-      reminder_email_sent: false
-    )
+      reminder_sent: false
+    ).where(scheduled_at: tomorrow.all_day)
     
     Rails.logger.info "Found #{viewings.count} viewings to send reminders for"
     
