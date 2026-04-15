@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class DashboardController < ApplicationController
-  before_action :authenticate_user!, if: -> { respond_to?(:authenticate_user!) }
+  before_action :authenticate_user!
   before_action :set_breadcrumbs
   
   layout 'dashboard'

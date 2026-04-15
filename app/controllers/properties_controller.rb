@@ -9,8 +9,8 @@ class PropertiesController < ApplicationController
   before_action :authorize_property, only: [:edit, :update, :destroy]
   
   # Require authentication for these actions
-  before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy, 
-                                             :favorite, :unfavorite, :schedule_viewing], if: -> { respond_to?(:authenticate_user!) }
+  before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy,
+                                             :favorite, :unfavorite, :schedule_viewing]
   
   # Pagination
   before_action :set_per_page, only: [:index, :search]
@@ -370,7 +370,7 @@ class PropertiesController < ApplicationController
   end
   
   def authorize_property
-    unless @property.user == current_user || current_user.admin?
+    unless @property.user == current_user || current_user&.admin?
       redirect_to @property, alert: 'У вас нет прав для выполнения этого действия'
     end
   end

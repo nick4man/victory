@@ -24,11 +24,25 @@ gem 'jbuilder'
 # CSS
 gem 'tailwindcss-rails'
 
-# Minimal auth  
+# Minimal auth
 gem 'bcrypt', '~> 3.1.7'
+gem 'jwt', '~> 2.8'
+
+# Authorization
+gem 'pundit', '~> 2.3'
 
 # Pagination
 gem 'kaminari', '~> 1.2'
+
+# Search
+gem 'ransack', '~> 4.1'
+gem 'pg_search', '~> 2.3'
+
+# URL slugs
+gem 'friendly_id', '~> 5.5'
+
+# Geocoding
+gem 'geocoder', '~> 1.8'
 
 # API
 gem 'rack-cors', '~> 2.0'

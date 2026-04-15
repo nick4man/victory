@@ -33,10 +33,12 @@
 /config/master.key
 /config/credentials/*.key
 
-# Ignore environment variables
+# Ignore environment variables (never commit secrets)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
 
 # Ignore node_modules
 /node_modules

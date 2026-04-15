@@ -73,15 +73,10 @@ module Api
       end
       
       def encode_jwt_token(payload)
-        expiration = ENV.fetch('JWT_EXPIRATION_HOURS', 24).to_i.hours.from_now.to_i
-        
-        payload[:exp] = expiration
-        
-        JWT.encode(
-          payload,
-          jwt_secret_key,
-          'HS256'
-        )
+        # Only set default expiration if caller did not specify one
+        payload[:exp] ||= ENV.fetch('JWT_EXPIRATION_HOURS', 24).to_i.hours.from_now.to_i
+
+        JWT.encode(payload, jwt_secret_key, 'HS256')
       end
       
       def jwt_secret_key
@@ -229,8 +224,8 @@ module Api
       # ERROR HANDLERS
       # ============================================
       
-      def record_not_found(exception)
-        render_not_found(exception.message)
+      def record_not_found(_exception)
+        render_not_found('Resource not found')
       end
       
       def record_invalid(exception)
@@ -339,7 +334,9 @@ module Api
       end
       
       def filtered_params
-        params.except(:controller, :action, :format).to_unsafe_h
+        params.except(:controller, :action, :format)
+              .to_h
+              .except('password', 'password_confirmation', 'token', 'refresh_token', 'secret')
       end
     end
   end

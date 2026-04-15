@@ -51,9 +51,18 @@ class ApplicationController < ActionController::Base
   def user_signed_in?
     false
   end
-  
+
   def current_user
     nil
+  end
+
+  # Auth stub: redirects when Devise is re-enabled but auth is missing.
+  # While Devise is disabled, protected routes will redirect to root.
+  def authenticate_user!
+    unless user_signed_in?
+      flash[:alert] = 'Для доступа необходимо войти в систему'
+      redirect_to root_path
+    end
   end
   
   protected
@@ -223,7 +232,19 @@ class ApplicationController < ActionController::Base
   # REDIRECT HELPERS
   # ============================================
   def redirect_back_or_to(default_path, **options)
-    redirect_to(request.referer || default_path, **options)
+    referer = request.referer
+    if referer.present? && safe_redirect_target?(referer)
+      redirect_to(referer, **options)
+    else
+      redirect_to(default_path, **options)
+    end
+  end
+
+  def safe_redirect_target?(url)
+    uri = URI.parse(url)
+    uri.host.nil? || uri.host == request.host
+  rescue URI::InvalidURIError
+    false
   end
   
   def store_location
@@ -342,7 +363,7 @@ class ApplicationController < ActionController::Base
       token = request.headers['Authorization'].split(' ').last
       @current_api_user = decode_jwt_token(token)
     end
-  rescue
+  rescue JWT::DecodeError, JWT::ExpiredSignature, ActiveRecord::RecordNotFound
     @current_api_user = nil
   end
   
