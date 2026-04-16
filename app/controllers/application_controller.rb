@@ -16,6 +16,7 @@ class ApplicationController < ActionController::Base
   # ============================================
   # BEFORE ACTIONS
   # ============================================
+  before_action :set_security_headers
   before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
   before_action :track_user_activity
@@ -69,6 +70,20 @@ class ApplicationController < ActionController::Base
     ])
   end
   
+  # ============================================
+  # SECURITY HEADERS
+  # ============================================
+  def set_security_headers
+    response.headers['X-Content-Type-Options']  = 'nosniff'
+    response.headers['X-Frame-Options']          = 'SAMEORIGIN'
+    response.headers['X-XSS-Protection']         = '1; mode=block'
+    response.headers['Referrer-Policy']          = 'strict-origin-when-cross-origin'
+    response.headers['Permissions-Policy']       = 'camera=(), microphone=(), geolocation=(self)'
+    if request.ssl?
+      response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    end
+  end
+
   # ============================================
   # LOCALE
   # ============================================

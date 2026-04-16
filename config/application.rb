@@ -72,8 +72,8 @@ module ViktoryRealty
       end
     end
 
-    # Rate limiting (temporarily disabled for setup)
-    # config.middleware.use Rack::Attack
+    # Rate limiting
+    config.middleware.use Rack::Attack
 
     # Session store
     config.session_store :cookie_store,

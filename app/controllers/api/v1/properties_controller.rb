@@ -80,10 +80,13 @@ module Api
       # GET /api/v1/properties/featured
       # Returns featured/premium properties
       def featured
+        limit = [[params[:limit].to_i, 1].max, 50].min
+        limit = 10 if params[:limit].blank?
+
         @properties = Property.published
                               .featured
                               .includes(:property_type, :user)
-                              .limit(params[:limit] || 10)
+                              .limit(limit)
         
         render_success(
           properties: serialize_properties(@properties),
@@ -97,11 +100,14 @@ module Api
         days = params[:days].to_i
         days = 7 if days <= 0 || days > 90
         
+        limit = [[params[:limit].to_i, 1].max, 100].min
+        limit = 20 if params[:limit].blank?
+
         @properties = Property.published
                               .where('created_at >= ?', days.days.ago)
                               .includes(:property_type, :user)
                               .order(created_at: :desc)
-                              .limit(params[:limit] || 20)
+                              .limit(limit)
         
         render_success(
           properties: serialize_properties(@properties),
@@ -115,7 +121,9 @@ module Api
       # GET /api/v1/properties/:id/similar
       # Returns similar properties
       def similar
-        @similar = Property.similar_to(@property, params[:limit] || 4)
+        limit = [[params[:limit].to_i, 1].max, 20].min
+        limit = 4 if params[:limit].blank?
+        @similar = Property.similar_to(@property, limit)
         
         render_success(
           properties: serialize_properties(@similar),

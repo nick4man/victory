@@ -102,19 +102,31 @@ class PagesController < ApplicationController
   
   # POST /contacts
   def send_contact_form
-    @name = params[:name]
-    @email = params[:email]
-    @phone = params[:phone]
-    @message = params[:message]
-    @subject = params[:subject] || 'Общий вопрос'
-    
+    if check_spam
+      flash[:alert] = 'Слишком много запросов. Попробуйте позже.'
+      redirect_to contacts_path and return
+    end
+
+    contact = contact_form_params
+    @name    = contact[:name]
+    @email   = contact[:email]
+    @phone   = contact[:phone]
+    @message = contact[:message]
+    @subject = contact[:subject].presence || 'Общий вопрос'
+
     # Validate
     if @name.blank? || @email.blank? || @message.blank?
       flash[:alert] = 'Пожалуйста, заполните все обязательные поля'
       redirect_to contacts_path
       return
     end
-    
+
+    unless valid_email?(@email)
+      flash[:alert] = 'Пожалуйста, укажите корректный email'
+      redirect_to contacts_path
+      return
+    end
+
     # Create inquiry
     inquiry = Inquiry.create(
       inquiry_type: :contact_agent,
@@ -127,16 +139,16 @@ class PagesController < ApplicationController
       ip_address: request.remote_ip,
       user_agent: request.user_agent
     )
-    
+
     if inquiry.persisted?
       # Send email
       # ContactMailer.contact_form(@name, @email, @phone, @subject, @message).deliver_later
-      
+
       track_event('contact_form_submitted', {
         subject: @subject,
         inquiry_id: inquiry.id
       })
-      
+
       flash[:notice] = 'Спасибо за обращение! Мы свяжемся с вами в ближайшее время.'
       redirect_to contacts_path
     else
@@ -320,9 +332,17 @@ class PagesController < ApplicationController
   private
   
   # ============================================
+  # STRONG PARAMETERS
+  # ============================================
+
+  def contact_form_params
+    params.permit(:name, :email, :phone, :message, :subject)
+  end
+
+  # ============================================
   # CONTACT FORM VALIDATION
   # ============================================
-  
+
   def validate_contact_form
     errors = []
     

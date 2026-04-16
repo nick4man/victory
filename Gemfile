@@ -32,6 +32,7 @@ gem 'kaminari', '~> 1.2'
 
 # API
 gem 'rack-cors', '~> 2.0'
+gem 'rack-attack', '~> 6.7'
 
 # Performance
 gem 'bootsnap', require: false
