@@ -15,7 +15,10 @@ class Webhooks::AmocrmController < ApplicationController
   # Установите AMOCRM_WEBHOOK_SECRET в .env.
   def verify_amocrm_token
     expected = ENV['AMOCRM_WEBHOOK_SECRET']
-    return if expected.blank? # без секрета — пропускаем проверку (только для dev)
+    if expected.blank?
+      Rails.logger.error '[amoCRM webhook] AMOCRM_WEBHOOK_SECRET is not configured'
+      render plain: 'Unauthorized', status: :unauthorized and return
+    end
 
     provided = request.headers['X-Amocrm-Signature'] ||
                params[:token].presence

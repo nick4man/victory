@@ -21,24 +21,17 @@ class PropertyView < ApplicationRecord
   scope :unique_users, -> { select(:user_id).distinct.where.not(user_id: nil) }
   
   # ============================================
-  # SERIALIZATION
-  # ============================================
-  
-  serialize :user_agent, coder: JSON
-  serialize :referrer_data, coder: JSON
-  
-  # ============================================
   # CLASS METHODS
   # ============================================
-  
+
   # Track a view
-  def self.track(property:, user: nil, ip_address: nil, user_agent: nil, referrer: nil)
+  def self.track(property:, user: nil, ip_address: nil, user_agent: nil, referrer_url: nil)
     create(
       property: property,
       user: user,
       ip_address: ip_address,
       user_agent: user_agent,
-      referrer: referrer
+      referrer_url: referrer_url
     )
   end
   

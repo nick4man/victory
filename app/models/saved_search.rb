@@ -35,7 +35,11 @@ class SavedSearch < ApplicationRecord
   
   # Get search parameters as hash
   def params_hash
-    filters.is_a?(Hash) ? filters : (JSON.parse(filters) rescue {})
+    return filters if filters.is_a?(Hash)
+
+    JSON.parse(filters.to_s)
+  rescue JSON::ParserError, TypeError
+    {}
   end
   
   # Build query description from params

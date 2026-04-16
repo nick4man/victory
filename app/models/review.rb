@@ -12,29 +12,30 @@ class Review < ApplicationRecord
   # ============================================
   # ENUMS
   # ============================================
-  
+
+  # status column is integer in DB (migration default: 0)
   enum status: {
-    pending: 'pending',
-    approved: 'approved',
-    rejected: 'rejected'
+    pending: 0,
+    approved: 1,
+    rejected: 2
   }, _prefix: true
-  
+
   # ============================================
   # VALIDATIONS
   # ============================================
-  
+
   validates :rating, presence: true, numericality: { in: 1..5 }
-  validates :content, presence: true, length: { minimum: 10, maximum: 1000 }
+  validates :body, presence: true, length: { minimum: 10, maximum: 1000 }
   validates :title, length: { maximum: 255 }, allow_blank: true
-  
+
   # ============================================
   # SCOPES
   # ============================================
-  
+
   scope :recent, -> { order(created_at: :desc) }
-  scope :approved, -> { where(status: 'approved') }
-  scope :pending, -> { where(status: 'pending') }
-  scope :rejected, -> { where(status: 'rejected') }
+  scope :approved, -> { where(status: :approved) }
+  scope :pending, -> { where(status: :pending) }
+  scope :rejected, -> { where(status: :rejected) }
   scope :by_rating, ->(rating) { where(rating: rating) }
   scope :high_rated, -> { where('rating >= ?', 4) }
   scope :low_rated, -> { where('rating <= ?', 2) }

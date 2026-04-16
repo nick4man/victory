@@ -15,10 +15,13 @@ class Webhooks::TelegramController < ApplicationController
   # Установите TELEGRAM_WEBHOOK_SECRET в .env.
   def verify_telegram_secret
     expected = ENV['TELEGRAM_WEBHOOK_SECRET']
-    return if expected.blank? # без секрета — пропускаем проверку (только для dev)
+    if expected.blank?
+      Rails.logger.error '[Telegram webhook] TELEGRAM_WEBHOOK_SECRET is not configured'
+      render plain: 'Unauthorized', status: :unauthorized and return
+    end
 
     provided = request.headers['X-Telegram-Bot-Api-Secret-Token']
-    unless ActiveSupport::SecurityUtils.secure_compare(expected.to_s, provided.to_s)
+    unless provided && ActiveSupport::SecurityUtils.secure_compare(expected.to_s, provided.to_s)
       Rails.logger.warn "[Telegram webhook] Invalid secret from IP: #{request.remote_ip}"
       render plain: 'Unauthorized', status: :unauthorized
     end

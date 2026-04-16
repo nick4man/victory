@@ -1,17 +1,17 @@
 # frozen_string_literal: true
 
 class Api::V1::ProfilesController < Api::V1::BaseController
-  before_action :authenticate_request!
+  before_action :authenticate_api_user!
 
   def show
-    render_success(current_user.slice(:id, :email, :first_name, :last_name, :phone))
+    render_success(current_api_user.slice(:id, :email, :first_name, :last_name, :phone))
   end
 
   def update
-    if current_user.update(profile_params)
-      render_success(current_user.slice(:id, :email, :first_name, :last_name, :phone))
+    if current_api_user.update(profile_params)
+      render_success(current_api_user.slice(:id, :email, :first_name, :last_name, :phone))
     else
-      render_error(current_user.errors.full_messages.join(', '), status: :unprocessable_entity)
+      render_error(current_api_user.errors.full_messages.join(', '), status: :unprocessable_entity)
     end
   end
 

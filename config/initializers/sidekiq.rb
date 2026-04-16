@@ -12,7 +12,7 @@ Sidekiq.configure_server do |config|
   # Load recurring jobs schedule
   schedule_file = Rails.root.join('config', 'sidekiq_schedule.yml')
   if File.exist?(schedule_file) && Sidekiq::Cron::Job.respond_to?(:load_from_hash)
-    schedule = YAML.load(ERB.new(File.read(schedule_file)).result)
+    schedule = YAML.safe_load(ERB.new(File.read(schedule_file)).result, permitted_classes: [Symbol])
     Sidekiq::Cron::Job.load_from_hash(schedule) if schedule
   end
 end
