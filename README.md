@@ -54,7 +54,7 @@
 | Email-рассылка | **Активна** | InquiryMailer, PropertyValuationMailer, ViewingMailer, UserMailer |
 | REST API v1 | **Частично** | Свойства, аутентификация, избранное, заявки, рекомендации |
 | Pundit-авторизация | **Активна** | Политики для Property, Inquiry, User |
-| Rack::Attack | Отключён | Закомментирован в `config/application.rb` |
+| Rack::Attack | **Активен** | Redis-бэкенд, правила в `config/initializers/rack_attack.rb` |
 
 ---
 
