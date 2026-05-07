@@ -7,13 +7,14 @@
 ## Оглавление
 
 1. [Требования](#1-требования)
-2. [Первичная установка (development)](#2-первичная-установка-development)
-3. [Переменные окружения](#3-переменные-окружения)
-4. [Запуск сервисов](#4-запуск-сервисов)
-5. [Проверка работоспособности](#5-проверка-работоспособности)
-6. [Развёртывание в production](#6-развёртывание-в-production)
-7. [Частые ошибки и их решения](#7-частые-ошибки-и-их-решения)
-8. [Диагностические команды](#8-диагностические-команды)
+2. [Docker (рекомендуемый способ)](#2-docker-рекомендуемый-способ)
+3. [Первичная установка без Docker (development)](#3-первичная-установка-без-docker-development)
+4. [Переменные окружения](#4-переменные-окружения)
+5. [Запуск сервисов](#5-запуск-сервисов)
+6. [Проверка работоспособности](#6-проверка-работоспособности)
+7. [Развёртывание в production](#7-развёртывание-в-production)
+8. [Частые ошибки и их решения](#8-частые-ошибки-и-их-решения)
+9. [Диагностические команды](#9-диагностические-команды)
 
 ---
 
@@ -37,7 +38,146 @@ ruby -v   # -> ruby 3.3.6
 
 ---
 
-## 2. Первичная установка (development)
+## 2. Docker (рекомендуемый способ)
+
+### Структура файлов
+
+| Файл | Назначение |
+|------|-----------|
+| `Dockerfile` | Многоэтапный образ (build → final). Ruby 3.2.2-slim. |
+| `docker-compose.yml` | Production-стек: db, redis, web, sidekiq, migrate |
+| `docker-compose.override.yml` | Development-переопределения: монтирование кода, tailwind watch |
+| `.dockerignore` | Исключения из контекста сборки |
+| `bin/docker-entrypoint` | Entrypoint: очистка PID, создание каталогов, опциональные миграции |
+
+### Быстрый старт (production-режим)
+
+```bash
+# 1. Создать .env из примера и заполнить обязательные переменные
+cp .env.example .env
+# Минимум: DATABASE_PASSWORD, SECRET_KEY_BASE, JWT_SECRET_KEY
+
+# 2. Собрать образ и поднять стек
+docker compose up --build -d
+
+# 3. Запустить миграции (один раз, при первом деплое и после каждого обновления)
+docker compose run --rm migrate
+
+# 4. Проверить здоровье
+docker compose ps
+curl http://localhost:5000/health
+```
+
+### Быстрый старт (development-режим)
+
+В dev-режиме `docker-compose.override.yml` подгружается автоматически.
+Исходный код монтируется в контейнер — изменения видны без пересборки.
+
+```bash
+cp .env.example .env
+# DATABASE_HOST=db, REDIS_URL=redis://redis:6379/0 уже заданы в override
+
+docker compose up --build
+# Открыть http://localhost:5000
+# Tailwind пересобирается автоматически через сервис `tailwind`
+```
+
+### Ключевые команды
+
+```bash
+# Статус контейнеров
+docker compose ps
+
+# Логи в реальном времени
+docker compose logs -f web
+docker compose logs -f sidekiq
+
+# Открыть Rails console
+docker compose exec web bundle exec rails console
+
+# Открыть bash в контейнере
+docker compose exec web bash
+
+# Запустить миграции
+docker compose run --rm migrate
+
+# Пересобрать только образ приложения
+docker compose build web
+
+# Остановить всё (данные сохраняются в volumes)
+docker compose down
+
+# Остановить и удалить volumes (УДАЛИТ ДАННЫЕ БД!)
+docker compose down -v
+```
+
+### Сервисы и порты
+
+| Сервис | Образ | Внешний порт | Назначение |
+|--------|-------|-------------|-----------|
+| `db` | `postgres:16-alpine` | `127.0.0.1:5432` | PostgreSQL |
+| `redis` | `redis:7-alpine` | `127.0.0.1:6379` | Кэш, очереди, Rack::Attack |
+| `web` | `victory:latest` | `0.0.0.0:5000` | Rails / Puma |
+| `sidekiq` | `victory:latest` | — | Фоновые задачи |
+| `migrate` | `victory:latest` | — | One-off миграции |
+
+В production `db` и `redis` не открываются наружу (bind `127.0.0.1`).
+В development override — bind `0.0.0.0` для удобства.
+
+### Переменные окружения для Docker
+
+В production `docker-compose.yml` передаёт эти переменные автоматически:
+
+```env
+DATABASE_HOST=db        # имя Docker-сервиса, не localhost
+DATABASE_PORT=5432
+REDIS_URL=redis://redis:6379/0
+```
+
+Остальные (пароли, ключи) берутся из `.env` через `env_file: .env`.
+
+### ARM (Apple M1/M2, aarch64 серверы)
+
+Lockfile содержит платформу `x86_64-linux` для `tailwindcss-ruby`. Для ARM:
+
+```bash
+bundle lock --add-platform aarch64-linux
+docker compose build
+```
+
+### Обновление приложения
+
+```bash
+git pull
+docker compose build web sidekiq
+docker compose run --rm migrate
+docker compose up -d web sidekiq
+```
+
+### Частые ошибки Docker
+
+**`DATABASE_PASSWORD is required`**
+`.env` не создан или переменная пуста. Заполните `.env` из `.env.example`.
+
+**`standard_init_linux.go: exec user process caused: permission denied`**
+Entrypoint не исполняемый. Исправьте: `chmod +x bin/docker-entrypoint`
+
+**`Could not find gem 'xyz' in locally installed gems`**
+В dev-режиме `bundle_cache` volume устарел. Пересоберите: `docker compose build --no-cache web`
+
+**`Rack::Attack блокирует все запросы` (429)**
+Redis недоступен. Проверьте: `docker compose ps redis` — статус должен быть `healthy`.
+
+**`ActiveRecord::NoDatabaseError`**
+Миграции не запущены. Выполните: `docker compose run --rm migrate`
+
+**Tailwind CSS не обновляется (development)**
+Убедитесь, что сервис `tailwind` запущен: `docker compose ps tailwind`.
+Или перезапустите: `docker compose restart tailwind`.
+
+---
+
+## 3. Первичная установка без Docker (development)
 
 ### 2.1 Клонирование и гемы
 
@@ -98,7 +238,7 @@ bin/rails server -p 5000 -b 0.0.0.0
 
 ---
 
-## 3. Переменные окружения
+## 4. Переменные окружения
 
 ### Обязательные (приложение не запустится без них)
 
@@ -145,7 +285,7 @@ bin/rails secret   # вывести случайную строку
 
 ---
 
-## 4. Запуск сервисов
+## 5. Запуск сервисов
 
 ### PostgreSQL
 
@@ -201,7 +341,7 @@ foreman start -f Procfile.dev
 
 ---
 
-## 5. Проверка работоспособности
+## 6. Проверка работоспособности
 
 После запуска пройдитесь по этим URL:
 
@@ -236,7 +376,7 @@ bin/rails runner "puts Rack::Attack.throttles.keys.join(', ')"
 
 ---
 
-## 6. Развёртывание в production
+## 7. Развёртывание в production
 
 ### 6.1 Переменные окружения
 
@@ -290,7 +430,7 @@ AWS_S3_BUCKET=viktory-realty-uploads
 
 ---
 
-## 7. Частые ошибки и их решения
+## 8. Частые ошибки и их решения
 
 ### PG::ConnectionBad: could not connect to server
 
@@ -569,7 +709,7 @@ MY_VAR=value bin/rails server
 
 ---
 
-## 8. Диагностические команды
+## 9. Диагностические команды
 
 ### Общее состояние
 

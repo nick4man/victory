@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Remove stale Puma PID that prevents restart inside a container
+rm -f tmp/pids/puma.pid tmp/pids/puma.state
+
+# Ensure runtime dirs exist (volume mounts can wipe them)
+mkdir -p tmp/pids tmp/sockets log storage
+
+# Optionally run DB migrations on startup.
+# Set AUTO_MIGRATE=true in the environment to enable.
+# In production prefer running `docker compose run --rm migrate` explicitly.
+if [ "${AUTO_MIGRATE:-false}" = "true" ]; then
+  echo "[entrypoint] Running database migrations..."
+  bundle exec rails db:migrate
+fi
+
+exec "$@"

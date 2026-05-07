@@ -1,0 +1,66 @@
+# ── Version control ───────────────────────────────────────────────────────────
+.git
+.gitignore
+.gitattributes
+
+# ── Docker files (no self-inclusion) ─────────────────────────────────────────
+Dockerfile*
+docker-compose*.yml
+
+# ── Secrets and environment ───────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+config/master.key
+config/credentials/*.key
+
+# ── Ruby / Bundler ────────────────────────────────────────────────────────────
+vendor/bundle
+.bundle
+
+# ── Node (not used, but just in case) ────────────────────────────────────────
+node_modules
+yarn-error.log
+package-lock.json
+
+# ── Logs and temp files ───────────────────────────────────────────────────────
+log/*
+!log/.keep
+tmp/*
+!tmp/.keep
+
+# ── Storage (mounted as volume at runtime) ────────────────────────────────────
+storage/*
+!storage/.keep
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+spec/
+test/
+coverage/
+.rspec
+
+# ── CI/CD ─────────────────────────────────────────────────────────────────────
+.github/
+.circleci/
+.travis.yml
+
+# ── Editor and OS files ───────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+README.md
+RUNBOOK.md
+CLAUDE.md
+*.md
+
+# ── Compiled assets (rebuilt during Docker build) ─────────────────────────────
+public/assets
+public/packs
+
+# ── Linting ───────────────────────────────────────────────────────────────────
+.rubocop*

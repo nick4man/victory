@@ -1,0 +1,91 @@
+# Development overrides — loaded automatically alongside docker-compose.yml.
+#
+# Differences from production:
+#   • Source code mounted as a volume (live reload without rebuild)
+#   • Builds from the `build` stage (includes dev tools)
+#   • RAILS_ENV=development, full logging
+#   • Tailwind watch mode runs as a separate service
+#   • Ports bound to 0.0.0.0 for external access from host browser
+#   • No asset precompile required (served from source)
+#
+# Usage:
+#   docker compose up --build        # builds + starts everything
+#   docker compose run --rm web bash # open a shell
+
+# ── Shared development config ─────────────────────────────────────────────────
+x-dev-app: &dev-app
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: build         # keep build tools for dev gems (e.g. pry, byebug)
+  environment:
+    RAILS_ENV: development
+    AUTO_MIGRATE: "true"
+    RAILS_LOG_TO_STDOUT: "true"
+    RAILS_SERVE_STATIC_FILES: "false"
+  volumes:
+    - .:/app               # mount source for live reload
+    - bundle_cache:/usr/local/bundle  # persist gems across rebuilds
+
+services:
+
+  db:
+    ports:
+      - "0.0.0.0:5432:5432"
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:-viktory_development}
+      POSTGRES_USER: ${DATABASE_USERNAME:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+
+  redis:
+    ports:
+      - "0.0.0.0:6379:6379"
+
+  web:
+    <<: *dev-app
+    ports:
+      - "0.0.0.0:${PORT:-5000}:5000"
+    volumes:
+      - .:/app
+      - bundle_cache:/usr/local/bundle
+      - storage:/app/storage
+    environment:
+      RAILS_ENV: development
+      AUTO_MIGRATE: "true"
+      RAILS_LOG_TO_STDOUT: "true"
+    # In development, Rails assets are compiled on-the-fly.
+    # Start tailwind-watch service separately for CSS changes.
+    command: bundle exec rails server -p 5000 -b 0.0.0.0
+
+  sidekiq:
+    <<: *dev-app
+    volumes:
+      - .:/app
+      - bundle_cache:/usr/local/bundle
+      - storage:/app/storage
+    environment:
+      RAILS_ENV: development
+
+  migrate:
+    <<: *dev-app
+    volumes:
+      - .:/app
+      - bundle_cache:/usr/local/bundle
+    environment:
+      RAILS_ENV: development
+
+  # ── Tailwind CSS watch (development only) ────────────────────────────────────
+  # Rebuilds CSS whenever a view or config file changes.
+  tailwind:
+    <<: *dev-app
+    command: bundle exec rails tailwindcss:watch
+    ports: []
+    depends_on:
+      - web
+    healthcheck:
+      disable: true
+
+# ── Development-only volumes ──────────────────────────────────────────────────
+volumes:
+  bundle_cache:
+    driver: local
