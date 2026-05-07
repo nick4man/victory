@@ -5,7 +5,8 @@
 class ContactFormsController < ApplicationController
   skip_before_action :verify_authenticity_token, only: [:create], if: -> { request.format.json? }
   before_action :set_property, only: [:viewing_schedule, :property_inquiry]
-  
+  before_action :guard_spam!
+
   # POST /contact_forms/quick_inquiry
   def quick_inquiry
     @inquiry = Inquiry.new(quick_inquiry_params)
@@ -346,6 +347,15 @@ class ContactFormsController < ApplicationController
     Rails.logger.info "Sending mortgage application to partners for inquiry ##{inquiry.id}"
   rescue StandardError => e
     Rails.logger.error "Failed to send to mortgage partners: #{e.message}"
+  end
+
+  def guard_spam!
+    return unless check_spam
+
+    respond_to do |format|
+      format.html { redirect_to root_path, alert: 'Слишком много запросов. Попробуйте позже.' }
+      format.json { render json: { success: false, error: 'Too many requests' }, status: :too_many_requests }
+    end
   end
 end
 

@@ -2,15 +2,11 @@
 
 class Dashboard::MessagesController < Dashboard::BaseController
   def index
-    @messages = Message.where('sender_id = ? OR recipient_id = ?', current_user.id, current_user.id)
-                       .order(created_at: :desc)
+    @messages = user_messages.order(created_at: :desc)
   end
 
   def show
-    @message = Message.find(params[:id])
-    unless @message.sender_id == current_user.id || @message.recipient_id == current_user.id
-      redirect_to dashboard_messages_path, alert: 'Доступ запрещён'
-    end
+    @message = user_messages.find(params[:id])
   end
 
   def create
@@ -23,24 +19,31 @@ class Dashboard::MessagesController < Dashboard::BaseController
   end
 
   def unread
-    @messages = Message.where(recipient: current_user, read_at: nil).order(created_at: :desc)
+    @messages = current_user.received_messages.where(read: false).order(created_at: :desc)
     render :index
   end
 
   def mark_all_read
-    Message.where(recipient: current_user, read_at: nil).update_all(read_at: Time.current)
+    current_user.received_messages.where(read: false).update_all(read: true, read_at: Time.current)
     redirect_to dashboard_messages_path, notice: 'Все сообщения прочитаны'
   end
 
   def mark_read
-    message = Message.find(params[:id])
-    message.update(read_at: Time.current) if message.recipient == current_user
+    message = current_user.received_messages.find(params[:id])
+    message.mark_as_read!
     render json: { success: true }
+  rescue ActiveRecord::RecordNotFound
+    render json: { success: false }, status: :not_found
   end
 
   private
+
+  def user_messages
+    Message.where('sender_id = ? OR recipient_id = ?', current_user.id, current_user.id)
+  end
 
   def message_params
     params.require(:message).permit(:body, :recipient_id, :property_id)
   end
 end
+

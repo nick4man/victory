@@ -358,27 +358,4 @@ class PagesController < ApplicationController
     email.match?(URI::MailTo::EMAIL_REGEXP)
   end
   
-  # ============================================
-  # SPAM PROTECTION
-  # ============================================
-  
-  def check_spam
-    # Honeypot field
-    if params[:website].present?
-      Rails.logger.warn "Spam detected from IP: #{request.remote_ip}"
-      return true
-    end
-    
-    # Rate limiting check (simple)
-    cache_key = "contact_form:#{request.remote_ip}"
-    attempts = Rails.cache.read(cache_key) || 0
-    
-    if attempts > 3
-      Rails.logger.warn "Too many contact form submissions from IP: #{request.remote_ip}"
-      return true
-    end
-    
-    Rails.cache.write(cache_key, attempts + 1, expires_in: 1.hour)
-    false
-  end
 end

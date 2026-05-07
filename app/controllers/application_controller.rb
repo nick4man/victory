@@ -440,4 +440,24 @@ class ApplicationController < ActionController::Base
   def after_sign_out_path_for(resource_or_scope)
     root_path
   end
+
+  # Shared spam / abuse check for all contact form endpoints.
+  # Returns true when the submission looks like spam or exceeds the rate limit.
+  def check_spam
+    if params[:website].present?
+      Rails.logger.warn "Spam honeypot triggered from IP: #{request.remote_ip}"
+      return true
+    end
+
+    cache_key = "contact_form:#{request.remote_ip}"
+    attempts = Rails.cache.read(cache_key).to_i
+
+    if attempts >= 5
+      Rails.logger.warn "Contact form rate limit hit for IP: #{request.remote_ip}"
+      return true
+    end
+
+    Rails.cache.write(cache_key, attempts + 1, expires_in: 1.hour)
+    false
+  end
 end
