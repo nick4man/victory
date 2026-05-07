@@ -141,16 +141,16 @@ module ViktoryRealty
       policy.font_src    :self, :https, :data
       policy.img_src     :self, :https, :data, :blob
       policy.object_src  :none
-      # unsafe_eval removed; unsafe_inline overridden by nonces in CSP Level 3 browsers
+      # unsafe_eval removed; nonces override unsafe_inline in CSP Level 3 browsers
       policy.script_src  :self, :https, :unsafe_inline
-      policy.style_src   :self, :https, :unsafe_inline
+      policy.style_src   :self, :https
       policy.connect_src :self, :https, 'ws:', 'wss:'
     end
 
     # Per-request nonce injected into script tags; browsers that honour nonces
     # ignore unsafe_inline automatically (CSP Level 3).
     config.content_security_policy_nonce_generator = ->(_request) { SecureRandom.base64(16) }
-    config.content_security_policy_nonce_directives = %w[script-src]
+    config.content_security_policy_nonce_directives = %w[script-src style-src]
 
     # Feature Policy / Permissions Policy
     config.permissions_policy do |policy|

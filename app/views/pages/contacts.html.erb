@@ -150,8 +150,8 @@
                 class: "mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500" %>
           </div>
 
-          <!-- Honeypot field (hidden from users) -->
-          <div style="position: absolute; left: -5000px;">
+          <!-- Honeypot field (hidden from users, positioned off-screen) -->
+          <div class="absolute left-[-5000px]" aria-hidden="true">
             <%= text_field_tag :website, nil, tabindex: -1, autocomplete: "off" %>
           </div>
 
@@ -166,12 +166,12 @@
     <!-- Map -->
     <div class="mt-16">
       <h2 class="text-2xl font-bold text-gray-900 mb-8">Как нас найти</h2>
-      <div class="bg-gray-200 rounded-lg overflow-hidden" style="height: 400px;">
+      <div class="bg-gray-200 rounded-lg overflow-hidden h-[400px]">
         <% if @offices.present? %>
         <div id="contact-map"
              data-controller="yandex-map"
              data-yandex-map-coordinates-value="<%= json_escape(@offices.first[:coordinates].to_json) %>"
-             style="width: 100%; height: 100%;">
+             class="w-full h-full">
         </div>
         <% end %>
       </div>

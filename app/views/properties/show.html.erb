@@ -357,7 +357,7 @@
           <% if @property.virtual_tour_url.present? %>
             <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
               <h2 class="text-2xl font-bold text-gray-900 mb-4">Виртуальный 3D-тур</h2>
-              <div class="relative bg-gray-900 rounded-lg overflow-hidden" style="padding-bottom: 56.25%;">
+              <div class="relative bg-gray-900 rounded-lg overflow-hidden pb-[56.25%]">
                 <iframe src="<%= @property.virtual_tour_url %>" 
                         class="absolute top-0 left-0 w-full h-full"
                         frameborder="0" 
