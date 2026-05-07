@@ -529,7 +529,7 @@ class DashboardController < ApplicationController
   def favorite_summary(favorite)
     {
       id: favorite.id,
-      property: property_summary(favorite.property),
+      property: favorite.property ? property_summary(favorite.property) : nil,
       created_at: favorite.created_at,
       note: favorite.note
     }
@@ -600,7 +600,7 @@ class DashboardController < ApplicationController
       id: message.id,
       subject: message.subject,
       body: message.body.truncate(100),
-      sender: message.sender.full_name,
+      sender: message.sender&.full_name || 'Неизвестный',
       read: message.read,
       created_at: message.created_at
     }

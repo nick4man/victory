@@ -523,7 +523,7 @@ class Property < ApplicationRecord
 
   def published_properties_must_be_complete
     return unless Rails.env.production?
-    return unless status == 'active' && published_at.present?
+    return unless status_active? && published_at.present?
 
     errors.add(:base, 'Необходимо добавить хотя бы одно изображение') if images.blank?
     errors.add(:description, 'не может быть пустым для опубликованных объектов') if description.blank?

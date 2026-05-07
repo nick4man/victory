@@ -77,6 +77,8 @@ class PriceHistory < ApplicationRecord
   
   # Record a price change
   def self.record_change(property:, new_price:, changed_by: nil, reason: nil, notes: nil, effective_date: nil)
+    return nil if property.nil?
+
     create(
       property: property,
       old_price: property.price,

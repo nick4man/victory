@@ -148,8 +148,9 @@ class User < ApplicationRecord
     where(provider: auth.provider, uid: auth.uid).first_or_create do |user|
       user.email = auth.info.email
       user.password = Devise.friendly_token[0, 20]
-      user.first_name = auth.info.first_name || auth.info.name.to_s.split.first
-      user.last_name = auth.info.last_name || auth.info.name.to_s.split.last
+      name_parts = auth.info.name.to_s.split
+      user.first_name = auth.info.first_name.presence || name_parts.first || 'Пользователь'
+      user.last_name  = auth.info.last_name.presence  || name_parts.drop(1).join(' ')
       user.avatar_url = auth.info.image
       user.confirmed_at = Time.current # Auto-confirm OAuth users
     end

@@ -45,24 +45,25 @@ class SavedSearch < ApplicationRecord
   # Build query description from params
   def query_description
     parts = []
-    params = params_hash
-    
-    parts << "Тип: #{params[:property_type]}" if params[:property_type].present?
-    parts << "Сделка: #{params[:deal_type]}" if params[:deal_type].present?
-    
-    if params[:price_min].present? || params[:price_max].present?
-      price_range = [params[:price_min], params[:price_max]].compact.join(' - ')
+    # params_hash returns JSONB data — keys are strings, not symbols
+    p = params_hash.transform_keys(&:to_s)
+
+    parts << "Тип: #{p['property_type']}" if p['property_type'].present?
+    parts << "Сделка: #{p['deal_type']}" if p['deal_type'].present?
+
+    if p['price_min'].present? || p['price_max'].present?
+      price_range = [p['price_min'], p['price_max']].compact.join(' - ')
       parts << "Цена: #{price_range} ₽"
     end
-    
-    if params[:area_min].present? || params[:area_max].present?
-      area_range = [params[:area_min], params[:area_max]].compact.join(' - ')
+
+    if p['area_min'].present? || p['area_max'].present?
+      area_range = [p['area_min'], p['area_max']].compact.join(' - ')
       parts << "Площадь: #{area_range} м²"
     end
-    
-    parts << "Комнат: #{params[:rooms]}" if params[:rooms].present?
-    parts << "Район: #{params[:district]}" if params[:district].present?
-    
+
+    parts << "Комнат: #{p['rooms']}" if p['rooms'].present?
+    parts << "Район: #{p['district']}" if p['district'].present?
+
     parts.join(', ')
   end
   

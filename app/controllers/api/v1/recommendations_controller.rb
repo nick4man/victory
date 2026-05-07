@@ -23,8 +23,7 @@ module Api
       # GET /api/v1/recommendations/popular
       # Most viewed/favorited properties (public endpoint)
       def popular
-        limit = [[params[:limit].to_i, 1].max, 50].min
-        limit = 10 if limit.zero?
+        limit = params[:limit].blank? ? 10 : [[params[:limit].to_i, 1].max, 50].min
 
         @properties = Property.published
                               .order(views_count: :desc, favorites_count: :desc)
