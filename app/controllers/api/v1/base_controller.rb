@@ -271,20 +271,28 @@ module Api
       # ============================================
       
       def rate_limit_headers
+        limit = ENV.fetch('API_RATE_LIMIT', 100).to_i
         {
-          'X-RateLimit-Limit' => ENV.fetch('API_RATE_LIMIT', 100).to_s,
-          'X-RateLimit-Remaining' => calculate_remaining_requests.to_s,
-          'X-RateLimit-Reset' => rate_limit_reset_time.to_s
+          'X-RateLimit-Limit'     => limit.to_s,
+          'X-RateLimit-Remaining' => calculate_remaining_requests(limit).to_s,
+          'X-RateLimit-Reset'     => rate_limit_reset_time.to_s
         }
       end
-      
-      def calculate_remaining_requests
-        # Implement with Redis or Rack::Attack
-        100 # Placeholder
+
+      def calculate_remaining_requests(limit = ENV.fetch('API_RATE_LIMIT', 100).to_i)
+        return limit unless defined?(Rack::Attack)
+
+        period = 1.hour.to_i
+        cache_key = "#{period}:api:#{request.ip}"
+        used = Rack::Attack.cache.count(cache_key, period)
+        [limit - used, 0].max
+      rescue StandardError
+        limit
       end
-      
+
       def rate_limit_reset_time
-        1.hour.from_now.to_i
+        # Reset at the next whole-hour boundary
+        Time.current.beginning_of_hour.advance(hours: 1).to_i
       end
       
       # ============================================
