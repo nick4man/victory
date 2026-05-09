@@ -27,31 +27,35 @@ class PropertyValuationsController < ApplicationController
     @valuation.user_agent = request.user_agent
     
     if @valuation.save
-      # Perform valuation using AI service
-      result = PropertyEvaluationService.new(@valuation.to_property_params).call
-      
-      @valuation.update(
-        estimated_price: result[:estimated_price],
-        min_price: result[:price_range][:min],
-        max_price: result[:price_range][:max],
-        confidence_level: result[:confidence_level],
-        evaluation_data: result.to_json,
-        status: 'completed'
-      )
-      
-      # Send email with results if email provided
-      PropertyValuationMailer.valuation_completed(@valuation).deliver_later if @valuation.email.present?
-      
-      # Create lead in CRM
-      create_crm_lead(@valuation) if @valuation.email.present?
-      
-      track_event('valuation_completed', {
-        property_type: @valuation.property_type,
-        estimated_price: @valuation.estimated_price
-      })
-      
-      redirect_to property_valuation_result_path(@valuation.token), 
-                  notice: 'Оценка успешно выполнена!'
+      result = PropertyEvaluationService.new(@valuation).call
+
+      if result[:success]
+        @valuation.update(
+          estimated_price:  result[:estimated_price],
+          min_price:        result[:min_price],
+          max_price:        result[:max_price],
+          confidence_level: result[:confidence_level],
+          evaluation_data:  result.except(:success).to_json,
+          status:           'completed'
+        )
+
+        PropertyValuationMailer.valuation_completed(@valuation).deliver_later if @valuation.email.present?
+        create_crm_lead(@valuation) if @valuation.email.present?
+
+        track_event('valuation_completed', {
+          property_type:   @valuation.property_type,
+          estimated_price: @valuation.estimated_price,
+          tier:            result[:tier]
+        })
+
+        redirect_to result_property_valuations_path(token: @valuation.token),
+                    notice: 'Оценка успешно выполнена!'
+      else
+        @valuation.update(status: 'failed', evaluation_data: { error: result[:error] }.to_json)
+        @step = 4
+        flash.now[:alert] = result[:error] || 'Не удалось рассчитать оценку.'
+        render :new, status: :unprocessable_entity
+      end
     else
       @step = determine_error_step
       flash.now[:alert] = 'Пожалуйста, исправьте ошибки в форме'
@@ -66,8 +70,8 @@ class PropertyValuationsController < ApplicationController
     @similar_properties = find_similar_properties(@valuation)
     
     set_meta_tags(
-      title: "Результат оценки недвижимости - #{number_to_currency(@valuation.estimated_price, precision: 0)}",
-      description: "Оценочная стоимость вашей недвижимости составляет #{number_to_currency(@valuation.estimated_price, precision: 0)}"
+      title: "Результат оценки недвижимости - #{helpers.number_to_currency(@valuation.estimated_price, precision: 0)}",
+      description: "Оценочная стоимость вашей недвижимости составляет #{helpers.number_to_currency(@valuation.estimated_price, precision: 0)}"
     )
     
     track_event('valuation_result_viewed', {
@@ -122,12 +126,12 @@ class PropertyValuationsController < ApplicationController
       track_event('valuation_callback_requested', { valuation_id: @valuation.id })
       
       respond_to do |format|
-        format.html { redirect_to property_valuation_result_path(@valuation.token), notice: 'Заявка на звонок принята! Мы свяжемся с вами в ближайшее время.' }
+        format.html { redirect_to result_property_valuations_path(token: @valuation.token), notice: 'Заявка на звонок принята! Мы свяжемся с вами в ближайшее время.' }
         format.json { render json: { success: true, message: 'Заявка принята' } }
       end
     else
       respond_to do |format|
-        format.html { redirect_to property_valuation_result_path(@valuation.token), alert: 'Ошибка при отправке заявки' }
+        format.html { redirect_to result_property_valuations_path(token: @valuation.token), alert: 'Ошибка при отправке заявки' }
         format.json { render json: { success: false, error: 'Ошибка' }, status: :unprocessable_entity }
       end
     end
@@ -138,19 +142,27 @@ class PropertyValuationsController < ApplicationController
   private
   
   def valuation_params
-    params.require(:property_valuation).permit(
+    permitted = params.require(:property_valuation).permit(
       :property_type, :deal_type, :address, :city, :district,
       :total_area, :living_area, :kitchen_area, :rooms, :floor, :total_floors,
-      :building_type, :building_year, :condition, :has_balcony, :has_loggia,
-      :has_garage, :metro_station, :metro_distance, :description,
+      :land_area, :land_category, :ownership_type,
+      :building_type, :building_year, :property_condition, :condition,
+      :has_balcony, :has_loggia, :has_garage,
+      :metro_station, :metro_distance, :description,
       :name, :email, :phone,
       photos: []
     )
+
+    # Tolerate legacy form submissions that send `condition` instead of `property_condition`.
+    legacy = permitted.delete(:condition)
+    permitted[:property_condition] ||= legacy if legacy.present?
+    permitted[:property_condition] = nil if permitted[:property_condition].blank?
+    permitted
   end
   
   def set_breadcrumbs
     add_breadcrumb 'Главная', root_path
-    add_breadcrumb 'Продать недвижимость', sell_path
+    add_breadcrumb 'Продать недвижимость', sell_root_path
     
     case action_name
     when 'new', 'create'
@@ -161,20 +173,31 @@ class PropertyValuationsController < ApplicationController
   end
   
   def determine_error_step
-    return 1 if @valuation.errors.any? { |error| [:property_type, :deal_type, :address].include?(error.attribute) }
-    return 2 if @valuation.errors.any? { |error| [:total_area, :rooms, :floor].include?(error.attribute) }
-    return 3 if @valuation.errors.any? { |error| [:building_type, :condition].include?(error.attribute) }
-    return 4 if @valuation.errors.any? { |error| [:name, :phone, :email].include?(error.attribute) }
-    
+    return 1 if @valuation.errors.any? { |error| %i[property_type deal_type address].include?(error.attribute) }
+    return 2 if @valuation.errors.any? { |error| %i[total_area land_area rooms floor total_floors land_category ownership_type].include?(error.attribute) }
+    return 3 if @valuation.errors.any? { |error| %i[building_type building_year property_condition].include?(error.attribute) }
+    return 4 if @valuation.errors.any? { |error| %i[name phone email].include?(error.attribute) }
+
     1
   end
   
   def find_similar_properties(valuation)
-    Property.active
-            .where(property_type: valuation.property_type)
-            .where('total_area BETWEEN ? AND ?', valuation.total_area * 0.8, valuation.total_area * 1.2)
-            .where('price BETWEEN ? AND ?', valuation.min_price, valuation.max_price)
+    return Property.none if valuation.estimated_price.blank? || valuation.estimated_price.zero?
+
+    pt_id = PropertyType.find_by(slug: comparable_property_type_slug(valuation.property_type))&.id
+    return Property.none unless pt_id
+
+    Property.published
+            .where('price > 0 AND area > 0')
+            .where(property_type_id: pt_id, deal_type: valuation.deal_type)
+            .where('area BETWEEN ? AND ?', valuation.total_area.to_f * 0.8, valuation.total_area.to_f * 1.2)
+            .where('price BETWEEN ? AND ?', valuation.min_price.to_i, valuation.max_price.to_i)
             .limit(6)
+  end
+
+  def comparable_property_type_slug(pt)
+    { 'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
+      'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room' }[pt.to_s]
   end
   
   def create_crm_lead(valuation)

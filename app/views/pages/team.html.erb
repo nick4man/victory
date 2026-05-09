@@ -1,0 +1,82 @@
+<%
+  # Live company structure from Topnlab CRM, synced via TopnlabStaffSyncJob.
+  # If sync hasn't run yet, falls back to legacy User.agents listing.
+  roots = Department.active.roots.includes(:children, :users).ordered
+  has_structure = roots.any? && Department.joins(:users).any?
+  fallback_agents = User.role_agent.where(active: true) unless has_structure
+%>
+
+<% content_for :title, "Команда — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КОМАНДА</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6">ЭКСПЕРТЫ ПРЕМИУМ-РЫНКА</h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      Опытные риелторы, юристы и ипотечные брокеры — всё под одной крышей. Структура команды актуальна по данным CRM.
+    </p>
+  </div>
+</section>
+
+<% if has_structure %>
+  <% roots.each do |root| %>
+    <% root_users = User.crm_active.where(department_id: root.id).order(is_chief: :desc, last_name: :asc) %>
+    <% next unless root_users.any? || root.children.joins(:users).any? %>
+
+    <section class="px-6 lg:px-12 pb-16 bg-background">
+      <div class="max-w-6xl mx-auto">
+        <div class="flex items-baseline gap-4 mb-8 pb-4 border-b border-border">
+          <h2 class="text-2xl lg:text-3xl font-light tracking-wide text-foreground"><%= root.title %></h2>
+          <% if root.address.present? %>
+            <span class="text-sm text-muted-foreground"><%= root.address %></span>
+          <% end %>
+        </div>
+
+        <% if root_users.any? %>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border mb-12">
+            <% root_users.each do |u| %>
+              <%= render 'shared/team_member_card', user: u %>
+            <% end %>
+          </div>
+        <% end %>
+
+        <% root.children.active.ordered.each do |child| %>
+          <% child_users = User.crm_active.where(department_id: child.id).order(is_chief: :desc, last_name: :asc) %>
+          <% next unless child_users.any? %>
+
+          <div class="mt-8">
+            <h3 class="text-lg font-medium text-foreground mb-1"><%= child.title %></h3>
+            <% if child.address.present? %>
+              <p class="text-sm text-muted-foreground mb-6"><%= child.address %></p>
+            <% else %>
+              <div class="h-6"></div>
+            <% end %>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+              <% child_users.each do |u| %>
+                <%= render 'shared/team_member_card', user: u %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+<% else %>
+  <section class="px-6 lg:px-12 pb-16 bg-background">
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+      <% fallback_agents.order(:last_name).each do |u| %>
+        <%= render 'shared/team_member_card', user: u %>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+  <div class="max-w-6xl mx-auto text-center">
+    <p class="text-sm text-muted-foreground mb-6">Хотите присоединиться к команде или начать сотрудничество?</p>
+    <%= link_to contacts_path, class: "group inline-flex items-center gap-4 text-sm tracking-[0.3em] text-foreground hover:text-muted-foreground transition-colors" do %>
+      СВЯЗАТЬСЯ С НАМИ
+      <svg class="w-5 h-5 group-hover:translate-x-2 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    <% end %>
+  </div>
+</section>

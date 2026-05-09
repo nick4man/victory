@@ -37,6 +37,7 @@ class PropertyValuation < ApplicationRecord
     stalin: 'stalin'
   }
   
+  attribute :property_condition, :string
   enum property_condition: {
     needs_repair: 'needs_repair',
     average: 'average',
@@ -45,11 +46,17 @@ class PropertyValuation < ApplicationRecord
     designer: 'designer'
   }, _prefix: :property_condition
   
+  TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
+  TYPES_REQUIRING_LAND_AREA = %w[land].freeze
+
   # Validations
   validates :property_type, presence: true
   validates :deal_type, presence: true
   validates :address, presence: true, length: { minimum: 10 }
-  validates :total_area, presence: true, numericality: { greater_than: 0 }
+  validates :total_area, presence: true, numericality: { greater_than: 0 },
+                         if: -> { property_type.in?(TYPES_REQUIRING_AREA) }
+  validates :land_area, presence: true, numericality: { greater_than: 0 },
+                        if: -> { property_type.in?(TYPES_REQUIRING_LAND_AREA) }
   validates :floor, numericality: { greater_than: 0 }, allow_nil: true
   validates :total_floors, numericality: { greater_than: 0 }, allow_nil: true
   validates :rooms, numericality: { greater_than: 0 }, allow_nil: true
@@ -62,6 +69,7 @@ class PropertyValuation < ApplicationRecord
   
   # Callbacks
   before_validation :generate_token, on: :create
+  before_validation :resolve_coordinates, on: :create
   before_validation :normalize_phone
   
   # Scopes
@@ -87,13 +95,22 @@ class PropertyValuation < ApplicationRecord
       total_floors: total_floors,
       building_type: building_type,
       building_year: building_year,
-      condition: condition,
+      property_condition: property_condition,
       has_balcony: has_balcony,
       has_loggia: has_loggia,
       has_garage: has_garage,
       metro_station: metro_station,
-      metro_distance: metro_distance
+      metro_distance: metro_distance,
+      land_area: land_area,
+      land_category: land_category,
+      ownership_type: ownership_type
     }
+  end
+
+  # Площадь участка в м² (для алгоритма оценки участков); хранится в сотках.
+  def land_area_in_sqm
+    return nil if land_area.blank?
+    land_area.to_f * 100
   end
   
   def full_name
@@ -128,6 +145,19 @@ class PropertyValuation < ApplicationRecord
   
   def generate_token
     self.token = SecureRandom.urlsafe_base64(16)
+  end
+
+  def resolve_coordinates
+    return if address.blank? || (latitude.present? && longitude.present?)
+
+    full = [city.presence, district.presence, address].compact.join(', ')
+    res = Geocoding::AddressLookup.call(full)
+    return unless res
+
+    self.latitude  ||= res.latitude
+    self.longitude ||= res.longitude
+    self.city      ||= res.city
+    self.district  ||= res.district
   end
   
   def normalize_phone

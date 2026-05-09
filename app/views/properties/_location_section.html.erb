@@ -1,0 +1,67 @@
+<%
+  # Renders the "РАСПОЛОЖЕНИЕ" block on a property show page.
+  # Skips entirely when there's no geocoded location — empty cards hurt more than they help.
+  return unless @property.latitude.present? && @property.longitude.present?
+
+  has_key   = ENV['YANDEX_MAPS_API_KEY'].present?
+  is_land   = @property.property_type&.slug == 'land'
+  zoom      = is_land ? 14 : 16
+  district  = @property.district.presence
+  metro     = @property.metro_station.presence
+  walk_min  = @property.metro_distance.present? ? (@property.metro_distance.to_f / 80).ceil : nil
+  ymaps_url = "https://yandex.ru/maps/?ll=#{@property.longitude},#{@property.latitude}&z=17&pt=#{@property.longitude},#{@property.latitude}"
+  route_url = "https://yandex.ru/maps/?rtext=~#{@property.latitude},#{@property.longitude}&rtt=auto"
+%>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background border-t border-border">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">РАСПОЛОЖЕНИЕ</p>
+    <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-3">
+      <%= [district, metro && "м. #{metro}"].compact.join(', ').presence || 'НА КАРТЕ' %>
+    </h2>
+
+    <% if @property.address.present? %>
+      <p class="text-sm text-muted-foreground tracking-wide mb-6"><%= @property.address %></p>
+    <% end %>
+
+    <% if district.present? || metro.present? %>
+      <div class="flex flex-wrap gap-2 mb-8">
+        <% if district.present? %>
+          <span class="border border-border px-3 py-1.5 text-xs tracking-widest uppercase"><%= district %></span>
+        <% end %>
+        <% if metro.present? %>
+          <span class="border border-border px-3 py-1.5 text-xs tracking-widest uppercase">
+            М <%= metro.upcase %><%= " • #{walk_min} МИН ПЕШКОМ" if walk_min %>
+          </span>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="border border-border bg-card -mx-6 sm:mx-0 overflow-hidden">
+      <% if has_key %>
+        <div class="h-[320px] sm:h-[400px] lg:h-[460px] w-full"
+             data-controller="yandex-map"
+             data-yandex-map-latitude-value="<%= @property.latitude %>"
+             data-yandex-map-longitude-value="<%= @property.longitude %>"
+             data-yandex-map-zoom-value="<%= zoom %>"
+             data-yandex-map-title-value="<%= @property.title %>"
+             data-yandex-map-clustered-value="false"></div>
+      <% else %>
+        <div class="h-[280px] flex items-center justify-center px-6 text-center">
+          <p class="text-sm text-muted-foreground tracking-wider">
+            Интерактивная карта будет доступна вскоре. Открыть точку в Яндекс.Картах →
+          </p>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-xs tracking-[0.3em]">
+      <a href="<%= ymaps_url %>" target="_blank" rel="noopener" class="text-foreground hover:text-muted-foreground transition-colors">
+        ОТКРЫТЬ В ЯНДЕКС.КАРТАХ →
+      </a>
+      <a href="<%= route_url %>" target="_blank" rel="noopener" class="text-foreground hover:text-muted-foreground transition-colors">
+        ПОСТРОИТЬ МАРШРУТ →
+      </a>
+    </div>
+  </div>
+</section>

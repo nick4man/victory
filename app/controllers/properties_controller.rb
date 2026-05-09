@@ -22,7 +22,7 @@ class PropertiesController < ApplicationController
   # GET /properties
   def index
     # Build ransack search
-    @q = Property.published.ransack(params[:q])
+    @q = Property.in_advertising.ransack(params[:q])
     
     # Apply filters
     @properties = @q.result(distinct: true)
@@ -78,13 +78,16 @@ class PropertiesController < ApplicationController
     
     # Load related data
     @similar_properties = Property.similar_to(@property, 4)
-    @property_images = @property.property_images.order(:position)
+    # @property_images = @property.property_images.order(:position)
+    # PropertyImage model is not implemented yet — Active Storage `images` are
+    # used directly in the view (see properties/show.html.erb).
+    @property_images = []
     
     # Price history
     @price_history = @property.price_histories.order(changed_at: :desc).limit(10)
     
-    # Reviews
-    @reviews = @property.reviews.approved.order(created_at: :desc).limit(5) if defined?(Review)
+    # Reviews — Property has no has_many :reviews association at the moment.
+    @reviews = @property.respond_to?(:reviews) ? @property.reviews.approved.order(created_at: :desc).limit(5) : []
     
     # Check if favorited
     @is_favorited = current_user&.favorited?(@property)
@@ -179,7 +182,7 @@ class PropertiesController < ApplicationController
   
   # GET /properties/map
   def map
-    @q = Property.published.ransack(params[:q])
+    @q = Property.in_advertising.ransack(params[:q])
     @properties = @q.result(distinct: true)
                     .where.not(latitude: nil, longitude: nil)
                     .includes(:property_type)
@@ -439,6 +442,7 @@ class PropertiesController < ApplicationController
   end
   
   def set_property_meta_tags
+    image_url = primary_image_absolute_url
     set_meta_tags(
       title: @property.title,
       description: @property.short_description(160),
@@ -446,23 +450,34 @@ class PropertiesController < ApplicationController
       og: {
         title: @property.title,
         description: @property.short_description(200),
-        image: @property.primary_image&.url || view_context.asset_url('placeholder.jpg'),
+        image: image_url,
         url: property_url(@property),
         type: 'product'
-      },
+      }.compact,
       twitter: {
         card: 'summary_large_image',
         title: @property.title,
         description: @property.short_description(200),
-        image: @property.primary_image&.url
-      }
+        image: image_url
+      }.compact
     )
+  end
+
+  # Active Storage attachments don't have `.url`; we need rails_blob_url.
+  # Returns absolute URL or nil (let meta_tags omit the field).
+  def primary_image_absolute_url
+    blob = @property.primary_image
+    return nil if blob.blank?
+    Rails.application.routes.url_helpers.rails_blob_url(blob, host: request.base_url)
+  rescue StandardError => e
+    Rails.logger.warn("[Property##{@property.id}] primary image URL failed: #{e.class} #{e.message}")
+    nil
   end
   
   def property_keywords
     keywords = [@property.property_type&.name, @property.district]
     keywords << "#{@property.rooms}-комнатная" if @property.rooms
-    keywords << @property.deal_type_i18n
+    keywords << I18n.t("activerecord.attributes.property.deal_types.#{@property.deal_type}", default: @property.deal_type)
     keywords.compact.join(', ')
   end
   

@@ -27,10 +27,10 @@ module Api
         # Paginate
         @properties = paginate(@properties)
         
-        render_success(
+        render_success({
           properties: serialize_properties(@properties),
           meta: pagination_meta(@properties).merge(api_response_meta)
-        )
+        })
       end
       
       # GET /api/v1/properties/:id
@@ -44,11 +44,11 @@ module Api
           current_api_user.view_property(@property)
         end
         
-        render_success(
+        render_success({
           property: serialize_property_detail(@property),
           similar_properties: serialize_properties(@property.class.similar_to(@property, 4)),
           meta: api_response_meta
-        )
+        })
       end
       
       # GET /api/v1/properties/search
@@ -70,11 +70,11 @@ module Api
         # Paginate
         @properties = paginate(@properties)
         
-        render_success(
+        render_success({
           properties: serialize_properties(@properties),
           query: query,
           meta: pagination_meta(@properties).merge(api_response_meta)
-        )
+        })
       end
       
       # GET /api/v1/properties/featured
@@ -85,10 +85,10 @@ module Api
                               .includes(:property_type, :user)
                               .limit(params[:limit] || 10)
         
-        render_success(
+        render_success({
           properties: serialize_properties(@properties),
           meta: { count: @properties.count }.merge(api_response_meta)
-        )
+        })
       end
       
       # GET /api/v1/properties/recent
@@ -103,13 +103,13 @@ module Api
                               .order(created_at: :desc)
                               .limit(params[:limit] || 20)
         
-        render_success(
+        render_success({
           properties: serialize_properties(@properties),
           meta: { 
             days: days,
             count: @properties.count 
           }.merge(api_response_meta)
-        )
+        })
       end
       
       # GET /api/v1/properties/:id/similar
@@ -117,10 +117,10 @@ module Api
       def similar
         @similar = Property.similar_to(@property, params[:limit] || 4)
         
-        render_success(
+        render_success({
           properties: serialize_properties(@similar),
           meta: { count: @similar.count }.merge(api_response_meta)
-        )
+        })
       end
       
       private

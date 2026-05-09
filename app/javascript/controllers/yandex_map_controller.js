@@ -83,8 +83,9 @@ export default class extends Controller {
       yandexMapDisablePoiInteractivity: true
     })
 
-    // Add traffic control if interactive
-    if (this.interactiveValue) {
+    // Extra controls only make sense on the catalog map (many properties).
+    // On a single-property page they're noise — keep just zoom + fullscreen.
+    if (this.interactiveValue && this.clusteredValue) {
       this.map.controls.add('trafficControl')
       this.map.controls.add('typeSelector')
       this.map.controls.add('routeButtonControl')
@@ -126,9 +127,8 @@ export default class extends Controller {
     )
 
     this.map.geoObjects.add(placemark)
-    
-    // Open balloon by default
-    placemark.balloon.open()
+    // Don't auto-open balloon — visitor opens by clicking the pin if interested.
+    // Auto-open hijacks focus, blocks pan on mobile, and duplicates info already on the page.
   }
 
   addMultipleProperties() {

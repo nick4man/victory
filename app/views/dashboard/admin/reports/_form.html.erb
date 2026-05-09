@@ -1,0 +1,59 @@
+<%
+  form_url = @report.persisted? ? dashboard_admin_report_path(@report) : dashboard_admin_reports_path
+  form_method = @report.persisted? ? :patch : :post
+%>
+<%= form_with model: @report, url: form_url, method: form_method, local: true, class: "max-w-2xl space-y-5" do |f| %>
+  <% if @report.errors.any? %>
+    <div class="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <ul class="list-disc pl-5 space-y-1">
+        <% @report.errors.full_messages.each do |m| %><li><%= m %></li><% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="space-y-2">
+    <label class="text-sm text-muted-foreground">Название (отображается в меню Topnlab) <span class="text-foreground">*</span></label>
+    <%= f.text_field :title, class: "w-full h-11 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+  </div>
+
+  <div class="space-y-2">
+    <label class="text-sm text-muted-foreground">slug (только латиница/цифры, без пробелов) <span class="text-foreground">*</span></label>
+    <%= f.text_field :slug, class: "w-full h-11 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors font-mono" %>
+    <p class="text-xs text-muted-foreground">Будет частью callback URL: <code><%= ENV['APP_HOST'].presence || 'localhost:3000' %>/webhooks/topnlab/reports/{slug}</code></p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div class="space-y-2">
+      <label class="text-sm text-muted-foreground">Страница CRM <span class="text-foreground">*</span></label>
+      <%= f.select :page_id,
+            options_for_select(CrmReport::PAGES.map { |id, t| ["#{t} (##{id})", id] }, @report.page_id),
+            { prompt: 'Выберите' },
+            class: "w-full h-11 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+    </div>
+    <div class="space-y-2">
+      <label class="text-sm text-muted-foreground">Порядок</label>
+      <%= f.number_field :order_position, class: "w-full h-11 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+    </div>
+  </div>
+
+  <div class="space-y-2">
+    <label class="text-sm text-muted-foreground">Шаблон <span class="text-foreground">*</span></label>
+    <%= f.select :template_class,
+          options_for_select([
+            ['Подборка объектов (таблица PDF)', 'CrmReports::InventoryPdf'],
+            ['Презентация для клиента (PDF по объектам)', 'CrmReports::SellerPresentation']
+          ], @report.template_class),
+          {},
+          class: "w-full h-11 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+  </div>
+
+  <label class="flex items-center gap-2 text-sm text-foreground">
+    <%= f.check_box :active %> Активен
+  </label>
+
+  <div class="flex items-center gap-3 pt-4 border-t border-border">
+    <%= f.submit (@report.persisted? ? 'Сохранить' : 'Создать и зарегистрировать в CRM'),
+          class: "px-6 py-2 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm" %>
+    <%= link_to 'Отмена', dashboard_admin_reports_path, class: "text-sm text-muted-foreground hover:text-foreground transition-colors" %>
+  </div>
+<% end %>

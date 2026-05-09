@@ -45,9 +45,9 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_caching = false
   
-  # Use letter_opener for development
-  config.action_mailer.delivery_method = :letter_opener
-  config.action_mailer.perform_deliveries = true
+  # No SMTP / letter_opener in this dev setup — use :test sink (does not raise).
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = false
   
   # Set default URL options
   config.action_mailer.default_url_options = {
@@ -84,12 +84,23 @@ Rails.application.configure do
 
   # Allow all hosts for Replit proxy compatibility
   config.hosts.clear
-  
+
   # Uncomment if you wish to allow Action Cable access from any origin.
   config.action_cable.disable_request_forgery_protection = true
 
-  # ActionCable configuration
-  config.action_cable.url = "ws://#{ENV.fetch('APP_HOST', '0.0.0.0')}:#{ENV.fetch('PORT', 5000)}/cable"
+  # ActionCable: prefer ACTION_CABLE_URL from .env (e.g. wss://victory62.org/cable
+  # behind Traefik). Fallback to relative '/cable' so the JS client uses the
+  # current host scheme.
+  config.action_cable.url = ENV.fetch('ACTION_CABLE_URL', '/cable')
   config.action_cable.allowed_request_origins = nil
+
+  # Trust the WireGuard subnet so request.scheme returns 'https' when Traefik
+  # forwards via X-Forwarded-Proto. Affects og:image / Active Storage URLs.
+  require 'ipaddr'
+  config.action_dispatch.trusted_proxies = [
+    IPAddr.new('10.10.0.0/24'),
+    IPAddr.new('172.16.0.0/12'),  # Docker bridge
+    IPAddr.new('127.0.0.1/8')
+  ]
 end
 

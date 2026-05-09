@@ -12,14 +12,16 @@ class ApplicationController < ActionController::Base
   # INCLUDES
   # ============================================
   # include Pundit::Authorization
+  include VisitorIdentity
   
   # ============================================
   # BEFORE ACTIONS
   # ============================================
-  # before_action :configure_permitted_parameters, if: :devise_controller?
+  before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
+  before_action :setup_meta_tags
+  before_action :set_active_storage_url_options
   # before_action :track_user_activity
-  # before_action :setup_meta_tags
   # Временно отключено: требуется gem browser
   # before_action :detect_device_type
   
@@ -38,35 +40,24 @@ class ApplicationController < ActionController::Base
   # ============================================
   # HELPER METHODS
   # ============================================
-  helper_method :user_signed_in?
-  helper_method :current_user
   helper_method :current_user_admin?
   helper_method :current_user_agent?
   helper_method :current_user_client?
   helper_method :mobile_device?
   helper_method :tablet_device?
   helper_method :desktop_device?
-  
-  # Stub methods for Devise (temporarily disabled)
-  def user_signed_in?
-    false
-  end
 
-  def current_user
-    nil
-  end
-
-  # Auth stub: redirects when Devise is re-enabled but auth is missing.
-  # While Devise is disabled, protected routes will redirect to root.
-  def authenticate_user!
-    unless user_signed_in?
-      flash[:alert] = 'Для доступа необходимо войти в систему'
-      redirect_to root_path
-    end
-  end
-  
   protected
-  
+
+  # Active Storage needs per-request host to render blob URLs.
+  def set_active_storage_url_options
+    ActiveStorage::Current.url_options = {
+      host:     request.host,
+      port:     request.port,
+      protocol: request.protocol
+    }
+  end
+
   # ============================================
   # DEVISE CONFIGURATION
   # ============================================

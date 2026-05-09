@@ -42,8 +42,8 @@ module ViktoryRealty
     config.autoload_paths << Rails.root.join('app', 'presenters')
     config.autoload_paths << Rails.root.join('app', 'decorators')
 
-    # Active Job queue adapter (temporarily using async for setup)
-    config.active_job.queue_adapter = :async
+    # Active Job queue adapter
+    config.active_job.queue_adapter = :sidekiq
 
     # Active Storage
     config.active_storage.service = :local

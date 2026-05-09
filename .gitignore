@@ -237,3 +237,6 @@ ehthumbs.db
 # Ignore local docker volumes
 /postgres-data/
 /redis-data/
+
+# Ignore local DB backups directory (the *.dump rule above also covers files inside)
+/backups/

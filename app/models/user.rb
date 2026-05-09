@@ -50,8 +50,7 @@ class User < ApplicationRecord
   # ============================================
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable,
-         :trackable, :confirmable, :lockable,
-         :omniauthable, omniauth_providers: %i[google_oauth2 yandex]
+         :trackable, :confirmable, :lockable
 
   # ============================================
   # ASSOCIATIONS
@@ -94,6 +93,9 @@ class User < ApplicationRecord
   # Avatar
   has_one_attached :avatar
 
+  # CRM department (Topnlab structure)
+  belongs_to :department, optional: true
+
   # ============================================
   # ENUMS
   # ============================================
@@ -102,6 +104,26 @@ class User < ApplicationRecord
     agent: 1,     # Агент по недвижимости
     admin: 2      # Администратор
   }, _prefix: true
+
+  # CRM-derived scopes
+  scope :crm_active, -> { where(crm_status: 'active') }
+  scope :chiefs,     -> { where(is_chief: true) }
+  scope :synced_from_crm, -> { where.not(crm_user_id: nil) }
+
+  # Display helpers used by team/staff views.
+  def display_name
+    [last_name, first_name, middle_name].compact_blank.join(' ').presence || email
+  end
+
+  def short_name
+    [first_name, last_name].compact_blank.join(' ').presence || email
+  end
+
+  def avatar_initials
+    parts = [first_name, last_name].compact_blank
+    return '?' if parts.empty?
+    parts.map { |s| s[0].to_s.upcase }.join
+  end
 
   # ============================================
   # VALIDATIONS

@@ -1,0 +1,23 @@
+topnlab_sync:
+  cron: "*/30 * * * *"     # every 30 minutes
+  class: TopnlabSyncJob
+  queue: scheduled
+  description: "Pull all in_ad properties from Topnlab CRM and upsert into Property"
+
+mls_sync:
+  cron: "15 */6 * * *"     # every 6 hours at :15 (offset from topnlab_sync)
+  class: MlsSyncJob
+  queue: scheduled
+  description: "Pull Topnlab MLS network listings into MlsListing cache for valuations"
+
+topnlab_staff_sync:
+  cron: "30 6 * * *"       # daily at 06:30
+  class: TopnlabStaffSyncJob
+  queue: scheduled
+  description: "Sync Topnlab company structure (departments + users) into local Department + User"
+
+topnlab_orders_sync:
+  cron: "45 */3 * * *"     # every 3 hours at :45
+  class: TopnlabOrdersSyncJob
+  queue: scheduled
+  description: "Sync Topnlab buyer/renter orders (type=order) into BuyerOrder"

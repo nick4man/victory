@@ -1,0 +1,21 @@
+#!/bin/bash
+set -e
+
+cd /app
+
+# Stale Puma/Rails pid from a previous container can prevent startup.
+rm -f tmp/pids/server.pid tmp/pids/puma.pid
+
+# Wait for Postgres to accept connections.
+echo "Waiting for Postgres at ${DATABASE_HOST:-db}:${DATABASE_PORT:-5432}..."
+until pg_isready -h "${DATABASE_HOST:-db}" -p "${DATABASE_PORT:-5432}" -U "${DATABASE_USERNAME:-postgres}" >/dev/null 2>&1; do
+  sleep 1
+done
+echo "Postgres is ready."
+
+# Create DB if missing and run migrations. Skip when SKIP_DB_PREPARE=1 (e.g. sidekiq).
+if [ "${SKIP_DB_PREPARE:-0}" != "1" ]; then
+  bundle exec rails db:prepare
+fi
+
+exec "$@"

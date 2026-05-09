@@ -7,6 +7,43 @@ module PropertiesHelper
   def property_card_classes
     'bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-300'
   end
+
+  # Returns area in the unit appropriate for this property's type:
+  # land plots → сотки, everything else → м². Storage is always м².
+  # @return [String, nil] e.g. "65 м²", "9.7 соток", or nil if no area
+  def display_area(property)
+    return nil unless property&.area
+    if property.property_type&.slug == 'land'
+      sotki = (property.area.to_f / 100.0)
+      sotki >= 1 ? "#{format_decimal(sotki)} соток" : "#{property.area.to_f.round} м²"
+    else
+      "#{property.area.to_f.round} м²"
+    end
+  end
+
+  # House with a separate plot: "120 м² на 8 соток". Falls back to plain "120 м²".
+  def display_house_area(property)
+    base = "#{property.area.to_f.round} м²"
+    plot = property.respond_to?(:land_area_m2) ? property.land_area_m2 : nil
+    return base if plot.blank? || plot.to_f.zero?
+    "#{base} на #{format_decimal(plot.to_f / 100.0)} соток"
+  end
+
+  # Returns formatted price-per-unit: ₽/сотка for land, ₽/м² otherwise.
+  # `property.price_per_sqm` is canonical ₽/м² in DB.
+  def display_price_per_unit(property)
+    return nil unless property&.price_per_sqm
+    if property.property_type&.slug == 'land'
+      "#{format_price(property.price_per_sqm * 100)}/сотка"
+    else
+      "#{format_price(property.price_per_sqm.to_f.round)}/м²"
+    end
+  end
+
+  def format_decimal(n)
+    n = n.to_f
+    n == n.round ? n.to_i.to_s : n.round(1).to_s
+  end
   
   # Property features list
   def property_features(property)

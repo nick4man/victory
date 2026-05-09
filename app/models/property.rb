@@ -56,7 +56,8 @@ class Property < ApplicationRecord
   belongs_to :property_type, optional: true
   belongs_to :moderated_by, class_name: 'User', optional: true
 
-  has_many :property_images, dependent: :destroy
+  # has_many :property_images, dependent: :destroy
+  # PropertyImage model is not implemented; Active Storage `images` is used instead.
   has_many :favorites, dependent: :destroy
   has_many :favorited_by_users, through: :favorites, source: :user
   has_many :property_views, dependent: :destroy
@@ -65,8 +66,13 @@ class Property < ApplicationRecord
   has_many :price_histories, dependent: :destroy
   has_one :virtual_tour, dependent: :destroy
   has_many :documents, dependent: :destroy
+  has_many :notes, as: :notable, dependent: :destroy
+  has_one :property_embedding, dependent: :destroy
   has_many_attached :images
   has_many_attached :floor_plans
+
+  # External CRM identifier (Topnlab); aliased so notes/_crm_notes/notes_sync use crm_id uniformly.
+  alias_attribute :crm_id, :external_id
 
   # ============================================
   # ENUMS
@@ -115,9 +121,11 @@ class Property < ApplicationRecord
   # ============================================
   before_validation :normalize_attributes
   before_save :calculate_price_per_sqm
+  before_save :sync_geom, if: -> { latitude_changed? || longitude_changed? }
   after_create :track_creation
   after_update :track_price_change, if: :saved_change_to_price?
   after_touch :update_search_index
+  after_commit :enqueue_embed_if_changed, on: %i[create update]
 
   # ============================================
   # GEOCODING
@@ -150,7 +158,17 @@ class Property < ApplicationRecord
   # ============================================
   
   # Status scopes
+  # CRM workflow stages (mirrors Topnlab deal_state)
+  CRM_LIVE_STATES        = %w[lead active ad prepayment deferred].freeze
+  CRM_ADVERTISING_STATES = %w[ad].freeze
+
+  # `published` keeps website-moderated `status: :active`.
+  # `in_advertising` is the public-catalog filter — only objects currently being advertised in CRM.
   scope :published, -> { where.not(published_at: nil).where(status: :active) }
+  scope :in_advertising, -> { published.where(deal_state: CRM_ADVERTISING_STATES) }
+  scope :crm_live,       -> { published.where(deal_state: CRM_LIVE_STATES) }
+  scope :assigned_to,    ->(user) { where(user_id: user.is_a?(User) ? user.id : user) }
+  scope :unassigned,     -> { where(user_id: nil) }
   scope :active, -> { where(status: :active) }
   scope :pending_moderation, -> { where(status: :pending) }
   scope :drafts, -> { where(status: :draft) }
@@ -194,13 +212,13 @@ class Property < ApplicationRecord
   # Location
   scope :in_district, ->(district) { where(district: district) if district.present? }
   scope :near_metro, ->(station) { where(metro_station: station) if station.present? }
+  # PostGIS ST_DWithin against geography(Point, 4326). Distance is in meters
+  # natively; falls back to lat/lng comparison only if geom is unset.
   scope :within_radius, ->(lat, lng, radius_km) {
-    where(%{
-      earth_distance(
-        ll_to_earth(?, ?),
-        ll_to_earth(latitude, longitude)
-      ) < ?
-    }, lat, lng, radius_km * 1000)
+    where(
+      'geom IS NOT NULL AND ST_DWithin(geom, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)',
+      lng.to_f, lat.to_f, radius_km.to_f * 1000
+    )
   }
   
   # Soft delete
@@ -390,7 +408,7 @@ class Property < ApplicationRecord
 
   # Images
   def primary_image
-    property_images.order(:position).first || images.first
+    images.first
   end
 
   def image_urls
@@ -421,6 +439,34 @@ class Property < ApplicationRecord
     self.title = title.squish if title.present?
     self.address = address.squish if address.present?
     self.district = district.squish if district.present?
+  end
+
+  # Mirror lat/lng into PostGIS geography column via EWKT string literal —
+  # Postgres parses 'SRID=4326;POINT(lon lat)' directly into geography, so we
+  # don't need the postgis AR adapter or raw SQL casts.
+  def sync_geom
+    self.geom = if latitude.present? && longitude.present?
+                  "SRID=4326;POINT(#{longitude.to_f} #{latitude.to_f})"
+                end
+  end
+
+  EMBED_TRIGGER_FIELDS = %w[
+    title description price area rooms condition
+    address district metro_station
+    has_balcony has_loggia has_parking has_elevator
+  ].freeze
+
+  # Re-embed only when something the embedding template cares about changed.
+  # Skips during creation if no description yet (will be re-fired by Topnlab
+  # importer at the end of its pipeline).
+  def enqueue_embed_if_changed
+    return if destroyed?
+    return if previous_changes.empty?
+    return unless (EMBED_TRIGGER_FIELDS & previous_changes.keys).any? || previous_changes.key?('id')
+
+    EmbedPropertyJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("[Property##{id}] embed enqueue failed: #{e.class} #{e.message}")
   end
 
   def track_creation
@@ -470,7 +516,7 @@ class Property < ApplicationRecord
   def published_properties_must_be_complete
     return unless status == 'active' && published_at.present?
     
-    errors.add(:base, 'Необходимо добавить хотя бы одно изображение') if images.blank? && property_images.blank?
+    errors.add(:base, 'Необходимо добавить хотя бы одно изображение') if images.blank?
     errors.add(:description, 'не может быть пустым для опубликованных объектов') if description.blank?
   end
 

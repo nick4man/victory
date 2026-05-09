@@ -71,6 +71,16 @@ module ApplicationHelper
     I18n.l(datetime, format: format)
   end
   
+  # Tailwind colour classes for a flash type (used by application layout)
+  def flash_color(type)
+    case type.to_sym
+    when :notice, :success then 'bg-green-50 border-green-200 text-green-800'
+    when :alert,  :error   then 'bg-red-50 border-red-200 text-red-800'
+    when :warning          then 'bg-yellow-50 border-yellow-200 text-yellow-800'
+    else                        'bg-blue-50 border-blue-200 text-blue-800'
+    end
+  end
+
   # Flash message CSS classes
   def flash_class(type)
     case type.to_sym
@@ -99,6 +109,42 @@ module ApplicationHelper
     end
   end
   
+  # Label for building type (used by valuation form)
+  def building_type_label(type)
+    {
+      'panel' => 'Панельный',
+      'brick' => 'Кирпичный',
+      'monolith' => 'Монолит',
+      'block' => 'Блочный',
+      'wood' => 'Деревянный',
+      'stalin' => 'Сталинка'
+    }[type.to_s] || type.to_s.humanize
+  end
+
+  # Label for property condition
+  def condition_label(c)
+    {
+      'needs_repair' => 'Требует ремонта',
+      'average' => 'Среднее',
+      'good' => 'Хорошее',
+      'excellent' => 'Отличное',
+      'designer' => 'Дизайнерский ремонт'
+    }[c.to_s] || c.to_s.humanize
+  end
+
+  # Icon for a property type (used by valuation form)
+  def property_type_icon(type)
+    {
+      'apartment' => '🏢',
+      'house' => '🏠',
+      'townhouse' => '🏘️',
+      'land' => '🌳',
+      'commercial' => '🏪',
+      'garage' => '🚗',
+      'room' => '🛏️'
+    }[type.to_s] || '🏠'
+  end
+
   # Property type translation with icon
   def property_type_with_icon(type)
     icons = {

@@ -1,0 +1,10 @@
+# Postgres 15 + PostGIS 3.5 + pgvector
+#
+# Built on the official postgis/postgis image (which auto-runs
+# CREATE EXTENSION postgis on first init). pgvector is added via the
+# apt.postgresql.org repo that the postgis base image already trusts.
+FROM postgis/postgis:15-3.5
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-15-pgvector \
+ && rm -rf /var/lib/apt/lists/*

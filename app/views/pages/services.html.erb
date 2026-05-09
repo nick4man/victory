@@ -1,61 +1,123 @@
-<% content_for :title, "Наши услуги" %>
+<%
+  # Public services catalog backed by ServiceType (db/seeds/service_types.rb).
+  # CTA buttons open a modal that submits to /forms/service_request → creates Inquiry.
+  icon_paths = {
+    'banknotes' => %(<rect x="6" y="14" width="36" height="20" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><circle cx="24" cy="24" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="6" y1="20" x2="42" y2="20" stroke="currentColor" stroke-width="1"/>),
+    'scale'     => %(<line x1="24" y1="8" x2="24" y2="40" stroke="currentColor" stroke-width="1.5"/><line x1="14" y1="40" x2="34" y2="40" stroke="currentColor" stroke-width="1.5"/><circle cx="24" cy="14" r="2" fill="currentColor"/><path d="M14 22L8 32L20 32L14 22Z" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M34 22L28 32L40 32L34 22Z" stroke="currentColor" stroke-width="1.5" fill="none"/>),
+    'chart'     => %(<line x1="8" y1="40" x2="40" y2="40" stroke="currentColor" stroke-width="1.5"/><line x1="8" y1="8" x2="8" y2="40" stroke="currentColor" stroke-width="1.5"/><polyline points="12 32 18 24 24 28 32 18 40 14" stroke="currentColor" stroke-width="1.5" fill="none"/>),
+    'clipboard' => %(<rect x="12" y="10" width="24" height="32" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="18" y="6" width="12" height="6" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="16" y1="20" x2="32" y2="20" stroke="currentColor" stroke-width="1"/><line x1="16" y1="26" x2="32" y2="26" stroke="currentColor" stroke-width="1"/><line x1="16" y1="32" x2="28" y2="32" stroke="currentColor" stroke-width="1"/>),
+    'megaphone' => %(<path d="M10 20L36 12L36 36L10 28Z" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="M10 20L10 28L14 32L14 18Z" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="36" y1="20" x2="42" y2="18" stroke="currentColor" stroke-width="1"/><line x1="36" y1="24" x2="42" y2="24" stroke="currentColor" stroke-width="1"/><line x1="36" y1="28" x2="42" y2="30" stroke="currentColor" stroke-width="1"/>),
+    'key'       => %(<circle cx="16" cy="24" r="8" stroke="currentColor" stroke-width="1.5" fill="none"/><line x1="24" y1="24" x2="40" y2="24" stroke="currentColor" stroke-width="1.5"/><line x1="34" y1="24" x2="34" y2="30" stroke="currentColor" stroke-width="1.5"/><line x1="40" y1="24" x2="40" y2="32" stroke="currentColor" stroke-width="1.5"/>)
+  }
+%>
 
-<div class="bg-white">
-  <!-- Header -->
-  <div class="bg-gradient-to-r from-primary-600 to-primary-800 py-12">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <h1 class="text-4xl font-extrabold tracking-tight text-white">
-        Наши услуги
-      </h1>
-      <p class="mt-4 text-xl text-primary-100">
-        Полный спектр услуг по недвижимости под ключ
-      </p>
-    </div>
+<% content_for :title, "Услуги — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">УСЛУГИ</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground mb-6">Комплексное сопровождение</h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      От подбора объекта и ипотеки до юридического сопровождения и помощи в продаже —
+      все услуги под одной крышей с командой экспертов.
+    </p>
   </div>
+</section>
 
-  <!-- Services Grid -->
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
-    <div class="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+<section class="px-6 lg:px-12 pb-24 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
       <% @services.each do |service| %>
-        <%= link_to service[:link], class: "group relative bg-white border border-gray-200 rounded-lg p-6 hover:shadow-xl transition-all duration-300" do %>
-          <div class="flex items-center mb-4">
-            <div class="text-4xl mr-4"><%= service[:icon] %></div>
-            <h3 class="text-xl font-semibold text-gray-900 group-hover:text-primary-600 transition">
-              <%= service[:title] %>
-            </h3>
-          </div>
-          <p class="text-gray-600 mb-4">
-            <%= service[:description] %>
-          </p>
-          <span class="inline-flex items-center text-primary-600 font-medium group-hover:translate-x-2 transition-transform">
-            Подробнее
-            <svg class="ml-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        <article class="bg-background p-8 flex flex-col">
+          <div class="mb-6">
+            <svg viewBox="0 0 48 48" fill="none" class="w-12 h-12 text-foreground">
+              <%= (icon_paths[service.icon] || icon_paths['clipboard']).html_safe %>
             </svg>
-          </span>
-        <% end %>
+          </div>
+          <h3 class="text-lg font-medium text-foreground mb-3"><%= service.title %></h3>
+          <p class="text-sm text-muted-foreground leading-relaxed mb-6 flex-1"><%= service.description %></p>
+          <% if service.target_path.present? %>
+            <%= link_to service.target_path,
+                  class: "self-start inline-flex items-center gap-2 px-5 py-2 border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors text-sm" do %>
+              <%= service.cta_label.presence || 'Подробнее' %>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            <% end %>
+          <% else %>
+            <button type="button"
+                    data-service-request="<%= service.slug %>"
+                    data-service-title="<%= service.title %>"
+                    class="self-start inline-flex items-center gap-2 px-5 py-2 border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors text-sm">
+              <%= service.cta_label.presence || 'Подать заявку' %>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          <% end %>
+        </article>
       <% end %>
     </div>
-  </div>
 
-  <!-- CTA Section -->
-  <div class="bg-gray-50 py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="text-center">
-        <h2 class="text-3xl font-extrabold text-gray-900">
-          Нужна консультация?
-        </h2>
-        <p class="mt-4 text-lg text-gray-600">
-          Оставьте заявку, и наш специалист свяжется с вами
-        </p>
-        <div class="mt-8">
-          <%= link_to contacts_path, 
-              class: "inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700" do %>
-            Связаться с нами
-          <% end %>
-        </div>
+    <% if @services.empty? %>
+      <div class="bg-card border border-border p-12 text-center text-muted-foreground">
+        Каталог услуг временно пуст. <%= link_to 'Свяжитесь с нами напрямую', contacts_path, class: 'text-foreground underline' %>.
       </div>
-    </div>
+    <% end %>
+  </div>
+</section>
+
+<!-- Service request modal -->
+<div data-service-modal class="hidden fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm px-4">
+  <div class="bg-background border border-border max-w-md w-full p-8 relative">
+    <button type="button" data-service-modal-close
+            class="absolute top-4 right-4 text-muted-foreground hover:text-foreground transition-colors">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2">ЗАЯВКА</p>
+    <h3 class="text-2xl font-light tracking-wide text-foreground mb-6" data-service-modal-title>—</h3>
+
+    <%= form_with url: forms_service_request_path, method: :post, local: true, class: "space-y-4", data: { service_modal_form: true } do |f| %>
+      <%= f.hidden_field :service_slug, data: { service_modal_slug: true } %>
+      <input type="text" name="name" required placeholder="Ваше имя"
+             class="w-full h-11 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors">
+      <input type="tel" name="phone" required placeholder="+7 (___) ___-__-__"
+             class="w-full h-11 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors">
+      <input type="email" name="email" placeholder="email@example.com (необязательно)"
+             class="w-full h-11 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors">
+      <textarea name="message" rows="3" placeholder="Комментарий (необязательно)"
+                class="w-full px-4 py-3 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors"></textarea>
+      <button type="submit" class="w-full h-11 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm">
+        Отправить заявку
+      </button>
+      <p class="text-xs text-muted-foreground">
+        Нажимая «Отправить», вы соглашаетесь с
+        <%= link_to 'политикой конфиденциальности', privacy_path, target: '_blank', class: 'underline hover:text-foreground' %>.
+      </p>
+    <% end %>
   </div>
 </div>
 
+<script>
+  (function () {
+    const modal = document.querySelector('[data-service-modal]');
+    if (!modal) return;
+    const titleEl = modal.querySelector('[data-service-modal-title]');
+    const slugEl = modal.querySelector('[data-service-modal-slug]');
+    const closeEl = modal.querySelector('[data-service-modal-close]');
+
+    function open(slug, title) {
+      titleEl.textContent = title;
+      slugEl.value = slug;
+      modal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+    function close() {
+      modal.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+    document.querySelectorAll('[data-service-request]').forEach(btn => {
+      btn.addEventListener('click', () => open(btn.dataset.serviceRequest, btn.dataset.serviceTitle));
+    });
+    closeEl.addEventListener('click', close);
+    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.classList.contains('hidden')) close(); });
+  })();
+</script>

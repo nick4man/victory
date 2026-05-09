@@ -152,49 +152,11 @@ class PagesController < ApplicationController
       description: 'Полный спектр услуг по недвижимости: покупка, продажа, аренда, ипотека, юридическое сопровождение.',
       keywords: 'услуги, недвижимость, ипотека, юридические услуги, оценка'
     )
-    
+
     add_breadcrumb 'Услуги'
-    
-    # Services list
-    @services = [
-      {
-        icon: '🏠',
-        title: 'Подбор недвижимости',
-        description: 'Поможем найти идеальную квартиру или дом с учетом всех ваших пожеланий',
-        link: properties_path
-      },
-      {
-        icon: '💰',
-        title: 'Ипотечное кредитование',
-        description: 'Подбор оптимальных ипотечных программ от ведущих банков',
-        link: services_mortgage_calculator_path
-      },
-      {
-        icon: '⚖️',
-        title: 'Юридическое сопровождение',
-        description: 'Полное юридическое сопровождение сделок купли-продажи',
-        link: services_legal_services_path
-      },
-      {
-        icon: '📊',
-        title: 'Оценка недвижимости',
-        description: 'Профессиональная оценка рыночной стоимости вашей недвижимости',
-        link: sell_evaluation_path
-      },
-      {
-        icon: '📄',
-        title: 'Помощь с документами',
-        description: 'Подготовка и проверка документов для сделок',
-        link: services_document_services_path
-      },
-      {
-        icon: '🎥',
-        title: 'Виртуальные туры',
-        description: '3D-туры по объектам недвижимости с эффектом присутствия',
-        link: services_virtual_tours_path
-      }
-    ]
-    
+
+    @services = ServiceType.public_visible.active.ordered
+
     track_event('services_page_viewed')
   end
   

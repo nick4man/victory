@@ -31,6 +31,23 @@ gem 'jwt', '~> 2.8'
 # Authorization
 gem 'pundit', '~> 2.3'
 
+# Authentication (Devise)
+gem 'devise', '~> 4.9'
+
+# State machine (used by Inquiry)
+gem 'aasm', '~> 5.5'
+
+# PDF generation (used by PdfGeneratorService and CrmReports::* templates)
+gem 'prawn', '~> 2.5'
+gem 'prawn-table', '~> 0.2'
+
+# Background jobs
+gem 'sidekiq', '~> 7.2'
+gem 'sidekiq-cron', '~> 1.12'
+
+# Redis (Action Cable + Sidekiq + cache)
+gem 'redis', '~> 5.0'
+
 # Pagination
 gem 'kaminari', '~> 1.2'
 
@@ -44,8 +61,17 @@ gem 'friendly_id', '~> 5.5'
 # Geocoding
 gem 'geocoder', '~> 1.8'
 
+# Vector search (pgvector ActiveRecord helpers — used by PropertyEmbedding for
+# semantic property search via cosine distance on Google gemini-embedding-001 vectors).
+# PostGIS is enabled at the DB level only; we use raw SQL for ST_DWithin to avoid
+# swapping the AR adapter from `postgresql` to `postgis`.
+gem 'neighbor', '~> 0.5'
+
 # API
 gem 'rack-cors', '~> 2.0'
+
+# SEO meta tags (used by PagesController#set_meta_tags)
+gem 'meta-tags', '~> 2.21'
 
 # Performance
 gem 'bootsnap', require: false

@@ -1,0 +1,49 @@
+<%
+  # Reusable CRM notes block. Required locals: `notable` (the parent record).
+  # Optional: `notes` collection (defaults to notable.notes.recent),
+  # `notable_type` ('property' | 'buyer_order' | 'service_order').
+  notes ||= notable.respond_to?(:notes) ? notable.notes.recent : []
+  notable_type ||= notable.class.name.underscore
+%>
+
+<div class="bg-card border border-border p-6">
+  <div class="flex items-center justify-between mb-6">
+    <h3 class="text-lg font-medium text-foreground">Примечания CRM</h3>
+    <span class="text-xs text-muted-foreground"><%= pluralize(notes.size, 'запись', plural: 'записей') %></span>
+  </div>
+
+  <%= form_with url: dashboard_notes_path, method: :post, local: true, class: "mb-6" do |f| %>
+    <%= hidden_field_tag :notable_type, notable_type %>
+    <%= hidden_field_tag :notable_id, notable.id %>
+    <textarea name="note" rows="3" required maxlength="5000"
+              placeholder="Новая заметка — будет отправлена в Topnlab CRM"
+              class="w-full px-4 py-3 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors text-sm"></textarea>
+    <div class="flex items-center justify-between mt-3">
+      <p class="text-xs text-muted-foreground">Заметка появится в CRM в течение минуты.</p>
+      <button type="submit" class="px-4 py-2 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm">
+        Добавить
+      </button>
+    </div>
+  <% end %>
+
+  <% if notes.any? %>
+    <div class="space-y-3">
+      <% notes.each do |n| %>
+        <div class="border-l-2 <%= n.synced? ? 'border-foreground' : n.failed? ? 'border-destructive' : 'border-muted-foreground' %> pl-4 py-1">
+          <div class="flex items-baseline gap-3 mb-1">
+            <p class="text-sm font-medium text-foreground"><%= n.author_name %></p>
+            <p class="text-xs text-muted-foreground"><%= l(n.created_at, format: :short) %></p>
+            <% unless n.synced? %>
+              <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-border <%= n.failed? ? 'text-destructive' : 'text-muted-foreground' %>">
+                <%= n.failed? ? 'Не отправлено' : 'Отправляется...' %>
+              </span>
+            <% end %>
+          </div>
+          <p class="text-sm text-foreground whitespace-pre-wrap"><%= n.note %></p>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <p class="text-sm text-muted-foreground py-4 text-center">Пока нет заметок. Добавьте первую — она появится в CRM и в карточке агента.</p>
+  <% end %>
+</div>

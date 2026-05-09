@@ -3,8 +3,17 @@
 # АН "Виктори" - Routes Configuration
 # Digital Platform for Real Estate Agency
 
+require 'sidekiq/web'
+
 Rails.application.routes.draw do
   # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
+
+  # ============================================
+  # SIDEKIQ DASHBOARD (admin only)
+  # ============================================
+  authenticate :user, ->(u) { u.role_admin? } do
+    mount Sidekiq::Web => '/sidekiq'
+  end
 
   # ============================================
   # ADMIN PANEL (ActiveAdmin) - Temporarily disabled
@@ -13,14 +22,9 @@ Rails.application.routes.draw do
   # ActiveAdmin.routes(self)
 
   # ============================================
-  # USER AUTHENTICATION (Devise) - Temporarily disabled
+  # USER AUTHENTICATION (Devise)
   # ============================================
-  # devise_for :users, controllers: {
-  #   registrations: 'users/registrations',
-  #   sessions: 'users/sessions',
-  #   passwords: 'users/passwords',
-  #   omniauth_callbacks: 'users/omniauth_callbacks'
-  # }
+  devise_for :users
 
   # ============================================
   # MAIN ROUTES
@@ -75,7 +79,23 @@ Rails.application.routes.draw do
   # ============================================
   namespace :dashboard do
     root 'home#index'
-    
+
+    # CRM-synced views
+    resources :staff, only: [:index]
+    resources :orders, only: %i[index show]
+    resources :properties, only: [:index]   # agent's assigned properties
+
+    # CRM bidirectional notes (creates Note → push to Topnlab)
+    resources :notes, only: [:create]
+
+    # Admin: register custom CRM reports + manage callbacks + reassign properties
+    namespace :admin do
+      resources :reports
+      resources :properties, only: [:index] do
+        member { patch :assign }
+      end
+    end
+
     # Profile
     resource :profile, only: [:show, :edit, :update]
     
@@ -151,6 +171,8 @@ Rails.application.routes.draw do
   # SELL PROPERTY (Продать недвижимость)
   # ============================================
   namespace :sell do
+    root 'evaluations#new', as: :root
+
     # Property evaluation
     resource :evaluation, only: [:new, :create, :show] do
       get :result, on: :member
@@ -172,6 +194,9 @@ Rails.application.routes.draw do
   # ============================================
   # PROPERTY VALUATIONS (Онлайн-оценка недвижимости)
   # ============================================
+  # Friendly bare URL — redirect to the form so /valuations works without /new.
+  get '/valuations', to: redirect('/valuations/new')
+
   resources :property_valuations, path: 'valuations', only: [:new, :create] do
     collection do
       get ':token/result', to: 'property_valuations#result', as: :result
@@ -201,14 +226,14 @@ Rails.application.routes.draw do
     # Legal services
     resources :legal_services, only: [:index, :show] do
       member do
-        post :request
+        post :request_service, path: 'request'
       end
     end
-    
+
     # Document assistance
     resources :document_services, only: [:index] do
       collection do
-        post :request
+        post :request_service, path: 'request'
       end
     end
     
@@ -241,6 +266,9 @@ Rails.application.routes.draw do
     
     # Contact agent
     resource :agent_contact, only: [:create]
+
+    # Generic service request (from /services page modal)
+    resource :service_request, only: [:create]
   end
 
   # ============================================
@@ -259,10 +287,16 @@ Rails.application.routes.draw do
   # CHAT & MESSAGING
   # ============================================
   namespace :chat do
-    resources :conversations, only: [:index, :show, :create] do
+    # Public widget — singleton conversation per visitor (cookie-identified)
+    resource :conversation, only: %i[show update], controller: 'conversations' do
+      resources :messages, only: %i[create], controller: '/chat/messages'
+    end
+
+    # Legacy User↔User chat (kept for future internal messaging)
+    resources :conversations, only: [:index] do
       resources :messages, only: [:create]
     end
-    
+
     # Online status
     post 'online', to: 'presence#online'
     post 'offline', to: 'presence#offline'
@@ -289,7 +323,7 @@ Rails.application.routes.draw do
   
   # Contacts
   get 'contacts', to: 'pages#contacts', as: :contacts
-  post 'contacts', to: 'pages#send_contact_form'
+  post 'contacts', to: 'pages#send_contact_form', as: :send_contact_form
   
   # Services
   get 'services', to: 'pages#services', as: :services_page
@@ -374,12 +408,18 @@ Rails.application.routes.draw do
   namespace :webhooks do
     # AmoCRM
     post 'amocrm', to: 'amocrm#create'
-    
+
     # Telegram
     post 'telegram', to: 'telegram#create'
-    
+
     # Payment systems
     post 'yookassa', to: 'yookassa#create'
+
+    # Topnlab CRM — card create/edit notifications
+    post 'topnlab', to: 'topnlab#create'
+
+    # Topnlab Reports API callback — generates PDF for selected ids on demand
+    post 'topnlab/reports/:slug', to: 'topnlab_reports#create', as: :topnlab_report
   end
 
   # ============================================

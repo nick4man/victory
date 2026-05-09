@@ -1,0 +1,50 @@
+<%
+  # Top navigation strip for all /dashboard/* pages. Role-aware: shows extra
+  # links for agents (staff/orders/services) and admins (reports).
+  is_staff = current_user.role_agent? || current_user.role_admin?
+  is_admin = current_user.role_admin?
+
+  links = [
+    ['Главная',     dashboard_root_path,           true],
+    ['Профиль',     dashboard_profile_path,        true],
+    ['Избранное',   dashboard_favorites_path,      true],
+    ['Мои заявки',  dashboard_inquiries_path,      true],
+    ['Поиски',      dashboard_saved_searches_path, true],
+    ['Сообщения',   dashboard_messages_path,       true],
+    ['—',           nil,                           is_staff],
+    ['Мои объекты', dashboard_properties_path,     is_staff],
+    ['Сотрудники',  dashboard_staff_index_path,    is_staff],
+    ['Покупатели CRM', dashboard_orders_path,      is_staff],
+    ['—',           nil,                           is_admin],
+    ['Все объекты',    dashboard_admin_properties_path, is_admin],
+    ['Отчёты CRM',  dashboard_admin_reports_path,  is_admin]
+  ].select { |(_, _, show)| show }
+
+  current_path = request.path
+%>
+
+<%
+  # Drop the legacy '—' group markers; every adjacent pair gets the same divider.
+  flat_links = links.reject { |label, _, _| label == '—' }
+%>
+
+<nav class="bg-card border-b border-border">
+  <div class="max-w-7xl mx-auto px-6 lg:px-12 py-4 flex flex-wrap items-center gap-y-2 text-xs tracking-widest">
+    <% flat_links.each_with_index do |(label, url, _), idx| %>
+      <% if idx.positive? %>
+        <span class="mx-4 lg:mx-7 w-px h-4 bg-border select-none" aria-hidden="true"></span>
+      <% end %>
+      <% active = current_path == url || (url != dashboard_root_path && current_path.start_with?(url)) %>
+      <%= link_to label.upcase, url,
+            class: "py-1 transition-colors #{active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}" %>
+    <% end %>
+    <span class="ml-auto pl-6 text-muted-foreground flex items-center gap-2">
+      <%= current_user.short_name.presence || current_user.email %>
+      <% if current_user.role_admin? %>
+        <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-foreground text-foreground">admin</span>
+      <% elsif current_user.role_agent? %>
+        <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-border text-muted-foreground">agent</span>
+      <% end %>
+    </span>
+  </div>
+</nav>

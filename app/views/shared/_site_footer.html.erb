@@ -1,0 +1,66 @@
+<footer class="bg-card border-t border-border">
+  <div class="px-6 lg:px-12 py-16 lg:py-24">
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-12 lg:gap-8">
+      <div class="lg:col-span-1">
+        <%= link_to root_path, class: "text-2xl font-light tracking-[0.3em] text-foreground" do %>АН ВИКТОРИ<% end %>
+        <p class="text-sm text-muted-foreground mt-4 leading-relaxed max-w-xs">
+          Премиальная недвижимость в престижных районах Москвы. Подбор, продажа, сопровождение сделок.
+        </p>
+      </div>
+
+      <div>
+        <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">НАВИГАЦИЯ</h4>
+        <nav class="flex flex-col gap-3">
+          <%= link_to "Каталог",    properties_path,    class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "О компании", about_path,         class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Новости",    news_path,          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Контакты",   contacts_path,      class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+        </nav>
+      </div>
+
+      <div>
+        <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">УСЛУГИ</h4>
+        <nav class="flex flex-col gap-3">
+          <%= link_to "Подбор недвижимости",       properties_path,                          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Онлайн-оценка",             new_property_valuation_path,              class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Ипотечный калькулятор",     services_mortgage_calculator_path,        class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Юридическое сопровождение", services_legal_services_path,             class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+        </nav>
+      </div>
+
+      <div>
+        <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">КОНТАКТЫ</h4>
+        <div class="flex flex-col gap-4">
+          <a href="tel:+74951234567" class="text-lg tracking-wider text-foreground hover:text-muted-foreground transition-colors">+7 495 123 45 67</a>
+          <a href="mailto:info@viktory-realty.ru" class="text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors">info@viktory-realty.ru</a>
+          <p class="text-sm tracking-wider text-muted-foreground">Москва, Патриаршие пруды<br>Малый Козихинский пер., 12</p>
+        </div>
+
+        <% offices = Department.active.where.not(crm_parent_id: nil).where.not(address: [nil, '']).order(:title).limit(3) rescue [] %>
+        <% if offices.any? %>
+          <div class="mt-6 pt-6 border-t border-border">
+            <h5 class="text-[10px] tracking-[0.3em] text-muted-foreground mb-3">ОФИСЫ</h5>
+            <div class="space-y-2">
+              <% offices.each do |office| %>
+                <div>
+                  <p class="text-xs text-foreground"><%= office.title %></p>
+                  <p class="text-xs text-muted-foreground"><%= office.address %></p>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+
+  <div class="px-6 lg:px-12 py-6 border-t border-border">
+    <div class="flex flex-col lg:flex-row items-center justify-between gap-4">
+      <p class="text-xs tracking-wider text-muted-foreground">© <%= Time.current.year %> АН «Виктори». Все права защищены.</p>
+      <div class="flex items-center gap-6">
+        <%= link_to privacy_path, class: "text-xs tracking-wider text-muted-foreground hover:text-foreground transition-colors" do %>Конфиденциальность<% end %>
+        <%= link_to terms_path,   class: "text-xs tracking-wider text-muted-foreground hover:text-foreground transition-colors" do %>Условия<% end %>
+      </div>
+    </div>
+  </div>
+</footer>

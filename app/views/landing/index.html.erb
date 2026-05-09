@@ -1,203 +1,298 @@
-<%# Landing page inspired by Sminex minimalist design %>
+<%# Landing page — premium dark minimalist (v0-inspired) %>
 <!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>АН "Виктори" - Агентство недвижимости</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-    
-    body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    
-    .hero-title {
-      letter-spacing: 0.02em;
-      line-height: 1.1;
-    }
-  </style>
+  <title>АН "Виктори" — Премиальная недвижимость</title>
+  <%= csrf_meta_tags %>
+  <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="min-h-screen bg-white">
-  <!-- Minimalist Header -->
-  <header class="bg-white">
-    <div class="container mx-auto px-6 py-6">
-      <div class="flex items-center justify-between">
-        <div class="text-xl font-bold tracking-tight text-gray-900">АН "ВИКТОРИ"</div>
-        <nav class="hidden lg:flex items-center space-x-8 text-sm">
-          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Элитная недвижимость</a>
-          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Проекты</a>
-          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Услуги</a>
-          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">О компании</a>
-          <a href="#" class="text-gray-600 hover:text-gray-900 transition font-medium">Контакты</a>
-        </nav>
+<body class="bg-background text-foreground min-h-screen">
+
+  <%= render "shared/site_header" %>
+
+  <!-- ============================================
+       HERO SLIDER — random in-advertising properties (cached 10 min)
+       ============================================ -->
+  <section class="relative h-screen w-full overflow-hidden" id="hero-slider">
+    <%
+      slides = Rails.cache.fetch('landing/hero_slides_v2', expires_in: 10.minutes) do
+        # PG forbids RANDOM() ORDER BY with DISTINCT, so shuffle in Ruby (small N).
+        candidates = Property.in_advertising
+                             .joins(:images_attachments)
+                             .distinct
+                             .limit(50)
+                             .to_a
+        candidates.shuffle.first(6).map do |p|
+          first_image = p.images.first
+          next nil unless first_image
+          {
+            subtitle: (p.property_type&.name || I18n.t("deal_types.#{p.deal_type}", default: p.deal_type)).to_s.upcase,
+            title:    (p.district.presence || p.address.to_s.split(',').first.to_s.strip).upcase.presence || p.title.upcase,
+            area:     (p.area.present? ? "#{ActionController::Base.helpers.number_with_delimiter(p.area.to_f.round(1).to_s.sub(/\.0$/, ''))} м²" : nil),
+            price:    (p.price.to_i.positive? ? "#{ActionController::Base.helpers.number_with_delimiter(p.price.to_i)} ₽" : nil),
+            image:    Rails.application.routes.url_helpers.rails_blob_path(first_image, only_path: true),
+            url:      Rails.application.routes.url_helpers.property_path(p)
+          }
+        end.compact
+      rescue StandardError => e
+        Rails.logger.warn("[hero_slides] #{e.class}: #{e.message}")
+        []
+      end
+
+      # Fallback: премиальные плейсхолдеры если пусто (на старте проекта).
+      if slides.empty?
+        slides = [
+          { subtitle: "Резиденция",  title: "ЧИСТЫЕ ПРУДЫ", area: "от 120 м²", price: "от 85 млн ₽",  image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=80", url: properties_path },
+          { subtitle: "Апартаменты", title: "ПАТРИАРШИЕ",   area: "от 180 м²", price: "от 150 млн ₽", image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1920&q=80", url: properties_path },
+          { subtitle: "Пентхаус",    title: "ОСТОЖЕНКА",    area: "от 350 м²", price: "от 450 млн ₽", image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1920&q=80", url: properties_path }
+        ]
+      end
+    %>
+
+    <% slides.each_with_index do |s, i| %>
+      <a class="hero-slide absolute inset-0 block"
+         href="<%= s[:url] || properties_path %>"
+         aria-label="Открыть объект: <%= s[:title] %>"
+         style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;"
+         data-index="<%= i %>">
+        <span class="absolute inset-0 bg-background/60 z-10"></span>
+        <img src="<%= s[:image] %>" alt="<%= s[:title] %>" loading="eager"
+             class="w-full h-full object-cover grayscale">
+      </a>
+    <% end %>
+
+    <div class="relative z-20 h-full flex flex-col justify-between px-6 lg:px-12 pt-32 pb-12 pointer-events-none">
+      <div class="flex-1 flex flex-col justify-center max-w-4xl pointer-events-auto"
+           data-hero="text-block"
+           style="transition: opacity 600ms ease-in-out;">
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4 uppercase" data-hero="subtitle"><%= slides.first[:subtitle] %></p>
+        <h1 class="text-5xl md:text-7xl lg:text-8xl font-light tracking-wider text-foreground mb-8" data-hero="title"><%= slides.first[:title] %></h1>
+        <div class="flex flex-col sm:flex-row gap-6 sm:gap-12 text-sm tracking-wider text-muted-foreground mb-12">
+          <span data-hero="area"><%= slides.first[:area] %></span>
+          <span data-hero="price"><%= slides.first[:price] %></span>
+        </div>
+        <a data-hero="cta" href="<%= slides.first[:url] || properties_path %>"
+           class="group flex items-center gap-4 text-sm tracking-[0.3em] text-foreground hover:text-muted-foreground transition-colors w-fit pointer-events-auto">
+          ПОДРОБНЕЕ
+          <svg class="w-5 h-5 group-hover:translate-x-2 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+
+      <div class="flex items-end justify-between">
+        <div class="flex items-center gap-4 pointer-events-auto" id="hero-indicators">
+          <% slides.each_with_index do |_, i| %>
+            <button type="button" class="hero-indicator h-px transition-all duration-500 <%= i == 0 ? 'w-12 bg-foreground' : 'w-6 bg-muted-foreground' %>" data-index="<%= i %>" aria-label="Слайд <%= i + 1 %>"></button>
+          <% end %>
+        </div>
+
+        <div class="hidden lg:flex flex-col items-center gap-2 text-muted-foreground">
+          <span class="text-xs tracking-widest rotate-90 origin-center translate-x-4">SCROLL</span>
+          <svg class="w-4 h-4 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+        </div>
+
+        <div class="text-sm tracking-wider text-muted-foreground">
+          <span class="text-foreground text-lg" data-hero="counter">01</span>
+          <span class="mx-2">/</span>
+          <span><%= sprintf("%02d", slides.size) %></span>
+        </div>
       </div>
     </div>
-  </header>
 
-  <!-- Hero Section - Sminex-inspired minimalist design -->
-  <section class="relative bg-white pt-20 pb-24 md:pt-32 md:pb-40">
-    <div class="container mx-auto px-6">
-      <div class="max-w-5xl mx-auto">
-        <!-- Main CTA Button -->
-        <div class="mb-16 md:mb-20">
-          <a href="#" class="inline-block px-8 py-3 border-2 border-gray-900 text-gray-900 font-semibold text-sm tracking-wide hover:bg-gray-900 hover:text-white transition-all duration-300">
-            ВЫБРАТЬ НЕДВИЖИМОСТЬ
-          </a>
+    <script>
+      (function () {
+        var slides = <%= raw slides.to_json %>;
+        var idx = 0;
+        var transitioning = false;
+
+        // Preload images so the first crossfade is instant.
+        slides.forEach(function (s) { var i = new Image(); i.src = s.image; });
+
+        var slideEls   = document.querySelectorAll('.hero-slide');
+        var indicators = document.querySelectorAll('.hero-indicator');
+        var textBlock  = document.querySelector('[data-hero="text-block"]');
+        var subtitleEl = document.querySelector('[data-hero="subtitle"]');
+        var titleEl    = document.querySelector('[data-hero="title"]');
+        var areaEl     = document.querySelector('[data-hero="area"]');
+        var priceEl    = document.querySelector('[data-hero="price"]');
+        var counterEl  = document.querySelector('[data-hero="counter"]');
+        var ctaEl      = document.querySelector('[data-hero="cta"]');
+
+        function setIndicators(active) {
+          indicators.forEach(function (el, i) {
+            if (i === active) {
+              el.classList.add('w-12', 'bg-foreground');
+              el.classList.remove('w-6', 'bg-muted-foreground');
+            } else {
+              el.classList.remove('w-12', 'bg-foreground');
+              el.classList.add('w-6', 'bg-muted-foreground');
+            }
+          });
+        }
+
+        function show(n) {
+          if (transitioning) return;
+          var next = ((n % slides.length) + slides.length) % slides.length;
+          if (next === idx) return;
+          transitioning = true;
+
+          // 1. Crossfade backgrounds (1500ms via inline transition).
+          //    pointer-events follows opacity so only the visible slide receives clicks.
+          slideEls.forEach(function (el, i) {
+            el.style.opacity = i === next ? '1' : '0';
+            el.style.pointerEvents = i === next ? 'auto' : 'none';
+          });
+
+          // 2. Fade text out, swap content, fade text in.
+          if (textBlock) textBlock.style.opacity = '0';
+          setTimeout(function () {
+            var s = slides[next];
+            if (subtitleEl) subtitleEl.textContent = s.subtitle;
+            if (titleEl)    titleEl.textContent    = s.title;
+            if (areaEl)     areaEl.textContent     = s.area || '';
+            if (priceEl)    priceEl.textContent    = s.price || '';
+            if (counterEl)  counterEl.textContent  = String(next + 1).padStart(2, '0');
+            if (ctaEl && s.url) ctaEl.setAttribute('href', s.url);
+            if (textBlock) textBlock.style.opacity = '1';
+          }, 600);
+
+          setIndicators(next);
+          idx = next;
+          setTimeout(function () { transitioning = false; }, 1500);
+        }
+
+        indicators.forEach(function (btn) {
+          btn.addEventListener('click', function () { show(parseInt(btn.dataset.index, 10)); });
+        });
+
+        setInterval(function () { show(idx + 1); }, 6000);
+      })();
+    </script>
+  </section>
+
+  <!-- ============================================
+       FEATURED PROPERTIES
+       ============================================ -->
+  <%
+    featured = Rails.cache.fetch('landing/featured_v2', expires_in: 10.minutes) do
+      Property.in_advertising.joins(:images_attachments).distinct.order(updated_at: :desc).limit(4).to_a
+    rescue StandardError
+      []
+    end
+  %>
+  <% if featured.any? %>
+    <section id="projects" class="py-24 lg:py-32 px-6 lg:px-12 bg-background">
+      <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
+        <div>
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КАТАЛОГ</p>
+          <h2 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground">ИЗБРАННЫЕ ОБЪЕКТЫ</h2>
         </div>
-        
-        <!-- Hero Title -->
-        <h1 class="hero-title text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold text-gray-900 mb-8 md:mb-12 leading-tight">
-          ПРОФЕССИОНАЛЫ<br>
-          ЭЛИТНОЙ<br>
-          НЕДВИЖИМОСТИ
-        </h1>
-        
-        <!-- Portfolio Link -->
-        <div class="mb-16">
-          <a href="#" class="inline-block px-8 py-3 bg-gray-900 text-white font-semibold text-sm tracking-wide hover:bg-gray-800 transition-all duration-300">
-            ПОРТФОЛИО ПРОЕКТОВ
-          </a>
+        <div class="flex flex-wrap gap-2">
+          <%= link_to "Все",         properties_path,                                     class: "px-5 py-2 text-sm tracking-wider border bg-foreground text-background border-foreground" %>
+          <%= link_to "Купить",      properties_path(q: { deal_type_eq: 'sale' }),        class: "px-5 py-2 text-sm tracking-wider border bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground transition-colors" %>
+          <%= link_to "Снять",       properties_path(q: { deal_type_eq: 'rent' }),        class: "px-5 py-2 text-sm tracking-wider border bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground transition-colors" %>
         </div>
-        
-        <!-- Description Text -->
-        <div class="max-w-3xl">
-          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-6">
-            Мы создаём самую комфортную и престижную среду для жизни и работы. Заботимся о клиенте на каждом этапе: при выборе, на стадии покупки, в процессе ожидания ключей и, конечно, во время жизни в наших домах.
-          </p>
-          <p class="text-base md:text-lg text-gray-700 leading-relaxed">
-            Мы смотрим на свою работу глазами клиента и создаём только то, что устроило бы нас самих.
-          </p>
-        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <% featured.each do |p| %>
+          <%= link_to p, class: "group relative bg-card border border-border overflow-hidden block" do %>
+            <div class="relative aspect-[4/3] overflow-hidden">
+              <% img = p.images.attached? ? url_for(p.images.first) : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80" rescue "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80" %>
+              <img src="<%= img %>" alt="<%= p.title %>" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700">
+              <div class="absolute inset-0 bg-background/20 group-hover:bg-transparent transition-colors duration-500"></div>
+              <div class="absolute bottom-4 right-4 w-12 h-12 flex items-center justify-center bg-foreground text-background opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+                <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10M7 17 17 7"/></svg>
+              </div>
+            </div>
+            <div class="p-6">
+              <h3 class="text-lg tracking-wider text-foreground mb-1 group-hover:text-muted-foreground transition-colors uppercase"><%= p.title %></h3>
+              <p class="text-sm text-muted-foreground tracking-wide mb-4"><%= p.address.presence || 'Москва, ЦАО' %></p>
+              <div class="grid grid-cols-2 gap-4 py-4 border-t border-border">
+                <div>
+                  <p class="text-xs tracking-widest text-muted-foreground mb-1">ПЛОЩАДЬ</p>
+                  <p class="text-sm tracking-wider text-foreground"><%= p.area.present? ? "#{p.area} м²" : "—" %></p>
+                </div>
+                <div>
+                  <p class="text-xs tracking-widest text-muted-foreground mb-1">ЭТАЖ</p>
+                  <p class="text-sm tracking-wider text-foreground"><%= p.floor.present? ? "#{p.floor}/#{p.total_floors}" : "—" %></p>
+                </div>
+              </div>
+              <div class="pt-4 border-t border-border">
+                <p class="text-xl tracking-wider text-foreground mb-1"><%= p.price_formatted %></p>
+                <% if p.price_per_sqm.present? %>
+                  <p class="text-xs tracking-wider text-muted-foreground"><%= number_with_delimiter(p.price_per_sqm.to_i) %> ₽/м²</p>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+
+      <div class="flex justify-center mt-16">
+        <%= link_to properties_path, class: "group flex items-center gap-4 px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+          ВСЕ ОБЪЕКТЫ
+          <svg class="w-5 h-5 group-hover:translate-x-2 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <% end %>
+      </div>
+    </section>
+  <% end %>
+
+  <!-- ============================================
+       STATS
+       ============================================ -->
+  <section class="py-24 px-6 lg:px-12 bg-card border-y border-border">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8">
+      <div class="text-center">
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">15+</p>
+        <p class="text-sm tracking-widest text-muted-foreground uppercase">лет на рынке</p>
+      </div>
+      <div class="text-center">
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">500+</p>
+        <p class="text-sm tracking-widest text-muted-foreground uppercase">реализованных проектов</p>
+      </div>
+      <div class="text-center">
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">98%</p>
+        <p class="text-sm tracking-widest text-muted-foreground uppercase">довольных клиентов</p>
+      </div>
+      <div class="text-center">
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">₽50B</p>
+        <p class="text-sm tracking-widest text-muted-foreground uppercase">объём продаж</p>
       </div>
     </div>
   </section>
 
-  <!-- Secondary Section - USP -->
-  <section class="bg-gray-50 py-20 md:py-32">
-    <div class="container mx-auto px-6">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-8 leading-tight">
-          УНИКАЛЬНЫЕ ДОМА,<br>
-          ПРЕВОСХОДЯЩИЕ ОЖИДАНИЯ
-        </h2>
-        
-        <div class="max-w-3xl">
-          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-6">
-            Нам важно, как человек будет чувствовать себя в построенном нами доме. Мы вкладываем душу в каждый элемент и продумываем всё до мелочей.
-          </p>
-          <p class="text-base md:text-lg text-gray-700 leading-relaxed mb-10">
-            Наши продукты отличаются максимальной комплектацией и зачастую превосходят продукты конкурентов. Мы стремимся сделать каждый элемент дома идеальным для всех вас.
-          </p>
-          
-          <a href="#" class="inline-block border-b-2 border-gray-900 text-gray-900 font-semibold text-sm pb-1 hover:border-gray-600 transition">
-            ПОДРОБНЕЕ
-          </a>
-        </div>
+  <!-- ============================================
+       VALUES
+       ============================================ -->
+  <section class="py-24 lg:py-32 px-6 lg:px-12 bg-background">
+    <div class="max-w-5xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">О КОМПАНИИ</p>
+      <h2 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-16 leading-tight">
+        МЫ ВСЕГДА СТРОИМ ТО,<br>ЧТО ОБЕЩАЛИ
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
+        <% [
+          ["АРХИТЕКТУРА",  "Мы прорабатываем детали, продумываем инфраструктуру и подбираем материалы премиум-класса."],
+          ["КАЧЕСТВО",     "Каждый элемент дома создаётся с вниманием к деталям. Только проверенные материалы и лучшие подрядчики."],
+          ["КОМФОРТ",      "Продуманная инфраструктура, современные технологии, забота о каждой детали."],
+          ["СЕРВИС",       "Сопровождаем клиента на всех этапах — от выбора недвижимости до послепродажного обслуживания."]
+        ].each do |title, body| %>
+          <div>
+            <h3 class="text-lg tracking-widest text-foreground mb-4"><%= title %></h3>
+            <p class="text-sm text-muted-foreground leading-relaxed"><%= body %></p>
+          </div>
+        <% end %>
       </div>
     </div>
   </section>
 
-  <!-- Stats Section -->
-  <section class="bg-white py-20 md:py-32">
-    <div class="container mx-auto px-6">
-      <div class="max-w-5xl mx-auto">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
-          <div>
-            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">100</div>
-            <p class="text-gray-600 text-lg">реализованных проектов</p>
-          </div>
-          <div>
-            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">10+</div>
-            <p class="text-gray-600 text-lg">лет на рынке</p>
-          </div>
-          <div>
-            <div class="text-5xl md:text-6xl font-bold text-gray-900 mb-2">500+</div>
-            <p class="text-gray-600 text-lg">довольных клиентов</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+  <%= render "shared/site_footer" %>
+  <%= render "shared/chat_widget" %>
 
-  <!-- Values Section -->
-  <section class="bg-gray-50 py-20 md:py-32">
-    <div class="container mx-auto px-6">
-      <div class="max-w-5xl mx-auto">
-        <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-16 leading-tight">
-          МЫ ВСЕГДА СТРОИМ ТО,<br>
-          ЧТО ОБЕЩАЛИ
-        </h2>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-16">
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-4">АРХИТЕКТУРА</h3>
-            <p class="text-gray-700 leading-relaxed">
-              Мы вкладываем душу в каждый проект: прорабатываем детали, продумываем инфраструктуру и подбираем материалы премиум-класса.
-            </p>
-          </div>
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-4">КАЧЕСТВО</h3>
-            <p class="text-gray-700 leading-relaxed">
-              Каждый элемент дома создаётся с вниманием к деталям. Мы используем только проверенные материалы и работаем с лучшими подрядчиками.
-            </p>
-          </div>
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-4">КОМФОРТ</h3>
-            <p class="text-gray-700 leading-relaxed">
-              Продуманная инфраструктура, современные технологии и забота о каждой детали создают идеальную среду для жизни.
-            </p>
-          </div>
-          <div>
-            <h3 class="text-xl font-bold text-gray-900 mb-4">СЕРВИС</h3>
-            <p class="text-gray-700 leading-relaxed">
-              Мы сопровождаем клиента на всех этапах — от выбора недвижимости до послепродажного обслуживания.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Footer -->
-  <footer class="bg-gray-900 text-white py-12">
-    <div class="container mx-auto px-6">
-      <div class="max-w-5xl mx-auto">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          <div>
-            <div class="text-lg font-bold mb-4">АН "ВИКТОРИ"</div>
-            <p class="text-gray-400 text-sm">Элитная недвижимость премиум-класса</p>
-          </div>
-          <div>
-            <h4 class="font-semibold mb-4 text-sm">ПРОЕКТЫ</h4>
-            <ul class="space-y-2 text-sm text-gray-400">
-              <li><a href="#" class="hover:text-white transition">Квартиры</a></li>
-              <li><a href="#" class="hover:text-white transition">Пентхаусы</a></li>
-              <li><a href="#" class="hover:text-white transition">Коммерческая</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-semibold mb-4 text-sm">КОМПАНИЯ</h4>
-            <ul class="space-y-2 text-sm text-gray-400">
-              <li><a href="#" class="hover:text-white transition">О нас</a></li>
-              <li><a href="#" class="hover:text-white transition">Новости</a></li>
-              <li><a href="#" class="hover:text-white transition">Контакты</a></li>
-            </ul>
-          </div>
-          <div>
-            <h4 class="font-semibold mb-4 text-sm">КОНТАКТЫ</h4>
-            <ul class="space-y-2 text-sm text-gray-400">
-              <li>+7 (495) 123-45-67</li>
-              <li>info@viktoryre.ru</li>
-            </ul>
-          </div>
-        </div>
-        <div class="border-t border-gray-800 pt-8">
-          <p class="text-gray-400 text-sm">&copy; 2024 АН "Виктори". Все права защищены.</p>
-        </div>
-      </div>
-    </div>
-  </footer>
 </body>
 </html>

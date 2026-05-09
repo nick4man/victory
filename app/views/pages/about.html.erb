@@ -1,173 +1,48 @@
-<% content_for :title, "О компании" %>
+<% content_for :title, "О компании — АН Виктори" %>
 
-<div class="bg-white">
-  <!-- Hero section -->
-  <div class="relative bg-gradient-to-r from-primary-600 to-primary-800 py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="text-center">
-        <h1 class="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-          О компании АН "Виктори"
-        </h1>
-        <p class="mx-auto mt-6 max-w-2xl text-xl text-primary-100">
-          Мы помогаем людям находить дом их мечты уже более <%= @statistics[:years_in_business] %> лет
+<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">О КОМПАНИИ</p>
+    <h1 class="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-12 leading-tight">
+      ПРОФЕССИОНАЛЫ<br>ЭЛИТНОЙ НЕДВИЖИМОСТИ
+    </h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24 mb-24">
+      <div>
+        <p class="text-base text-muted-foreground leading-relaxed mb-6">
+          Мы создаём самую комфортную и престижную среду для жизни и работы. Заботимся о клиенте на каждом этапе: при выборе, на стадии покупки, в процессе ожидания ключей и, конечно, во время жизни в наших домах.
+        </p>
+        <p class="text-base text-muted-foreground leading-relaxed">
+          Мы смотрим на свою работу глазами клиента и создаём только то, что устроило бы нас самих.
         </p>
       </div>
+      <div class="grid grid-cols-2 gap-8">
+        <% [["15+", "лет на рынке"], ["500+", "проектов"], ["98%", "довольных клиентов"], ["50B", "объём продаж"]].each do |v, l| %>
+          <div>
+            <p class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-2"><%= v %></p>
+            <p class="text-xs tracking-widest text-muted-foreground uppercase"><%= l %></p>
+          </div>
+        <% end %>
+      </div>
     </div>
-  </div>
 
-  <!-- Mission section -->
-  <div class="py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
+      <% [
+        ["АРХИТЕКТУРА", "Мы прорабатываем каждую деталь, продумываем инфраструктуру и подбираем материалы премиум-класса."],
+        ["КАЧЕСТВО",    "Каждый элемент дома создаётся с вниманием к мелочам. Только проверенные материалы и лучшие подрядчики."],
+        ["КОМФОРТ",     "Продуманная инфраструктура, современные технологии, забота о каждой детали."],
+        ["СЕРВИС",      "Сопровождаем клиента на всех этапах — от выбора недвижимости до послепродажного обслуживания."]
+      ].each do |t, b| %>
         <div>
-          <h2 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
-            Наша миссия
-          </h2>
-          <p class="mt-4 text-lg text-gray-500">
-            Мы стремимся сделать процесс покупки, продажи и аренды недвижимости максимально простым,
-            прозрачным и безопасным. Наша цель — не просто заключить сделку, а найти для каждого
-            клиента идеальное решение, которое улучшит качество его жизни.
-          </p>
-          <p class="mt-4 text-lg text-gray-500">
-            Мы гордимся тем, что помогли тысячам семей найти свой дом, и продолжаем совершенствовать
-            наши услуги, внедряя современные технологии и лучшие практики рынка недвижимости.
-          </p>
+          <h3 class="text-lg tracking-widest text-foreground mb-4"><%= t %></h3>
+          <p class="text-sm text-muted-foreground leading-relaxed"><%= b %></p>
         </div>
-        <div class="mt-10 lg:mt-0">
-          <img class="rounded-lg shadow-lg" 
-               src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1073&q=80" 
-               alt="О компании">
-        </div>
-      </div>
+      <% end %>
+    </div>
+
+    <div class="mt-24 flex flex-wrap gap-6">
+      <%= link_to team_path,    class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>КОМАНДА<% end %>
+      <%= link_to history_path, class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>ИСТОРИЯ<% end %>
     </div>
   </div>
-
-  <!-- Statistics -->
-  <div class="bg-primary-800 py-12">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="grid grid-cols-2 gap-6 lg:grid-cols-5">
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= @statistics[:years_in_business] %>+</p>
-          <p class="mt-2 text-base text-primary-100">Лет на рынке</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:total_deals]) %>+</p>
-          <p class="mt-2 text-base text-primary-100">Успешных сделок</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:active_properties]) %></p>
-          <p class="mt-2 text-base text-primary-100">Объектов</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:satisfied_clients]) %>+</p>
-          <p class="mt-2 text-base text-primary-100">Довольных клиентов</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= @statistics[:professional_agents] %></p>
-          <p class="mt-2 text-base text-primary-100">Профессиональных агентов</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Values -->
-  <div class="py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="text-center">
-        <h2 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
-          Наши ценности
-        </h2>
-        <p class="mx-auto mt-4 max-w-2xl text-xl text-gray-500">
-          Принципы, которыми мы руководствуемся в работе
-        </p>
-      </div>
-
-      <div class="mt-12 grid gap-8 lg:grid-cols-3">
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🎯
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Профессионализм</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Высокая квалификация наших специалистов, постоянное обучение и развитие
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            ✨
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Прозрачность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Честность во всех аспектах работы, открытая информация о сделках
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            💎
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Надежность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Соблюдение всех обязательств, юридическая чистота сделок
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            ❤️
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Клиентоориентированность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Индивидуальный подход к каждому клиенту, учет всех пожеланий
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🚀
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Инновации</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Современные технологии, AI-рекомендации, виртуальные туры
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🏆
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Качество</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Высокие стандарты обслуживания, контроль на всех этапах
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA section -->
-  <div class="bg-gray-50 py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="rounded-lg bg-primary-700 px-6 py-12 text-center sm:px-12">
-        <h2 class="text-3xl font-extrabold text-white sm:text-4xl">
-          Готовы начать сотрудничество?
-        </h2>
-        <p class="mx-auto mt-4 max-w-2xl text-lg text-primary-100">
-          Свяжитесь с нами, и мы поможем найти идеальный вариант недвижимости
-        </p>
-        <div class="mt-8 flex justify-center gap-4">
-          <%= link_to contacts_path, 
-              class: "inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-primary-700 bg-white hover:bg-primary-50" do %>
-            Связаться с нами
-          <% end %>
-          <%= link_to properties_path, 
-              class: "inline-flex items-center px-6 py-3 border border-white text-base font-medium rounded-md text-white hover:bg-primary-600" do %>
-            Смотреть каталог
-          <% end %>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
+</section>
