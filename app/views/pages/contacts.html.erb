@@ -8,22 +8,24 @@
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-16">
       <div class="flex flex-col gap-8">
         <div>
-          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ТЕЛЕФОН</p>
-          <a href="tel:+74951234567" class="text-2xl font-light tracking-wider text-foreground hover:text-muted-foreground transition-colors">+7 495 123 45 67</a>
+          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ТЕЛЕФОНЫ</p>
+          <a href="<%= agency_phone_tel %>" class="block text-2xl font-light tracking-wider text-foreground hover:text-muted-foreground transition-colors"><%= agency_phone_primary %></a>
+          <a href="<%= agency_phone_tel(agency_phone_backup) %>" class="block mt-2 text-lg tracking-wider text-muted-foreground hover:text-foreground transition-colors"><%= agency_phone_backup %></a>
         </div>
         <div>
           <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">EMAIL</p>
-          <a href="mailto:info@viktory-realty.ru" class="text-lg tracking-wider text-foreground hover:text-muted-foreground transition-colors">info@viktory-realty.ru</a>
+          <a href="mailto:<%= agency_email %>" class="text-lg tracking-wider text-foreground hover:text-muted-foreground transition-colors"><%= agency_email %></a>
         </div>
         <div>
           <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">АДРЕС</p>
-          <p class="text-base tracking-wider text-foreground">Москва, Патриаршие пруды</p>
-          <p class="text-base tracking-wider text-muted-foreground">Малый Козихинский пер., 12</p>
+          <p class="text-base tracking-wider text-foreground">г. <%= AgencyInfo::ADDRESS_CITY %>, <%= AgencyInfo::ADDRESS_STREET %></p>
+          <p class="text-base tracking-wider text-muted-foreground"><%= AgencyInfo::ADDRESS_REGION %>, <%= AgencyInfo::ADDRESS_ZIP %></p>
         </div>
         <div>
           <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">РЕЖИМ РАБОТЫ</p>
           <p class="text-base tracking-wider text-foreground">Пн–Пт: 9:00 – 21:00</p>
           <p class="text-base tracking-wider text-foreground">Сб–Вс: 10:00 – 19:00</p>
+          <p class="text-xs tracking-wider text-muted-foreground/80 mt-1">МСК</p>
         </div>
       </div>
 

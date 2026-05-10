@@ -1,0 +1,64 @@
+<%#
+  Per-property JSON-LD. Schema.org @type chosen by property kind.
+  References the global RealEstateAgent via @id so search engines can
+  build a connected entity graph.
+%>
+<%
+  schema_type = case @property.property_type&.slug
+                when 'house'    then 'House'
+                when 'land'     then 'Place'
+                when 'commerce' then 'CommercialProperty'
+                when 'garage'   then 'Place'
+                else                 'Apartment'
+                end
+
+  description = ChatTools::Format.sanitize_text(@property.description.to_s).to_s.truncate(300)
+  images = (@property.images.attached? ? @property.images.map { |i| url_for(i) } : []) rescue []
+
+  payload = {
+    "@context" => "https://schema.org",
+    "@type" => schema_type,
+    "url" => property_url(@property),
+    "name" => @property.title,
+    "description" => description.presence,
+    "image" => images.presence,
+    "address" => {
+      "@type" => "PostalAddress",
+      "streetAddress" => @property.address,
+      "addressLocality" => AgencyInfo::ADDRESS_CITY,
+      "addressRegion" => AgencyInfo::ADDRESS_REGION,
+      "addressCountry" => "RU"
+    }.compact,
+    "geo" => (@property.latitude.present? && @property.longitude.present? ? {
+      "@type" => "GeoCoordinates",
+      "latitude" => @property.latitude.to_f,
+      "longitude" => @property.longitude.to_f
+    } : nil),
+    "numberOfRooms" => (@property.rooms.presence if @property.rooms.to_i.positive?),
+    "floorSize" => (@property.area.present? ? {
+      "@type" => "QuantitativeValue",
+      "value" => @property.area.to_f,
+      "unitCode" => "MTK"
+    } : nil),
+    "offers" => {
+      "@type" => "Offer",
+      "price" => @property.price.to_i.to_s,
+      "priceCurrency" => "RUB",
+      "availability" => "https://schema.org/InStock",
+      "url" => property_url(@property),
+      "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" }
+    }
+  }.compact
+%>
+<script type="application/ld+json">
+<%= raw payload.to_json %>
+</script>
+
+<%# BreadcrumbList — same partial doubles as breadcrumbs for the show page %>
+<script type="application/ld+json">
+<%= breadcrumb_jsonld([
+  ['Главная', root_url],
+  ['Каталог', properties_url],
+  [@property.title, property_url(@property)]
+]) %>
+</script>

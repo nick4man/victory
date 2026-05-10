@@ -34,6 +34,7 @@ services:
   web:
     build: .
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     env_file:
       - .env
     ports:
@@ -54,6 +55,7 @@ services:
   sidekiq:
     build: .
     restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
     env_file:
       - .env
     environment:

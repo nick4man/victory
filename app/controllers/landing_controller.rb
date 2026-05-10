@@ -2,11 +2,9 @@
 
 class LandingController < ApplicationController
   skip_before_action :set_locale, raise: false
-  layout false  # Don't use application layout - view has complete HTML
-  
+
   def index
-    # Minimal landing page with static data for design work
-    # No database or gem dependencies required
-    render :index
+    # Renders under application.html.erb so canonical / hreflang / geo /
+    # JSON-LD / yandex-maps-api-key / shared header & footer are inherited.
   end
 end

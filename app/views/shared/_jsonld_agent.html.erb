@@ -1,0 +1,47 @@
+<%#
+  Site-wide JSON-LD: RealEstateAgent.
+  Rendered in <head> on every page (via application.html.erb).
+  Source of truth for agency data is config/initializers/agency_info.rb.
+
+  Why every page (not just home):
+    - Yandex / Google use the @id reference for "seller" on listing pages,
+      so RealEstateAgent must be discoverable site-wide.
+    - validator.schema.org expects matching @id for entity-graph composition.
+%>
+<script type="application/ld+json">
+<%= raw({
+  "@context" => "https://schema.org",
+  "@type" => "RealEstateAgent",
+  "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent",
+  "name" => AgencyInfo::NAME,
+  "alternateName" => "Агентство недвижимости Виктори",
+  "url" => AgencyInfo::WEBSITE_URL,
+  "telephone" => [AgencyInfo::PHONE_PRIMARY, AgencyInfo::PHONE_BACKUP],
+  "email" => AgencyInfo::EMAIL,
+  "priceRange" => "₽₽",
+  "address" => {
+    "@type" => "PostalAddress",
+    "streetAddress" => AgencyInfo::ADDRESS_STREET,
+    "addressLocality" => AgencyInfo::ADDRESS_CITY,
+    "addressRegion" => AgencyInfo::ADDRESS_REGION,
+    "postalCode" => AgencyInfo::ADDRESS_ZIP,
+    "addressCountry" => "RU"
+  },
+  "geo" => {
+    "@type" => "GeoCoordinates",
+    "latitude" => AgencyInfo::GEO_LAT,
+    "longitude" => AgencyInfo::GEO_LNG
+  },
+  "openingHoursSpecification" => [{
+    "@type" => "OpeningHoursSpecification",
+    "dayOfWeek" => %w[Monday Tuesday Wednesday Thursday Friday Saturday Sunday],
+    "opens" => AgencyInfo::HOURS_OPEN,
+    "closes" => AgencyInfo::HOURS_CLOSE
+  }],
+  "areaServed" => [
+    { "@type" => "City", "name" => AgencyInfo::ADDRESS_CITY },
+    { "@type" => "AdministrativeArea", "name" => AgencyInfo::ADDRESS_REGION }
+  ],
+  "sameAs" => AgencyInfo::SAMEAS_PROFILES.presence
+}.compact.to_json) %>
+</script>

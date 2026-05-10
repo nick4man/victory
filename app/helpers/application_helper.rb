@@ -3,6 +3,58 @@
 # Application Helper
 # General helper methods available across all views
 module ApplicationHelper
+  # ============================================
+  # AGENCY CONTACT (single source of truth in config/initializers/agency_info.rb)
+  # ============================================
+
+  def agency_phone_primary = AgencyInfo::PHONE_PRIMARY
+  def agency_phone_backup  = AgencyInfo::PHONE_BACKUP
+  def agency_email         = AgencyInfo::EMAIL
+  def agency_full_address  = AgencyInfo.full_address
+
+  # tel:+71234567890 link target — strips formatting, keeps digits
+  def agency_phone_tel(number = AgencyInfo::PHONE_PRIMARY)
+    AgencyInfo.phone_tel(number)
+  end
+
+  # ============================================
+  # SEO HELPERS (canonical / breadcrumb / image alt)
+  # ============================================
+
+  # Builds a JSON-LD BreadcrumbList block.
+  # @param items [Array<Array(String, String)>] [['Name', url], ...]
+  def breadcrumb_jsonld(items)
+    return if items.blank?
+    raw({
+      '@context' => 'https://schema.org',
+      '@type' => 'BreadcrumbList',
+      'itemListElement' => items.each_with_index.map do |(name, url), i|
+        { '@type' => 'ListItem', 'position' => i + 1, 'name' => name, 'item' => url }
+      end
+    }.to_json)
+  end
+
+  # SEO-friendly alt text for property images. Avoids the duplication that
+  # results from putting `property.title` on every image of the same listing.
+  def property_image_alt(property, index = 0)
+    return property&.title.to_s if property.nil?
+
+    parts = []
+    parts << (property.deal_type == 'rent' ? 'Снять' : 'Купить')
+    parts << "#{property.rooms}-комн" if property.rooms.present? && property.rooms.positive?
+    parts << "#{property.area.to_i} м²" if property.area.present?
+    parts << "в #{property.district}" if property.district.present?
+    parts << AgencyInfo::ADDRESS_CITY
+    base = parts.compact_blank.join(', ')
+    index.positive? ? "#{base}, фото #{index + 1}" : base
+  end
+
+  # Canonical URL for current request — strips query string. Override per-page
+  # by setting `content_for :canonical, some_url`.
+  def canonical_url
+    content_for?(:canonical) ? content_for(:canonical) : request.original_url.split('?').first
+  end
+
   # Format currency with proper Russian formatting
   def format_price(price, options = {})
     return '—' if price.blank? || price.zero?

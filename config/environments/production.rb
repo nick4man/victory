@@ -133,12 +133,21 @@ Rails.application.configure do
   # Do not dump schema after migrations.
   config.active_record.dump_schema_after_migration = false
 
-  # Enable DNS rebinding protection and other `Host` header attacks.
-  # config.hosts = [
-  #   "example.com",     # Allow requests from example.com
-  #   /.*\.example\.com/ # Allow requests from subdomains like `www.example.com`
-  # ]
-  # Skip DNS rebinding protection for the default health check endpoint.
-  # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+  # DNS rebinding protection — only respond to legit production hostnames.
+  # ENV-driven so staging/preview can override without code edits.
+  app_domain = ENV.fetch('APP_DOMAIN', 'victory62.org')
+  config.hosts = [
+    app_domain,
+    "www.#{app_domain}",
+    /.*\.#{Regexp.escape(app_domain)}/
+  ]
+
+  # Security headers — set once at the framework level so every response gets them.
+  config.action_dispatch.default_headers = {
+    'X-Frame-Options'           => 'SAMEORIGIN',
+    'X-Content-Type-Options'    => 'nosniff',
+    'Referrer-Policy'           => 'strict-origin-when-cross-origin',
+    'Strict-Transport-Security' => 'max-age=31536000; includeSubDomains'
+  }
 end
 

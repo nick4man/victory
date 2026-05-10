@@ -1,4 +1,7 @@
 <% content_for :title, "#{@property.title} — АН Виктори" %>
+<% content_for :head do %>
+  <%= render 'jsonld_property' %>
+<% end %>
 
 <%
   # All Active Storage images for this property; trigger lazy analysis so we
@@ -135,7 +138,7 @@
               aria-label="Открыть фото <%= i + 1 %> в полноэкранном режиме"
               style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;">
         <div class="absolute inset-0 bg-background/60 z-10"></div>
-        <img src="<%= url %>" alt="<%= @property.title %>"
+        <img src="<%= url %>" alt="<%= property_image_alt(@property, i) %>"
              class="w-full h-full object-cover grayscale"
              loading="<%= i == 0 ? 'eager' : 'lazy' %>">
       </button>
@@ -143,7 +146,7 @@
   <% else %>
     <div class="absolute inset-0">
       <div class="absolute inset-0 bg-background/60 z-10"></div>
-      <img src="<%= fallback_url %>" alt="<%= @property.title %>" class="w-full h-full object-cover grayscale">
+      <img src="<%= fallback_url %>" alt="<%= property_image_alt(@property) %>" class="w-full h-full object-cover grayscale">
     </div>
   <% end %>
 

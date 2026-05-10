@@ -10,14 +10,37 @@
       <meta name="yandex-maps-api-key" content="<%= ENV['YANDEX_MAPS_API_KEY'] %>">
     <% end %>
 
-    <title><%= content_for?(:title) ? yield(:title) : 'АН "Виктори" — Премиальная недвижимость' %></title>
+    <title><%= content_for?(:title) ? yield(:title) : 'АН «Виктори» — агентство недвижимости в Рязани' %></title>
     <%= yield :meta_tags %>
+
+    <%# Canonical + hreflang — strip query string to avoid duplicate-content signal %>
+    <link rel="canonical" href="<%= canonical_url %>">
+    <link rel="alternate" hreflang="ru" href="<%= canonical_url %>">
+    <link rel="alternate" hreflang="x-default" href="<%= canonical_url %>">
+
+    <%# Geo meta — Яндекс особенно ценит для регионального ранжирования %>
+    <meta name="geo.region" content="RU-RYA">
+    <meta name="geo.placename" content="<%= AgencyInfo::ADDRESS_CITY %>">
+    <meta name="geo.position" content="<%= AgencyInfo::GEO_LAT %>;<%= AgencyInfo::GEO_LNG %>">
+    <meta name="ICBM" content="<%= AgencyInfo::GEO_LAT %>, <%= AgencyInfo::GEO_LNG %>">
+
+    <%# Search engine ownership verification (set ENV after creating accounts) %>
+    <% if ENV['YANDEX_VERIFICATION'].present? %>
+      <meta name="yandex-verification" content="<%= ENV['YANDEX_VERIFICATION'] %>">
+    <% end %>
+    <% if ENV['GOOGLE_SITE_VERIFICATION'].present? %>
+      <meta name="google-site-verification" content="<%= ENV['GOOGLE_SITE_VERIFICATION'] %>">
+    <% end %>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
 
     <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
+
+    <%# Site-wide JSON-LD: RealEstateAgent (Schema.org) %>
+    <%= render 'shared/jsonld_agent' %>
+    <%= yield :head %>
   </head>
   <body class="bg-background text-foreground min-h-screen antialiased">
     <%= render "shared/site_header" %>

@@ -1,0 +1,15 @@
+<% content_for :title, 'Сервис временно недоступен — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-32 lg:py-40 bg-background min-h-[60vh] flex items-center">
+  <div class="max-w-3xl mx-auto text-center">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">500</p>
+    <h1 class="text-5xl lg:text-7xl font-light tracking-wider text-foreground mb-8">ВРЕМЕННАЯ НЕПОЛАДКА</h1>
+    <p class="text-base text-muted-foreground leading-relaxed mb-12 max-w-xl mx-auto">
+      Что-то пошло не так на нашей стороне. Попробуйте обновить страницу или вернитесь позже. Срочные вопросы — позвоните, мы на связи.
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <a href="<%= agency_phone_tel %>" class="px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors"><%= agency_phone_primary %></a>
+      <%= link_to 'ГЛАВНАЯ', root_path, class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+    </div>
+  </div>
+</section>

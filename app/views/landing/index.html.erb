@@ -1,24 +1,12 @@
-<%# Landing page — premium dark minimalist (v0-inspired) %>
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>АН "Виктори" — Премиальная недвижимость</title>
-  <%= csrf_meta_tags %>
-  <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
-</head>
-<body class="bg-background text-foreground min-h-screen">
+<%# Landing page content. <head>/<header>/<footer> are inherited from application.html.erb. %>
+<% content_for :title, 'АН «Виктори» — агентство недвижимости в Рязани' %>
 
-  <%= render "shared/site_header" %>
-
-  <!-- ============================================
-       HERO SLIDER — random in-advertising properties (cached 10 min)
-       ============================================ -->
-  <section class="relative h-screen w-full overflow-hidden" id="hero-slider">
+<!-- ============================================
+     HERO SLIDER — random in-advertising properties (cached 10 min)
+     ============================================ -->
+<%# Landing's hero is full-screen — pull it above the layout's pt-20 by negating top padding %>
+<div class="-mt-20">
+<section class="relative h-screen w-full overflow-hidden" id="hero-slider">
     <%
       slides = Rails.cache.fetch('landing/hero_slides_v2', expires_in: 10.minutes) do
         # PG forbids RANDOM() ORDER BY with DISTINCT, so shuffle in Ruby (small N).
@@ -44,12 +32,12 @@
         []
       end
 
-      # Fallback: премиальные плейсхолдеры если пусто (на старте проекта).
+      # Fallback: рязанские плейсхолдеры если каталог пуст (только на старте/в dev).
       if slides.empty?
         slides = [
-          { subtitle: "Резиденция",  title: "ЧИСТЫЕ ПРУДЫ", area: "от 120 м²", price: "от 85 млн ₽",  image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=80", url: properties_path },
-          { subtitle: "Апартаменты", title: "ПАТРИАРШИЕ",   area: "от 180 м²", price: "от 150 млн ₽", image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1920&q=80", url: properties_path },
-          { subtitle: "Пентхаус",    title: "ОСТОЖЕНКА",    area: "от 350 м²", price: "от 450 млн ₽", image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1920&q=80", url: properties_path }
+          { subtitle: "Квартира",  title: "ЦЕНТР РЯЗАНИ",   area: "от 65 м²", price: "от 5 200 000 ₽", image: "https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=1920&q=80", url: properties_path },
+          { subtitle: "Дом",       title: "КАНИЩЕВО",        area: "от 120 м²", price: "от 9 800 000 ₽", image: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1920&q=80", url: properties_path },
+          { subtitle: "Участок",   title: "РЯЗАНСКАЯ ОБЛ.",  area: "от 10 соток", price: "от 1 500 000 ₽", image: "https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=1920&q=80", url: properties_path }
         ]
       end
     %>
@@ -272,15 +260,18 @@
   <section class="py-24 lg:py-32 px-6 lg:px-12 bg-background">
     <div class="max-w-5xl mx-auto">
       <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">О КОМПАНИИ</p>
-      <h2 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-16 leading-tight">
-        МЫ ВСЕГДА СТРОИМ ТО,<br>ЧТО ОБЕЩАЛИ
+      <h2 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-8 leading-tight">
+        АГЕНТСТВО НЕДВИЖИМОСТИ<br>В РЯЗАНИ
       </h2>
+      <p class="text-base lg:text-lg text-muted-foreground leading-relaxed mb-16 max-w-3xl">
+        Помогаем покупать, продавать и арендовать квартиры, дома, участки и коммерческую недвижимость в Рязани и области. Полный цикл сделки: подбор, оценка, ипотека, юридическое сопровождение.
+      </p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
         <% [
-          ["АРХИТЕКТУРА",  "Мы прорабатываем детали, продумываем инфраструктуру и подбираем материалы премиум-класса."],
-          ["КАЧЕСТВО",     "Каждый элемент дома создаётся с вниманием к деталям. Только проверенные материалы и лучшие подрядчики."],
-          ["КОМФОРТ",      "Продуманная инфраструктура, современные технологии, забота о каждой детали."],
-          ["СЕРВИС",       "Сопровождаем клиента на всех этапах — от выбора недвижимости до послепродажного обслуживания."]
+          ["ПОДБОР",       "Знаем рязанский рынок изнутри: каждый район, новостройку, инфраструктуру. Подберём вариант под ваш бюджет и задачу."],
+          ["ОЦЕНКА",       "Онлайн-оценка по своей базе сделок плюс выезд эксперта. Реальная цена под продажу или ипотечный отчёт."],
+          ["ИПОТЕКА",      "Подключаем банки-партнёры, считаем платёж, помогаем со справками. Льготная и стандартная — найдём подходящую программу."],
+          ["СОПРОВОЖДЕНИЕ","Юридическая проверка объекта, договор, регистрация в Росреестре. Сделка под ключ — от показа до получения ключей."]
         ].each do |title, body| %>
           <div>
             <h3 class="text-lg tracking-widest text-foreground mb-4"><%= title %></h3>
@@ -291,8 +282,4 @@
     </div>
   </section>
 
-  <%= render "shared/site_footer" %>
-  <%= render "shared/chat_widget" %>
-
-</body>
-</html>
+</div><%# end -mt-20 wrapper %>
