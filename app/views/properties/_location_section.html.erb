@@ -1,6 +1,7 @@
 <%
-  # Renders the "РАСПОЛОЖЕНИЕ" block on a property show page.
-  # Skips entirely when there's no geocoded location — empty cards hurt more than they help.
+  # Renders the "РАСПОЛОЖЕНИЕ" block. Sits between hero and main-info on the
+  # property show page so location is "right on the page" — not buried at bottom.
+  # Skipped entirely when there's no geocoded location; an empty card hurts more than it helps.
   return unless @property.latitude.present? && @property.longitude.present?
 
   has_key   = ENV['YANDEX_MAPS_API_KEY'].present?
@@ -13,44 +14,49 @@
   route_url = "https://yandex.ru/maps/?rtext=~#{@property.latitude},#{@property.longitude}&rtt=auto"
 %>
 
-<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background border-t border-border">
+<section class="px-6 lg:px-12 pt-12 pb-16 lg:pt-16 lg:pb-20 bg-background border-t border-border">
   <div class="max-w-7xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">РАСПОЛОЖЕНИЕ</p>
-    <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-3">
+    <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-8">
       <%= [district, metro && "м. #{metro}"].compact.join(', ').presence || 'НА КАРТЕ' %>
     </h2>
 
-    <% if @property.address.present? %>
-      <p class="text-sm text-muted-foreground tracking-wide mb-6"><%= @property.address %></p>
-    <% end %>
-
-    <% if district.present? || metro.present? %>
-      <div class="flex flex-wrap gap-2 mb-8">
-        <% if district.present? %>
-          <span class="border border-border px-3 py-1.5 text-xs tracking-widest uppercase"><%= district %></span>
-        <% end %>
-        <% if metro.present? %>
-          <span class="border border-border px-3 py-1.5 text-xs tracking-widest uppercase">
-            М <%= metro.upcase %><%= " • #{walk_min} МИН ПЕШКОМ" if walk_min %>
-          </span>
+    <%# Map + info-rail behave as a single visual unit (shared border, glued bottom edge) %>
+    <div class="-mx-6 sm:mx-0">
+      <div class="border-x sm:border border-border bg-card overflow-hidden">
+        <% if has_key %>
+          <div class="h-[320px] sm:h-[400px] lg:h-[460px] w-full"
+               data-controller="yandex-map"
+               data-yandex-map-latitude-value="<%= @property.latitude %>"
+               data-yandex-map-longitude-value="<%= @property.longitude %>"
+               data-yandex-map-zoom-value="<%= zoom %>"
+               data-yandex-map-title-value="<%= @property.title %>"
+               data-yandex-map-clustered-value="false"></div>
+        <% else %>
+          <div class="h-[280px] flex items-center justify-center px-6 text-center">
+            <p class="text-sm text-muted-foreground tracking-wider">
+              Интерактивная карта будет доступна вскоре. Открыть точку в Яндекс.Картах →
+            </p>
+          </div>
         <% end %>
       </div>
-    <% end %>
 
-    <div class="border border-border bg-card -mx-6 sm:mx-0 overflow-hidden">
-      <% if has_key %>
-        <div class="h-[320px] sm:h-[400px] lg:h-[460px] w-full"
-             data-controller="yandex-map"
-             data-yandex-map-latitude-value="<%= @property.latitude %>"
-             data-yandex-map-longitude-value="<%= @property.longitude %>"
-             data-yandex-map-zoom-value="<%= zoom %>"
-             data-yandex-map-title-value="<%= @property.title %>"
-             data-yandex-map-clustered-value="false"></div>
-      <% else %>
-        <div class="h-[280px] flex items-center justify-center px-6 text-center">
-          <p class="text-sm text-muted-foreground tracking-wider">
-            Интерактивная карта будет доступна вскоре. Открыть точку в Яндекс.Картах →
-          </p>
+      <%# 3-cell info-rail glued to map's bottom edge — visually one device. %>
+      <% rail = [] %>
+      <% rail << ['АДРЕС',          @property.address] if @property.address.present? %>
+      <% rail << ['РАЙОН / МЕТРО',  [district, metro && "м. #{metro}"].compact.join(' • ')] if district.present? || metro.present? %>
+      <% rail << ['ПЕШКОМ',         "#{walk_min} мин до метро"] if walk_min %>
+      <% if rail.any? %>
+        <%# Tailwind JIT only picks up literal class strings, so we use a switch
+            to keep grid-cols-{1,2,3} discoverable in the source. %>
+        <% cols_class = { 1 => 'sm:grid-cols-1', 2 => 'sm:grid-cols-2', 3 => 'sm:grid-cols-3' }[rail.size] %>
+        <div class="border-x border-b border-border bg-card grid grid-cols-1 <%= cols_class %> divide-y sm:divide-y-0 sm:divide-x divide-border">
+          <% rail.each do |label, value| %>
+            <div class="p-4 sm:p-5">
+              <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1 uppercase"><%= label %></p>
+              <p class="text-sm tracking-wide text-foreground"><%= value %></p>
+            </div>
+          <% end %>
         </div>
       <% end %>
     </div>
@@ -63,5 +69,9 @@
         ПОСТРОИТЬ МАРШРУТ →
       </a>
     </div>
+
+    <p class="mt-4 text-[10px] tracking-[0.3em] text-muted-foreground/70 uppercase">
+      Адрес проверен • <%= l @property.updated_at, format: :long %>
+    </p>
   </div>
 </section>

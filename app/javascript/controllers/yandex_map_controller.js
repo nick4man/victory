@@ -19,17 +19,30 @@ export default class extends Controller {
   }
 
   connect() {
-    console.log("Yandex Map controller connected")
-    
-    // Wait for Yandex Maps API to load
-    if (typeof ymaps === 'undefined') {
-      this.loadYandexMapsAPI()
-    } else {
+    // If Yandex API already on the page (e.g. coming back via Turbo) — just init.
+    if (typeof ymaps !== 'undefined') {
       this.initializeMap()
+      return
     }
+
+    // Otherwise defer the ~250 KB script + tiles until the section is visible.
+    // rootMargin gives us a 200px head-start so the map is ready by the time
+    // it scrolls into view, but we don't pay the cost on initial render.
+    this.observer = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        this.observer.disconnect()
+        this.observer = null
+        this.loadYandexMapsAPI()
+      }
+    }, { rootMargin: '200px' })
+    this.observer.observe(this.element)
   }
 
   disconnect() {
+    if (this.observer) {
+      this.observer.disconnect()
+      this.observer = null
+    }
     if (this.map) {
       this.map.destroy()
       this.map = null

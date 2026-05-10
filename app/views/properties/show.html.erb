@@ -295,6 +295,9 @@
   })();
 </script>
 
+<!-- Location — moved above main info so location is "right on the page", not buried -->
+<%= render 'location_section' %>
+
 <!-- Main info -->
 <section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
   <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -422,9 +425,6 @@
   });
   lightbox.init();
 </script>
-
-<!-- Location -->
-<%= render 'location_section' %>
 
 <!-- Similar -->
 <% if @similar_properties.respond_to?(:any?) && @similar_properties.any? %>
