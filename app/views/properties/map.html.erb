@@ -32,11 +32,7 @@
 <% if map_data.any? %>
   <% if has_key %>
     <div class="border-t border-b border-border bg-card">
-      <div class="h-[calc(100vh-220px)] min-h-[500px] w-full"
-           data-controller="yandex-map"
-           data-yandex-map-properties-value="<%= map_data.to_json %>"
-           data-yandex-map-clustered-value="true"
-           data-yandex-map-zoom-value="11"></div>
+      <div id="properties-map-grid" class="h-[calc(100vh-220px)] min-h-[500px] w-full"></div>
     </div>
   <% else %>
     <div class="border-t border-b border-border bg-card">
@@ -54,4 +50,93 @@
       <%= link_to "ПЕРЕЙТИ В КАТАЛОГ", properties_path, class: "inline-block px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
     </div>
   </section>
+<% end %>
+
+<% if map_data.any? && has_key %>
+<%# Full-screen catalog map with clustering — same lazy-loaded inline pattern
+    as _location_section, but with clustered placemarks pulling from the
+    server-prepared map_data array. %>
+<script>
+  (function () {
+    var mapEl = document.getElementById('properties-map-grid');
+    if (!mapEl) return;
+
+    var meta = document.querySelector('meta[name="yandex-maps-api-key"]');
+    var apiKey = meta ? meta.content : '';
+    if (!apiKey) return;
+
+    var properties = <%= raw map_data.to_json %>;
+
+    // Build balloon HTML safely — assemble DOM nodes and read .innerHTML
+    // (so user-controllable strings stay text-content, never raw HTML).
+    function buildBalloonHeader (title, url) {
+      var a = document.createElement('a');
+      a.href = url;
+      a.style.color = 'inherit';
+      a.textContent = title;
+      var div = document.createElement('div');
+      div.appendChild(a);
+      return div.innerHTML;
+    }
+    function buildBalloonFooter (priceFormatted) {
+      var s = document.createElement('strong');
+      s.textContent = priceFormatted || '';
+      var div = document.createElement('div');
+      div.appendChild(s);
+      return div.innerHTML;
+    }
+
+    function init () {
+      ymaps.ready(function () {
+        try {
+          var map = new ymaps.Map(mapEl, {
+            center: [54.6269, 39.6916], // Рязань
+            zoom: 11,
+            controls: ['zoomControl', 'fullscreenControl', 'typeSelector']
+          }, { suppressMapOpenBlock: true });
+
+          var clusterer = new ymaps.Clusterer({
+            preset: 'islands#blackClusterIcons',
+            clusterDisableClickZoom: false,
+            clusterOpenBalloonOnClick: true
+          });
+
+          var marks = [];
+          properties.forEach(function (p) {
+            if (!p.coordinates || !p.coordinates.lat || !p.coordinates.lng) return;
+            var pm = new ymaps.Placemark(
+              [p.coordinates.lat, p.coordinates.lng],
+              {
+                hintContent: p.title,
+                balloonContentHeader: buildBalloonHeader(p.title || '', p.url || '#'),
+                balloonContentBody: p.address || '',
+                balloonContentFooter: buildBalloonFooter(p.price_formatted)
+              },
+              { preset: p.is_featured ? 'islands#yellowDotIcon' : 'islands#blackDotIcon' }
+            );
+            marks.push(pm);
+          });
+
+          clusterer.add(marks);
+          map.geoObjects.add(clusterer);
+
+          if (marks.length > 1) {
+            try { map.setBounds(map.geoObjects.getBounds(), { checkZoomRange: true, zoomMargin: 50 }); } catch (e) {}
+          }
+        } catch (e) {
+          console.error('Yandex catalog map init failed:', e);
+        }
+      });
+    }
+
+    if (typeof ymaps !== 'undefined') { init(); return; }
+
+    var script = document.createElement('script');
+    script.src = 'https://api-maps.yandex.ru/2.1/?apikey=' + encodeURIComponent(apiKey) + '&lang=ru_RU';
+    script.async = true;
+    script.onload = init;
+    script.onerror = function () { console.error('Failed to load Yandex Maps API'); };
+    document.head.appendChild(script);
+  })();
+</script>
 <% end %>

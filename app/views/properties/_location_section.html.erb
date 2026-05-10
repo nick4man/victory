@@ -25,13 +25,8 @@
     <div class="-mx-6 sm:mx-0">
       <div class="border-x sm:border border-border bg-card overflow-hidden">
         <% if has_key %>
-          <div class="h-[320px] sm:h-[400px] lg:h-[460px] w-full"
-               data-controller="yandex-map"
-               data-yandex-map-latitude-value="<%= @property.latitude %>"
-               data-yandex-map-longitude-value="<%= @property.longitude %>"
-               data-yandex-map-zoom-value="<%= zoom %>"
-               data-yandex-map-title-value="<%= @property.title %>"
-               data-yandex-map-clustered-value="false"></div>
+          <div id="property-map-<%= @property.id %>"
+               class="h-[320px] sm:h-[400px] lg:h-[460px] w-full"></div>
         <% else %>
           <div class="h-[280px] flex items-center justify-center px-6 text-center">
             <p class="text-sm text-muted-foreground tracking-wider">
@@ -75,3 +70,85 @@
     </p>
   </div>
 </section>
+
+<% if has_key %>
+<%# Lazy-loads Yandex Maps API when the map enters the viewport.
+    Inline because project's importmap-rails is disabled (same pattern
+    as _chat_widget — direct CDN imports). Saves ~250 KB on initial render. %>
+<script>
+  (function () {
+    var mapEl = document.getElementById('property-map-<%= @property.id %>');
+    if (!mapEl) return;
+
+    function showFallback (text) {
+      while (mapEl.firstChild) mapEl.removeChild(mapEl.firstChild);
+      var box = document.createElement('div');
+      box.className = 'h-full flex items-center justify-center text-sm text-muted-foreground tracking-wider px-6 text-center';
+      box.textContent = text;
+      mapEl.appendChild(box);
+    }
+
+    var meta = document.querySelector('meta[name="yandex-maps-api-key"]');
+    var apiKey = meta ? meta.content : '';
+    if (!apiKey) { showFallback('API-ключ карты не настроен'); return; }
+
+    var loaded = false;
+    function loadMap () {
+      if (loaded) return;
+      loaded = true;
+
+      function init () {
+        ymaps.ready(function () {
+          try {
+            var coords = [<%= @property.latitude %>, <%= @property.longitude %>];
+            var map = new ymaps.Map(mapEl, {
+              center: coords,
+              zoom: <%= zoom %>,
+              controls: ['zoomControl', 'fullscreenControl']
+            }, {
+              suppressMapOpenBlock: true,
+              yandexMapDisablePoiInteractivity: true
+            });
+
+            var placemark = new ymaps.Placemark(coords, {
+              hintContent:          <%= raw @property.title.to_s.to_json %>,
+              balloonContentHeader: <%= raw @property.title.to_s.to_json %>,
+              balloonContentBody:   <%= raw (@property.address.presence || '').to_json %>
+            }, { preset: 'islands#blackDotIcon' });
+            map.geoObjects.add(placemark);
+
+            if (window.innerWidth < 768) {
+              map.behaviors.disable('scrollZoom');
+            }
+          } catch (e) {
+            console.error('Yandex map init failed:', e);
+            showFallback('Не удалось отобразить карту');
+          }
+        });
+      }
+
+      if (typeof ymaps !== 'undefined') {
+        init();
+      } else {
+        var script = document.createElement('script');
+        script.src = 'https://api-maps.yandex.ru/2.1/?apikey=' + encodeURIComponent(apiKey) + '&lang=ru_RU';
+        script.async = true;
+        script.onload = init;
+        script.onerror = function () { showFallback('Не удалось загрузить карту'); };
+        document.head.appendChild(script);
+      }
+    }
+
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting) { io.disconnect(); loadMap(); }
+        });
+      }, { rootMargin: '200px' });
+      io.observe(mapEl);
+    } else {
+      loadMap();
+    }
+  })();
+</script>
+<% end %>

@@ -38,6 +38,11 @@
 
     <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
 
+    <%# JS infrastructure: importmap-rails is disabled (no config/importmap.rb).
+        Per-page interactive code is inlined as <script type="module"> with
+        direct CDN imports — see _chat_widget.html.erb, _location_section.html.erb,
+        properties/show PhotoSwipe block. %>
+
     <%# Site-wide JSON-LD: RealEstateAgent (Schema.org) %>
     <%= render 'shared/jsonld_agent' %>
     <%= yield :head %>
