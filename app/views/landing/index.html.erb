@@ -162,10 +162,11 @@
     </script>
   </section>
 
-  <%# Latest news strip — appears only if there's at least one published
-      news/market article. Sits between hero slider and featured properties
-      so a fresh market signal is the first thing past the visual hero. %>
-  <%= render 'shared/news_hero_strip', article: @news_hero if @news_hero %>
+  <%# Latest news carousel — auto-rotates news from last 24h with fade+slight-
+      slide transitions, swipe gestures, and click-to-open modal. Sits between
+      hero slider and featured properties so a fresh market signal is the
+      first thing past the visual hero. %>
+  <%= render 'shared/news_carousel', articles: @news_carousel if @news_carousel&.any? %>
 
   <!-- ============================================
        FEATURED PROPERTIES

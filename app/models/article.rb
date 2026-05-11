@@ -19,6 +19,7 @@ class Article < ApplicationRecord
   friendly_id :title, use: %i[slugged history finders]
 
   belongs_to :author, class_name: 'User', optional: true
+  has_one :article_embedding, dependent: :destroy
 
   CATEGORIES = %w[market guides news investment mortgage].freeze
   SCHEMA_TYPES = %w[NewsArticle BlogPosting].freeze
@@ -32,6 +33,7 @@ class Article < ApplicationRecord
   validates :schema_type, inclusion: { in: SCHEMA_TYPES }
 
   before_save :render_markdown, if: :body_changed?
+  after_commit :enqueue_embedding, on: %i[create update]
 
   scope :published,    -> { where.not(published_at: nil).where('published_at <= ?', Time.current) }
   scope :recent,       -> { order(published_at: :desc) }
@@ -79,6 +81,17 @@ class Article < ApplicationRecord
   end
 
   private
+
+  # Re-embed when content-shaping fields changed, OR if we never embedded yet.
+  # category/region/metadata change embedding because ArticleTextTemplate
+  # includes them as structured frontmatter — affects cosine-NN clustering.
+  def enqueue_embedding
+    relevant = saved_change_to_body? || saved_change_to_title? ||
+               saved_change_to_metadata? || saved_change_to_category? ||
+               saved_change_to_region?
+    return unless relevant || article_embedding.nil?
+    EmbedArticleJob.perform_later(id)
+  end
 
   def render_markdown
     renderer = Redcarpet::Render::HTML.new(

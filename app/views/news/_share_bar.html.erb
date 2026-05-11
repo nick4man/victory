@@ -1,0 +1,74 @@
+<%# Share row at bottom of an article — Telegram / VK / copy link.
+    Pass `article` local. Renders inline JS once per page that handles
+    the copy-to-clipboard fallback (Permissions API → execCommand). %>
+<% share_url = news_item_url(article.slug) %>
+<% tg_share  = "https://t.me/share/url?url=#{CGI.escape(share_url)}&text=#{CGI.escape(article.title)}" %>
+<% vk_share  = "https://vk.com/share.php?url=#{CGI.escape(share_url)}&title=#{CGI.escape(article.title)}" %>
+
+<div class="flex items-center gap-3 lg:gap-4 flex-wrap pt-6 mt-8 border-t border-border"
+     data-share-bar data-share-url="<%= share_url %>">
+  <p class="text-[10px] tracking-[0.3em] text-muted-foreground mr-2">ПОДЕЛИТЬСЯ</p>
+
+  <a href="<%= tg_share %>" target="_blank" rel="noopener nofollow"
+     class="inline-flex items-center gap-2 px-3 py-2 text-xs tracking-[0.2em] text-muted-foreground hover:text-foreground border border-border hover:border-foreground/60 transition-colors">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M9.04 16.51l-.41 4.34c.58 0 .83-.25 1.13-.55l2.71-2.59 5.62 4.11c1.03.57 1.76.27 2.04-.95l3.7-17.34c.33-1.53-.56-2.13-1.55-1.76L1.6 9.85c-1.49.58-1.47 1.42-.25 1.79l4.97 1.55L17.65 6.6c.54-.36 1.03-.16.63.2"/>
+    </svg>
+    TELEGRAM
+  </a>
+
+  <a href="<%= vk_share %>" target="_blank" rel="noopener nofollow"
+     class="inline-flex items-center gap-2 px-3 py-2 text-xs tracking-[0.2em] text-muted-foreground hover:text-foreground border border-border hover:border-foreground/60 transition-colors">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12.785 16.241s.288-.032.435-.193c.135-.146.13-.422.13-.422s-.018-1.298.583-1.488c.594-.187 1.358 1.244 2.166 1.794.612.418 1.077.327 1.077.327l2.164-.03s1.132-.071.595-.965c-.044-.075-.313-.66-1.605-1.86-1.354-1.258-1.172-1.054.46-3.23.992-1.324 1.39-2.135 1.265-2.483-.118-.331-.85-.243-.85-.243l-2.434.015s-.18-.025-.314.055c-.13.078-.215.262-.215.262s-.385 1.027-.9 1.9c-1.084 1.84-1.518 1.938-1.696 1.823-.413-.27-.31-1.075-.31-1.647 0-1.787.272-2.53-.527-2.722-.265-.064-.46-.106-1.137-.113-.869-.009-1.604.003-2.02.207-.276.135-.49.437-.36.454.16.022.522.098.714.358.247.336.239 1.09.239 1.09s.142 2.075-.332 2.333c-.325.176-.772-.184-1.738-1.86-.494-.857-.868-1.806-.868-1.806s-.072-.176-.2-.27c-.155-.114-.372-.15-.372-.15l-2.314.016s-.347.01-.475.16c-.113.135-.009.413-.009.413s1.813 4.243 3.865 6.38c1.882 1.96 4.019 1.832 4.019 1.832h.967z"/>
+    </svg>
+    ВКОНТАКТЕ
+  </a>
+
+  <button type="button" data-share-copy
+          class="inline-flex items-center gap-2 px-3 py-2 text-xs tracking-[0.2em] text-muted-foreground hover:text-foreground border border-border hover:border-foreground/60 transition-colors cursor-pointer">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    </svg>
+    <span data-share-copy-label>СКОПИРОВАТЬ ССЫЛКУ</span>
+  </button>
+</div>
+
+<% content_for :body_end, flush: true do %>
+  <% unless content_for?(:share_bar_initialized) %>
+    <% content_for :share_bar_initialized, '1' %>
+    <script>
+      (function () {
+        if (window.__shareBarInit) return;
+        window.__shareBarInit = true;
+        document.addEventListener('click', function (e) {
+          var btn = e.target.closest('[data-share-copy]');
+          if (!btn) return;
+          var wrap = btn.closest('[data-share-bar]');
+          var url = wrap && wrap.getAttribute('data-share-url');
+          if (!url) return;
+          var label = btn.querySelector('[data-share-copy-label]');
+          var done = function () {
+            if (!label) return;
+            var prev = label.textContent;
+            label.textContent = 'СКОПИРОВАНО ✓';
+            setTimeout(function () { label.textContent = prev; }, 1800);
+          };
+          if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(url).then(done, function () {});
+          } else {
+            // Fallback for non-https / older browsers
+            var ta = document.createElement('textarea');
+            ta.value = url; ta.setAttribute('readonly', '');
+            ta.style.position = 'absolute'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); done(); } catch (_) {}
+            document.body.removeChild(ta);
+          }
+        });
+      })();
+    </script>
+  <% end %>
+<% end %>

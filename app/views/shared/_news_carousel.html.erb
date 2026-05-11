@@ -1,0 +1,301 @@
+<%# Landing-page news carousel. Replaces the single-article hero strip from
+    Phase 6. Up to 5 articles cycle every 7s with fade+translateY transition
+    (300ms). Touch swipe, arrow keys (when hovering), pause-on-hover, dots,
+    prev/next arrows lg+. Clicking the card opens an inline modal with the
+    full body — no navigation away from /. %>
+<% articles = local_assigns[:articles] %>
+<% return if articles.blank? %>
+
+<%
+  category_ru = {
+    'news' => 'НОВОСТЬ', 'market' => 'РЫНОК', 'mortgage' => 'ИПОТЕКА',
+    'investment' => 'ИНВЕСТИЦИИ', 'guides' => 'ГИД'
+  }
+  card_inner = ->(article) do
+    cat   = category_ru[article.category.to_s] || article.category.to_s.upcase
+    date  = article.published_at ? (l(article.published_at.to_date, format: :long) rescue article.published_at.strftime('%d.%m.%Y')) : ''
+    excerpt = article.short_excerpt(length: 220)
+    capture do
+      content_tag :div, class: 'grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-baseline' do
+        concat(content_tag(:div, class: 'lg:col-span-2 space-y-1') do
+          concat content_tag(:p, cat,  class: 'text-[10px] tracking-[0.3em] text-muted-foreground')
+          concat content_tag(:p, date, class: 'text-[10px] tracking-[0.3em] text-muted-foreground/70') if date.present?
+        end)
+        concat(content_tag(:div, class: 'lg:col-span-7') do
+          concat content_tag(:h2, article.title,
+                             class: 'text-2xl md:text-3xl lg:text-4xl font-light tracking-tight text-foreground leading-snug mb-3')
+          concat content_tag(:p, excerpt,
+                             class: 'text-sm lg:text-base text-muted-foreground leading-relaxed line-clamp-2')
+        end)
+        concat(content_tag(:div, class: 'lg:col-span-3 flex items-baseline gap-4 lg:justify-end flex-wrap') do
+          concat content_tag(:span, 'ЧИТАТЬ →',
+                             class: 'text-sm tracking-[0.2em] text-foreground transition-transform group-hover:translate-x-1')
+        end)
+      end
+    end
+  end
+%>
+
+<section class="px-6 lg:px-12 py-14 lg:py-20 bg-card border-y border-border"
+         data-news-carousel data-count="<%= articles.size %>">
+  <div class="max-w-7xl mx-auto relative">
+
+    <%# Header: eyebrow + «ВСЕ НОВОСТИ» %>
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground">
+        НОВОСТИ РЫНКА · <%= articles.size > 1 ? 'СВЕЖИЕ' : 'СЕЙЧАС' %>
+      </p>
+      <%= link_to news_path,
+            class: "inline-flex items-center gap-2 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-1 transition-colors" do %>
+        ВСЕ НОВОСТИ
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      <% end %>
+    </div>
+
+    <%# Slides container — first visible, rest absolute+invisible behind it %>
+    <div class="relative" style="min-height: 180px;">
+      <% articles.each_with_index do |article, idx| %>
+        <button type="button"
+                data-news-slide="<%= idx %>"
+                data-news-open="<%= idx %>"
+                aria-label="Открыть новость: <%= article.title %>"
+                class="group block w-full text-left
+                       <%= idx.zero? ? 'opacity-100 pointer-events-auto translate-y-0' : 'opacity-0 pointer-events-none translate-y-2 absolute inset-0' %>
+                       transition-all duration-300 ease-out cursor-pointer
+                       bg-transparent border-0 p-0">
+          <%= card_inner.call(article) %>
+          <p class="mt-4 text-[10px] tracking-[0.3em] text-muted-foreground/70">
+            КЛИКНИТЕ ДЛЯ ОТКРЫТИЯ В ОКНЕ ИЛИ
+            <%= link_to "↗ ОТДЕЛЬНОЙ СТРАНИЦЕЙ", news_item_path(article.slug),
+                  class: "underline hover:text-foreground", onclick: "event.stopPropagation()" %>
+          </p>
+        </button>
+      <% end %>
+    </div>
+
+    <%# Indicator dots %>
+    <% if articles.size > 1 %>
+      <div class="flex items-center justify-center gap-2 mt-10" data-news-indicators>
+        <% articles.each_with_index do |_, i| %>
+          <button type="button" data-news-dot="<%= i %>"
+                  aria-label="Перейти к слайду <%= i + 1 %>"
+                  class="h-1.5 rounded-full transition-all duration-300
+                         <%= i.zero? ? 'bg-foreground w-8' : 'bg-foreground/30 w-2 hover:bg-foreground/50' %>"></button>
+        <% end %>
+      </div>
+
+      <%# Prev/next arrows — lg+ only %>
+      <button type="button" data-news-prev aria-label="Предыдущая новость"
+              class="hidden lg:flex absolute top-1/2 -translate-y-1/2 -left-2 xl:-left-4 w-10 h-10 items-center justify-center bg-background/80 border border-border text-muted-foreground hover:text-foreground hover:border-foreground/60 transition-colors backdrop-blur-sm">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M14 8H2M7 3l-5 5 5 5"/>
+        </svg>
+      </button>
+      <button type="button" data-news-next aria-label="Следующая новость"
+              class="hidden lg:flex absolute top-1/2 -translate-y-1/2 -right-2 xl:-right-4 w-10 h-10 items-center justify-center bg-background/80 border border-border text-muted-foreground hover:text-foreground hover:border-foreground/60 transition-colors backdrop-blur-sm">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      </button>
+    <% end %>
+
+    <%# Pre-rendered article bodies in <template> elements — content is parked
+        in DOM but not parsed/rendered until modal asks for it. cloneNode +
+        replaceChildren copies a node-tree safely (no HTML re-parse step). %>
+    <template data-news-modal-source>
+      <% articles.each_with_index do |a, idx| %>
+        <% cat = category_ru[a.category.to_s] || a.category.to_s.upcase %>
+        <% date = a.published_at ? (l(a.published_at.to_date, format: :long) rescue '') : '' %>
+        <% source_url = a.metadata&.dig('source_url') || a.metadata&.dig(:source_url) %>
+        <% hashtags = a.metadata&.dig('hashtags') || a.metadata&.dig(:hashtags) %>
+        <div data-news-modal="<%= idx %>"
+             data-slug="<%= a.slug %>"
+             data-url="<%= news_item_path(a.slug) %>"
+             data-eyebrow="<%= cat %> · <%= date %>">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-3"><%= cat %> · <%= date %></p>
+          <h2 class="text-2xl md:text-3xl font-light tracking-tight text-foreground leading-tight mb-5"><%= a.title %></h2>
+          <% if a.excerpt.present? %>
+            <p class="text-base lg:text-lg text-muted-foreground leading-relaxed mb-6"><%= a.excerpt %></p>
+          <% end %>
+          <div class="article-body
+                      [&_p]:text-base [&_p]:text-foreground/90 [&_p]:leading-relaxed [&_p]:mb-4
+                      [&_h2]:text-xl [&_h2]:lg:text-2xl [&_h2]:font-light [&_h2]:text-foreground [&_h2]:tracking-tight [&_h2]:mt-8 [&_h2]:mb-3
+                      [&_h3]:text-lg [&_h3]:font-medium [&_h3]:text-foreground [&_h3]:mt-6 [&_h3]:mb-2
+                      [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-foreground/40 hover:[&_a]:decoration-foreground
+                      [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/40 [&_blockquote]:pl-5 [&_blockquote]:text-muted-foreground [&_blockquote]:italic [&_blockquote]:my-5
+                      [&_ul]:my-4 [&_ul]:pl-5 [&_ul]:list-disc [&_ul]:text-foreground/90
+                      [&_ol]:my-4 [&_ol]:pl-5 [&_ol]:list-decimal [&_ol]:text-foreground/90
+                      [&_li]:mb-2
+                      [&_strong]:text-foreground [&_strong]:font-medium">
+            <%= a.body_html.to_s.html_safe %>
+          </div>
+          <% if hashtags.present? && hashtags.any? %>
+            <div class="mt-6 pt-5 border-t border-border flex flex-wrap gap-2">
+              <% hashtags.each do |tag| %>
+                <span class="text-xs tracking-wider text-muted-foreground"><%= tag %></span>
+              <% end %>
+            </div>
+          <% end %>
+          <% if source_url.present? %>
+            <p class="mt-4 text-xs text-muted-foreground">
+              Источник: <%= link_to source_url, source_url, class: "underline hover:text-foreground", target: "_blank", rel: "noopener noreferrer nofollow" %>
+            </p>
+          <% end %>
+        </div>
+      <% end %>
+    </template>
+  </div>
+</section>
+
+<%# Modal — rendered once per page, content injected by JS on demand %>
+<%= render 'shared/article_modal' %>
+
+<% content_for :body_end, flush: true do %>
+  <% unless content_for?(:news_carousel_initialized) %>
+    <% content_for :news_carousel_initialized, '1' %>
+    <script>
+      (function () {
+        if (window.__newsCarouselInit) return;
+        window.__newsCarouselInit = true;
+
+        var carousel = document.querySelector('[data-news-carousel]');
+        var modal    = document.getElementById('article-modal');
+        if (!carousel) return;
+
+        var slides   = carousel.querySelectorAll('[data-news-slide]');
+        var dots     = carousel.querySelectorAll('[data-news-dot]');
+        var prevBtn  = carousel.querySelector('[data-news-prev]');
+        var nextBtn  = carousel.querySelector('[data-news-next]');
+        var template = carousel.querySelector('[data-news-modal-source]');
+        var count    = slides.length;
+        if (count === 0) return;
+
+        var current = 0;
+        var timer   = null;
+        var AUTO_MS = 7000;
+        var reducedMotion = window.matchMedia &&
+                            window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+        function go(idx) {
+          idx = ((idx % count) + count) % count;
+          if (idx === current) return;
+          slides[current].classList.add('opacity-0', 'pointer-events-none', 'translate-y-2', 'absolute', 'inset-0');
+          slides[current].classList.remove('opacity-100', 'pointer-events-auto', 'translate-y-0');
+          if (dots[current]) {
+            dots[current].classList.remove('bg-foreground', 'w-8');
+            dots[current].classList.add('bg-foreground/30', 'w-2');
+          }
+
+          slides[idx].classList.remove('opacity-0', 'pointer-events-none', 'translate-y-2', 'absolute', 'inset-0');
+          slides[idx].classList.add('opacity-100', 'pointer-events-auto', 'translate-y-0');
+          if (dots[idx]) {
+            dots[idx].classList.add('bg-foreground', 'w-8');
+            dots[idx].classList.remove('bg-foreground/30', 'w-2');
+          }
+          current = idx;
+        }
+
+        function startAuto() {
+          if (reducedMotion || count <= 1) return;
+          stopAuto();
+          timer = setInterval(function () { go(current + 1); }, AUTO_MS);
+        }
+        function stopAuto() {
+          if (timer) { clearInterval(timer); timer = null; }
+        }
+
+        prevBtn && prevBtn.addEventListener('click', function () { go(current - 1); startAuto(); });
+        nextBtn && nextBtn.addEventListener('click', function () { go(current + 1); startAuto(); });
+        dots.forEach(function (d, i) {
+          d.addEventListener('click', function () { go(i); startAuto(); });
+        });
+
+        // Touch swipe — horizontal only, ignore primarily-vertical gestures.
+        var sx = 0, sy = 0;
+        carousel.addEventListener('touchstart', function (e) {
+          sx = e.touches[0].clientX; sy = e.touches[0].clientY; stopAuto();
+        }, { passive: true });
+        carousel.addEventListener('touchend', function (e) {
+          var dx = e.changedTouches[0].clientX - sx;
+          var dy = e.changedTouches[0].clientY - sy;
+          if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+            go(current + (dx < 0 ? 1 : -1));
+          }
+          startAuto();
+        });
+
+        // Keyboard — only when carousel is in viewport AND focused/hovered.
+        document.addEventListener('keydown', function (e) {
+          if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+          if (modal && !modal.classList.contains('hidden')) return; // modal handles its own keys
+          if (!carousel.matches(':hover') && document.activeElement && !carousel.contains(document.activeElement)) return;
+          go(current + (e.key === 'ArrowRight' ? 1 : -1));
+          startAuto();
+        });
+
+        carousel.addEventListener('mouseenter', stopAuto);
+        carousel.addEventListener('mouseleave', startAuto);
+
+        // === Modal ===
+        function openArticleModal(idx) {
+          if (!modal || !template) return;
+          var src = template.content.querySelector('[data-news-modal="' + idx + '"]');
+          if (!src) return;
+          var body = modal.querySelector('[data-modal-body]');
+          var eye  = modal.querySelector('[data-modal-eyebrow]');
+          var full = modal.querySelector('[data-modal-full-link]');
+
+          // DOM-safe: cloneNode preserves the server-rendered subtree;
+          // replaceChildren swaps content atomically without HTML re-parse.
+          var clone = src.cloneNode(true);
+          body.replaceChildren.apply(body, Array.prototype.slice.call(clone.childNodes));
+          eye.textContent = src.getAttribute('data-eyebrow') || '';
+          full.setAttribute('href', src.getAttribute('data-url') || '#');
+
+          modal.classList.remove('hidden');
+          modal.setAttribute('aria-hidden', 'false');
+          document.documentElement.style.overflow = 'hidden';
+          var card = modal.querySelector('[data-modal-card]');
+          requestAnimationFrame(function () {
+            card.classList.remove('opacity-0', 'translate-y-4');
+          });
+          stopAuto();
+        }
+
+        function closeArticleModal() {
+          if (!modal) return;
+          var card = modal.querySelector('[data-modal-card]');
+          card.classList.add('opacity-0', 'translate-y-4');
+          setTimeout(function () {
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            document.documentElement.style.overflow = '';
+            var body = modal.querySelector('[data-modal-body]');
+            if (body) body.replaceChildren();
+          }, 300);
+          startAuto();
+        }
+
+        carousel.querySelectorAll('[data-news-open]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            // Don't intercept clicks on inner "↗ отдельной страницей" link
+            if (e.target.closest('a')) return;
+            e.preventDefault();
+            openArticleModal(parseInt(btn.getAttribute('data-news-open'), 10));
+          });
+        });
+
+        modal && modal.querySelectorAll('[data-modal-close]').forEach(function (el) {
+          el.addEventListener('click', closeArticleModal);
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeArticleModal();
+        });
+
+        startAuto();
+      })();
+    </script>
+  <% end %>
+<% end %>

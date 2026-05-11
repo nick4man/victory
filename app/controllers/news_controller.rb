@@ -35,10 +35,9 @@ class NewsController < ApplicationController
       redirect_to news_path, alert: 'Эта статья сейчас недоступна.' and return
     end
     @article.increment!(:views_count)
-    @related = Article.public_facing
-                       .where(category: @article.category)
-                       .where.not(id: @article.id)
-                       .limit(3)
+    @related      = fetch_related(@article)
+    @prev_article = adjacent_article(@article, :older)
+    @next_article = adjacent_article(@article, :newer)
 
     set_meta_tags(
       title:       @article.title,
@@ -51,6 +50,47 @@ class NewsController < ApplicationController
   end
 
   private
+
+  # Embedding-based related when available, fallback to category match.
+  # Cosine distance: 0.0 = identical, 1.0 = orthogonal. Threshold 0.7
+  # prevents off-topic suggestions when corpus is sparse.
+  def fetch_related(article, limit: 3)
+    emb = article.article_embedding
+    if emb&.embedding.present?
+      neighbor_recs = ArticleEmbedding
+                        .nearest_neighbors(:embedding, emb.embedding, distance: 'cosine')
+                        .where.not(article_id: article.id)
+                        .limit(limit * 2)
+      ids_with_distance = neighbor_recs.each_with_object({}) do |ne, acc|
+        next if ne.neighbor_distance.to_f > 0.7
+        acc[ne.article_id] = ne.neighbor_distance.to_f
+      end
+      return category_fallback(article, limit) if ids_with_distance.empty?
+      Article.public_facing.where(id: ids_with_distance.keys)
+             .sort_by { |a| ids_with_distance[a.id] }
+             .first(limit)
+    else
+      category_fallback(article, limit)
+    end
+  rescue StandardError => e
+    Rails.logger.warn("[NewsController#fetch_related] #{e.class}: #{e.message}")
+    category_fallback(article, limit)
+  end
+
+  def category_fallback(article, limit)
+    Article.public_facing.where(category: article.category)
+           .where.not(id: article.id).limit(limit).to_a
+  end
+
+  def adjacent_article(article, direction)
+    if direction == :newer
+      Article.public_facing.where('published_at > ?', article.published_at)
+             .reorder(published_at: :asc).first
+    else
+      Article.public_facing.where('published_at < ?', article.published_at)
+             .reorder(published_at: :desc).first
+    end
+  end
 
   def safe_macro
     MacroRatesService.call || fallback_macro

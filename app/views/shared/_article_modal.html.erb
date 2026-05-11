@@ -1,0 +1,61 @@
+<%# Article quick-view modal. Rendered once per page (by _news_carousel).
+    Content injected by JS via cloneNode + replaceChildren from a <template>.
+    Open: remove .hidden, add .opacity-100 .translate-y-0 to card.
+    Close: reverse + clear body. ESC + backdrop click + ✕ button all close.
+
+    Body scroll lock applied by JS (documentElement.style.overflow). %>
+<div id="article-modal"
+     class="fixed inset-0 z-50 hidden"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="article-modal-eyebrow"
+     aria-hidden="true">
+
+  <%# Backdrop %>
+  <div class="absolute inset-0 bg-foreground/40 backdrop-blur-sm cursor-pointer"
+       data-modal-close
+       aria-hidden="true"></div>
+
+  <%# Card %>
+  <div data-modal-card
+       class="relative max-w-3xl w-[calc(100%-2rem)] mx-auto my-8 lg:my-16
+              bg-background border border-border max-h-[calc(100vh-4rem)] overflow-y-auto
+              opacity-0 translate-y-4 transition-all duration-300 ease-out shadow-2xl">
+
+    <%# Sticky header — eyebrow + close button %>
+    <div class="sticky top-0 z-10 bg-background/95 backdrop-blur-md border-b border-border
+                px-6 lg:px-10 py-4 flex items-center justify-between gap-4">
+      <p id="article-modal-eyebrow" data-modal-eyebrow
+         class="text-[10px] tracking-[0.4em] text-muted-foreground truncate"></p>
+      <button type="button" data-modal-close
+              class="inline-flex items-center gap-2 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors cursor-pointer flex-shrink-0"
+              aria-label="Закрыть окно">
+        ЗАКРЫТЬ
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8"/>
+        </svg>
+      </button>
+    </div>
+
+    <%# Body — content cloned in by JS %>
+    <div data-modal-body class="px-6 lg:px-10 py-8"></div>
+
+    <%# Footer — link out to standalone page + TG channel %>
+    <div class="px-6 lg:px-10 py-5 border-t border-border bg-card/40 flex items-center justify-between gap-4 flex-wrap">
+      <a data-modal-full-link href="#"
+         class="inline-flex items-center gap-2 text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors">
+        ОТКРЫТЬ В ОТДЕЛЬНОЙ СТРАНИЦЕ
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      </a>
+      <a href="https://t.me/rznvictory" target="_blank" rel="noopener"
+         class="inline-flex items-center gap-2 text-xs tracking-[0.25em] text-foreground hover:text-muted-foreground transition-colors">
+        @RZNVICTORY
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      </a>
+    </div>
+  </div>
+</div>

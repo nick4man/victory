@@ -48,10 +48,20 @@
       <%= @article.title %>
     </h1>
     <% if @article.excerpt.present? %>
-      <p class="text-lg lg:text-xl text-muted-foreground leading-relaxed">
+      <p class="text-lg lg:text-xl text-muted-foreground leading-relaxed mb-6">
         <%= @article.excerpt %>
       </p>
     <% end %>
+    <%# Byline — agency-author by default; falls back to author.full_name if set. %>
+    <p class="text-xs tracking-[0.25em] text-muted-foreground/80">
+      <%= (@article.author&.full_name.presence || 'АН Виктори') %>
+      <span class="opacity-50 mx-2">·</span>
+      <%= @article.reading_minutes %> МИН ЧТЕНИЯ
+      <% if @article.views_count.to_i > 0 %>
+        <span class="opacity-50 mx-2">·</span>
+        <%= number_with_delimiter(@article.views_count, delimiter: ' '.encode('UTF-8')) %> ПРОСМОТРОВ
+      <% end %>
+    </p>
   </header>
 
   <%# === Image if present === %>
@@ -76,6 +86,16 @@
     <%= @article.body_html.to_s.html_safe %>
   </div>
 
+  <%# === Share bar — TG/VK/copy === %>
+  <div class="max-w-3xl mx-auto">
+    <%= render 'news/share_bar', article: @article %>
+  </div>
+
+  <%# === Telegram channel CTA — appears after body but before tags === %>
+  <div class="max-w-3xl mx-auto">
+    <%= render 'news/tg_channel_cta' %>
+  </div>
+
   <%# === Hashtags + source === %>
   <% if hashtags.present? || source_url.present? %>
     <footer class="max-w-3xl mx-auto mt-12 pt-8 border-t border-border space-y-3">
@@ -94,15 +114,43 @@
     </footer>
   <% end %>
 
-  <%# === Related === %>
+  <%# === Related — embedding-based when available, category-fallback otherwise === %>
   <% if @related.any? %>
     <section class="max-w-7xl mx-auto mt-20 pt-12 border-t border-border">
-      <p class="text-xs tracking-[0.4em] text-muted-foreground mb-6">ЕЩЁ В РАЗДЕЛЕ</p>
+      <div class="flex items-baseline justify-between mb-6 flex-wrap gap-3">
+        <p class="text-xs tracking-[0.4em] text-muted-foreground">ЕЩЁ ПО ТЕМЕ</p>
+        <%= link_to "Все новости →", news_path,
+              class: "text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-1" %>
+      </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
         <% @related.each do |a| %>
           <%= render 'shared/article_card', article: a %>
         <% end %>
       </div>
     </section>
+  <% end %>
+
+  <%# === Prev / Next navigation === %>
+  <% if @prev_article || @next_article %>
+    <nav class="max-w-3xl mx-auto mt-16 pt-8 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div>
+        <% if @prev_article %>
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">← ПРЕДЫДУЩАЯ</p>
+          <%= link_to news_item_path(@prev_article.slug),
+                class: "block text-sm lg:text-base text-foreground hover:text-muted-foreground transition-colors leading-snug" do %>
+            <%= @prev_article.title.truncate(80) %>
+          <% end %>
+        <% end %>
+      </div>
+      <div class="sm:text-right">
+        <% if @next_article %>
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">СЛЕДУЮЩАЯ →</p>
+          <%= link_to news_item_path(@next_article.slug),
+                class: "block text-sm lg:text-base text-foreground hover:text-muted-foreground transition-colors leading-snug" do %>
+            <%= @next_article.title.truncate(80) %>
+          <% end %>
+        <% end %>
+      </div>
+    </nav>
   <% end %>
 </article>

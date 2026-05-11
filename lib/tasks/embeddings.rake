@@ -31,4 +31,14 @@ namespace :embeddings do
     puts "[embeddings:refresh_stale] missing=#{stale.size}"
     stale.each { |p| EmbedPropertyJob.perform_later(p.id) }
   end
+
+  desc 'Backfill embeddings for every published Article (Phase 7)'
+  task articles: :environment do
+    total = Article.public_facing.count
+    puts "[embeddings:articles] enqueueing for #{total} published articles"
+    Article.public_facing.find_each(batch_size: 50) do |a|
+      EmbedArticleJob.perform_later(a.id)
+    end
+    puts '[embeddings:articles] done — check Sidekiq queue:low_priority'
+  end
 end
