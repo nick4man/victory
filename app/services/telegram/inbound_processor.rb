@@ -21,10 +21,11 @@ module Telegram
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 
-      # Inbox saver — runs first so screenshots/notes from whitelisted IDs
-      # are captured even if the message is not a reply-to-bot. Non-blocking:
-      # any failure logs but doesn't affect the main reply handling.
-      Telegram::InboxSaver.call(msg)
+      # Inbox saver — enqueued, NOT synchronous. Telegram disconnects the
+      # webhook after ~5s, and large photo/document downloads from
+      # api.telegram.org easily blow past that. The job does the actual
+      # save work; the webhook always returns 200 in milliseconds.
+      TelegramInboxSaveJob.perform_later(msg) if Telegram::InboxSaver.whitelisted?(msg)
 
       reply_to_id = msg.dig('reply_to_message', 'message_id')
       return log_and_ignore('no reply_to_message_id') if reply_to_id.blank?

@@ -26,6 +26,17 @@ module Telegram
       new(msg).call
     end
 
+    # Fast whitelist check without instantiating — used by InboundProcessor
+    # to decide whether to enqueue the async TelegramInboxSaveJob at all.
+    def self.whitelisted?(msg)
+      return false if msg.blank?
+      list = ENV['TELEGRAM_INBOX_WHITELIST'].to_s.split(',').map { |s| s.strip.to_i }.compact_blank
+      return false if list.empty?
+      chat_id = msg.dig('chat', 'id').to_i
+      from_id = msg.dig('from', 'id').to_i
+      list.include?(chat_id) || list.include?(from_id)
+    end
+
     def call
       return :no_msg if @msg.blank?
       return :not_whitelisted unless whitelisted?
