@@ -9,16 +9,20 @@
 # want a 1MB+ XML competing with HTML pages in SERP).
 class FeedsController < ApplicationController
   # Aggregator bots fetch via plain GET — no session, no CSRF.
-  skip_forgery_protection only: %i[yrl cian]
+  skip_forgery_protection only: %i[yrl cian avito]
 
-  before_action :load_offered_properties, only: %i[yrl cian]
-  before_action :set_feed_headers,        only: %i[yrl cian]
+  before_action :load_offered_properties, only: %i[yrl cian avito]
+  before_action :set_feed_headers,        only: %i[yrl cian avito]
 
   def yrl
     respond_to(&:xml)
   end
 
   def cian
+    respond_to(&:xml)
+  end
+
+  def avito
     respond_to(&:xml)
   end
 

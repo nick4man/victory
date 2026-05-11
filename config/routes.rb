@@ -449,11 +449,12 @@ Rails.application.routes.draw do
   get 'sitemap.xml', to: 'sitemap#index', defaults: { format: 'xml' }
   get 'robots.txt', to: 'robots#index', defaults: { format: 'txt' }
 
-  # Aggregator feeds (Yandex.Недвижимость / ЦИАН / МирКвартир / Restate /
-  # Domofond). YRL is Yandex's spec but works as a superset for most;
-  # ЦИАН requires its own XSD with PascalCase fields + concatenated category.
-  get 'feeds/yrl.xml',  to: 'feeds#yrl',  defaults: { format: 'xml' }, as: :yrl_feed
-  get 'feeds/cian.xml', to: 'feeds#cian', defaults: { format: 'xml' }, as: :cian_feed
+  # Aggregator feeds (Yandex.Недвижимость / ЦИАН / Авито / МирКвартир /
+  # Restate / Domofond). Three native formats — each aggregator has its own
+  # XSD. YRL acts as fallback for МирКвартир/Restate/Domofond.
+  get 'feeds/yrl.xml',   to: 'feeds#yrl',   defaults: { format: 'xml' }, as: :yrl_feed
+  get 'feeds/cian.xml',  to: 'feeds#cian',  defaults: { format: 'xml' }, as: :cian_feed
+  get 'feeds/avito.xml', to: 'feeds#avito', defaults: { format: 'xml' }, as: :avito_feed
 
   # ============================================
   # PWA
