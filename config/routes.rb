@@ -34,6 +34,27 @@ Rails.application.routes.draw do
   root 'landing#index'
 
   # ============================================
+  # SEO LANDINGS (M1-M3 — programmatic URL pyramid)
+  # ============================================
+  # Generates intent × type × {district | rooms} landings with their own
+  # canonical, H1, meta, and JSON-LD. Distinct from /properties so each
+  # landing can rank independently in Yandex/Google. Type regex constrains
+  # the slug set — anything else falls through to 404 instead of soft-404.
+  LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
+  scope path: '/kupit', defaults: { intent: 'sale' } do
+    get '/:type',                   to: 'landings#show', as: :buy_landing,           constraints: { type: LANDING_TYPE_RX }
+    get '/:type/rayon/:district',   to: 'landings#show', as: :buy_district_landing,  constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
+    get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :buy_rooms_landing,     constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
+    get '/:type/studiya',           to: 'landings#show', as: :buy_studio_landing,    constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
+  end
+  scope path: '/snyat', defaults: { intent: 'rent' } do
+    get '/:type',                   to: 'landings#show', as: :rent_landing,          constraints: { type: LANDING_TYPE_RX }
+    get '/:type/rayon/:district',   to: 'landings#show', as: :rent_district_landing, constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
+    get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :rent_rooms_landing,    constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
+    get '/:type/studiya',           to: 'landings#show', as: :rent_studio_landing,   constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
+  end
+
+  # ============================================
   # PROPERTIES (Каталог недвижимости)
   # ============================================
   resources :properties do
