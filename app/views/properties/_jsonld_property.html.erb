@@ -18,6 +18,22 @@
   # or arbitrarily large). property_image_url handles the missing/broken case.
   images = (@property.images.attached? ? @property.images.map { |i| property_image_url(i, variant: :hero) } : []) rescue []
 
+  # AggregateRating from approved reviews. Drives the star-rating rich
+  # snippet in SERP. Bypasses Property#reviews (associations vary across
+  # CRM-synced vs site-native objects); querying Review directly is robust.
+  approved_reviews = (Review.status_approved.where(property_id: @property.id) rescue Review.none)
+  reviews_count    = approved_reviews.count rescue 0
+  avg_rating       = (approved_reviews.average(:rating).to_f.round(2) if reviews_count.positive?)
+  aggregate_rating = if avg_rating
+                       {
+                         '@type'       => 'AggregateRating',
+                         'ratingValue' => avg_rating,
+                         'reviewCount' => reviews_count,
+                         'bestRating'  => 5,
+                         'worstRating' => 1
+                       }
+                     end
+
   payload = {
     "@context" => "https://schema.org",
     "@type" => schema_type,
@@ -50,7 +66,8 @@
       "availability" => "https://schema.org/InStock",
       "url" => property_url(@property),
       "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" }
-    }
+    },
+    "aggregateRating" => aggregate_rating
   }.compact
 %>
 <script type="application/ld+json">

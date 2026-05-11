@@ -18,6 +18,24 @@
     <link rel="alternate" hreflang="ru" href="<%= canonical_url %>">
     <link rel="alternate" hreflang="x-default" href="<%= canonical_url %>">
 
+    <%# Open Graph + Twitter Card — drives preview cards in VK, Telegram,
+        WhatsApp, Дзен, Facebook and Yandex's social-share carousel. Each
+        page can override og_image/og_type via content_for; defaults below
+        keep the agency branded if a page forgot to set them. %>
+    <meta property="og:type" content="<%= content_for?(:og_type) ? yield(:og_type) : 'website' %>">
+    <meta property="og:locale" content="ru_RU">
+    <meta property="og:site_name" content="АН «Виктори»">
+    <meta property="og:title" content="<%= content_for?(:title) ? yield(:title) : 'АН «Виктори» — агентство недвижимости в Рязани' %>">
+    <meta property="og:description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'АН «Виктори» — покупка, продажа и аренда квартир, домов, коммерческой недвижимости в Рязани. Онлайн-оценка, ипотека, юридическое сопровождение.' %>">
+    <meta property="og:url" content="<%= canonical_url %>">
+    <meta property="og:image" content="<%= og_image_url %>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= content_for?(:title) ? yield(:title) : 'АН «Виктори» — агентство недвижимости в Рязани' %>">
+    <meta name="twitter:description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'Покупка, продажа и аренда недвижимости в Рязани.' %>">
+    <meta name="twitter:image" content="<%= og_image_url %>">
+
     <%# Geo meta — Яндекс особенно ценит для регионального ранжирования %>
     <meta name="geo.region" content="RU-RYA">
     <meta name="geo.placename" content="<%= AgencyInfo::ADDRESS_CITY %>">

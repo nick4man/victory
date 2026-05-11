@@ -1,4 +1,11 @@
 <% content_for :title, "#{@property.title} — АН Виктори" %>
+<%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
+    Telegram, Дзен all generate richer preview cards when they get a
+    landscape image ≥1200px on the long side. %>
+<% if @property.images.attached? %>
+  <% content_for :og_image, property_image_url(@property.images.first, variant: :hero) %>
+<% end %>
+<% content_for :og_type, 'article' %>
 <% content_for :head do %>
   <%= render 'jsonld_property' %>
 <% end %>
@@ -386,6 +393,19 @@
             <%= link_to "ВОЙТИ ДЛЯ ИЗБРАННОГО", new_user_session_path, class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
           <% end %>
           <%= link_to "ЗАПИСАТЬСЯ НА ПРОСМОТР", new_property_inquiry_path(@property), class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
+
+          <%# Investment Audit (Phase 4.5). Pre-fills the audit form with
+              this property's area/rooms/price/address so the buyer can run
+              EI/Monte Carlo with one extra step (entering an offer price
+              or hitting submit). Secondary CTA — visual hierarchy below the
+              primary "ЗАПИСАТЬСЯ" button. %>
+          <%= link_to investment_audit_new_path(from_property: @property.slug),
+                class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+            СТОИТ ЛИ ПОКУПАТЬ?
+          <% end %>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
+            ИНВЕСТ-АУДИТ: EI · MONTE CARLO · ВЕРДИКТ
+          </p>
         </div>
 
         <div class="mt-12 pt-8 border-t border-border">

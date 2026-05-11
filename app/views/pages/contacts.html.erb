@@ -1,5 +1,57 @@
 <% content_for :title, "Контакты — АН Виктори" %>
 
+<%# Schema.org LocalBusiness with parking, accessibility, and payment hints
+    — extends the global RealEstateAgent JSON-LD with /contacts-specific
+    facts that Google uses for local-pack 3-pack eligibility (separate
+    from agency-wide rankings). hasMap points to the embedded map service
+    so the entity links to actual map data. %>
+<% content_for :head do %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context'      => 'https://schema.org',
+    '@type'         => 'RealEstateAgent',
+    '@id'           => "#{AgencyInfo::WEBSITE_URL}/contacts#localbusiness",
+    'name'          => AgencyInfo::NAME,
+    'image'         => "#{request.protocol}#{request.host_with_port}/og-default.jpg",
+    'url'           => "#{AgencyInfo::WEBSITE_URL}/contacts",
+    'telephone'     => [AgencyInfo::PHONE_PRIMARY, AgencyInfo::PHONE_BACKUP].compact,
+    'email'         => AgencyInfo::EMAIL,
+    'priceRange'    => '₽₽',
+    'address' => {
+      '@type'           => 'PostalAddress',
+      'streetAddress'   => AgencyInfo::ADDRESS_STREET,
+      'addressLocality' => AgencyInfo::ADDRESS_CITY,
+      'addressRegion'   => AgencyInfo::ADDRESS_REGION,
+      'postalCode'      => AgencyInfo::ADDRESS_ZIP,
+      'addressCountry'  => 'RU'
+    },
+    'geo' => {
+      '@type'    => 'GeoCoordinates',
+      'latitude' => AgencyInfo::GEO_LAT,
+      'longitude'=> AgencyInfo::GEO_LNG
+    },
+    'hasMap' => "https://yandex.ru/maps/?ll=#{AgencyInfo::GEO_LNG},#{AgencyInfo::GEO_LAT}&z=17",
+    'openingHoursSpecification' => [
+      { '@type' => 'OpeningHoursSpecification', 'dayOfWeek' => %w[Monday Tuesday Wednesday Thursday Friday], 'opens' => '09:00', 'closes' => '21:00' },
+      { '@type' => 'OpeningHoursSpecification', 'dayOfWeek' => %w[Saturday Sunday],                          'opens' => '10:00', 'closes' => '19:00' }
+    ],
+    'paymentAccepted'      => 'Наличные, банковский перевод, банковская карта, ипотека',
+    'currenciesAccepted'   => 'RUB',
+    'isAccessibleForFree'  => true,
+    'publicAccess'         => true,
+    'areaServed' => [
+      { '@type' => 'City',                'name' => AgencyInfo::ADDRESS_CITY },
+      { '@type' => 'AdministrativeArea',  'name' => AgencyInfo::ADDRESS_REGION }
+    ],
+    'amenityFeature' => [
+      { '@type' => 'LocationFeatureSpecification', 'name' => 'Парковка для клиентов', 'value' => true },
+      { '@type' => 'LocationFeatureSpecification', 'name' => 'Бесплатная консультация', 'value' => true },
+      { '@type' => 'LocationFeatureSpecification', 'name' => 'Сопровождение сделки',  'value' => true }
+    ]
+  }.to_json) %>
+  </script>
+<% end %>
+
 <section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
   <div class="max-w-5xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КОНТАКТЫ</p>

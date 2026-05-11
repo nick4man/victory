@@ -55,6 +55,21 @@ module ApplicationHelper
     content_for?(:canonical) ? content_for(:canonical) : request.original_url.split('?').first
   end
 
+  # OG/Twitter image URL. Resolution order:
+  #   1. content_for :og_image (per-page absolute URL)
+  #   2. ENV['OG_DEFAULT_IMAGE_URL']
+  #   3. /og-default.jpg in public/
+  #
+  # Always returns an absolute URL — VK/Telegram and Yandex's social
+  # preview don't follow relative paths.
+  def og_image_url
+    return content_for(:og_image) if content_for?(:og_image)
+
+    base = "#{request.protocol}#{request.host_with_port}"
+    fallback = ENV['OG_DEFAULT_IMAGE_URL'].presence || "#{base}/og-default.jpg"
+    fallback
+  end
+
   # Format currency with proper Russian formatting
   def format_price(price, options = {})
     return '—' if price.blank? || price.zero?

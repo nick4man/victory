@@ -47,12 +47,17 @@ module PropertyImageHelper
     fallback_picture(alt: alt, html_class: html_class, fallback: fallback)
   end
 
-  # URL for a single variant — used by JSON-LD where a flat URL list is needed
-  # (schema.org's `image` field). Hero variant gives Google ≥1200px which is
-  # the threshold for rich-result eligibility.
+  # URL for a single variant — used by JSON-LD and og:image, both of which
+  # need ABSOLUTE URLs (VK/Telegram/Yandex social-share crawlers don't
+  # follow relative paths). Hero variant gives ≥1200px which is the
+  # rich-result eligibility threshold for both Google and Yandex.
   def property_image_url(image, variant: :hero)
     return FALLBACK_HERO_URL unless image.respond_to?(:variant)
-    url_for(image.variant(variant))
+    Rails.application.routes.url_helpers.rails_representation_url(
+      image.variant(variant),
+      host: request.host_with_port,
+      protocol: request.protocol.sub('://', '')
+    )
   rescue StandardError
     FALLBACK_HERO_URL
   end

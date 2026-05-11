@@ -1,6 +1,12 @@
 <% content_for :title, @meta_title %>
 <% content_for :seo_description, @meta_description %>
 <% content_for :canonical, url_for(only_path: false, host: request.host_with_port) %>
+<%# OG image — use the hero variant of the first property in the matched
+    set so the social-share preview shows actual matching inventory. Falls
+    back to the layout's default if the landing is empty. %>
+<% if (og_lead = @properties.first) && og_lead.images.attached? %>
+  <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+<% end %>
 <% content_for :head do %>
   <meta name="description" content="<%= @meta_description %>">
 

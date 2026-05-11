@@ -17,16 +17,44 @@ class RobotsController < ApplicationController
       Disallow: /users/
       Disallow: /sidekiq/
       Disallow: /search?
+      Disallow: /feeds/
       Disallow: /*?utm_*
       Disallow: /*?ref=*
 
+      # Yandex's main bot — Crawl-delay tells it to pace requests, which
+      # MatrixNet uses as a quality signal for server responsiveness.
       User-agent: YandexBot
       Allow: /
       Crawl-delay: 1
 
+      # Mail.ru search — small but real RU audience for недвижимость queries.
+      User-agent: Mail.RU_Bot
+      Allow: /
+      Crawl-delay: 2
+
       User-agent: Googlebot
       Allow: /
 
+      # Bing covers DuckDuckGo + Yahoo as well — small RU share but free wins.
+      User-agent: bingbot
+      Allow: /
+
+      # AI training crawlers: allowed for now (the plan says monitor, don't
+      # block by default). Re-evaluate if logs show abusive volume.
+      User-agent: GPTBot
+      Allow: /
+      Crawl-delay: 5
+
+      User-agent: ClaudeBot
+      Allow: /
+      Crawl-delay: 5
+
+      User-agent: PerplexityBot
+      Allow: /
+      Crawl-delay: 5
+
+      # SEO-research scrapers — they re-index our catalog repeatedly and
+      # skew log analytics without sending any real traffic.
       User-agent: AhrefsBot
       Disallow: /
 
@@ -37,6 +65,9 @@ class RobotsController < ApplicationController
       Disallow: /
 
       User-agent: DotBot
+      Disallow: /
+
+      User-agent: BLEXBot
       Disallow: /
 
       Sitemap: #{sitemap_url}
