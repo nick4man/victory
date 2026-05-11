@@ -1,0 +1,12 @@
+<% content_for :title, "Редактировать «#{@article.title.truncate(40)}» — Админка" %>
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-3">АДМИНКА · РЕДАКТИРОВАНИЕ</p>
+    <h1 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-2"><%= @article.title %></h1>
+    <p class="text-xs text-muted-foreground mb-8">
+      ID #<%= @article.id %> · <%= @article.external_source.presence || 'manual' %>
+      <% if @article.external_id.present? %>· <code class="text-[10px]"><%= @article.external_id %></code><% end %>
+    </p>
+    <%= render 'form' %>
+  </div>
+</section>

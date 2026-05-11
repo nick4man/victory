@@ -1,0 +1,42 @@
+<% content_for :title, "Заявка №#{@inquiry.id} принята — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto text-center">
+    <div class="inline-flex items-center justify-center w-16 h-16 border border-foreground/30 mb-8">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+           stroke-linecap="round" stroke-linejoin="round" class="text-foreground" aria-hidden="true">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="m9 12 2 2 4-4"/>
+      </svg>
+    </div>
+
+    <p class="text-xs tracking-[0.4em] text-muted-foreground mb-4">ЗАЯВКА №<%= @inquiry.id %></p>
+    <h1 class="text-3xl md:text-4xl font-light tracking-tight text-foreground mb-6">
+      Заявка принята
+    </h1>
+    <p class="text-base text-muted-foreground max-w-md mx-auto leading-relaxed mb-10">
+      Менеджер АН&nbsp;Виктори свяжется с вами в течение часа по телефону
+      <span class="text-foreground"><%= @inquiry.phone %></span>.
+      Подскажем недостающие документы и поможем подать заявку в банк.
+    </p>
+
+    <% if @program %>
+      <div class="bg-card border border-border p-6 mb-8 text-left">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-3">ПРОГРАММА</p>
+        <p class="text-base text-foreground"><%= @program[:bank_name] %> · <%= @program[:product_name] %></p>
+        <p class="text-xs text-muted-foreground mt-2">
+          От <%= @program[:rate_min] %>%
+          · до <%= @program[:term_years_max] || 30 %> лет
+          · взнос от <%= @program[:down_payment_min_pct]&.to_i || 15 %>%
+        </p>
+      </div>
+    <% end %>
+
+    <div class="flex flex-wrap gap-3 justify-center">
+      <%= link_to "В КАТАЛОГ", properties_path,
+            class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+      <%= link_to "НА ГЛАВНУЮ", root_path,
+            class: "px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors" %>
+    </div>
+  </div>
+</section>

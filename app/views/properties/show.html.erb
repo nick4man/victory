@@ -425,6 +425,14 @@
           <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
             ИНВЕСТ-АУДИТ: EI · MONTE CARLO · ВЕРДИКТ
           </p>
+
+          <%# Mortgage calculator CTA — same prefill mechanic via ?from_property=.
+              Subtler text-link style (not a full button) — calculator is a
+              lighter-weight tool than the full audit. %>
+          <%= link_to services_mortgage_calculator_path(from_property: @property.slug),
+                class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-2.5 transition-colors" do %>
+            РАССЧИТАТЬ ИПОТЕКУ →
+          <% end %>
         </div>
 
         <div class="mt-12 pt-8 border-t border-border">

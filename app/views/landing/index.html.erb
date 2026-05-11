@@ -162,6 +162,11 @@
     </script>
   </section>
 
+  <%# Latest news strip — appears only if there's at least one published
+      news/market article. Sits between hero slider and featured properties
+      so a fresh market signal is the first thing past the visual hero. %>
+  <%= render 'shared/news_hero_strip', article: @news_hero if @news_hero %>
+
   <!-- ============================================
        FEATURED PROPERTIES
        ============================================ -->

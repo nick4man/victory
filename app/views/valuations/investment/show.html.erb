@@ -268,6 +268,7 @@
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">EI MEDIAN</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">P5–P95</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">P(BUY)</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">&nbsp;</th>
               </tr>
             </thead>
             <tbody>
@@ -285,6 +286,13 @@
                     <%= po['ei_mortgage_p5']&.to_f&.round(2) %>–<%= po['ei_mortgage_p95']&.to_f&.round(2) %>
                   </td>
                   <td class="p-4 text-right text-foreground"><%= po['buy_probability'].to_f.round(1) %>%</td>
+                  <td class="p-4 text-right">
+                    <% if offer['id'].present? %>
+                      <%= link_to "ЗАЯВКА →",
+                            services_mortgage_program_apply_path(offer['id'], audit_token: @valuation.token),
+                            class: "inline-block text-[10px] tracking-[0.25em] border border-border px-3 py-2 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors whitespace-nowrap" %>
+                    <% end %>
+                  </td>
                 </tr>
               <% end %>
             </tbody>

@@ -9,8 +9,14 @@
 <% value ||= nil %>
 <% required = local_assigns.fetch(:required, false) %>
 <% form ||= nil %>
+<%# Optional: writes parsed city/region from DaData into a hidden field
+    when user picks a suggestion. Lets callers drop redundant "Город"
+    inputs from their forms. Pass `city_field: 'property_valuation[city]'`. %>
+<% city_field  ||= nil %>
+<% chip_target ||= nil %>
 
-<div class="relative" data-addr-autocomplete>
+<div class="relative" data-addr-autocomplete
+     <% if chip_target %>data-addr-chip-target="<%= chip_target %>"<% end %>>
   <input type="text"
          id="<%= input_id %>"
          name="<%= input_name %>"
@@ -21,6 +27,9 @@
          <% if form %>form="<%= form %>"<% end %>
          class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground"
          data-addr-input>
+  <% if city_field %>
+    <input type="hidden" name="<%= city_field %>" data-addr-city <% if form %>form="<%= form %>"<% end %>>
+  <% end %>
   <ul class="absolute z-30 left-0 right-0 top-full mt-1 bg-card border border-border max-h-72 overflow-y-auto hidden shadow-lg"
       data-addr-dropdown></ul>
 </div>
@@ -48,8 +57,11 @@
         }
 
         function bind(wrap) {
-          var input = wrap.querySelector('[data-addr-input]');
-          var dd    = wrap.querySelector('[data-addr-dropdown]');
+          var input    = wrap.querySelector('[data-addr-input]');
+          var dd       = wrap.querySelector('[data-addr-dropdown]');
+          var cityInp  = wrap.querySelector('[data-addr-city]');
+          var chipId   = wrap.getAttribute('data-addr-chip-target');
+          var chipEl   = chipId ? document.getElementById(chipId) : null;
           if (!input || !dd) return;
 
           var current = -1;
@@ -86,7 +98,14 @@
 
           function pick(idx) {
             if (idx < 0 || idx >= items.length) return;
-            input.value = items[idx].value;
+            var s = items[idx];
+            input.value = s.value;
+            if (cityInp) cityInp.value = s.city || '';
+            if (chipEl) {
+              var bits = [s.region, s.city].filter(function (x) { return x; });
+              chipEl.textContent = bits.length ? bits.join(' · ') : '';
+              chipEl.classList.toggle('hidden', bits.length === 0);
+            }
             close();
             input.focus();
           }

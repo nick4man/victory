@@ -22,6 +22,9 @@ class Article < ApplicationRecord
 
   CATEGORIES = %w[market guides news investment mortgage].freeze
   SCHEMA_TYPES = %w[NewsArticle BlogPosting].freeze
+  # External-source tag stored in `external_source` — provenance for
+  # webhook-ingested content. `manual` covers admin-created entries.
+  EXTERNAL_SOURCES = %w[chat_urgent chat_digest manual macro_snapshot].freeze
 
   validates :title, presence: true, length: { minimum: 10, maximum: 200 }
   validates :body,  presence: true
@@ -30,10 +33,28 @@ class Article < ApplicationRecord
 
   before_save :render_markdown, if: :body_changed?
 
-  scope :published,   -> { where.not(published_at: nil).where('published_at <= ?', Time.current) }
-  scope :recent,      -> { order(published_at: :desc) }
-  scope :in_category, ->(cat) { where(category: cat) if cat.present? }
-  scope :for_region,  ->(reg) { where('region IS NULL OR region = ?', reg) if reg.present? }
+  scope :published,    -> { where.not(published_at: nil).where('published_at <= ?', Time.current) }
+  scope :recent,       -> { order(published_at: :desc) }
+  scope :visible,      -> { where(hidden_at: nil) }
+  scope :public_facing,-> { published.visible.recent }
+  scope :in_category,  ->(cat) { where(category: cat) if cat.present? }
+  scope :for_region,   ->(reg) { where('region IS NULL OR region = ?', reg) if reg.present? }
+
+  def hidden?
+    hidden_at.present?
+  end
+
+  def hide!
+    update!(hidden_at: Time.current)
+  end
+
+  def unhide!
+    update!(hidden_at: nil)
+  end
+
+  def published?
+    published_at.present? && published_at <= Time.current
+  end
 
   # Reuses Property's transliteration map — avoids duplicating the GOST
   # 7.79-2000 table that's already proven on slugs in Cycle 1.

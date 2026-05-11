@@ -259,6 +259,13 @@ Rails.application.routes.draw do
         get :status
       end
     end
+
+    # Per-program application entry (B.3 cross-link from audit result page).
+    # `:id` is the bank-offer UUID from audit-engine; controller resolves it
+    # via Mortgage::ProgramsService.find and prefills the form.
+    get 'mortgage_calculator/programs/:id/apply',
+        to: 'mortgage_applications#new',
+        as: :mortgage_program_apply
     
     # Legal services
     resources :legal_services, only: [:index, :show] do
@@ -405,6 +412,15 @@ Rails.application.routes.draw do
         post :reject
       end
     end
+
+    # Article moderation + manual creation. Token-guarded (?token=$ADMIN_TOKEN).
+    resources :articles do
+      member do
+        post :hide
+        post :unhide
+        post :publish
+      end
+    end
   end
 
   # ============================================
@@ -466,6 +482,10 @@ Rails.application.routes.draw do
   namespace :webhooks do
     # AmoCRM
     post 'amocrm', to: 'amocrm#create'
+
+    # News ingest from chat-host cron (urgent / digest pipelines).
+    # Bearer-auth via ENV[NEWS_INGEST_TOKEN]. See services/chat-host-cron/.
+    post 'news_ingest', to: 'news_ingest#create', as: :news_ingest
 
     # Telegram
     post 'telegram', to: 'telegram#create'

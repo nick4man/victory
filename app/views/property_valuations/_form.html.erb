@@ -137,31 +137,67 @@
         </div>
       </div>
 
-      <!-- Address (DaData autocomplete — see shared/_address_autocomplete) -->
+      <!-- Address (DaData autocomplete) + parsed chip + optional district toggle -->
       <div class="space-y-3">
-        <label class="text-sm text-muted-foreground">Адрес объекта <span class="text-foreground">*</span></label>
+        <label class="text-sm text-muted-foreground" for="express-address">
+          Адрес объекта <span class="text-foreground">*</span>
+        </label>
+        <%# DaData возвращает не только value, но и распарсенные city/region.
+            Hidden city + chip ниже устраняют дублирующие поля «Город» / «Район»: %>
         <%= render 'shared/address_autocomplete',
               input_id:    'express-address',
               input_name:  'property_valuation[address]',
               placeholder: 'г. Рязань, ул. Пушкина, д. 10',
               value:       valuation.address,
-              required:    true %>
-        <p class="text-xs text-muted-foreground">Начните вводить — появятся подсказки из ФИАС/КЛАДР по Рязани и области.</p>
+              required:    true,
+              city_field:  'property_valuation[city]',
+              chip_target: 'express-address-chip' %>
+
+        <%# Chip — появляется после выбора подсказки. Подтверждает, что
+            адрес распознан корректно (регион + город из ФИАС/КЛАДР). %>
+        <p id="express-address-chip"
+           class="hidden inline-block text-[10px] tracking-[0.25em] text-foreground bg-secondary px-2 py-1 uppercase">
+        </p>
+        <p class="text-xs text-muted-foreground">
+          Начните вводить — появятся подсказки из ФИАС/КЛАДР по Рязани и области.
+        </p>
       </div>
 
-      <!-- City + District -->
-      <div class="grid grid-cols-2 gap-4">
-        <div class="space-y-2">
-          <label class="text-sm text-muted-foreground">Город</label>
-          <%= f.text_field :city, placeholder: "Москва",
+      <!-- Optional micro-district toggle (Канищево, Дашково, etc.) -->
+      <div class="space-y-2" data-optional-district>
+        <button type="button" data-optional-toggle
+                class="text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-0.5"
+                aria-expanded="<%= valuation.district.present? %>">
+          <span data-optional-label>
+            <%= valuation.district.present? ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН РЯЗАНИ' %>
+          </span>
+        </button>
+        <div data-optional-pane class="<%= valuation.district.present? ? '' : 'hidden' %> pt-3">
+          <%= f.text_field :district, placeholder: 'Канищево, Дашково-Песочня, Центральный...',
                 class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
-        </div>
-        <div class="space-y-2">
-          <label class="text-sm text-muted-foreground">Район</label>
-          <%= f.text_field :district, placeholder: "Центральный",
-                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground mt-1">Для уточнения локации в пределах Рязани (необязательно).</p>
         </div>
       </div>
+
+      <%# Inline toggle JS — importmap отключён, Stimulus недоступен. %>
+      <script>
+        (function () {
+          if (window.__optionalDistrictInit) return;
+          window.__optionalDistrictInit = true;
+          document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-optional-toggle]');
+            if (!btn) return;
+            var wrap = btn.closest('[data-optional-district]');
+            var pane = wrap && wrap.querySelector('[data-optional-pane]');
+            var label = wrap && wrap.querySelector('[data-optional-label]');
+            if (!pane || !label) return;
+            pane.classList.toggle('hidden');
+            var open = !pane.classList.contains('hidden');
+            btn.setAttribute('aria-expanded', String(open));
+            label.textContent = open ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН РЯЗАНИ';
+          });
+        })();
+      </script>
     </div>
 
     <!-- ========== STEP 2: characteristics (per-type fields) ========== -->

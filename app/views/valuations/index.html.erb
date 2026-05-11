@@ -1,58 +1,176 @@
 <% content_for :title, "Оценка недвижимости — АН Виктори" %>
 
-<section class="px-6 lg:px-12 pt-32 pb-20 bg-background">
-  <div class="max-w-5xl mx-auto text-center mb-16">
-    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОЦЕНКА</p>
-    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight text-foreground mb-4 leading-tight">
-      Что вы хотите узнать?
+<%
+  audit_address = @featured_audit&.address&.truncate(48)
+  audit_area    = @featured_audit&.total_area&.to_f
+  audit_verdict = @featured_audit&.evaluation_data&.dig('audit', 'verdict')
+  verdict_ru    = { 'BUY' => 'BUY', 'WAIT' => 'WAIT', 'NEUTRAL' => 'NEUTRAL' }[audit_verdict] || audit_verdict
+  verdict_color = case audit_verdict
+                  when 'BUY'     then 'text-emerald-400'
+                  when 'WAIT'    then 'text-rose-400'
+                  when 'NEUTRAL' then 'text-amber-300'
+                  else 'text-background/80'
+                  end
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-24 bg-background">
+  <%# ============================================================
+      HERO
+      ============================================================ %>
+  <div class="max-w-4xl mx-auto text-center mb-20">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-6">
+      ОЦЕНКА · 2 ИНСТРУМЕНТА
+    </p>
+    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight text-foreground leading-[1.1] mb-6">
+      Продаёте<br class="hidden sm:block"> или покупаете?
     </h1>
-    <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto">
-      Два инструмента для разных вопросов — выберите подходящий.
+    <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-8">
+      Один инструмент даёт цену вашему объекту.<br class="hidden md:block">
+      Второй — отвечает, стоит ли вкладывать в чужой.
+    </p>
+    <% if @stats[:audit_count].to_i.positive? %>
+      <p class="text-xs tracking-[0.25em] text-muted-foreground/80">
+        <span class="text-foreground"><%= @stats[:audit_count] %></span> АУДИТОВ ПРОВЕДЕНО
+        <span class="mx-2 opacity-50">·</span>
+        СРЕДНИЙ РЕЗУЛЬТАТ ЗА <span class="text-foreground"><%= @stats[:avg_seconds] %> СЕК</span>
+      </p>
+    <% end %>
+  </div>
+
+  <%# ============================================================
+      2-CARD GRID
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6">
+
+    <%# === LEFT: Express (light card, teal/green accent) === %>
+    <%= link_to new_property_valuation_path,
+          class: "group relative bg-card border border-border p-8 lg:p-12 hover:border-foreground/40 transition-all flex flex-col" do %>
+      <%# Top-right corner: SVG price tag icon %>
+      <div class="absolute top-8 right-8 lg:top-12 lg:right-12 opacity-70 group-hover:opacity-100 transition-opacity">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" class="text-foreground" aria-hidden="true">
+          <title>Ценник</title>
+          <path d="M20 4H8a4 4 0 0 0-4 4v12l12 12 16-16L20 4z"/>
+          <circle cx="11" cy="11" r="1.5" fill="currentColor"/>
+        </svg>
+      </div>
+
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-3">
+        ДЛЯ ПРОДАВЦА · БЕСПЛАТНО
+      </p>
+      <h2 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4 leading-[1.1]">
+        Сколько стоит<br>мой объект?
+      </h2>
+      <p class="text-sm lg:text-base text-muted-foreground mb-6 leading-relaxed flex-1">
+        Сравним с аналогами в Рязани и области, посчитаем диапазон рыночной цены.
+      </p>
+
+      <%# Meta-bar — 3 числовых точки %>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] tracking-[0.15em] text-muted-foreground mb-8 pt-6 border-t border-border">
+        <span><span class="text-foreground">~2 МИН</span></span>
+        <span class="opacity-40">·</span>
+        <span><span class="text-foreground"><%= @stats[:catalog_count] %>+</span> АНАЛОГОВ</span>
+        <span class="opacity-40">·</span>
+        <span>HEDONIC + BOOTSTRAP</span>
+      </div>
+
+      <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
+        НАЧАТЬ ОЦЕНКУ
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      </div>
+    <% end %>
+
+    <%# === RIGHT: Investment Audit (dark card, gold accent) === %>
+    <%= link_to investment_audit_new_path,
+          class: "group relative bg-foreground text-background p-8 lg:p-12 hover:bg-foreground/95 transition-all flex flex-col border-l-2 border-[#B8924A]" do %>
+      <%# Top-right corner: SVG chart-line icon with gold stroke %>
+      <div class="absolute top-8 right-8 lg:top-12 lg:right-12 opacity-90">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#B8924A" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <title>График доходности</title>
+          <path d="M4 28h24M4 22l6-6 5 4 9-12"/>
+          <path d="M19 8h5v5" stroke-linecap="round"/>
+        </svg>
+      </div>
+
+      <p class="text-[11px] tracking-[0.4em] text-background/70 mb-3">
+        ДЛЯ ПОКУПАТЕЛЯ · БЕСПЛАТНО
+      </p>
+      <h2 class="text-3xl lg:text-4xl font-light tracking-tight mb-4 leading-[1.1]">
+        Стоит ли<br>покупать?
+      </h2>
+      <p class="text-sm lg:text-base text-background/80 mb-6 leading-relaxed flex-1">
+        EI, Monte Carlo, ипотека — за ~30 секунд получите вердикт BUY / WAIT.
+      </p>
+
+      <%# Meta-bar %>
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] tracking-[0.15em] text-background/70 mb-6 pt-6 border-t border-background/15">
+        <span><span class="text-[#B8924A]">~30 СЕК</span></span>
+        <span class="opacity-40">·</span>
+        <span><span class="text-background">1M</span> СИМУЛЯЦИЙ</span>
+        <span class="opacity-40">·</span>
+        <span><span class="text-background">22</span> БАНКА</span>
+      </div>
+
+      <%# Featured callout — последний публичный BUY-аудит %>
+      <% if @featured_audit %>
+        <div class="mb-8 px-4 py-3 border border-background/15 bg-background/[0.04]">
+          <p class="text-[10px] tracking-[0.3em] text-background/60 mb-1">
+            ПОСЛЕДНИЙ РАСЧЁТ
+          </p>
+          <p class="text-xs text-background/90 leading-relaxed">
+            <span class="text-[#B8924A]">№<%= @featured_audit.report_number %></span>
+            <% if audit_address %>
+              · <%= audit_address %>
+            <% end %>
+            <% if audit_area && audit_area.positive? %>
+              · <%= audit_area.round %>&nbsp;м²
+            <% end %>
+            · <span class="<%= verdict_color %> tracking-wider"><%= verdict_ru %></span>
+          </p>
+        </div>
+      <% else %>
+        <div class="mb-8"></div>
+      <% end %>
+
+      <div class="flex items-center gap-3 text-sm tracking-[0.2em] group-hover:translate-x-1 transition-transform">
+        ЗАПУСТИТЬ АУДИТ
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      </div>
+    <% end %>
+  </div>
+
+  <%# ============================================================
+      TERTIARY: «Уже знаете объект?» → catalogue
+      ============================================================ %>
+  <div class="max-w-3xl mx-auto mt-16 pt-8 border-t border-border text-center">
+    <p class="text-sm text-muted-foreground mb-3">
+      Уже знаете объект из нашего каталога?
+    </p>
+    <%= link_to properties_path,
+          class: "inline-flex items-center gap-2 text-sm tracking-[0.2em] text-foreground hover:translate-x-1 transition-transform border-b border-foreground/30 pb-1" do %>
+      В КАТАЛОГ
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 8h12M9 3l5 5-5 5"/>
+      </svg>
+    <% end %>
+    <p class="text-xs text-muted-foreground/70 mt-3">
+      На карточке объекта будет кнопка «Стоит ли покупать» — аудит с предзаполненными данными.
     </p>
   </div>
 
-  <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
-    <%# === Express === %>
-    <%= link_to new_property_valuation_path,
-          class: "group bg-card border border-border p-8 lg:p-10 hover:border-foreground/40 transition-colors flex flex-col" do %>
-      <p class="text-xs tracking-[0.4em] text-muted-foreground mb-3">ЭКСПРЕСС-ОЦЕНКА</p>
-      <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-4 leading-tight">
-        Сколько стоит<br>мой объект?
-      </h2>
-      <ul class="space-y-2 text-sm text-muted-foreground flex-1 mb-6">
-        <li>— Анализ 5-8 аналогов из нашего каталога</li>
-        <li>— Hedonic regression на 271+ объектах</li>
-        <li>— Доверительный интервал цены</li>
-        <li>— Результат за 2-3 минуты</li>
-      </ul>
-      <div class="flex items-center gap-3 text-sm tracking-widest text-foreground group-hover:translate-x-1 transition-transform">
-        НАЧАТЬ →
-      </div>
-    <% end %>
-
-    <%# === Investment Audit === %>
-    <%= link_to investment_audit_new_path,
-          class: "group bg-foreground text-background p-8 lg:p-10 hover:bg-foreground/90 transition-colors flex flex-col" do %>
-      <p class="text-xs tracking-[0.4em] text-background/70 mb-3">ИНВЕСТ-АУДИТ</p>
-      <h2 class="text-2xl lg:text-3xl font-light tracking-tight mb-4 leading-tight">
-        Стоит ли<br>покупать?
-      </h2>
-      <ul class="space-y-2 text-sm text-background/80 flex-1 mb-6">
-        <li>— EI для cash / ипотеки / депозита</li>
-        <li>— Monte Carlo 1M симуляций</li>
-        <li>— Вердикт BUY / WAIT / NEUTRAL</li>
-        <li>— Подбор ипотечных программ</li>
-        <li>— Брендированный PDF-отчёт</li>
-      </ul>
-      <div class="flex items-center gap-3 text-sm tracking-widest group-hover:translate-x-1 transition-transform">
-        ЗАПУСТИТЬ АУДИТ →
-      </div>
-    <% end %>
-  </div>
-
-  <p class="max-w-2xl mx-auto mt-12 text-xs text-muted-foreground/70 text-center leading-relaxed">
-    Инвест-аудит — собственный аналитический инструмент АН&nbsp;Виктори:
-    актуальные ставки ЦБ&nbsp;РФ, 22 ипотечные программы, миллион сценариев
-    Monte&nbsp;Carlo для оценки рисков. Расчёт занимает 20–40 секунд.
+  <%# ============================================================
+      TRUST FOOTER
+      ============================================================ %>
+  <p class="max-w-2xl mx-auto mt-16 text-[11px] tracking-[0.2em] text-muted-foreground/70 text-center leading-relaxed">
+    Инвест-аудит — собственный аналитический движок АН&nbsp;Виктори.<br class="hidden sm:block">
+    Актуальные ставки ЦБ&nbsp;РФ · Hedonic regression · Monte&nbsp;Carlo 1M симуляций.
   </p>
 </section>

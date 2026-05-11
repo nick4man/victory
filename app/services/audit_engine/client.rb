@@ -95,6 +95,15 @@ module AuditEngine
       request { connection.get('macro/latest') }
     end
 
+    # GET /bank-offers/ — full catalog of seeded mortgage programs (22+ from
+    # Сбер/ВТБ/Альфа/Газпром/etc). Source of truth for the calculator's
+    # programs table at /services/mortgage. Cached downstream by
+    # Mortgage::ProgramsService (Redis, 6h) — engine roundtrip is cheap but
+    # this endpoint changes only on seed-script re-run.
+    def bank_offers_list(active: true)
+      request { connection.get('bank-offers/') { |req| req.params['active'] = active } }
+    end
+
     # GET /audit/{id}/pdf — streams the branded PDF report. Returned value
     # is the binary body string; Rails controller should `send_data` it.
     # Engine generates via WeasyPrint+Plotly so this is the slowest

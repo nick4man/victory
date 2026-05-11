@@ -40,7 +40,9 @@ class Valuations::InvestmentController < ApplicationController
       property_type: 'apartment'
     )
     prefill_from_property!(params[:from_property]) if params[:from_property].present?
+    apply_calc_prefill!  # ?price=&mortgage_rate=&down_payment_pct= from /services/mortgage
     @macro = MacroRatesService.call
+    @initial_rate_overrides = @valuation.evaluation_data&.dig('user_overrides') || {}
     # Static address suggestions kept as a fallback datalist for browsers
     # without JS / old caches. Dadata autocomplete (Phase 4.6 task #135)
     # supersedes this when present.
@@ -162,6 +164,26 @@ class Valuations::InvestmentController < ApplicationController
   rescue ActiveRecord::RecordNotFound
     # Property was physically deleted — fall through with blank form.
     nil
+  end
+
+  # Calc-page → audit-form prefill (B.1 cross-link).
+  # Accepts ?price=&mortgage_rate=&down_payment_pct= from /services/mortgage
+  # so the «Запустить аудит» CTA on the calculator carries the user's chosen
+  # rate/down-payment into the audit form. Validates ranges before applying.
+  def apply_calc_prefill!
+    price = params[:price].presence&.to_i
+    @valuation.estimated_price ||= price if price && price.positive?
+
+    rate = params[:mortgage_rate].presence&.to_f
+    dpct = params[:down_payment_pct].presence&.to_f
+
+    return unless (rate && rate.positive? && rate <= 50) || dpct
+
+    @valuation.evaluation_data ||= {}
+    overrides = @valuation.evaluation_data['user_overrides'] || {}
+    overrides['mortgage_rate']    = rate if rate && rate.positive? && rate <= 50
+    overrides['down_payment_pct'] = dpct if dpct && dpct >= 0 && dpct <= 100
+    @valuation.evaluation_data['user_overrides'] = overrides
   end
 
   def attach_property_source(valuation, slug_or_id)

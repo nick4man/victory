@@ -48,10 +48,13 @@
             <p class="text-base text-foreground"><%= @macro[:deposit_rate] %>%</p>
           </div>
         </div>
+        <%
+          has_init_ro = @initial_rate_overrides.present? && @initial_rate_overrides.values.any?(&:present?)
+        %>
         <button type="button"
                 onclick="document.getElementById('rate-overrides').classList.toggle('hidden'); this.querySelector('.btn-label').textContent = (document.getElementById('rate-overrides').classList.contains('hidden') ? 'Использовать свои →' : 'Скрыть');"
                 class="text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border pb-0.5">
-          <span class="btn-label">Использовать свои →</span>
+          <span class="btn-label"><%= has_init_ro ? 'Скрыть' : 'Использовать свои →' %></span>
         </button>
       </div>
       <p class="text-[10px] text-muted-foreground/70 mt-3 leading-relaxed">
@@ -61,26 +64,35 @@
     </div>
 
     <%# Override fields — hidden by default. Three optional inputs that go
-        into params[:rate_overrides][...] and end up in evaluation_data. %>
-    <div id="rate-overrides" class="hidden max-w-2xl mx-auto mb-6 bg-card border border-border p-5">
+        into params[:rate_overrides][...] and end up in evaluation_data.
+        Auto-revealed when the user arrived from /services/mortgage with
+        pre-filled overrides (B.1 cross-link). %>
+    <%
+      init_ro = @initial_rate_overrides || {}
+      has_init = init_ro['mortgage_rate'].present? || init_ro['deposit_rate'].present? || init_ro['price_growth_annual'].present?
+    %>
+    <div id="rate-overrides" class="<%= 'hidden' unless has_init %> max-w-2xl mx-auto mb-6 bg-card border border-border p-5">
       <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-3">ВАШИ СТАВКИ (опционально)</p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs text-muted-foreground mb-1" for="ro-mortgage">Ипотека, %</label>
           <input type="number" step="0.1" min="0" max="50" id="ro-mortgage" form="investment-form" name="rate_overrides[mortgage_rate]"
                  placeholder="<%= @macro[:mortgage_rate] %>"
+                 value="<%= init_ro['mortgage_rate'] %>"
                  class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground">
         </div>
         <div>
           <label class="block text-xs text-muted-foreground mb-1" for="ro-deposit">Депозит, %</label>
           <input type="number" step="0.1" min="0" max="50" id="ro-deposit" form="investment-form" name="rate_overrides[deposit_rate]"
                  placeholder="<%= @macro[:deposit_rate] %>"
+                 value="<%= init_ro['deposit_rate'] %>"
                  class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground">
         </div>
         <div>
           <label class="block text-xs text-muted-foreground mb-1" for="ro-growth">Рост цен, %/год</label>
           <input type="number" step="0.1" min="0" max="30" id="ro-growth" form="investment-form" name="rate_overrides[price_growth_annual]"
                  placeholder="7.9"
+                 value="<%= init_ro['price_growth_annual'] %>"
                  class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground">
         </div>
       </div>

@@ -463,6 +463,11 @@ class Inquiry < ApplicationRecord
   end
 
   def property_or_message_required
+    # Mortgage inquiries carry program details in metadata, not a property
+    # FK — exempt them from the property-or-message rule so /services/mortgage
+    # applications validate cleanly.
+    return if inquiry_type == 'mortgage'
+
     if property_id.blank? && message.blank?
       errors.add(:base, 'Необходимо указать объект недвижимости или сообщение')
     end

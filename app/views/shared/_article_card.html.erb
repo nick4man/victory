@@ -1,0 +1,36 @@
+<%# Shared article card. Accepts `article` (required) and `path_helper`
+    (optional, defaults to news_item_path — blog passes blog_post_path).
+    Used by /news index, /blog index, related-articles sidebars. %>
+<%
+  target_path = local_assigns.fetch(:path, news_item_path(article.slug))
+  category_ru = {
+    'news' => 'НОВОСТИ',
+    'market' => 'РЫНОК',
+    'mortgage' => 'ИПОТЕКА',
+    'investment' => 'ИНВЕСТИЦИИ',
+    'guides' => 'ГИД'
+  }[article.category.to_s] || article.category.to_s.upcase
+%>
+<%= link_to target_path,
+      class: "group block bg-card border border-border p-6 hover:border-foreground/40 transition-colors flex flex-col h-full" do %>
+  <div class="flex items-baseline justify-between mb-3 flex-wrap gap-1">
+    <span class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= category_ru %></span>
+    <% if article.published_at %>
+      <span class="text-[10px] tracking-[0.3em] text-muted-foreground/70">
+        <%= I18n.l(article.published_at.to_date, format: :long) rescue article.published_at.strftime('%d.%m.%Y') %>
+      </span>
+    <% end %>
+  </div>
+  <h3 class="text-lg lg:text-xl tracking-wide text-foreground group-hover:text-muted-foreground transition-colors mb-3 leading-snug">
+    <%= article.title %>
+  </h3>
+  <p class="text-sm text-muted-foreground leading-relaxed mb-4 flex-1">
+    <%= article.short_excerpt(length: 160) %>
+  </p>
+  <div class="flex items-center justify-between mt-auto">
+    <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70">
+      <%= article.reading_minutes %> МИН ЧТЕНИЯ
+    </p>
+    <span class="text-[10px] tracking-[0.3em] text-foreground group-hover:translate-x-1 transition-transform">ЧИТАТЬ →</span>
+  </div>
+<% end %>

@@ -1,0 +1,515 @@
+<%# /services/mortgage — Calculator hub
+    ──────────────────────────────────
+    Three vertical sections: live calculator (left col) + result (right col),
+    next-step cross-links to audit/express, 22 bank programs table, FAQ.
+    All interactivity is inline vanilla JS — importmap-rails is disabled
+    in this project. JSON-LD WebApplication + FAQPage attached for SEO. %>
+
+<%
+  fmt_rub  = ->(v) { number_with_delimiter(v.to_i, delimiter: ' '.encode('UTF-8')) }
+  fmt_rate = ->(v) { '%.2f' % v.to_f }
+  selected_program = @programs.find { |p| p[:id].to_s == @form_state[:program_id].to_s } if @form_state[:program_id]
+
+  product_type_groups = @programs.group_by { |p| p[:product_type_ru] }
+                                 .map { |type, items| { type: type, count: items.size } }
+                                 .sort_by { |g| -g[:count] }
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background">
+  <%# ============================================================
+      HERO
+      ============================================================ %>
+  <div class="max-w-4xl mx-auto text-center mb-16">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-6">
+      ИПОТЕКА · РЯЗАНЬ
+    </p>
+    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight text-foreground leading-[1.1] mb-6">
+      Ипотечный калькулятор
+    </h1>
+    <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-6">
+      Рассчитайте ежемесячный платёж и сравните <span class="text-foreground"><%= @programs.size %> программ</span>
+      от <span class="text-foreground"><%= @programs.map { |p| p[:bank_name] }.uniq.size %> банков</span> —
+      данные обновляются ежедневно.
+    </p>
+    <% if @macro && @macro[:key_rate] %>
+      <p class="text-xs tracking-[0.25em] text-muted-foreground/80">
+        <span class="text-foreground"><%= @macro[:key_rate] %>%</span> КЛЮЧЕВАЯ ЦБ
+        <span class="mx-2 opacity-50">·</span>
+        <span class="text-foreground"><%= @macro[:mortgage_rate] %>%</span> СРЕДНЯЯ ИПОТЕКА
+        <% if @macro[:deposit_rate] %>
+          <span class="mx-2 opacity-50">·</span>
+          <span class="text-foreground"><%= @macro[:deposit_rate] %>%</span> ДЕПОЗИТ
+        <% end %>
+      </p>
+    <% end %>
+  </div>
+
+  <%# Property-source banner — appears when ?from_property= prefilled price %>
+  <% if @source_property %>
+    <div class="max-w-5xl mx-auto mb-8 bg-card border border-border px-6 py-4 flex items-center justify-between flex-wrap gap-3">
+      <p class="text-sm text-muted-foreground">
+        Расчёт для объекта:
+        <span class="text-foreground">«<%= @source_property.title.to_s.truncate(60) %>»</span>
+        · <span class="text-foreground"><%= fmt_rub.call(@source_property.price) %>&nbsp;₽</span>
+      </p>
+      <%= link_to "ОТКРЫТЬ ОБЪЕКТ →", property_path(@source_property),
+            class: "text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground" %>
+    </div>
+  <% end %>
+
+  <%# ============================================================
+      CALCULATOR + RESULT — two-column grid, sticky right column
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-5 lg:gap-6 mb-16"
+       data-mortgage-calc
+       data-default-rate="<%= @macro[:mortgage_rate] || 16.5 %>">
+
+    <%# LEFT — inputs (3/5 col) %>
+    <div class="lg:col-span-3 bg-card border border-border p-6 lg:p-8 space-y-6">
+      <%# Active-program chip (if user clicked a program below) %>
+      <div id="mc-program-chip"
+           class="<%= selected_program ? '' : 'hidden' %> flex items-center justify-between bg-secondary px-3 py-2 text-xs">
+        <span class="text-muted-foreground">
+          Программа: <span class="text-foreground" data-mc-program-label><%= selected_program ? "#{selected_program[:bank_name]} · #{selected_program[:product_name]}" : '' %></span>
+        </span>
+        <button type="button" data-mc-program-clear class="text-muted-foreground hover:text-foreground" aria-label="Сбросить программу">×</button>
+      </div>
+
+      <%# === Price === %>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label for="mc-price" class="text-xs tracking-[0.2em] text-muted-foreground">ЦЕНА ОБЪЕКТА, ₽</label>
+        </div>
+        <input type="text" id="mc-price" inputmode="numeric"
+               value="<%= fmt_rub.call(@form_state[:price]) %>"
+               class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors">
+      </div>
+
+      <%# === Down payment (amount + slider %) === %>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label for="mc-down" class="text-xs tracking-[0.2em] text-muted-foreground">ПЕРВЫЙ ВЗНОС, ₽</label>
+          <span class="text-xs text-foreground" data-mc-dp-pct><%= @form_state[:down_payment_pct].to_i %>%</span>
+        </div>
+        <input type="text" id="mc-down" inputmode="numeric"
+               value="<%= fmt_rub.call(@form_state[:down_payment]) %>"
+               class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors mb-3">
+        <input type="range" id="mc-down-slider" min="0" max="90" step="1"
+               value="<%= @form_state[:down_payment_pct].to_i %>"
+               class="w-full accent-foreground">
+        <div class="flex justify-between text-[10px] text-muted-foreground/70 mt-1 px-0.5">
+          <span>0%</span><span>20%</span><span>50%</span><span>90%</span>
+        </div>
+      </div>
+
+      <%# === Term (slider) === %>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label for="mc-term" class="text-xs tracking-[0.2em] text-muted-foreground">СРОК, ЛЕТ</label>
+          <span class="text-xs text-foreground" data-mc-term-display><%= @form_state[:term_years] %></span>
+        </div>
+        <input type="range" id="mc-term" min="1" max="30" step="1"
+               value="<%= @form_state[:term_years] %>"
+               class="w-full accent-foreground">
+        <div class="flex justify-between text-[10px] text-muted-foreground/70 mt-1 px-0.5">
+          <span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span>
+        </div>
+      </div>
+
+      <%# === Rate === %>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <label for="mc-rate" class="text-xs tracking-[0.2em] text-muted-foreground">СТАВКА, % ГОДОВЫХ</label>
+          <button type="button" data-mc-rate-default
+                  class="text-[10px] tracking-[0.25em] text-muted-foreground hover:text-foreground border-b border-border/40">
+            ↻ ИЗ ЦБ <%= fmt_rate.call(@macro[:mortgage_rate] || 16.5) %>%
+          </button>
+        </div>
+        <input type="number" id="mc-rate" inputmode="decimal" step="0.1" min="0" max="50"
+               value="<%= fmt_rate.call(@form_state[:rate]) %>"
+               class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors">
+      </div>
+    </div>
+
+    <%# RIGHT — result (2/5 col, sticky on lg+) %>
+    <div class="lg:col-span-2 bg-foreground text-background p-6 lg:p-8 lg:sticky lg:top-24 self-start">
+      <p class="text-[10px] tracking-[0.4em] text-background/70 mb-4">ЕЖЕМЕСЯЧНЫЙ ПЛАТЁЖ</p>
+      <p class="text-4xl md:text-5xl font-light tracking-tight mb-6" data-mc-monthly>—</p>
+
+      <div class="space-y-3 pt-5 border-t border-background/15 text-xs">
+        <div class="flex justify-between">
+          <span class="text-background/70 tracking-wider">СУММА КРЕДИТА</span>
+          <span class="text-background" data-mc-loan>—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-background/70 tracking-wider">ПЕРЕПЛАТА</span>
+          <span class="text-background" data-mc-overpay>—</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-background/70 tracking-wider">ИТОГО ВЫПЛАТ</span>
+          <span class="text-background" data-mc-total>—</span>
+        </div>
+      </div>
+
+      <p class="mt-6 text-[10px] tracking-[0.2em] text-background/50 leading-relaxed">
+        АННУИТЕТНЫЙ ПЛАТЁЖ. РЕАЛЬНАЯ СТАВКА У БАНКА МОЖЕТ ОТЛИЧАТЬСЯ.
+      </p>
+    </div>
+  </div>
+
+  <%# ============================================================
+      NEXT-STEP PANEL — ядерные связки
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-5 lg:gap-6 mb-20" data-mc-cross-links>
+    <a href="#" data-mc-cross-audit
+       class="group bg-card border border-border p-6 lg:p-8 hover:border-foreground/40 transition-colors flex flex-col">
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">ДЛЯ ПОКУПАТЕЛЯ</p>
+      <h3 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-2 leading-tight">
+        Стоит ли вкладывать?
+      </h3>
+      <p class="text-sm text-muted-foreground flex-1 mb-4">
+        Запустим инвест-аудит с этой ставкой и взносом — Monte Carlo 1M симуляций, вердикт BUY / WAIT.
+      </p>
+      <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
+        ЗАПУСТИТЬ АУДИТ →
+      </div>
+    </a>
+
+    <%= link_to new_property_valuation_path,
+          class: "group bg-card border border-border p-6 lg:p-8 hover:border-foreground/40 transition-colors flex flex-col" do %>
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">ДЛЯ ПРОДАВЦА</p>
+      <h3 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-2 leading-tight">
+        Сколько стоит мой объект?
+      </h3>
+      <p class="text-sm text-muted-foreground flex-1 mb-4">
+        Бесплатная экспресс-оценка: 5-8 аналогов из каталога + hedonic regression + доверительный интервал.
+      </p>
+      <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
+        ЗАКАЗАТЬ ОЦЕНКУ →
+      </div>
+    <% end %>
+  </div>
+
+  <%# ============================================================
+      PROGRAMS TABLE — 22 bank offers
+      ============================================================ %>
+  <% if @programs.any? %>
+    <div class="max-w-5xl mx-auto mb-20" data-mc-programs>
+      <div class="flex items-baseline justify-between flex-wrap gap-3 mb-6">
+        <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground">
+          Программы банков · <%= @programs.size %>
+        </h2>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground">
+          КЛИК ПО СТРОКЕ — ЗАПОЛНИТЬ КАЛЬКУЛЯТОР
+        </p>
+      </div>
+
+      <%# Filter chips %>
+      <div class="flex flex-wrap gap-2 mb-6" data-mc-filters>
+        <button type="button" data-mc-filter="all"
+                class="px-3 py-1.5 text-[11px] tracking-[0.2em] border border-foreground text-foreground bg-foreground/5">
+          ВСЕ
+        </button>
+        <% product_type_groups.each do |g| %>
+          <button type="button" data-mc-filter="<%= g[:type] %>"
+                  class="px-3 py-1.5 text-[11px] tracking-[0.2em] border border-border text-muted-foreground hover:text-foreground hover:border-foreground/60 transition-colors">
+            <%= g[:type].upcase %> · <%= g[:count] %>
+          </button>
+        <% end %>
+      </div>
+
+      <%# Table — actually a list of rows for mobile-friendliness %>
+      <div class="border border-border divide-y divide-border bg-card">
+        <% @programs.each_with_index do |p, idx| %>
+          <div class="grid grid-cols-12 gap-3 px-4 py-4 hover:bg-secondary/30 transition-colors cursor-pointer <%= 'hidden' if idx >= 10 %>"
+               data-mc-program
+               data-mc-program-id="<%= p[:id] %>"
+               data-mc-program-type="<%= p[:product_type_ru] %>"
+               data-mc-program-rate-min="<%= p[:rate_min] %>"
+               data-mc-program-term-min="<%= p[:term_years_min] %>"
+               data-mc-program-term-max="<%= p[:term_years_max] %>"
+               data-mc-program-dp-min="<%= p[:down_payment_min_pct] %>"
+               data-mc-program-label="<%= p[:bank_name] %> · <%= p[:product_name] %>">
+            <div class="col-span-12 md:col-span-4 flex flex-col">
+              <span class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= p[:product_type_ru].upcase %></span>
+              <span class="text-sm text-foreground mt-1"><%= p[:bank_name] %></span>
+              <span class="text-xs text-muted-foreground"><%= p[:product_name] %></span>
+            </div>
+            <div class="col-span-4 md:col-span-2 flex flex-col">
+              <span class="text-[10px] tracking-[0.3em] text-muted-foreground">СТАВКА</span>
+              <span class="text-sm text-foreground mt-1">
+                от <%= fmt_rate.call(p[:rate_min]) %>%
+              </span>
+            </div>
+            <div class="col-span-4 md:col-span-2 flex flex-col">
+              <span class="text-[10px] tracking-[0.3em] text-muted-foreground">СРОК</span>
+              <span class="text-sm text-foreground mt-1">
+                до <%= p[:term_years_max] || 30 %> лет
+              </span>
+            </div>
+            <div class="col-span-4 md:col-span-2 flex flex-col">
+              <span class="text-[10px] tracking-[0.3em] text-muted-foreground">ВЗНОС</span>
+              <span class="text-sm text-foreground mt-1">
+                от <%= p[:down_payment_min_pct]&.to_i || 15 %>%
+              </span>
+            </div>
+            <div class="col-span-12 md:col-span-2 flex items-center justify-end">
+              <span class="text-xs tracking-[0.2em] text-muted-foreground group-hover:text-foreground">ВЫБРАТЬ →</span>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <% if @programs.size > 10 %>
+        <div class="text-center mt-5">
+          <button type="button" data-mc-programs-toggle
+                  class="text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-1">
+            ПОКАЗАТЬ ЕЩЁ <%= @programs.size - 10 %> ПРОГРАММ
+          </button>
+        </div>
+      <% end %>
+    </div>
+  <% else %>
+    <div class="max-w-5xl mx-auto mb-20 bg-card border border-border p-8 text-center">
+      <p class="text-sm text-muted-foreground">
+        Каталог программ временно недоступен. Калькулятор работает — попробуйте обновить страницу через пару минут.
+      </p>
+    </div>
+  <% end %>
+
+  <%# ============================================================
+      FAQ
+      ============================================================ %>
+  <div class="max-w-3xl mx-auto mb-16">
+    <p class="text-xs tracking-[0.4em] text-muted-foreground mb-4">ЧАСТЫЕ ВОПРОСЫ</p>
+    <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-8">
+      Что нужно знать об ипотеке
+    </h2>
+    <div class="space-y-3" data-mc-faq>
+      <% @faq.each_with_index do |item, idx| %>
+        <details class="group bg-card border border-border">
+          <summary class="px-5 py-4 cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm lg:text-base text-foreground pr-2"><%= item[:q] %></span>
+            <span class="text-foreground/60 text-lg leading-none group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-5 text-sm text-muted-foreground leading-relaxed">
+            <%= item[:a] %>
+          </div>
+        </details>
+      <% end %>
+    </div>
+  </div>
+
+  <%# Trust footer %>
+  <p class="max-w-2xl mx-auto text-[11px] tracking-[0.2em] text-muted-foreground/70 text-center leading-relaxed">
+    Программы банков обновляются ежедневно из открытых источников.<br class="hidden sm:block">
+    Точные условия — у банка-кредитора. АН&nbsp;Виктори помогает с пакетом документов.
+  </p>
+</section>
+
+<%# ============================================================
+    JSON-LD: WebApplication + FAQPage
+    ============================================================ %>
+<% content_for :head do %>
+<script type="application/ld+json">
+<%= raw({
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Ипотечный калькулятор АН Виктори",
+  "url": "#{AgencyInfo::WEBSITE_URL}/services/mortgage",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "All",
+  "offers": { "@type": "Offer", "price": 0, "priceCurrency": "RUB" },
+  "description": "Онлайн-расчёт ежемесячного платежа по ипотеке. Сравнение 22 программ от 9 банков. Источники: ЦБ РФ, открытые тарифы банков."
+}.to_json) %>
+</script>
+<script type="application/ld+json">
+<%= raw({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": @faq.map { |item|
+    {
+      "@type": "Question",
+      "name": item[:q],
+      "acceptedAnswer": { "@type": "Answer", "text": item[:a] }
+    }
+  }
+}.to_json) %>
+</script>
+<% end %>
+
+<%# ============================================================
+    Inline JS — live calculator + program-click + filter + audit prefill
+    Importmap-rails отключён в проекте, поэтому всё inline.
+    ============================================================ %>
+<script>
+  (function () {
+    var root = document.querySelector('[data-mortgage-calc]');
+    if (!root || root.__mcInit) return;
+    root.__mcInit = true;
+
+    var fmtRub = function (v) {
+      if (v == null || isNaN(v)) return '—';
+      return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+    };
+    var parseRub = function (s) {
+      return parseInt(String(s).replace(/[^\d]/g, ''), 10) || 0;
+    };
+    var clamp = function (v, min, max) { return Math.max(min, Math.min(max, v)); };
+
+    var priceEl   = document.getElementById('mc-price');
+    var downEl    = document.getElementById('mc-down');
+    var downSlider= document.getElementById('mc-down-slider');
+    var termEl    = document.getElementById('mc-term');
+    var termDisp  = root.querySelector('[data-mc-term-display]');
+    var rateEl    = document.getElementById('mc-rate');
+    var dpPctDisp = root.querySelector('[data-mc-dp-pct]');
+    var rateDefaultBtn = root.querySelector('[data-mc-rate-default]');
+
+    var monthlyOut = root.querySelector('[data-mc-monthly]');
+    var loanOut    = root.querySelector('[data-mc-loan]');
+    var overpayOut = root.querySelector('[data-mc-overpay]');
+    var totalOut   = root.querySelector('[data-mc-total]');
+
+    var chipEl     = document.getElementById('mc-program-chip');
+    var chipLabel  = root.querySelector('[data-mc-program-label]');
+    var chipClear  = root.querySelector('[data-mc-program-clear]');
+
+    var crossAudit = document.querySelector('[data-mc-cross-audit]');
+
+    var DEFAULT_RATE = parseFloat(root.dataset.defaultRate) || 16.5;
+
+    function getState() {
+      var price = parseRub(priceEl.value);
+      var down  = parseRub(downEl.value);
+      if (down > price) down = price;
+      var term  = parseInt(termEl.value, 10) || 20;
+      var rate  = parseFloat(rateEl.value) || DEFAULT_RATE;
+      return { price: price, down: down, term: term, rate: rate };
+    }
+
+    function recalc() {
+      var s = getState();
+      var loan = Math.max(0, s.price - s.down);
+      var months = s.term * 12;
+      var r = s.rate / 100 / 12;
+      var payment = 0;
+      if (months > 0) {
+        if (r === 0) payment = loan / months;
+        else payment = loan * (r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+      }
+      var total = payment * months;
+      var overpay = total - loan;
+
+      monthlyOut.textContent = fmtRub(payment);
+      loanOut.textContent    = fmtRub(loan);
+      overpayOut.textContent = fmtRub(overpay);
+      totalOut.textContent   = fmtRub(total);
+
+      // sync slider pct
+      var pct = s.price > 0 ? Math.round((s.down / s.price) * 100) : 0;
+      dpPctDisp.textContent = pct + '%';
+      if (parseInt(downSlider.value, 10) !== pct) downSlider.value = clamp(pct, 0, 90);
+
+      // term display
+      termDisp.textContent = s.term;
+
+      // update cross-link to audit with current state
+      if (crossAudit) {
+        var qs = new URLSearchParams({
+          price:            String(s.price),
+          mortgage_rate:    String(s.rate),
+          down_payment_pct: String(pct)
+        });
+        crossAudit.href = '<%= investment_audit_new_path %>?' + qs.toString();
+      }
+    }
+
+    function reformatRubField(el) {
+      var caret = el.selectionStart;
+      var raw = parseRub(el.value);
+      el.value = raw ? fmtRub(raw).replace(' ₽', '') : '';
+      if (caret != null) try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
+    }
+
+    priceEl.addEventListener('input', function () { reformatRubField(priceEl); recalc(); });
+    downEl.addEventListener('input',  function () { reformatRubField(downEl); recalc(); });
+
+    downSlider.addEventListener('input', function () {
+      var pct = parseInt(downSlider.value, 10);
+      var price = parseRub(priceEl.value);
+      downEl.value = fmtRub(Math.round(price * pct / 100)).replace(' ₽', '');
+      recalc();
+    });
+
+    termEl.addEventListener('input', recalc);
+    rateEl.addEventListener('input', recalc);
+
+    rateDefaultBtn.addEventListener('click', function () {
+      rateEl.value = DEFAULT_RATE.toFixed(2);
+      recalc();
+    });
+
+    // === Program click — fill calc from program === //
+    document.querySelectorAll('[data-mc-program]').forEach(function (row) {
+      row.addEventListener('click', function () {
+        var rateMin = parseFloat(row.dataset.mcProgramRateMin);
+        var termMax = parseInt(row.dataset.mcProgramTermMax, 10);
+        var dpMin   = parseFloat(row.dataset.mcProgramDpMin);
+        if (!isNaN(rateMin)) rateEl.value = rateMin.toFixed(2);
+        if (!isNaN(termMax)) termEl.value = Math.min(termMax, 30);
+        if (!isNaN(dpMin)) {
+          downSlider.value = Math.max(dpMin, 0);
+          var price = parseRub(priceEl.value);
+          downEl.value = fmtRub(Math.round(price * dpMin / 100)).replace(' ₽', '');
+        }
+        chipEl.classList.remove('hidden');
+        chipLabel.textContent = row.dataset.mcProgramLabel;
+        // smooth scroll to top of calc
+        document.querySelector('[data-mortgage-calc]').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        recalc();
+      });
+    });
+
+    chipClear.addEventListener('click', function (e) {
+      e.preventDefault();
+      chipEl.classList.add('hidden');
+      chipLabel.textContent = '';
+    });
+
+    // === Filter chips === //
+    document.querySelectorAll('[data-mc-filter]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var f = btn.dataset.mcFilter;
+        // re-style buttons
+        document.querySelectorAll('[data-mc-filter]').forEach(function (b) {
+          b.classList.remove('border-foreground', 'text-foreground', 'bg-foreground/5');
+          b.classList.add('border-border', 'text-muted-foreground');
+        });
+        btn.classList.add('border-foreground', 'text-foreground', 'bg-foreground/5');
+        btn.classList.remove('text-muted-foreground');
+        // filter rows
+        document.querySelectorAll('[data-mc-program]').forEach(function (row) {
+          var match = (f === 'all') || (row.dataset.mcProgramType === f);
+          row.classList.toggle('hidden', !match);
+        });
+        // hide "show more" toggle in filtered view
+        var toggle = document.querySelector('[data-mc-programs-toggle]');
+        if (toggle) toggle.style.display = (f === 'all') ? '' : 'none';
+      });
+    });
+
+    // === Show more programs === //
+    var toggle = document.querySelector('[data-mc-programs-toggle]');
+    if (toggle) {
+      toggle.addEventListener('click', function () {
+        document.querySelectorAll('[data-mc-program].hidden').forEach(function (row) {
+          row.classList.remove('hidden');
+        });
+        toggle.style.display = 'none';
+      });
+    }
+
+    recalc();
+  })();
+</script>

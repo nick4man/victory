@@ -1,56 +1,108 @@
-<header class="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
-  <div class="flex items-center justify-between px-6 py-4 lg:px-12">
-    <%= link_to root_path, class: "text-xl font-light tracking-[0.3em] text-foreground" do %>АН ВИКТОРИ<% end %>
+<%
+  # Active-link helper — adds a subtle border under the current page.
+  # Single source for both the visible underline (h-px under each item)
+  # and the colour change (text-foreground vs text-muted-foreground).
+  nav_link = ->(label, path) do
+    active = current_page?(path)
+    base   = 'group relative whitespace-nowrap text-sm tracking-widest transition-colors duration-300 py-1'
+    color  = active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+    bar    = active ? 'bg-foreground' : 'bg-foreground/0 group-hover:bg-foreground/40'
+    link_to path, class: "#{base} #{color}" do
+      label.to_s.html_safe +
+        content_tag(:span, '',
+          class: "absolute left-0 right-0 -bottom-0.5 h-px #{bar} transition-colors duration-300")
+    end
+  end
 
-    <nav class="hidden lg:flex items-center gap-10 xl:gap-12">
-      <%= link_to "Каталог",     properties_path,     class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
-      <%= link_to "Услуги",      services_page_path,  class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
-      <%= link_to "Оценка",      valuations_path,     class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
-      <%= link_to "Отзывы",      reviews_path,        class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
-      <%= link_to "О компании",  about_path,          class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
-      <%= link_to "Контакты",    contacts_path,       class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
+  mobile_link = ->(label, path) do
+    active = current_page?(path)
+    color  = active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+    link_to label, path, class: "py-3 text-sm tracking-wider #{color} transition-colors"
+  end
+%>
+
+<header class="fixed top-0 left-0 right-0 z-50 bg-background/85 backdrop-blur-md border-b border-border">
+  <div class="flex items-center justify-between px-6 py-4 lg:px-12">
+    <%= link_to root_path, class: "text-xl lg:text-[1.35rem] font-light tracking-[0.32em] text-foreground hover:text-foreground/85 transition-colors" do %>
+      АН&nbsp;ВИКТОРИ
+    <% end %>
+
+    <nav class="hidden lg:flex items-center gap-6 xl:gap-9">
+      <%= nav_link.call('Каталог',    properties_path) %>
+      <%= nav_link.call('Новости',    news_path) %>
+      <%= nav_link.call('Оценка',     valuations_path) %>
+      <%= nav_link.call('Ипотека',    services_mortgage_calculator_path) %>
+      <%= nav_link.call('Отзывы',     reviews_path) %>
+      <%= content_tag(:span, class: 'hidden xl:inline-block') do
+            nav_link.call('О нас', about_path)
+          end %>
+      <%= nav_link.call('Контакты',   contacts_path) %>
     </nav>
 
-    <div class="hidden lg:flex items-center gap-8">
-      <a href="<%= agency_phone_tel %>" class="flex items-center gap-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+    <div class="hidden lg:flex items-center gap-5 xl:gap-7">
+      <%# Phone — only at xl+ to keep lg breathing room. Mobile click-to-call
+          lives in mobile nav, footer, and per-page "позвонить" CTAs. %>
+      <a href="<%= agency_phone_tel %>"
+         class="hidden xl:flex items-center gap-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+         aria-label="Позвонить">
+        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
+        </svg>
         <%= agency_phone_primary %>
       </a>
+      <%# Login link hidden at lg — too cramped with 6 nav items; available
+          via mobile menu and via the chat-widget after консультация. %>
       <% if user_signed_in? %>
-        <%= link_to "КАБИНЕТ",  dashboard_root_path,        class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors" %>
-        <%= button_to "ВЫХОД",  destroy_user_session_path,  method: :delete, class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer", form: { class: "inline" } %>
+        <%= link_to "КАБИНЕТ",  dashboard_root_path,
+              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
+        <%= button_to "ВЫХОД",  destroy_user_session_path, method: :delete,
+              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer",
+              form: { class: "inline" } %>
       <% else %>
-        <%= link_to "ВОЙТИ",          new_user_session_path,       class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors" %>
+        <%= link_to "ВОЙТИ", new_user_session_path,
+              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% end %>
       <button type="button" data-chat-trigger
-              class="px-6 py-2 text-sm tracking-widest bg-foreground text-background hover:bg-foreground/90 transition-colors">
+              class="px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors whitespace-nowrap">
         КОНСУЛЬТАЦИЯ
       </button>
     </div>
 
     <button class="lg:hidden text-foreground" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')" aria-label="Меню">
-      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
     </button>
   </div>
 
-  <div id="mobile-nav" class="hidden lg:hidden border-t border-border">
+  <div id="mobile-nav" class="hidden lg:hidden border-t border-border bg-background/95 backdrop-blur-md">
     <nav class="flex flex-col py-4 px-6">
-      <%= link_to "Каталог",     properties_path,    class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <%= link_to "Услуги",      services_page_path, class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <%= link_to "Оценка",      valuations_path,    class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <%= link_to "Отзывы",      reviews_path,       class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <%= link_to "О компании",  about_path,         class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <%= link_to "Контакты",    contacts_path,      class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <% if user_signed_in? %>
-        <%= link_to "Кабинет",  dashboard_root_path,        class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-        <%= button_to "Выход",  destroy_user_session_path,  method: :delete, class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer text-left", form: { class: "block" } %>
-      <% else %>
-        <%= link_to "Войти",        new_user_session_path,       class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-        <%= link_to "Регистрация",  new_user_registration_path,  class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-      <% end %>
-      <button type="button" data-chat-trigger class="py-3 text-left text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer">
-        Консультация
-      </button>
+      <%= mobile_link.call('Каталог',    properties_path) %>
+      <%= mobile_link.call('Новости',    news_path) %>
+      <%= mobile_link.call('Оценка',     valuations_path) %>
+      <%= mobile_link.call('Ипотека',    services_mortgage_calculator_path) %>
+      <%= mobile_link.call('Услуги',     services_page_path) %>
+      <%= mobile_link.call('Отзывы',     reviews_path) %>
+      <%= mobile_link.call('О компании', about_path) %>
+      <%= mobile_link.call('Контакты',   contacts_path) %>
+
+      <div class="mt-2 pt-3 border-t border-border flex flex-col gap-2">
+        <a href="<%= agency_phone_tel %>" class="py-2 text-sm tracking-wider text-foreground flex items-center gap-2">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          <%= agency_phone_primary %>
+        </a>
+        <% if user_signed_in? %>
+          <%= link_to "Кабинет",  dashboard_root_path, class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
+          <%= button_to "Выход",  destroy_user_session_path, method: :delete,
+                class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer text-left",
+                form: { class: "block" } %>
+        <% else %>
+          <%= link_to "Войти",        new_user_session_path,      class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
+          <%= link_to "Регистрация",  new_user_registration_path, class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
+        <% end %>
+        <button type="button" data-chat-trigger
+                class="mt-2 py-3 text-sm tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors w-full">
+          КОНСУЛЬТАЦИЯ
+        </button>
+      </div>
     </nav>
   </div>
 </header>

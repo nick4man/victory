@@ -1,0 +1,53 @@
+<%# Compact news hero strip — used on the landing page above the featured
+    properties grid. Single article with category, date, headline, excerpt
+    and a "Все новости →" link. Hidden entirely when no article available. %>
+<% return unless local_assigns[:article].present? %>
+<%
+  article     = local_assigns[:article]
+  category_ru = {
+    'news' => 'НОВОСТЬ', 'market' => 'РЫНОК', 'mortgage' => 'ИПОТЕКА',
+    'investment' => 'ИНВЕСТИЦИИ', 'guides' => 'ГИД'
+  }[article.category.to_s] || article.category.to_s.upcase
+%>
+<section class="px-6 lg:px-12 py-14 lg:py-20 bg-card border-y border-border">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground">НОВОСТИ РЫНКА</p>
+      <%= link_to news_path,
+            class: "inline-flex items-center gap-2 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-1 transition-colors" do %>
+        ВСЕ НОВОСТИ
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      <% end %>
+    </div>
+
+    <%= link_to news_item_path(article.slug),
+          class: "group grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-baseline" do %>
+      <div class="lg:col-span-2 space-y-1">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= category_ru %></p>
+        <% if article.published_at %>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70">
+            <%= l(article.published_at.to_date, format: :long) rescue article.published_at.strftime('%d.%m.%Y') %>
+          </p>
+        <% end %>
+      </div>
+      <div class="lg:col-span-7">
+        <h2 class="text-2xl md:text-3xl lg:text-4xl font-light tracking-tight text-foreground leading-snug mb-3 group-hover:translate-x-1 transition-transform">
+          <%= article.title %>
+        </h2>
+        <p class="text-sm lg:text-base text-muted-foreground leading-relaxed line-clamp-2">
+          <%= article.short_excerpt(length: 220) %>
+        </p>
+      </div>
+      <div class="lg:col-span-3 flex items-baseline lg:justify-end">
+        <span class="inline-flex items-center gap-2 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
+          ЧИТАТЬ
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 8h12M9 3l5 5-5 5"/>
+          </svg>
+        </span>
+      </div>
+    <% end %>
+  </div>
+</section>
