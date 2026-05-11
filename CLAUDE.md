@@ -13,13 +13,13 @@ This file provides guidance for AI assistants working on this codebase.
 
 ## Current State
 
-The application is in a **partially functional state** with several features temporarily disabled:
+**Status: PRODUCTION — live at https://victory62.org**
 
-- **Active**: Landing page (`LandingController`), Properties CRUD, Property Valuations, basic routing
-- **Disabled (commented out)**: Devise authentication, ActiveAdmin panel, Sidekiq background jobs, Rack::Attack rate limiting, Pundit authorization
-- **Stub methods**: `user_signed_in?` always returns `false`; `current_user` always returns `nil`
-- **Root route**: `landing#index` — a standalone minimalist landing page (no application layout, no gem dependencies)
-- **Server port**: 5000 (configured for Replit environment)
+- **Active in prod**: Landing, Properties (Topnlab-synced catalog), Investment Audit (audit-engine sidecar), Express valuation (hedonic + bootstrap CI), Mortgage Calculator (22 bank programs), News section (chat-host webhook ingest), Reviews, Chat-bot with tools, Admin token-guarded panels.
+- **Still disabled**: Devise (user login) — admin paths use `?token=$ADMIN_TOKEN` query-param guard (Admin::Reviews, Admin::Articles). Re-enabling Devise is a future iteration.
+- **Stub methods**: `user_signed_in?` always returns `false`; `current_user` always returns `nil` (until Devise returns).
+- **Root route**: `landing#index` — full application layout with header/footer, news strip above featured properties.
+- **Server**: Rails 7.1 in Docker, port 3000 internally, reverse-proxied to 443.
 
 ## Tech Stack
 
