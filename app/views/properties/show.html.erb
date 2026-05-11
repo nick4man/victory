@@ -334,6 +334,10 @@
       <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОПИСАНИЕ</p>
       <p class="text-base text-foreground leading-relaxed whitespace-pre-line"><%= @property.description %></p>
 
+      <%# AVM (B4) — Schema-clean estimate range from PropertyAvm. Hidden
+          when there aren't enough comparables for a reliable regression. %>
+      <%= render 'avm_estimate' %>
+
       <% area_label = @property.property_type&.slug == 'house' ? display_house_area(@property) : display_area(@property) %>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border mt-12">
         <% [
