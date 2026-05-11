@@ -39,7 +39,34 @@ class PdfGeneratorService
   end
   
   private
-  
+
+  # PropertyValuation#evaluation_data is a jsonb column but legacy records
+  # were stored as JSON-string. Normalize: parse string, pass through Hash.
+  def evaluation_data_hash
+    raw = valuation.evaluation_data
+    return {} if raw.blank?
+    parsed = raw.is_a?(String) ? (JSON.parse(raw) rescue {}) : raw
+    parsed.deep_symbolize_keys
+  end
+
+  # Shortcuts for legacy field names used throughout this file.
+  def v_area;       valuation.total_area; end
+  def v_condition;  valuation.property_condition; end
+  def v_year_built; valuation.building_year; end
+
+  CONDITION_LABELS = {
+    'needs_repair' => 'Требует ремонта',
+    'average'      => 'Среднее',
+    'good'         => 'Хорошее',
+    'excellent'    => 'Отличное (евроремонт)',
+    'designer'     => 'Дизайнерский'
+  }.freeze
+
+  def condition_label(code)
+    return '—' if code.blank?
+    CONDITION_LABELS[code.to_s] || code.to_s.humanize
+  end
+
   def setup_fonts
     # Register Russian font (using DejaVu Sans as it supports Cyrillic)
     font_path = Rails.root.join('app', 'assets', 'fonts')
@@ -78,7 +105,7 @@ class PdfGeneratorService
   def draw_title
     pdf.text 'ОТЧЕТ ОБ ОЦЕНКЕ НЕДВИЖИМОСТИ', size: 18, style: :bold, align: :center
     pdf.move_down 5
-    pdf.text "№ #{valuation.id} от #{I18n.l(valuation.created_at, format: :long)}", 
+    pdf.text "Отчёт #{valuation.report_label} от #{I18n.l(valuation.created_at, format: :long)}",
              size: 10, align: :center, color: '718096'
     pdf.move_down 20
   end
@@ -94,14 +121,15 @@ class PdfGeneratorService
       ['Дата заявки:', I18n.l(valuation.created_at, format: :long)]
     ]
     
-    pdf.table(data, width: pdf.bounds.width, cell_style: { borders: [] }) do
+    page_w = pdf.bounds.width
+    pdf.table(data, width: page_w, cell_style: { borders: [] }) do
       column(0).style(font_style: :bold, width: 120)
-      column(1).style(width: pdf.bounds.width - 120)
+      column(1).style(width: page_w - 120)
     end
-    
+
     pdf.move_down 20
   end
-  
+
   def draw_property_info
     pdf.text 'ИНФОРМАЦИЯ ОБ ОБЪЕКТЕ', size: 14, style: :bold
     pdf.move_down 10
@@ -109,28 +137,29 @@ class PdfGeneratorService
     data = [
       ['Адрес:', valuation.address],
       ['Тип недвижимости:', I18n.t("property_types.#{valuation.property_type}")],
-      ['Площадь:', "#{valuation.area} м²"],
+      ['Площадь:', "#{v_area} м²"],
       ['Количество комнат:', valuation.rooms.to_s],
       ['Этаж:', "#{valuation.floor} из #{valuation.total_floors}"],
-      ['Состояние:', I18n.t("property_conditions.#{valuation.condition}")]
+      ['Состояние:', condition_label(v_condition)]
     ]
-    
-    data << ['Год постройки:', valuation.year_built.to_s] if valuation.year_built.present?
+
+    data << ['Год постройки:', v_year_built.to_s] if v_year_built.present?
     data << ['Метро:', "#{valuation.metro_station} (#{valuation.metro_distance} мин)"] if valuation.metro_station.present?
     
-    pdf.table(data, width: pdf.bounds.width, cell_style: { borders: [] }) do
+    page_w = pdf.bounds.width
+    pdf.table(data, width: page_w, cell_style: { borders: [] }) do
       column(0).style(font_style: :bold, width: 150)
-      column(1).style(width: pdf.bounds.width - 150)
+      column(1).style(width: page_w - 150)
     end
-    
+
     pdf.move_down 20
   end
-  
+
   def draw_valuation_results
     pdf.text 'РЕЗУЛЬТАТЫ ОЦЕНКИ', size: 14, style: :bold
     pdf.move_down 10
     
-    evaluation_data = JSON.parse(valuation.evaluation_data, symbolize_names: true)
+    evaluation_data = evaluation_data_hash
     
     # Main price box
     pdf.bounding_box([0, pdf.cursor], width: pdf.bounds.width, height: 80) do
@@ -157,7 +186,7 @@ class PdfGeneratorService
       
       breakdown_data = [
         ['Базовая цена за м²:', format_price(evaluation_data[:base_price_per_sqm])],
-        ['Площадь:', "#{valuation.area} м²"],
+        ['Площадь:', "#{v_area} м²"],
         ['Базовая стоимость:', format_price(evaluation_data[:base_price])]
       ]
       
@@ -181,9 +210,10 @@ class PdfGeneratorService
         breakdown_data << ['Удобства и улучшения:', impact]
       end
       
-      pdf.table(breakdown_data, width: pdf.bounds.width, cell_style: { borders: [] }) do
+      page_w = pdf.bounds.width
+      pdf.table(breakdown_data, width: page_w, cell_style: { borders: [] }) do
         column(0).style(font_style: :bold, width: 250)
-        column(1).style(width: pdf.bounds.width - 250, align: :right)
+        column(1).style(width: page_w - 250, align: :right)
       end
       
       pdf.move_down 20
@@ -197,7 +227,7 @@ class PdfGeneratorService
   end
   
   def draw_market_analysis
-    evaluation_data = JSON.parse(valuation.evaluation_data, symbolize_names: true)
+    evaluation_data = evaluation_data_hash
     
     return unless evaluation_data[:market_analysis]
     
@@ -210,7 +240,7 @@ class PdfGeneratorService
   end
   
   def draw_recommendations
-    evaluation_data = JSON.parse(valuation.evaluation_data, symbolize_names: true)
+    evaluation_data = evaluation_data_hash
     
     return unless evaluation_data[:recommendations]&.any?
     
@@ -233,27 +263,79 @@ class PdfGeneratorService
   end
   
   def draw_footer
-    pdf.move_down 30
+    pdf.move_down 24
     pdf.stroke_horizontal_rule
     pdf.move_down 10
-    
+
     pdf.text 'ВАЖНАЯ ИНФОРМАЦИЯ', size: 10, style: :bold
     pdf.move_down 5
     pdf.text 'Данная оценка носит информационный характер и действительна в течение 30 дней с момента составления. ' \
              'Окончательная рыночная стоимость может отличаться в зависимости от текущей ситуации на рынке недвижимости.',
              size: 8, color: '718096', align: :justify
-    
-    pdf.move_down 10
-    pdf.text "Отчет сформирован автоматически системой АН \"Виктори\" #{Time.current.strftime('%d.%m.%Y в %H:%M')}", 
+
+    pdf.move_down 12
+    draw_qr_signature
+    pdf.move_down 6
+    pdf.text "Отчёт сформирован #{Time.current.strftime('%d.%m.%Y в %H:%M')} · АН «Виктори»",
              size: 8, color: 'A0AEC0', align: :center
-    
+
     # Page numbers
-    pdf.number_pages 'Страница <page> из <total>', 
+    pdf.number_pages 'Страница <page> из <total>',
                      at: [pdf.bounds.right - 150, 0],
                      width: 150,
                      align: :right,
                      size: 8,
                      color: 'A0AEC0'
+  end
+
+  # Two QR codes (site + Telegram channel) on a single horizontal row.
+  # Sits between the disclaimer and the signature line — matches the
+  # AuditPdf cover-page treatment so reports feel consistent.
+  def draw_qr_signature
+    site_url = (defined?(AgencyInfo) ? AgencyInfo::WEBSITE_URL : 'https://victory62.org')
+    tg_url   = 'https://t.me/rznvictory'
+
+    site_png = QrRenderer.png(site_url, size: 200)
+    tg_png   = QrRenderer.png(tg_url,   size: 200)
+    return if site_png.nil? && tg_png.nil?
+
+    qr_size = 60 # PDF points
+    gap     = 60
+    page_w  = pdf.bounds.width
+    block_w = (qr_size * 2) + gap + 240
+    x_left  = (page_w - block_w) / 2.0
+    y       = pdf.cursor
+
+    begin
+      if site_png
+        pdf.image StringIO.new(site_png), at: [x_left, y], width: qr_size, height: qr_size
+        pdf.bounding_box([x_left + qr_size + 6, y], width: 120, height: qr_size) do
+          pdf.fill_color '718096'
+          pdf.text 'НАШ САЙТ', size: 7, character_spacing: 1.5
+          pdf.fill_color '000000'
+          pdf.text site_url.sub(%r{^https?://}, ''), size: 8
+        end
+      end
+
+      x_right = x_left + qr_size + 120 + gap
+      if tg_png
+        pdf.image StringIO.new(tg_png), at: [x_right, y], width: qr_size, height: qr_size
+        pdf.bounding_box([x_right + qr_size + 6, y], width: 120, height: qr_size) do
+          pdf.fill_color '718096'
+          pdf.text 'TELEGRAM', size: 7, character_spacing: 1.5
+          pdf.fill_color '000000'
+          pdf.text '@rznvictory', size: 8
+          pdf.move_down 2
+          pdf.fill_color '718096'
+          pdf.text 'новости каждые 15 мин', size: 6.5
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.warn("[PdfGeneratorService] QR embed failed: #{e.class} #{e.message}")
+    ensure
+      pdf.fill_color '000000'
+      pdf.move_cursor_to y - qr_size - 4
+    end
   end
   
   def format_price(price)

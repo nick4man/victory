@@ -144,7 +144,10 @@ module AuditPdf
     end
 
     def signature_footer
-      # Push to bottom of page.
+      # QR row — print 2 codes (TG + site) above the date/url line.
+      draw_qr_row
+
+      # Push to bottom of page after QR row.
       @doc.move_cursor_to(48)
       @doc.stroke_color Theme::HAIRLINE
       @doc.line_width 0.5
@@ -156,6 +159,57 @@ module AuditPdf
       mid = "Отчёт #{@v.report_label}"
       @doc.text "#{left}   ·   #{mid}   ·   #{right}", size: 7.5, align: :center
       @doc.fill_color Theme::INK
+    end
+
+    # Two side-by-side QR codes: site URL on the left, Telegram channel on
+    # the right. Sits just above the signature footer. Skipped silently if
+    # rqrcode is unavailable (graceful degrade — date/url line still prints).
+    def draw_qr_row
+      tg_url   = 'https://t.me/rznvictory'
+      site_url = AgencyInfo::WEBSITE_URL
+
+      site_png = QrRenderer.png(site_url, size: 200)
+      tg_png   = QrRenderer.png(tg_url,   size: 200)
+      return if site_png.nil? && tg_png.nil?
+
+      @doc.move_cursor_to(125)
+      qr_h = 70 # rendered height in PDF points
+      gap  = 40
+
+      # Centre the two QR blocks on the page width.
+      page_w  = @doc.bounds.width
+      block_w = (qr_h * 2) + gap + 200 # rough — text col under each QR adds width
+      x_left  = (page_w - block_w) / 2.0
+
+      begin
+        if site_png
+          @doc.image StringIO.new(site_png), at: [x_left, @doc.cursor], width: qr_h, height: qr_h
+          @doc.bounding_box([x_left + qr_h + 8, @doc.cursor], width: 110, height: qr_h) do
+            @doc.fill_color Theme::MUTED
+            @doc.text 'НАШ САЙТ', size: 7, character_spacing: 1.5
+            @doc.fill_color Theme::INK
+            @doc.text site_url.sub(%r{^https?://}, ''), size: 8
+          end
+        end
+
+        x_right = x_left + qr_h + 200 + gap
+        if tg_png
+          @doc.image StringIO.new(tg_png), at: [x_right, @doc.cursor], width: qr_h, height: qr_h
+          @doc.bounding_box([x_right + qr_h + 8, @doc.cursor], width: 110, height: qr_h) do
+            @doc.fill_color Theme::MUTED
+            @doc.text 'TELEGRAM', size: 7, character_spacing: 1.5
+            @doc.fill_color Theme::INK
+            @doc.text '@rznvictory', size: 8
+            @doc.move_down 2
+            @doc.fill_color Theme::MUTED
+            @doc.text 'новости каждые 15 мин', size: 6.5
+          end
+        end
+      rescue StandardError => e
+        Rails.logger.warn("[AuditPdf::CoverPage] QR embed failed: #{e.class} #{e.message}")
+      ensure
+        @doc.fill_color Theme::INK
+      end
     end
   end
 end

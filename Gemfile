@@ -83,6 +83,11 @@ gem 'meta-tags', '~> 2.21'
 # Performance
 gem 'bootsnap', require: false
 
+# QR codes for PDF reports (Telegram channel + site URL on report covers).
+# Pure Ruby; renders to PNG via mini_magick or to SVG natively (we use SVG
+# for Prawn embedding — small + crisp at any DPI).
+gem 'rqrcode', '~> 2.2'
+
 # HTTP client for audit-engine sidecar (Investment Audit) and Brave Search
 # (Express hybrid comparable fallback). Faraday-retry handles transient
 # 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a

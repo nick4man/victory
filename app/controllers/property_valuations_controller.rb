@@ -51,6 +51,11 @@ class PropertyValuationsController < ApplicationController
 
         PropertyValuationMailer.valuation_completed(@valuation).deliver_later if @valuation.email.present?
         create_crm_lead(@valuation) if @valuation.email.present?
+        # Staff Telegram dispatch (Phase 7) — async-safe in the sense that
+        # the notifier itself swallows any errors. Runs synchronously here
+        # because the controller already commits the valuation; user is
+        # about to be redirected. ≤2s typical (engine-free).
+        ExpressReportNotifier.notify(@valuation)
 
         track_event('valuation_completed', {
           property_type:   @valuation.property_type,
@@ -92,24 +97,24 @@ class PropertyValuationsController < ApplicationController
     redirect_to new_property_valuation_path, alert: 'Оценка не найдена'
   end
   
-  # GET /sell/valuation/:token/download
+  # GET /sell/valuation/:token/download — Express valuation PDF report.
+  # Uses PdfGeneratorService (Prawn + DejaVuSans for Cyrillic). The report
+  # includes a QR code for the Telegram channel + site URL on the footer.
   def download_pdf
     @valuation = PropertyValuation.find_by!(token: params[:token])
-    @evaluation_result = JSON.parse(@valuation.evaluation_data, symbolize_names: true)
-    
-    respond_to do |format|
-      format.pdf do
-        pdf = PropertyValuationPdf.new(@valuation, @evaluation_result)
-        send_data pdf.render,
-                  filename: "valuation_#{@valuation.token}.pdf",
-                  type: 'application/pdf',
-                  disposition: 'attachment'
-      end
-    end
-    
-    track_event('valuation_pdf_downloaded', { valuation_id: @valuation.id })
+    pdf_bytes = PdfGeneratorService.new(@valuation).call
+    send_data pdf_bytes,
+              filename: "valuation-#{@valuation.report_label.tr('№', '')}.pdf",
+              type: 'application/pdf',
+              disposition: 'attachment'
+
+    track_event('valuation_pdf_downloaded', { valuation_id: @valuation.id }) rescue nil
   rescue ActiveRecord::RecordNotFound
     redirect_to new_property_valuation_path, alert: 'Оценка не найдена'
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuations#download_pdf] #{e.class}: #{e.message}")
+    redirect_to result_property_valuations_path(token: params[:token]),
+                alert: 'PDF временно недоступен. Попробуйте обновить страницу.'
   end
   
   # POST /sell/valuation/:token/request_call
