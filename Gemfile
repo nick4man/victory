@@ -58,6 +58,10 @@ gem 'pg_search', '~> 2.3'
 # URL slugs
 gem 'friendly_id', '~> 5.5'
 
+# Active Storage image variants (webp/jpeg, resize) — required by libvips. Uses
+# the ruby-vips FFI bindings to libvips42 installed in the container.
+gem 'image_processing', '~> 1.13'
+
 # Geocoding
 gem 'geocoder', '~> 1.8'
 

@@ -190,8 +190,11 @@
         <% featured.each do |p| %>
           <%= link_to p, class: "group relative bg-card border border-border overflow-hidden block" do %>
             <div class="relative aspect-[4/3] overflow-hidden">
-              <% img = p.images.attached? ? url_for(p.images.first) : "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80" rescue "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80" %>
-              <img src="<%= img %>" alt="<%= p.title %>" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700">
+              <%= property_picture(p.images.attached? ? p.images.first : nil,
+                    alt: property_image_alt(p),
+                    sizes: '(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw',
+                    html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700',
+                    fallback: :card) %>
               <div class="absolute inset-0 bg-background/20 group-hover:bg-transparent transition-colors duration-500"></div>
               <div class="absolute bottom-4 right-4 w-12 h-12 flex items-center justify-center bg-foreground text-background opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
                 <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10M7 17 17 7"/></svg>

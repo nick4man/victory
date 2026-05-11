@@ -47,7 +47,57 @@ class Property < ApplicationRecord
   # EXTENSIONS
   # ============================================
   extend FriendlyId
-  friendly_id :title, use: [:slugged, :finders]
+  # `:history` keeps old slugs resolvable after the canonical one changes —
+  # critical because Yandex/Google index slugs and 404s hurt rankings.
+  # `:slug_candidates` lets us fall back to district/id when the title alone
+  # collides (common: many "1-комн. квартира, 30 м², Рязань, Канищево").
+  friendly_id :slug_candidates, use: %i[slugged history finders]
+
+  # GOST 7.79-2000 system B-inspired Cyrillic→Latin map.
+  # Chosen because parameterize without locale: strips non-ASCII outright,
+  # so titles like "Коммерция, 129.3 м², Москва" produced empty slugs and
+  # friendly_id silently fell back to numeric ids.
+  CYRILLIC_TO_LATIN = {
+    'А' => 'A', 'Б' => 'B', 'В' => 'V', 'Г' => 'G', 'Д' => 'D', 'Е' => 'E', 'Ё' => 'Yo',
+    'Ж' => 'Zh', 'З' => 'Z', 'И' => 'I', 'Й' => 'Y', 'К' => 'K', 'Л' => 'L', 'М' => 'M',
+    'Н' => 'N', 'О' => 'O', 'П' => 'P', 'Р' => 'R', 'С' => 'S', 'Т' => 'T', 'У' => 'U',
+    'Ф' => 'F', 'Х' => 'Kh', 'Ц' => 'Ts', 'Ч' => 'Ch', 'Ш' => 'Sh', 'Щ' => 'Sch',
+    'Ъ' => '', 'Ы' => 'Y', 'Ь' => '', 'Э' => 'E', 'Ю' => 'Yu', 'Я' => 'Ya',
+    'а' => 'a', 'б' => 'b', 'в' => 'v', 'г' => 'g', 'д' => 'd', 'е' => 'e', 'ё' => 'yo',
+    'ж' => 'zh', 'з' => 'z', 'и' => 'i', 'й' => 'y', 'к' => 'k', 'л' => 'l', 'м' => 'm',
+    'н' => 'n', 'о' => 'o', 'п' => 'p', 'р' => 'r', 'с' => 's', 'т' => 't', 'у' => 'u',
+    'ф' => 'f', 'х' => 'kh', 'ц' => 'ts', 'ч' => 'ch', 'ш' => 'sh', 'щ' => 'sch',
+    'ъ' => '', 'ы' => 'y', 'ь' => '', 'э' => 'e', 'ю' => 'yu', 'я' => 'ya'
+  }.freeze
+
+  # Pre-pass replacements for tokens that lose meaning when parameterize strips
+  # punctuation (`м²` → `m2` not bare `m`, `№` → `no`).
+  SLUG_PREPROCESS = {
+    'м²' => 'm2', 'М²' => 'm2',
+    'м2' => 'm2', 'М2' => 'm2',
+    '№'  => 'no'
+  }.freeze
+
+  def self.transliterate_to_latin(str)
+    pre = str.to_s.dup
+    SLUG_PREPROCESS.each { |k, v| pre.gsub!(k, v) }
+    pre.each_char.map { |c| CYRILLIC_TO_LATIN.fetch(c, c) }.join
+  end
+
+  # friendly_id hook: each candidate is tried in order, first unique wins.
+  def slug_candidates
+    [
+      :title,
+      %i[title district],
+      %i[title district id]
+    ]
+  end
+
+  # friendly_id hook: transliterate before the default parameterize so cyrillic
+  # survives as latin instead of being stripped to a dash run.
+  def normalize_friendly_id(value)
+    self.class.transliterate_to_latin(value).parameterize
+  end
 
   # ============================================
   # ASSOCIATIONS
@@ -68,7 +118,17 @@ class Property < ApplicationRecord
   has_many :documents, dependent: :destroy
   has_many :notes, as: :notable, dependent: :destroy
   has_one :property_embedding, dependent: :destroy
-  has_many_attached :images
+  # Three responsive sizes × two formats: webp (modern browsers) + jpeg (fallback).
+  # resize_to_limit preserves aspect ratio; strip removes EXIF (smaller files,
+  # also strips GPS/camera data which we shouldn't leak from agent uploads).
+  has_many_attached :images do |attachable|
+    attachable.variant :thumb,      resize_to_limit: [400, 300],   saver: { quality: 78, strip: true }
+    attachable.variant :thumb_webp, resize_to_limit: [400, 300],   format: :webp, saver: { quality: 75, strip: true }
+    attachable.variant :card,       resize_to_limit: [800, 600],   saver: { quality: 82, strip: true }
+    attachable.variant :card_webp,  resize_to_limit: [800, 600],   format: :webp, saver: { quality: 80, strip: true }
+    attachable.variant :hero,       resize_to_limit: [1920, 1440], saver: { quality: 85, strip: true }
+    attachable.variant :hero_webp,  resize_to_limit: [1920, 1440], format: :webp, saver: { quality: 82, strip: true }
+  end
   has_many_attached :floor_plans
 
   # External CRM identifier (Topnlab); aliased so notes/_crm_notes/notes_sync use crm_id uniformly.

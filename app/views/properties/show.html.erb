@@ -131,22 +131,29 @@
 <section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
   <% if hero_slides.any? %>
     <% hero_slides.each_with_index do |img, i| %>
-      <% url = (url_for(img) rescue fallback_url) %>
       <button type="button"
               class="hero-slide absolute inset-0 cursor-zoom-in bg-transparent border-0 p-0"
               data-index="<%= i %>"
               aria-label="Открыть фото <%= i + 1 %> в полноэкранном режиме"
               style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;">
         <div class="absolute inset-0 bg-background/60 z-10"></div>
-        <img src="<%= url %>" alt="<%= property_image_alt(@property, i) %>"
-             class="w-full h-full object-cover grayscale"
-             loading="<%= i == 0 ? 'eager' : 'lazy' %>">
+        <%= property_picture img,
+              alt: property_image_alt(@property, i),
+              sizes: '100vw',
+              priority: i.zero?,
+              html_class: 'w-full h-full object-cover grayscale',
+              fallback: :hero %>
       </button>
     <% end %>
   <% else %>
     <div class="absolute inset-0">
       <div class="absolute inset-0 bg-background/60 z-10"></div>
-      <img src="<%= fallback_url %>" alt="<%= property_image_alt(@property) %>" class="w-full h-full object-cover grayscale">
+      <%= property_picture nil,
+            alt: property_image_alt(@property),
+            sizes: '100vw',
+            priority: true,
+            html_class: 'w-full h-full object-cover grayscale',
+            fallback: :hero %>
     </div>
   <% end %>
 
@@ -324,15 +331,17 @@
         <p class="text-sm tracking-[0.4em] text-muted-foreground mt-12 mb-4">ГАЛЕРЕЯ</p>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-3" data-photoswipe-gallery>
           <% all_images.each_with_index do |img, idx| %>
-            <% url = (url_for(img) rescue nil); next unless url %>
+            <% lightbox_url = (url_for(img.variant(:hero)) rescue nil); next unless lightbox_url %>
             <% w, h = pswp_size.call(img) %>
-            <a href="<%= url %>"
+            <a href="<%= lightbox_url %>"
                data-pswp-width="<%= w %>"
                data-pswp-height="<%= h %>"
                class="aspect-[4/3] overflow-hidden block group cursor-zoom-in relative">
-              <img src="<%= url %>"
-                   loading="lazy"
-                   class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-500">
+              <%= property_picture img,
+                    alt: property_image_alt(@property, idx + 1),
+                    sizes: '(min-width: 768px) 33vw, 50vw',
+                    html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-500',
+                    fallback: :card %>
               <span class="absolute bottom-2 right-2 text-[10px] tracking-widest text-background bg-foreground/80 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <%= idx + 1 %> / <%= all_images.size %>
               </span>

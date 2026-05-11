@@ -11,6 +11,7 @@ RUN apt-get update -qq && \
         build-essential \
         libpq-dev \
         libyaml-dev \
+        libvips42 \
         postgresql-client \
         git \
         curl \

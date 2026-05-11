@@ -13,7 +13,10 @@
                 end
 
   description = ChatTools::Format.sanitize_text(@property.description.to_s).to_s.truncate(300)
-  images = (@property.images.attached? ? @property.images.map { |i| url_for(i) } : []) rescue []
+  # Google rich-result eligibility wants images ≥1200px on the long side — point
+  # JSON-LD at the :hero variant rather than the raw blob (which may be smaller
+  # or arbitrarily large). property_image_url handles the missing/broken case.
+  images = (@property.images.attached? ? @property.images.map { |i| property_image_url(i, variant: :hero) } : []) rescue []
 
   payload = {
     "@context" => "https://schema.org",

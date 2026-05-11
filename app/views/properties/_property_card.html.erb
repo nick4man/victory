@@ -1,15 +1,15 @@
 <%
   property = local_assigns[:property]
-  img_src = if property.respond_to?(:images) && property.images.attached?
-              url_for(property.images.first) rescue "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80"
-            else
-              "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80"
-            end
+  hero_img = property.respond_to?(:images) && property.images.attached? ? property.images.first : nil
 %>
 <div class="group relative bg-card border border-border overflow-hidden">
   <%= link_to property, class: "block" do %>
     <div class="relative aspect-[4/3] overflow-hidden">
-      <img src="<%= img_src %>" alt="<%= property_image_alt(property) %>" class="w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700">
+      <%= property_picture hero_img,
+            alt: property_image_alt(property),
+            sizes: '(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw',
+            html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700',
+            fallback: :card %>
       <div class="absolute inset-0 bg-background/20 group-hover:bg-transparent transition-colors duration-500"></div>
 
       <div class="absolute top-4 left-4 flex gap-2">
