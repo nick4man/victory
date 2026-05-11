@@ -449,6 +449,10 @@ Rails.application.routes.draw do
   get 'sitemap.xml', to: 'sitemap#index', defaults: { format: 'xml' }
   get 'robots.txt', to: 'robots#index', defaults: { format: 'txt' }
 
+  # Aggregator feeds (Yandex.Недвижимость / ЦИАН / МирКвартир / Restate /
+  # Domofond). YRL is Yandex's spec but works as a superset for most.
+  get 'feeds/yrl.xml', to: 'feeds#yrl', defaults: { format: 'xml' }, as: :yrl_feed
+
   # ============================================
   # PWA
   # ============================================
