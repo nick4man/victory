@@ -1,0 +1,48 @@
+<%#
+  ItemList of Person entries for the team page. One <script> for the whole
+  page (rather than per-card) keeps payload light and lets crawlers see the
+  agency's roster as a connected entity graph via `worksFor → @id`.
+
+  E-E-A-T signal: Google's real-estate quality rater guidelines reward
+  pages that surface specific named experts with verifiable contact info.
+%>
+<%
+  members = if local_assigns[:agents].present?
+              local_assigns[:agents]
+            elsif defined?(roots) && roots.respond_to?(:any?) && roots.any?
+              User.crm_active.where(department_id: Department.active.select(:id))
+            else
+              User.role_agent.where(active: true)
+            end.to_a
+
+  return if members.empty?
+
+  list_items = members.each_with_index.map do |u, i|
+    person = {
+      '@type' => 'Person',
+      'name' => u.display_name,
+      'jobTitle' => (u.try(:crm_role_name).presence || (u.role_agent? ? 'Агент по недвижимости' : u.role.to_s.capitalize)),
+      'telephone' => u.phone.presence,
+      'email' => u.email.presence,
+      'worksFor' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent" }
+    }.compact
+
+    if u.avatar.attached?
+      person['image'] = url_for(u.avatar.variant(resize_to_fill: [400, 400]))
+    end
+
+    {
+      '@type' => 'ListItem',
+      'position' => i + 1,
+      'item' => person
+    }
+  end
+%>
+<script type="application/ld+json">
+<%= raw({
+  '@context' => 'https://schema.org',
+  '@type' => 'ItemList',
+  'name' => 'Команда АН Виктори',
+  'itemListElement' => list_items
+}.to_json) %>
+</script>
