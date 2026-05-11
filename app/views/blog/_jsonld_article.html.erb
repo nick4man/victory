@@ -1,0 +1,44 @@
+<%# Per-article JSON-LD. @type chosen by Article#schema_type:
+    - NewsArticle for market reports (Yandex/Google news-eligible)
+    - BlogPosting for evergreen guides
+    Both inherit from Article, so the field set is identical. %>
+<%
+  page_url = blog_post_url(slug: @article.slug, host: request.host_with_port)
+  author_name = (@article.author&.try(:display_name) || @article.author&.try(:full_name) || AgencyInfo::NAME)
+  hero_image = ENV['OG_DEFAULT_IMAGE_URL'].presence || "#{request.protocol}#{request.host_with_port}/og-default.jpg"
+
+  payload = {
+    '@context' => 'https://schema.org',
+    '@type' => @article.schema_type,
+    'headline' => @article.title,
+    'description' => @article.short_excerpt(length: 220),
+    'url' => page_url,
+    'datePublished' => @article.published_at&.iso8601,
+    'dateModified' => @article.updated_at&.iso8601,
+    'inLanguage' => 'ru-RU',
+    'image' => [hero_image],
+    'author' => {
+      '@type' => 'Person',
+      'name' => author_name
+    }.compact,
+    'publisher' => {
+      '@type' => 'Organization',
+      'name' => AgencyInfo::NAME,
+      '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent"
+    },
+    'mainEntityOfPage' => { '@type' => 'WebPage', '@id' => page_url },
+    'articleSection' => @article.category.humanize,
+    'wordCount' => @article.body.to_s.split(/\s+/).size
+  }.compact
+%>
+<script type="application/ld+json">
+<%= raw payload.to_json %>
+</script>
+
+<script type="application/ld+json">
+<%= breadcrumb_jsonld([
+  ['Главная', root_url],
+  ['Блог', blog_url],
+  [@article.title, page_url]
+]) %>
+</script>

@@ -62,6 +62,9 @@ gem 'friendly_id', '~> 5.5'
 # the ruby-vips FFI bindings to libvips42 installed in the container.
 gem 'image_processing', '~> 1.13'
 
+# Markdown rendering for Article body (blog + market reports).
+gem 'redcarpet', '~> 3.6'
+
 # Geocoding
 gem 'geocoder', '~> 1.8'
 

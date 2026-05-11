@@ -243,6 +243,7 @@ GEM
       activerecord (>= 7.1)
       activesupport (>= 7.1)
       i18n
+    redcarpet (3.6.1)
     redis (5.4.1)
       redis-client (>= 0.22.0)
     redis-client (0.29.0)
@@ -324,6 +325,7 @@ DEPENDENCIES
   rack-cors (~> 2.0)
   rails (~> 7.1.0)
   ransack (~> 4.1)
+  redcarpet (~> 3.6)
   redis (~> 5.0)
   sidekiq (~> 7.2)
   sidekiq-cron (~> 1.12)

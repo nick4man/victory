@@ -14,7 +14,8 @@
     [contacts_url,                   'monthly', 0.5],
     [faq_url,                        'monthly', 0.5],
     [privacy_url,                    'yearly',  0.2],
-    [terms_url,                      'yearly',  0.2]
+    [terms_url,                      'yearly',  0.2],
+    [blog_url,                       'daily',   0.7]
   ].each do |loc, freq, prio| %>
     <url>
       <loc><%= loc %></loc>
@@ -50,6 +51,15 @@
           </image:image>
         <% end %>
       <% end %>
+    </url>
+  <% end %>
+  <%# Blog articles — substantive editorial content, safe to include. %>
+  <% (@articles || []).each do |article| %>
+    <url>
+      <loc><%= blog_post_url(slug: article.slug) %></loc>
+      <lastmod><%= article.updated_at.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
     </url>
   <% end %>
 </urlset>

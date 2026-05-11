@@ -1,0 +1,74 @@
+<% content_for :title, "#{@article.title} — АН Виктори" %>
+<% content_for :seo_description, @article.short_excerpt(length: 220) %>
+<% content_for :og_type, 'article' %>
+<% content_for :head do %>
+  <%= render 'jsonld_article' %>
+<% end %>
+
+<article class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-3xl mx-auto">
+    <%= link_to '← В блог', blog_path,
+          class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-8' %>
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4 uppercase">
+      <%= @article.category.humanize %>
+      <% if @article.published_at %>
+        · <%= I18n.l(@article.published_at.to_date, format: '%d %B %Y') rescue @article.published_at.strftime('%d.%m.%Y') %>
+      <% end %>
+      · <%= @article.reading_minutes %> мин
+    </p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-8 leading-tight"><%= @article.title %></h1>
+    <% if @article.excerpt.present? %>
+      <p class="text-xl text-muted-foreground leading-relaxed mb-12 border-l-2 border-border pl-6 italic">
+        <%= @article.excerpt %>
+      </p>
+    <% end %>
+
+    <%# Markdown rendered into body_html on save. Sanitize on render to stay
+        safe even if an admin pastes hostile markup. %>
+    <div class="article-body prose prose-lg max-w-none text-foreground">
+      <%= sanitize @article.body_html.to_s, tags: %w[p h2 h3 h4 strong em ul ol li a blockquote code pre table thead tbody tr th td br hr img], attributes: %w[href title alt src class] %>
+    </div>
+
+    <% if @article.author %>
+      <div class="mt-16 pt-8 border-t border-border flex items-center gap-4">
+        <% if @article.author.respond_to?(:avatar) && @article.author.avatar.attached? %>
+          <%= image_tag @article.author.avatar.variant(resize_to_fill: [80, 80]), class: 'w-16 h-16 object-cover' %>
+        <% else %>
+          <div class="w-16 h-16 flex items-center justify-center border border-border text-foreground text-lg tracking-widest">
+            <%= (@article.author.try(:avatar_initials) || @article.author.try(:full_name).to_s[0, 2].upcase) %>
+          </div>
+        <% end %>
+        <div>
+          <p class="text-sm text-muted-foreground mb-1">АВТОР</p>
+          <p class="text-base tracking-wider text-foreground"><%= @article.author.try(:display_name) || @article.author.try(:full_name) %></p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</article>
+
+<style>
+  .article-body p { margin: 1em 0; line-height: 1.7; }
+  .article-body h2 { font-size: 1.5rem; font-weight: 300; letter-spacing: 0.05em; margin-top: 2em; margin-bottom: 0.75em; }
+  .article-body h3 { font-size: 1.2rem; font-weight: 400; margin-top: 1.5em; margin-bottom: 0.5em; }
+  .article-body ul, .article-body ol { margin: 1em 0; padding-left: 1.5em; }
+  .article-body li { margin: 0.4em 0; }
+  .article-body a { text-decoration: underline; }
+  .article-body blockquote { border-left: 2px solid currentColor; padding-left: 1em; margin: 1.5em 0; opacity: 0.85; }
+  .article-body table { width: 100%; border-collapse: collapse; margin: 1.5em 0; }
+  .article-body th, .article-body td { border-bottom: 1px solid currentColor; padding: 0.5em 0.75em; text-align: left; }
+  .article-body code { font-family: 'PT Mono', monospace; font-size: 0.9em; padding: 0.1em 0.3em; background: rgba(0,0,0,0.05); }
+</style>
+
+<% if @related.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-6xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-8">ЧИТАЙТЕ ТАКЖЕ</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <% @related.each do |article| %>
+          <%= render 'article_card', article: article %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
