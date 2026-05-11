@@ -54,6 +54,18 @@
     </div>
   <% end %>
 
+  <%# Internal-linking strip: district as a hyperlink to the filtered catalog.
+      Sits OUTSIDE the surrounding link_to (nested <a> is invalid HTML) and
+      gives Yandex/Google a per-card geo-cluster signal. %>
+  <% if property.respond_to?(:district) && property.district.present? %>
+    <div class="px-6 pb-3 -mt-2 flex items-center gap-2 text-xs tracking-widest text-muted-foreground">
+      <span class="opacity-70">РАЙОН</span>
+      <%= link_to property.district.upcase,
+                  properties_path(q: { district_eq: property.district }),
+                  class: 'underline hover:text-foreground transition-colors' %>
+    </div>
+  <% end %>
+
   <% if (a = property.user)&.phone.present? %>
     <div class="px-6 pb-5 -mt-1 flex items-center justify-between text-xs text-muted-foreground tracking-wider">
       <span class="opacity-70 truncate mr-3"><%= a.full_name %></span>

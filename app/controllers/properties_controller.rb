@@ -78,6 +78,20 @@ class PropertiesController < ApplicationController
     
     # Load related data
     @similar_properties = Property.similar_to(@property, 4)
+
+    # "More in this district" — separate internal-linking block. similar_to
+    # filters by price+area+deal_type which often crosses districts; this
+    # block keeps users (and crawlers) inside the same geo cluster, giving
+    # Yandex a stronger neighborhood-relevance signal.
+    @district_properties = if @property.district.present?
+                             Property.in_advertising
+                                     .in_district(@property.district)
+                                     .where.not(id: @property.id)
+                                     .order(Arel.sql('RANDOM()'))
+                                     .limit(4)
+                           else
+                             Property.none
+                           end
     # @property_images = @property.property_images.order(:position)
     # PropertyImage model is not implemented yet — Active Storage `images` are
     # used directly in the view (see properties/show.html.erb).
