@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 class PwaController < ApplicationController
+  # service-worker.js is requested via a <script>-like fetch by the browser's
+  # SW registration. Rails' default verify_same_origin_request filter rejects
+  # cross-origin JS to mitigate JSON hijacking — but for SW it kills the file
+  # with a 422. Same-origin-by-spec, so opting out is safe here.
+  skip_forgery_protection only: :service_worker
+
   def manifest
     render json: {
       name: 'АН Виктори',
