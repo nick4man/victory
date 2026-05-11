@@ -53,6 +53,13 @@ class User < ApplicationRecord
          :trackable, :confirmable, :lockable
 
   # ============================================
+  # AGENT PROFILE (concern — see app/models/concerns/agent_profile.rb)
+  # ============================================
+  # Adds agent_slug auto-generation, to_param override, and aggregate
+  # helpers for the /agents/:slug profile pages. No-op for non-agent users.
+  include AgentProfile
+
+  # ============================================
   # ASSOCIATIONS
   # ============================================
   

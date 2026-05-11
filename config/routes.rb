@@ -341,6 +341,9 @@ Rails.application.routes.draw do
   get 'about', to: 'pages#about', as: :about
   get 'about/team', to: 'pages#team', as: :team
   get 'about/history', to: 'pages#history', as: :history
+
+  # Public agent profile pages (B3 — Person Schema + E-E-A-T)
+  get 'agents/:slug', to: 'agents#show', as: :agent, constraints: { slug: %r{[a-z0-9-]+} }
   
   # Contacts
   get 'contacts', to: 'pages#contacts', as: :contacts

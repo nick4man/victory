@@ -62,4 +62,13 @@
       <priority>0.6</priority>
     </url>
   <% end %>
+  <%# Agent profile pages — Person Schema + E-E-A-T entry points. %>
+  <% (@agents || []).each do |agent| %>
+    <url>
+      <loc><%= agent_url(agent.agent_slug) %></loc>
+      <lastmod><%= agent.updated_at.iso8601 %></lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.5</priority>
+    </url>
+  <% end %>
 </urlset>

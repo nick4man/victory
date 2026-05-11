@@ -10,7 +10,14 @@
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2 mb-1 flex-wrap">
-        <p class="font-medium text-foreground truncate"><%= user.display_name %></p>
+        <%# Public agent profile page (Schema.org Person + reviews). Falls
+            back to plain text when the user isn't an agent with a slug. %>
+        <% if user.respond_to?(:has_agent_profile?) && user.has_agent_profile? %>
+          <%= link_to user.display_name, agent_path(user.agent_slug),
+                class: 'font-medium text-foreground truncate underline-offset-4 hover:underline' %>
+        <% else %>
+          <p class="font-medium text-foreground truncate"><%= user.display_name %></p>
+        <% end %>
         <% if user.is_chief %>
           <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-foreground text-foreground">Руководитель</span>
         <% end %>
