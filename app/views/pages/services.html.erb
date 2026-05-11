@@ -13,6 +13,45 @@
 
 <% content_for :title, "Услуги — АН Виктори" %>
 
+<%# Service ItemList — declares each line of business as a Schema.org
+    Service entity linked to the agency via provider.@id. Drives the
+    services-grid rich snippet that Google shows for business queries
+    like "услуги риэлтора Рязань", and Yandex uses for its sidebar card. %>
+<% content_for :head do %>
+  <% services_catalog = [
+    { name: 'Ипотека и кредитование',         service_type: 'FinancialService',  description: 'Подбор ипотечной программы, сбор документов, помощь с одобрением банка.' },
+    { name: 'Юридическое сопровождение',       service_type: 'LegalService',      description: 'Проверка чистоты сделки, подготовка договора, регистрация перехода права.' },
+    { name: 'Профессиональная оценка',          service_type: 'AssessmentService', description: 'Онлайн-оценка квартиры или дома по рыночным аналогам.' },
+    { name: 'Технический осмотр объекта',       service_type: 'InspectionService', description: 'Выезд эксперта на объект для оценки технического состояния.' },
+    { name: 'Помощь в продаже',                 service_type: 'BrokerageService',  description: 'Подготовка объекта к продаже, маркетинг, показы, переговоры.' },
+    { name: 'Подбор арендатора',                service_type: 'BrokerageService',  description: 'Поиск и проверка арендаторов, заключение договора аренды.' }
+  ] %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'ItemList',
+    'name' => 'Услуги АН Виктори',
+    'itemListElement' => services_catalog.each_with_index.map { |svc, i|
+      {
+        '@type' => 'ListItem',
+        'position' => i + 1,
+        'item' => {
+          '@type' => 'Service',
+          'name' => svc[:name],
+          'description' => svc[:description],
+          'serviceType' => svc[:service_type],
+          'provider' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent" },
+          'areaServed' => [
+            { '@type' => 'City', 'name' => AgencyInfo::ADDRESS_CITY },
+            { '@type' => 'AdministrativeArea', 'name' => AgencyInfo::ADDRESS_REGION }
+          ]
+        }
+      }
+    }
+  }.to_json) %>
+  </script>
+<% end %>
+
 <section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
   <div class="max-w-6xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">УСЛУГИ</p>

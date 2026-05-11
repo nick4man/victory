@@ -215,16 +215,30 @@ class PropertiesController < ApplicationController
   
   # GET /properties/search
   def search
-    query = params[:q]
-    
+    # The search action and the catalog (index) share the index template
+    # but use params[:q] differently: search treats it as a free-text
+    # string, index treats it as a Ransack hash. Stash the query under a
+    # different name so the template's `params.dig(:q, :deal_type_eq)`
+    # doesn't crash on a String.
+    @search_query = params[:q].to_s
+    params[:q] = nil
+    @q = Property.in_advertising.ransack({}) # empty ransack so search_form_for renders
+
+    # Search-result URLs are an infinite-permutation space and dilute crawl
+    # budget if indexed. noindex (follow keeps internal links live) tells
+    # both Yandex and Google to crawl-but-not-index these.
+    response.headers['X-Robots-Tag'] = 'noindex, follow'
+
     @properties = Property.published
-                          .search_by_text(query)
+                          .search_by_text(@search_query)
                           .includes(:property_type)
                           .page(params[:page])
                           .per(@per_page)
-    
-    track_event('property_text_search', { query: query })
-    
+
+    @total_count = @properties.respond_to?(:total_count) ? @properties.total_count : @properties.size
+
+    track_event('property_text_search', { query: @search_query })
+
     respond_to do |format|
       format.html { render :index }
       format.json { render json: properties_json }
