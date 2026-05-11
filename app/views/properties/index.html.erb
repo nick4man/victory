@@ -1,5 +1,58 @@
 <% content_for :title, "Каталог недвижимости — АН Виктори" %>
 
+<%# SEO head: pagination hints + JSON-LD ItemList / AggregateOffer. canonical
+    intentionally stays at /properties (stripping query) so paginated/filtered
+    views consolidate ranking signal to the main catalog page — rel=next/prev
+    below tells crawlers these are sequential continuations, not duplicates. %>
+<% content_for :head do %>
+  <% if @properties.respond_to?(:current_page) %>
+    <% if (prev_p = @properties.prev_page) %>
+      <link rel="prev" href="<%= url_for(only_path: false, page: (prev_p == 1 ? nil : prev_p)) %>">
+    <% end %>
+    <% if (next_p = @properties.next_page) %>
+      <link rel="next" href="<%= url_for(only_path: false, page: next_p) %>">
+    <% end %>
+  <% end %>
+
+  <% page_url = url_for(only_path: false, host: request.host_with_port) %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'CollectionPage',
+    'name' => 'Каталог недвижимости АН Виктори',
+    'url' => page_url,
+    'mainEntity' => {
+      '@type' => 'ItemList',
+      'numberOfItems' => @total_count.to_i,
+      'itemListElement' => @properties.each_with_index.map { |p, i|
+        { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
+      }
+    }
+  }.to_json) %>
+  </script>
+
+  <%# AggregateOffer over the full filtered set (not just this page) — gives
+      Yandex/Google the price range as structured data for catalog richer
+      results. .reorder('') strips the ORDER BY so the aggregate scans cleanly. %>
+  <% if @total_count.to_i.positive? %>
+    <% min_price = (@q.result.reorder('').minimum(:price) rescue nil) %>
+    <% max_price = (@q.result.reorder('').maximum(:price) rescue nil) %>
+    <% if min_price && max_price %>
+      <script type="application/ld+json">
+      <%= raw({
+        '@context' => 'https://schema.org',
+        '@type' => 'AggregateOffer',
+        'offerCount' => @total_count.to_i,
+        'lowPrice' => min_price.to_i,
+        'highPrice' => max_price.to_i,
+        'priceCurrency' => 'RUB',
+        'url' => page_url
+      }.to_json) %>
+      </script>
+    <% end %>
+  <% end %>
+<% end %>
+
 <section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
   <div class="max-w-7xl mx-auto">
     <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
