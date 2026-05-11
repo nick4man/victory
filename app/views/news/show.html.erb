@@ -93,7 +93,7 @@
 
   <%# === Telegram channel CTA — appears after body but before tags === %>
   <div class="max-w-3xl mx-auto">
-    <%= render 'news/tg_channel_cta' %>
+    <%= render 'news/tg_channel_cta', article: @article %>
   </div>
 
   <%# === Hashtags + source === %>
@@ -102,7 +102,10 @@
       <% if hashtags.present? && hashtags.any? %>
         <div class="flex flex-wrap gap-2">
           <% hashtags.each do |tag| %>
-            <span class="text-xs tracking-wider text-muted-foreground"><%= tag %></span>
+            <% clean = tag.to_s.delete_prefix('#').strip %>
+            <% next if clean.blank? %>
+            <%= link_to "##{clean}", news_path(tag: clean),
+                  class: "inline-flex items-center px-2.5 py-1 text-xs tracking-wider text-muted-foreground border border-border hover:text-foreground hover:border-foreground/60 transition-colors" %>
           <% end %>
         </div>
       <% end %>

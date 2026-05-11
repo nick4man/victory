@@ -1,29 +1,52 @@
-<%# Telegram-channel CTA — appears below the body, above hashtags/footer.
-    Visual: full-width banner, paper-like background, two-column layout. %>
-<a href="https://t.me/rznvictory" target="_blank" rel="noopener"
-   class="group relative block mt-10 bg-card border border-border p-6 lg:p-8 hover:border-foreground/40 transition-colors">
-  <div class="flex items-center gap-6 flex-wrap">
-    <div class="flex-shrink-0">
-      <svg width="40" height="40" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-        <circle cx="20" cy="20" r="20" fill="currentColor" class="text-foreground/10"/>
-        <path d="M14.04 21.51l-.41 4.34c.58 0 .83-.25 1.13-.55l2.71-2.59 5.62 4.11c1.03.57 1.76.27 2.04-.95L29.83 8.53c.33-1.53-.56-2.13-1.55-1.76L6.6 14.85c-1.49.58-1.47 1.42-.25 1.79l4.97 1.55L22.65 11.6c.54-.36 1.03-.16.63.2"
-              fill="currentColor" class="text-foreground"/>
-      </svg>
+<%# Telegram channel CTA — replaces the Phase 7 plain-icon banner with a
+    proper subscribe card (QR + handle + button). Per-article overrides
+    via Article#telegram_channel_url / Article#telegram_channel_handle;
+    falls back to the agency defaults when partial is called without
+    an article (e.g. older callers). %>
+<%
+  article = local_assigns[:article]
+  tg_url    = (article&.telegram_channel_url    if article.respond_to?(:telegram_channel_url)).presence    || 'https://t.me/rznvictory'
+  tg_handle = (article&.telegram_channel_handle if article.respond_to?(:telegram_channel_handle)).presence || '@rznvictory'
+  qr_asset  = 'tg-rznvictory-qr.svg'
+%>
+<aside class="mt-10 bg-card border border-border p-6 lg:p-8" data-tg-cta>
+  <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-5">
+    НОВОСТИ КАЖДЫЕ 15 МИНУТ
+  </p>
+  <div class="flex items-center gap-5 lg:gap-8 flex-wrap">
+    <%# White-bg frame so dark QR modules stay scannable on dark site theme %>
+    <div class="flex-shrink-0 bg-white p-2 border border-border">
+      <%# Static file served from public/ — generated once by `rake qr:tg`. %>
+      <% if File.exist?(Rails.public_path.join('tg-rznvictory-qr.svg')) %>
+        <img src="/tg-rznvictory-qr.svg"
+             alt="QR — Telegram-канал АН «Виктори» <%= tg_handle %>"
+             class="block w-28 h-28 lg:w-32 lg:h-32" />
+      <% else %>
+        <%# Asset missing — fallback so deploy without `rake qr:tg` doesn't 500. %>
+        <div class="w-28 h-28 lg:w-32 lg:h-32 flex items-center justify-center text-foreground/40">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M9.04 16.51l-.41 4.34c.58 0 .83-.25 1.13-.55l2.71-2.59 5.62 4.11c1.03.57 1.76.27 2.04-.95l3.7-17.34c.33-1.53-.56-2.13-1.55-1.76L1.6 9.85c-1.49.58-1.47 1.42-.25 1.79l4.97 1.55L17.65 6.6c.54-.36 1.03-.16.63.2"/>
+          </svg>
+        </div>
+      <% end %>
     </div>
+
     <div class="flex-1 min-w-0">
-      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">НОВОСТИ КАЖДЫЕ 15 МИНУТ</p>
-      <p class="text-lg lg:text-xl text-foreground">
-        Подписывайтесь на <span class="font-medium">@rznvictory</span>
+      <p class="text-lg lg:text-xl text-foreground mb-1.5">
+        Больше новостей в нашем <span class="font-medium"><%= tg_handle %></span>
       </p>
-      <p class="text-sm text-muted-foreground mt-1">
-        Свежие события рынка недвижимости Рязани, аналитика и комментарии в нашем Telegram-канале.
+      <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+        Свежие события рынка недвижимости Рязани, аналитика и комментарии
+        в Telegram-канале. Наведите камеру на QR или нажмите кнопку.
       </p>
+      <%= link_to tg_url,
+            target: '_blank', rel: 'noopener',
+            class: "inline-flex items-center gap-2 px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors" do %>
+        ПОДПИСАТЬСЯ
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M2 8h12M9 3l5 5-5 5"/>
+        </svg>
+      <% end %>
     </div>
-    <span class="inline-flex items-center gap-2 text-xs tracking-[0.25em] text-foreground group-hover:translate-x-1 transition-transform">
-      ОТКРЫТЬ
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M2 8h12M9 3l5 5-5 5"/>
-      </svg>
-    </span>
   </div>
-</a>
+</aside>

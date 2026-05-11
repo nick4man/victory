@@ -54,6 +54,9 @@ module Webhooks
       params.permit(
         :external_id, :external_source, :title, :body_md, :excerpt, :category,
         :schema_type, :published_at, :source_url, :image_url, :region,
+        # Cross-link TG ↔ site (chat-host adds these; both optional —
+        # missing values fall back to AgencyInfo defaults in Article).
+        :telegram_channel_url, :telegram_channel_handle,
         hashtags: []
       )
     end
@@ -78,10 +81,12 @@ module Webhooks
         region:          p[:region].presence,
         published_at:    published_at,
         metadata: {
-          hashtags:    Array(p[:hashtags]).compact,
-          source_url:  p[:source_url].presence,
-          image_url:   p[:image_url].presence,
-          ingested_at: Time.current.iso8601
+          hashtags:                Array(p[:hashtags]).compact,
+          source_url:              p[:source_url].presence,
+          image_url:               p[:image_url].presence,
+          telegram_channel_url:    p[:telegram_channel_url].presence,
+          telegram_channel_handle: p[:telegram_channel_handle].presence,
+          ingested_at:             Time.current.iso8601
         }.compact_blank
       }
     end

@@ -16,6 +16,19 @@ class QrRenderer
     new(data, size: size).png
   end
 
+  # Scalable SVG variant — used by static channel-QR asset (one-shot via
+  # `rake qr:tg`), not at request-time. Inline-friendly; no chunky_png
+  # native deps. Default module_size + color tuned for embedding inside
+  # a white card on the dark site theme.
+  def self.svg(data, module_size: 6, color: '000000')
+    RQRCode::QRCode.new(data.to_s, level: ERROR_LEVEL)
+                   .as_svg(viewbox: true, module_size: module_size, color: color,
+                           shape_rendering: 'crispEdges')
+  rescue StandardError => e
+    Rails.logger.warn("[QrRenderer.svg] failed to render '#{data.to_s[0, 40]}': #{e.class} #{e.message}")
+    nil
+  end
+
   def initialize(data, size: DEFAULT_SIZE_PX)
     @data = data.to_s
     @size = size.to_i

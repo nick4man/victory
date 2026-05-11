@@ -37,6 +37,17 @@
     <% end %>
   </div>
 
+  <%# Active tag filter banner — only when ?tag=… is present %>
+  <% if @tag.present? %>
+    <div class="max-w-7xl mx-auto mb-8 flex items-center gap-3 flex-wrap text-sm">
+      <span class="text-[10px] tracking-[0.3em] text-muted-foreground">ФИЛЬТР ПО ТЕГУ</span>
+      <span class="inline-flex items-center px-2.5 py-1 text-xs tracking-wider text-foreground border border-foreground">#<%= @tag %></span>
+      <%= link_to news_path, class: "text-xs tracking-wider text-muted-foreground hover:text-foreground border-b border-border/40 pb-px transition-colors" do %>
+        сбросить ×
+      <% end %>
+    </div>
+  <% end %>
+
   <%# ============================================================
       GRID + SIDEBAR
       ============================================================ %>

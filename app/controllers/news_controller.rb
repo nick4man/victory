@@ -11,14 +11,16 @@ class NewsController < ApplicationController
   FEED_CATEGORIES = %w[news market mortgage investment].freeze
 
   def index
-    @category  = params[:category].presence
-    scope      = Article.public_facing
-    scope      = scope.where(category: @category) if @category && Article::CATEGORIES.include?(@category)
-    scope      = scope.where(category: FEED_CATEGORIES) unless @category
-    @articles  = scope.page(params[:page]).per(12)
-    @macro     = safe_macro
-    @counts    = Article.published.visible.where(category: FEED_CATEGORIES)
-                        .reorder(nil).group(:category).count
+    @category = params[:category].presence
+    @tag      = normalize_tag(params[:tag])
+    scope     = Article.public_facing
+    scope     = scope.where(category: @category) if @category && Article::CATEGORIES.include?(@category)
+    scope     = scope.where(category: FEED_CATEGORIES) unless @category
+    scope     = apply_tag_filter(scope, @tag) if @tag
+    @articles = scope.page(params[:page]).per(12)
+    @macro    = safe_macro
+    @counts   = Article.published.visible.where(category: FEED_CATEGORIES)
+                       .reorder(nil).group(:category).count
 
     set_meta_tags(
       title:       'Новости рынка недвижимости — Рязань',
@@ -50,6 +52,26 @@ class NewsController < ApplicationController
   end
 
   private
+
+  # Strip leading `#` and whitespace. Chat-host hashtags arrive with `#`,
+  # but URL tag-params usually don't — accept both, store clean form.
+  def normalize_tag(value)
+    cleaned = value.to_s.strip.delete_prefix('#').strip
+    cleaned.presence
+  end
+
+  # Postgres jsonb containment: metadata.hashtags is an array; @> checks
+  # array contains element. We OR two variants because the chat-host
+  # stores them with `#` prefix but humans link/type without it.
+  def apply_tag_filter(scope, tag)
+    with_hash    = ["##{tag}"].to_json
+    without_hash = [tag].to_json
+    scope.where(
+      "(articles.metadata->'hashtags') @> ?::jsonb OR " \
+      "(articles.metadata->'hashtags') @> ?::jsonb",
+      with_hash, without_hash
+    )
+  end
 
   # Embedding-based related when available, fallback to category match.
   # Cosine distance: 0.0 = identical, 1.0 = orthogonal. Threshold 0.7

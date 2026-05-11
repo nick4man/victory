@@ -27,6 +27,14 @@ class Article < ApplicationRecord
   # webhook-ingested content. `manual` covers admin-created entries.
   EXTERNAL_SOURCES = %w[chat_urgent chat_digest manual macro_snapshot].freeze
 
+  # Cross-link defaults for the Telegram channel. The chat-host publisher
+  # passes these per-article via webhook (Phase 8) so we can support
+  # multiple channels later, but in practice they're constant — used as
+  # graceful fallback when metadata is missing or for manually-created
+  # articles that didn't go through the webhook.
+  TELEGRAM_FALLBACK_URL    = 'https://t.me/rznvictory'
+  TELEGRAM_FALLBACK_HANDLE = '@rznvictory'
+
   validates :title, presence: true, length: { minimum: 10, maximum: 200 }
   validates :body,  presence: true
   validates :category, inclusion: { in: CATEGORIES }
@@ -58,6 +66,21 @@ class Article < ApplicationRecord
     published_at.present? && published_at <= Time.current
   end
 
+  # Telegram channel link/handle — per-article override via metadata,
+  # fallback to the agency default. Works for old articles that don't
+  # carry the new payload fields too.
+  def telegram_channel_url
+    meta_value('telegram_channel_url').presence || TELEGRAM_FALLBACK_URL
+  end
+
+  def telegram_channel_handle
+    meta_value('telegram_channel_handle').presence || TELEGRAM_FALLBACK_HANDLE
+  end
+
+  def hashtags
+    Array(meta_value('hashtags')).compact_blank
+  end
+
   # Reuses Property's transliteration map — avoids duplicating the GOST
   # 7.79-2000 table that's already proven on slugs in Cycle 1.
   def normalize_friendly_id(value)
@@ -81,6 +104,13 @@ class Article < ApplicationRecord
   end
 
   private
+
+  # metadata is a jsonb column — keys may come back as strings (chat-host
+  # webhook) or symbols (admin form via strong-params). Read both.
+  def meta_value(key)
+    return nil if metadata.blank?
+    metadata[key.to_s] || metadata[key.to_sym]
+  end
 
   # Re-embed when content-shaping fields changed, OR if we never embedded yet.
   # category/region/metadata change embedding because ArticleTextTemplate
