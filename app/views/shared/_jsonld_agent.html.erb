@@ -8,6 +8,20 @@
       so RealEstateAgent must be discoverable site-wide.
     - validator.schema.org expects matching @id for entity-graph composition.
 %>
+<%
+  # Inject aggregateRating only when there's at least one approved review.
+  # Empty AggregateRating triggers Google manual action for spam/fake markup.
+  metrics = AgencyMetricsService.call rescue {}
+  aggregate_rating =
+    if metrics[:reviews_count].to_i.positive?
+      {
+        "@type" => "AggregateRating",
+        "ratingValue" => metrics[:average_rating],
+        "reviewCount" => metrics[:reviews_count],
+        "bestRating" => 5
+      }
+    end
+%>
 <script type="application/ld+json">
 <%= raw({
   "@context" => "https://schema.org",
@@ -42,6 +56,7 @@
     { "@type" => "City", "name" => AgencyInfo::ADDRESS_CITY },
     { "@type" => "AdministrativeArea", "name" => AgencyInfo::ADDRESS_REGION }
   ],
-  "sameAs" => AgencyInfo::SAMEAS_PROFILES.presence
+  "sameAs" => AgencyInfo::SAMEAS_PROFILES.presence,
+  "aggregateRating" => aggregate_rating
 }.compact.to_json) %>
 </script>

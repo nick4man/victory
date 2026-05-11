@@ -1,0 +1,54 @@
+{# D3 — Сравнительный отчёт по 2-3 аудитам.
+
+Контракт:
+  rows         : list[ComparisonRow]
+  winner       : ComparisonRow | None — лучший по best_ei
+  report_date  : str
+#}
+# СРАВНЕНИЕ АУДИТОВ ({{ rows|length }} объекта)
+## Дата: {{ report_date }}
+
+{% if winner %}
+### 🏆 Победитель: {{ winner.object_address or winner.audit_id }}
+
+> Лучшая стратегия — **{{ winner.best_strategy }}** с EI = **{{ "%.2f"|format(winner.best_ei) }}**.
+{% endif %}
+
+---
+
+### Сводка по ключевым метрикам
+
+| Параметр | {% for r in rows %}{{ r.object_address or r.audit_id[:8] }} | {% endfor %}
+|----------|{% for r in rows %}---|{% endfor %}
+| Тип | {% for r in rows %}{{ r.apartment_type or "—" }} | {% endfor %}
+| Площадь, м² | {% for r in rows %}{{ "%.1f"|format(r.area_sqm) if r.area_sqm else "—" }} | {% endfor %}
+| Цена, млн ₽ | {% for r in rows %}{{ "%.2f"|format(r.price_total / 1_000_000) if r.price_total else "—" }} | {% endfor %}
+| Цена за м², ₽ | {% for r in rows %}{{ "{:,.0f}".format(r.price_per_sqm).replace(",", " ") if r.price_per_sqm else "—" }} | {% endfor %}
+| EI cash | {% for r in rows %}{{ "%.2f"|format(r.ei_cash) if r.ei_cash else "—" }} | {% endfor %}
+| EI mortgage | {% for r in rows %}{{ "%.2f"|format(r.ei_mortgage) if r.ei_mortgage else "—" }} | {% endfor %}
+| EI deposit | {% for r in rows %}{{ "%.2f"|format(r.ei_deposit) if r.ei_deposit else "—" }} | {% endfor %}
+| **Лучшая стратегия** | {% for r in rows %}**{{ r.best_strategy }}** ({{ "%.2f"|format(r.best_ei) }}) | {% endfor %}
+| Вердикт | {% for r in rows %}{{ r.verdict or "—" }} | {% endfor %}
+| MC: P(buy) | {% for r in rows %}{{ "%.0f"|format(r.monte_carlo_buy_prob) ~ "%" if r.monte_carlo_buy_prob else "—" }} | {% endfor %}
+| MC: mean EI | {% for r in rows %}{{ "%.2f"|format(r.monte_carlo_mean_ei) if r.monte_carlo_mean_ei else "—" }} | {% endfor %}
+| Кол-во рисков | {% for r in rows %}{{ r.risks_count }} | {% endfor %}
+
+---
+
+### Ранжирование по best EI
+
+{% for r in rows -%}
+{{ loop.index }}. **{{ r.object_address or r.audit_id[:8] }}** — best EI = {{ "%.2f"|format(r.best_ei) }} ({{ r.best_strategy }}){% if r.verdict %}, вердикт: {{ r.verdict }}{% endif %}
+{% endfor %}
+
+{% if rows|length >= 2 %}
+### Дельта между лучшим и худшим
+{% set best = rows | max(attribute="best_ei") -%}
+{% set worst = rows | min(attribute="best_ei") -%}
+- Δ best EI: **{{ "%.2f"|format(best.best_ei - worst.best_ei) }}** ({{ "%.0f"|format((best.best_ei - worst.best_ei) / worst.best_ei * 100) if worst.best_ei else 0 }}%)
+- Лучший: {{ best.object_address or best.audit_id[:8] }}
+- Худший: {{ worst.object_address or worst.audit_id[:8] }}
+{% endif %}
+
+---
+*Отчёт сформирован агентством недвижимости «Виктори» · {{ report_date }}*

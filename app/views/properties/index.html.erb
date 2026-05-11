@@ -55,6 +55,18 @@
 
 <section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
   <div class="max-w-7xl mx-auto">
+    <%# Phase 4.5 banner — surfaces investment audit to catalog browsers.
+        Buyers actively looking for properties are the highest-intent audience
+        for the audit tool; this is one of three key entry points (others:
+        property show aside, mode-picker landing). %>
+    <div class="mb-12 border border-border bg-card p-4 lg:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <p class="text-sm text-muted-foreground">
+        Не знаете, какой объект выгоднее? Запустите бесплатный инвест-аудит — EI, Monte Carlo, вердикт BUY/WAIT за ~30 сек.
+      </p>
+      <%= link_to "ЗАПУСТИТЬ АУДИТ →", investment_audit_new_path,
+            class: "shrink-0 text-xs tracking-[0.3em] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors" %>
+    </div>
+
     <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
       <div>
         <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КАТАЛОГ</p>

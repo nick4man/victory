@@ -30,12 +30,22 @@ class PropertyValuationsController < ApplicationController
       result = PropertyEvaluationService.new(@valuation).call
 
       if result[:success]
+        # Phase 4.6: extract hedonic + composite + bootstrap metadata
+        # into the dedicated `hedonic_data` jsonb column so analytics can
+        # query R² / n_used / weights without parsing evaluation_data.
+        hedonic_payload = {
+          hedonic:      result[:hedonic],
+          composite:    result[:composite],
+          bootstrap_ci: result[:bootstrap_ci]
+        }.compact
+
         @valuation.update(
           estimated_price:  result[:estimated_price],
           min_price:        result[:min_price],
           max_price:        result[:max_price],
           confidence_level: result[:confidence_level],
           evaluation_data:  result.except(:success).to_json,
+          hedonic_data:     hedonic_payload,
           status:           'completed'
         )
 

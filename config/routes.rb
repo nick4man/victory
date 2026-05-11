@@ -215,8 +215,10 @@ Rails.application.routes.draw do
   # ============================================
   # PROPERTY VALUATIONS (Онлайн-оценка недвижимости)
   # ============================================
-  # Friendly bare URL — redirect to the form so /valuations works without /new.
-  get '/valuations', to: redirect('/valuations/new')
+  # Phase 4 — mode-picker landing: Express ('сколько стоит') vs
+  # Investment Audit ('стоит ли покупать?'). Replaces the pre-Phase-4
+  # blind redirect to /valuations/new.
+  get '/valuations', to: 'valuations#index', as: :valuations
 
   resources :property_valuations, path: 'valuations', only: [:new, :create] do
     collection do
@@ -224,6 +226,20 @@ Rails.application.routes.draw do
       get ':token/download', to: 'property_valuations#download_pdf', as: :download_pdf
       post ':token/request_call', to: 'property_valuations#request_call', as: :request_call
     end
+  end
+
+  # ============================================
+  # INVESTMENT AUDIT — Phase 4 (audit-engine-v2 sidecar)
+  # ============================================
+  # New flow for buyers/investors: "stoit li pokupat'?" Calls the
+  # FastAPI sidecar for EI/Monte Carlo/PDF. Token-based, no auth required
+  # for the public form (visitor_token-based rate limiting in controller).
+  scope path: '/valuations/audit', as: :investment_audit do
+    get  '/new',          to: 'valuations/investment#new',         as: :new
+    post '/',             to: 'valuations/investment#create',      as: :create
+    get  '/:token',       to: 'valuations/investment#show',        as: :show
+    get  '/:token/pdf',   to: 'valuations/investment#download_pdf', as: :pdf
+    get  '/:token/status', to: 'valuations/investment#status',      as: :status  # polling fallback
   end
 
   # ============================================
@@ -371,9 +387,23 @@ Rails.application.routes.draw do
   # ============================================
   # REVIEWS
   # ============================================
-  resources :reviews, only: [:index, :create] do
+  resources :reviews, only: [:index, :new, :create] do
     member do
       post :helpful
+    end
+  end
+
+  # ============================================
+  # ADMIN — review moderation
+  # ============================================
+  # Token-based auth (ENV['ADMIN_TOKEN']) until Devise comes back online.
+  # See Admin::ReviewsController#require_admin_token.
+  namespace :admin do
+    resources :reviews, only: %i[index show] do
+      member do
+        post :approve
+        post :reject
+      end
     end
   end
 
@@ -382,6 +412,10 @@ Rails.application.routes.draw do
   # ============================================
   namespace :api do
     namespace :v1 do
+      # Address autocomplete (Phase 4.6): DaData-proxied suggestions for
+      # the audit/express forms. Server-side caches results 7d in Redis.
+      get 'addresses/autocomplete', to: 'addresses#autocomplete'
+
       # Authentication
       post 'auth/login', to: 'authentication#login'
       post 'auth/logout', to: 'authentication#logout'

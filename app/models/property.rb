@@ -186,6 +186,7 @@ class Property < ApplicationRecord
   after_update :track_price_change, if: :saved_change_to_price?
   after_touch :update_search_index
   after_commit :enqueue_embed_if_changed, on: %i[create update]
+  after_commit :bust_agency_metrics_cache
 
   # ============================================
   # GEOCODING
@@ -219,13 +220,23 @@ class Property < ApplicationRecord
   
   # Status scopes
   # CRM workflow stages (mirrors Topnlab deal_state)
-  CRM_LIVE_STATES        = %w[lead active ad prepayment deferred].freeze
-  CRM_ADVERTISING_STATES = %w[ad].freeze
+  CRM_LIVE_STATES = %w[lead active ad prepayment deferred].freeze
+  # Stages that must NOT appear in the public catalog regardless of ad flags:
+  # `deferred` — пауза по инициативе клиента/агента, реклама может быть залипшей
+  # `deal/archive/denied` — закрытые/отказные, защита от ручных вставок
+  EXCLUDED_FROM_CATALOG = %w[deferred deal archive denied].freeze
 
   # `published` keeps website-moderated `status: :active`.
-  # `in_advertising` is the public-catalog filter — only objects currently being advertised in CRM.
+  # `in_advertising` is the public-catalog filter — Topnlab tracks two
+  # independent ad channels: `in_ad` (own site) and `in_mls` (outbound feed).
+  # An object is "in advertising" if it's active in either channel AND not in
+  # a paused/closed funnel stage.
   scope :published, -> { where.not(published_at: nil).where(status: :active) }
-  scope :in_advertising, -> { published.where(deal_state: CRM_ADVERTISING_STATES) }
+  scope :in_advertising, lambda {
+    published
+      .where('in_ad = TRUE OR in_mls = TRUE')
+      .where('deal_state IS NULL OR deal_state NOT IN (?)', EXCLUDED_FROM_CATALOG)
+  }
   scope :crm_live,       -> { published.where(deal_state: CRM_LIVE_STATES) }
   scope :assigned_to,    ->(user) { where(user_id: user.is_a?(User) ? user.id : user) }
   scope :unassigned,     -> { where(user_id: nil) }
@@ -527,6 +538,20 @@ class Property < ApplicationRecord
     EmbedPropertyJob.perform_later(id)
   rescue StandardError => e
     Rails.logger.warn("[Property##{id}] embed enqueue failed: #{e.class} #{e.message}")
+  end
+
+  # Sweep agency metrics cache when a property's deal_state crosses 'deal'
+  # in either direction (becoming 'deal' = +1 to completed counter,
+  # leaving 'deal' = -1). Other writes are skipped.
+  def bust_agency_metrics_cache
+    return unless previous_changes.key?('deal_state') || previous_changes.key?('price') || destroyed?
+
+    before, after = previous_changes['deal_state'] || [deal_state, deal_state]
+    return unless before == 'deal' || after == 'deal' || (deal_state == 'deal' && previous_changes.key?('price'))
+
+    AgencyMetricsService.bust!
+  rescue StandardError => e
+    Rails.logger.warn("[Property##{id}] metrics cache bust failed: #{e.class} #{e.message}")
   end
 
   def track_creation

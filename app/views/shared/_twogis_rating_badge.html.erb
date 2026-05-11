@@ -1,0 +1,24 @@
+<%# 2GIS rating badge — official embeddable widget from dev.2gis.com. Supports
+    dark theme via theme=dark. Falls back to a static link if no firm_id env. %>
+<% twogis_id = ENV['TWOGIS_FIRM_ID'].presence %>
+<div class="border border-border bg-card overflow-hidden">
+  <div class="px-5 py-4 border-b border-border">
+    <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Карточка в 2ГИС</p>
+  </div>
+  <% if twogis_id %>
+    <iframe
+      src="https://widgets.2gis.com/widget?type=firmsonmap&options=%7B%22pos%22%3A%7B%22lat%22%3A<%= AgencyInfo::GEO_LAT %>%2C%22lon%22%3A<%= AgencyInfo::GEO_LNG %>%2C%22zoom%22%3A16%7D%2C%22opt%22%3A%7B%22city%22%3A%22ryazan%22%7D%2C%22org%22%3A%22<%= twogis_id %>%22%7D"
+      width="100%"
+      height="320"
+      frameborder="0"
+      loading="lazy"
+      title="АН Виктори в 2ГИС"></iframe>
+  <% end %>
+  <div class="px-5 py-4 border-t border-border">
+    <a href="https://2gis.ru/ryazan/firm/<%= twogis_id || '6192977768694394' %>"
+       target="_blank" rel="noopener nofollow"
+       class="text-[10px] tracking-[0.3em] text-foreground hover:text-muted-foreground uppercase">
+      ОТКРЫТЬ В 2ГИС →
+    </a>
+  </div>
+</div>

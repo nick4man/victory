@@ -137,12 +137,16 @@
         </div>
       </div>
 
-      <!-- Address -->
+      <!-- Address (DaData autocomplete — see shared/_address_autocomplete) -->
       <div class="space-y-3">
         <label class="text-sm text-muted-foreground">Адрес объекта <span class="text-foreground">*</span></label>
-        <%= f.text_field :address, placeholder: "Город, улица, дом",
-              class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
-        <p class="text-xs text-muted-foreground">Например: Москва, ул. Тверская, д. 1</p>
+        <%= render 'shared/address_autocomplete',
+              input_id:    'express-address',
+              input_name:  'property_valuation[address]',
+              placeholder: 'г. Рязань, ул. Пушкина, д. 10',
+              value:       valuation.address,
+              required:    true %>
+        <p class="text-xs text-muted-foreground">Начните вводить — появятся подсказки из ФИАС/КЛАДР по Рязани и области.</p>
       </div>
 
       <!-- City + District -->

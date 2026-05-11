@@ -1,0 +1,158 @@
+name: audit-engine-v2 CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'workspace-it-dept/audit-engine-v2/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'workspace-it-dept/audit-engine-v2/**'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: workspace-it-dept/audit-engine-v2
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_DB: re_audit_test
+          POSTGRES_USER: audit_user
+          POSTGRES_PASSWORD: ci_test_pwd
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U audit_user -d re_audit_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://audit_user:ci_test_pwd@localhost:5432/re_audit_test
+      REDIS_URL: redis://localhost:6379/0
+      DB_PASSWORD: ci_test_pwd
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: workspace-it-dept/audit-engine-v2/pyproject.toml
+
+      - name: Install system deps for WeasyPrint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+            libffi-dev libcairo2 libglib2.0-0 fonts-dejavu-core
+
+      - name: Install package + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip install ruff
+
+      - name: Lint (ruff)
+        run: ruff check src tests --output-format=github
+        continue-on-error: true
+
+      - name: Secret scan (E5)
+        env:
+          CI_PR_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || 'origin/master' }}
+        run: |
+          chmod +x scripts/check_secrets_in_git.sh
+          # Для PR — сканируем дифф к base ветке. Для push в master — staged изменения коммита.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bash scripts/check_secrets_in_git.sh --base "$CI_PR_BASE"
+          else
+            bash scripts/check_secrets_in_git.sh --base HEAD~1
+          fi
+
+      - name: Run migrations
+        run: alembic upgrade head
+
+      - name: Tests (pytest)
+        run: pytest -q --maxfail=5
+
+  docker-build:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build api image
+        uses: docker/build-push-action@v5
+        with:
+          context: workspace-it-dept/audit-engine-v2
+          file: workspace-it-dept/audit-engine-v2/Dockerfile.api
+          tags: audit-engine-v2:ci-${{ github.sha }}
+          push: false
+          load: true
+
+      - name: Smoke run image
+        run: |
+          docker run --rm audit-engine-v2:ci-${{ github.sha }} \
+            python -c "from audit_engine.config import settings; print('default_mc=', settings.mc_default_simulations); assert settings.mc_default_simulations == 1_000_000"
+
+  deploy:
+    # E1 (Полу-v2.1): автодеплой в локальный audit-stack после зелёных тестов.
+    # Использует self-hosted runner на хосте, где живёт docker-compose стек.
+    # Если runner не настроен в репо — job не запустится и CI не упадёт.
+    needs: [lint-and-test, docker-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, audit-stack]
+    timeout-minutes: 10
+    concurrency:
+      group: audit-stack-deploy
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run redeploy script
+        working-directory: workspace-it-dept/devops/audit-v2-stack
+        run: ./redeploy.sh "${{ github.sha }}"
+
+      - name: Wait for health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8100/api/v2/health > /tmp/health.json; then
+              cat /tmp/health.json
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ audit-v2-api не вернул /health за 60s"
+          exit 1
+
+      - name: Verify scheduler is running
+        run: |
+          curl -fsS http://localhost:8100/api/v2/jobs/status \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['scheduler_running'], 'scheduler not running'; print('jobs:', [j['name'] for j in d['jobs']])"

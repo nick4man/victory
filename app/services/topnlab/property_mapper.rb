@@ -74,6 +74,13 @@ module Topnlab
         user_id:         resolve_user_id,
         status:          :active,
         deal_state:      @p['deal_state'].presence,
+        # Topnlab tracks two independent advertising channels:
+        # `in_ad`  — listing on agency's own site
+        # `in_mls` — outbound MLS feed (Avito/Cian/etc.)
+        # The public catalog should show objects active in EITHER channel.
+        in_ad:           @p['in_ad']  == true,
+        in_mls:          @p['in_mls'] == true,
+        closed_at:       derive_closed_at,
         published_at:    Time.current,
         synced_at:       Time.current
       }
@@ -120,6 +127,28 @@ module Topnlab
         return (price / ppm).round(1) if price.positive? && ppm.positive?
         nil
       end
+    end
+
+    # When the realty card is `deal` (closed sale/rent), Topnlab includes a
+    # nested `deals` block (requested via append=deals). Fields vary across
+    # accounts, so try several known shapes in order of specificity, and
+    # finally fall back to the entity's updated_at as a proxy for "closed when".
+    def derive_closed_at
+      return nil unless @p['deal_state'].to_s == 'deal'
+      candidates = [
+        @p.dig('deals', 0, 'date'),
+        @p.dig('deals', 'date'),
+        @p.dig('deal_data', 'date'),
+        @p['date_done'],
+        @p['deal_date'],
+        @p['updated_at']
+      ]
+      candidates.each do |raw|
+        next if raw.blank?
+        parsed = Time.zone.parse(raw.to_s) rescue nil
+        return parsed if parsed
+      end
+      nil
     end
 
     # For house with a separate plot — store the plot's area (m²) alongside the

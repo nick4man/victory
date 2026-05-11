@@ -236,26 +236,31 @@
   <!-- ============================================
        STATS
        ============================================ -->
+  <%# Live metrics — see AgencyMetricsService. processed_requests pulls counts
+      across realty + orders from Topnlab API (cached 1h); volume / completed_deals
+      / happy_clients come from local DB. %>
   <section class="py-24 px-6 lg:px-12 bg-card border-y border-border">
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8 max-w-7xl mx-auto">
       <div class="text-center">
-        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">15+</p>
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= @metrics[:years_on_market] %></p>
         <p class="text-sm tracking-widest text-muted-foreground uppercase">лет на рынке</p>
       </div>
       <div class="text-center">
-        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">500+</p>
-        <p class="text-sm tracking-widest text-muted-foreground uppercase">реализованных проектов</p>
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:processed_requests].to_i.positive? ? @metrics[:processed_requests] : @metrics[:completed_deals]) %></p>
+        <p class="text-sm tracking-widest text-muted-foreground uppercase">обработано клиентских запросов</p>
       </div>
       <div class="text-center">
-        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">98%</p>
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:happy_clients]) %></p>
         <p class="text-sm tracking-widest text-muted-foreground uppercase">довольных клиентов</p>
       </div>
       <div class="text-center">
-        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2">₽50B</p>
+        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= @metrics[:total_volume_human].presence || '—' %></p>
         <p class="text-sm tracking-widest text-muted-foreground uppercase">объём продаж</p>
       </div>
     </div>
   </section>
+
+  <%= render 'shared/reviews_strip', reviews: @reviews, aggregate: @metrics %>
 
   <!-- ============================================
        VALUES
@@ -271,14 +276,15 @@
       </p>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
         <% [
-          ["ПОДБОР",       "Знаем рязанский рынок изнутри: каждый район, новостройку, инфраструктуру. Подберём вариант под ваш бюджет и задачу."],
-          ["ОЦЕНКА",       "Онлайн-оценка по своей базе сделок плюс выезд эксперта. Реальная цена под продажу или ипотечный отчёт."],
-          ["ИПОТЕКА",      "Подключаем банки-партнёры, считаем платёж, помогаем со справками. Льготная и стандартная — найдём подходящую программу."],
-          ["СОПРОВОЖДЕНИЕ","Юридическая проверка объекта, договор, регистрация в Росреестре. Сделка под ключ — от показа до получения ключей."]
-        ].each do |title, body| %>
+          ["ПОДБОР",       "Знаем рязанский рынок изнутри: каждый район, новостройку, инфраструктуру. Подберём вариант под ваш бюджет и задачу.", properties_path, "Открыть каталог"],
+          ["ОЦЕНКА",       "Онлайн-оценка по своей базе сделок плюс выезд эксперта. Реальная цена под продажу. Инвест-аудит — для покупки.", valuations_path, "Оценить онлайн"],
+          ["ИПОТЕКА",      "Подключаем банки-партнёры, считаем платёж, помогаем со справками. Льготная и стандартная — найдём подходящую программу.", services_mortgage_calculator_path, "Рассчитать"],
+          ["СОПРОВОЖДЕНИЕ","Юридическая проверка объекта, договор, регистрация в Росреестре. Сделка под ключ — от показа до получения ключей.", services_legal_services_path, "Подробнее"]
+        ].each do |title, body, link_url, link_label| %>
           <div>
             <h3 class="text-lg tracking-widest text-foreground mb-4"><%= title %></h3>
-            <p class="text-sm text-muted-foreground leading-relaxed"><%= body %></p>
+            <p class="text-sm text-muted-foreground leading-relaxed mb-3"><%= body %></p>
+            <%= link_to link_label + " →", link_url, class: "inline-block text-xs tracking-[0.3em] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors" %>
           </div>
         <% end %>
       </div>

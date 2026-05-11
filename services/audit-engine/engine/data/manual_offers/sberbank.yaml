@@ -1,0 +1,105 @@
+# Сбербанк — ставки ипотеки.
+#
+# Источник ручной — domclick.ru блокирует прямой скрейпинг (OAuth-only API,
+# Cloudflare на лендингах). Проверять и обновлять примерно раз в месяц,
+# когда банк публикует новые условия. Для актуализации:
+# 1) https://domclick.ru/ipoteka/programs — список программ Сбера.
+# 2) https://www.sberbank.ru/ru/person/credits/home — основные ставки.
+# 3) Записать новые ставки в этот файл и запустить:
+#    docker exec audit-v2-api python -m scripts.fetch_bank_offers \
+#      --source manual-yaml --input /app/data/manual_offers/sberbank.yaml
+#
+# Поля: см. OfferUpdate в scripts/fetch_bank_offers.py — в OfferUpdate
+# есть rate_min/max, term_years_min/max, max_loan_amount, requirements (jsonb).
+#
+# Дата последнего обновления: 2026-05-07. Если valid_from старше 30 дней —
+# heartbeat watchdog поднимет алерт (TODO).
+
+offers:
+  - bank_name: Сбербанк
+    product_type: mortgage
+    product_name: Стандартная ипотека (новостройка)
+    rate_min: 19.4
+    rate_max: 21.4
+    term_years_min: 1
+    term_years_max: 30
+    down_payment_min_pct: 20.5
+    max_loan_amount: 100000000
+    valid_from: 2026-05-07
+    source: manual-domclick
+    source_url: https://domclick.ru/ipoteka/programs/novostrojka
+    requirements:
+      type: standard
+      property: new_building
+      maintained_manually: true
+
+  - bank_name: Сбербанк
+    product_type: mortgage
+    product_name: Ипотека на вторичное жильё
+    rate_min: 19.7
+    rate_max: 21.7
+    term_years_min: 1
+    term_years_max: 30
+    down_payment_min_pct: 20.5
+    max_loan_amount: 100000000
+    valid_from: 2026-05-07
+    source: manual-domclick
+    source_url: https://domclick.ru/ipoteka/programs/vtorichnoe
+    requirements:
+      type: standard
+      property: secondary
+      maintained_manually: true
+
+  - bank_name: Сбербанк
+    product_type: family_mortgage
+    product_name: Семейная ипотека
+    rate_min: 6.0
+    rate_max: 6.0
+    term_years_min: 1
+    term_years_max: 30
+    down_payment_min_pct: 20.5
+    max_loan_amount: 12000000
+    valid_from: 2026-05-07
+    source: manual-domclick
+    source_url: https://domclick.ru/ipoteka/programs/family
+    requirements:
+      type: subsidized
+      program: family
+      family_children_count: 1
+      maintained_manually: true
+
+  - bank_name: Сбербанк
+    product_type: it_mortgage
+    product_name: IT-ипотека
+    rate_min: 6.0
+    rate_max: 6.0
+    term_years_min: 1
+    term_years_max: 30
+    down_payment_min_pct: 20.5
+    max_loan_amount: 9000000
+    valid_from: 2026-05-07
+    source: manual-domclick
+    source_url: https://domclick.ru/ipoteka/programs/it
+    requirements:
+      type: subsidized
+      program: it
+      it_company_accreditation: true
+      region_excluded: ["Moscow", "SPb"]
+      maintained_manually: true
+
+  - bank_name: Сбербанк
+    product_type: far_east_mortgage
+    product_name: Дальневосточная ипотека
+    rate_min: 2.0
+    rate_max: 2.0
+    term_years_min: 1
+    term_years_max: 20
+    down_payment_min_pct: 20.5
+    max_loan_amount: 9000000
+    valid_from: 2026-05-07
+    source: manual-domclick
+    source_url: https://domclick.ru/ipoteka/programs/far-east
+    requirements:
+      type: subsidized
+      program: far_east
+      maintained_manually: true

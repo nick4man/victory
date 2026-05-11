@@ -16,12 +16,13 @@
           Команда профильных агентов, своя база сделок, договоры и сопровождение под ключ. Работаем по принципу: каждая сделка — рекомендация и повторное обращение.
         </p>
       </div>
+      <% processed = @metrics[:processed_requests].to_i.positive? ? @metrics[:processed_requests] : @metrics[:completed_deals] %>
       <div class="grid grid-cols-2 gap-8">
         <% [
-          ["#{Property.in_advertising.count}", "объектов в рекламе"],
-          ["6", "типов недвижимости"],
-          ["10+", "опытных агентов"],
-          ["Рязань", "и область"]
+          [@metrics[:years_on_market],                            "лет на рынке"],
+          [Property.in_advertising.count,                         "объектов в рекламе"],
+          [number_with_delimiter(processed),                      "обработано клиентских запросов"],
+          [@metrics[:total_volume_human].presence || 'Рязань',    @metrics[:total_volume_human].present? ? "объём продаж" : "и область"]
         ].each do |v, l| %>
           <div>
             <p class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-2"><%= v %></p>
@@ -33,14 +34,15 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
       <% [
-        ["ПОДБОР",       "Знаем рязанский рынок: каждый район, новостройки, частные секторы. Подбираем под бюджет и задачу."],
-        ["ОЦЕНКА",       "Онлайн-оценка по нашей базе фактических сделок. Адекватная цена под продажу или ипотечный отчёт."],
-        ["ИПОТЕКА",      "Партнёрство с банками, расчёт платежа и помощь с пакетом документов. Льготные программы тоже."],
-        ["СОПРОВОЖДЕНИЕ","Проверка чистоты объекта, договор, регистрация в Росреестре. Сделка с минимумом шагов от клиента."]
-      ].each do |t, b| %>
+        ["ПОДБОР",       "Знаем рязанский рынок: каждый район, новостройки, частные секторы. Подбираем под бюджет и задачу.", properties_path, "Открыть каталог"],
+        ["ОЦЕНКА",       "Онлайн-оценка по нашей базе фактических сделок. Адекватная цена под продажу или ипотечный отчёт. Инвест-аудит для покупателей.", valuations_path, "Оценить онлайн"],
+        ["ИПОТЕКА",      "Партнёрство с банками, расчёт платежа и помощь с пакетом документов. Льготные программы тоже.", services_mortgage_calculator_path, "Рассчитать"],
+        ["СОПРОВОЖДЕНИЕ","Проверка чистоты объекта, договор, регистрация в Росреестре. Сделка с минимумом шагов от клиента.", services_legal_services_path, "Подробнее"]
+      ].each do |t, b, link_url, link_label| %>
         <div>
           <h3 class="text-lg tracking-widest text-foreground mb-4"><%= t %></h3>
-          <p class="text-sm text-muted-foreground leading-relaxed"><%= b %></p>
+          <p class="text-sm text-muted-foreground leading-relaxed mb-3"><%= b %></p>
+          <%= link_to link_label + " →", link_url, class: "inline-block text-xs tracking-[0.3em] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors" %>
         </div>
       <% end %>
     </div>
@@ -51,3 +53,5 @@
     </div>
   </div>
 </section>
+
+<%= render 'shared/reviews_strip', reviews: @reviews, aggregate: @metrics %>

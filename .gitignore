@@ -39,6 +39,7 @@
 .env.*.local
 .env.production
 .env.staging
+.env.audit
 
 # Ignore node_modules
 /node_modules

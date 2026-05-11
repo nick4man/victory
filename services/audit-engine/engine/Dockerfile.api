@@ -1,0 +1,30 @@
+FROM python:3.12-slim
+
+# System deps for WeasyPrint PDF generation + fonts
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+    libffi-dev libcairo2 libglib2.0-0 fonts-dejavu-core \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy everything needed for install
+COPY pyproject.toml .
+COPY src/ src/
+
+# Install Python dependencies (needs src/ for setuptools find_packages)
+RUN pip install --no-cache-dir .
+
+# Copy Alembic config and migrations
+COPY alembic.ini alembic.ini
+COPY migrations/ migrations/
+COPY scripts/ scripts/
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=15s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v2/health || exit 1
+
+# Run migrations then start server
+CMD ["sh", "-c", "alembic upgrade head 2>&1 && uvicorn audit_engine.api.app:app --host 0.0.0.0 --port 8000"]

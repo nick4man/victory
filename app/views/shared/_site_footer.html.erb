@@ -22,7 +22,8 @@
         <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">УСЛУГИ</h4>
         <nav class="flex flex-col gap-3">
           <%= link_to "Подбор недвижимости",       properties_path,                          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
-          <%= link_to "Онлайн-оценка",             new_property_valuation_path,              class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Оценка недвижимости",       valuations_path,                          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Инвестиционный аудит",      investment_audit_new_path,                class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Ипотечный калькулятор",     services_mortgage_calculator_path,        class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Юридическое сопровождение", services_legal_services_path,             class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
         </nav>
@@ -55,6 +56,21 @@
       </div>
     </div>
   </div>
+
+  <% if (yandex_org = ENV['YANDEX_ORG_ID']).present? %>
+    <%# Yandex rating-badge — official, supports dark theme. Just stars + N reviews + link. %>
+    <div class="px-6 lg:px-12 py-6 border-t border-border flex flex-wrap items-center justify-center gap-4">
+      <iframe
+        src="https://yandex.ru/sprav/widget/rating-badge/<%= yandex_org %>?type=award&theme=dark"
+        width="150"
+        height="50"
+        frameborder="0"
+        loading="lazy"
+        title="Рейтинг АН Виктори в Яндекс.Картах"
+        style="background:transparent"></iframe>
+      <%= link_to reviews_path, class: 'text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors uppercase' do %>ВСЕ ОТЗЫВЫ →<% end %>
+    </div>
+  <% end %>
 
   <div class="px-6 lg:px-12 py-6 border-t border-border">
     <div class="flex flex-col lg:flex-row items-center justify-between gap-4">

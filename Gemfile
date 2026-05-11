@@ -82,3 +82,11 @@ gem 'meta-tags', '~> 2.21'
 
 # Performance
 gem 'bootsnap', require: false
+
+# HTTP client for audit-engine sidecar (Investment Audit) and Brave Search
+# (Express hybrid comparable fallback). Faraday-retry handles transient
+# 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
+# down sidecar degrades gracefully instead of stalling Puma threads.
+gem 'faraday', '~> 2.9'
+gem 'faraday-retry', '~> 2.2'
+gem 'stoplight', '~> 4.1'

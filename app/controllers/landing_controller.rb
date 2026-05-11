@@ -6,5 +6,7 @@ class LandingController < ApplicationController
   def index
     # Renders under application.html.erb so canonical / hreflang / geo /
     # JSON-LD / yandex-maps-api-key / shared header & footer are inherited.
+    @metrics = AgencyMetricsService.call
+    @reviews = Review.public_facing.limit(6).to_a
   end
 end

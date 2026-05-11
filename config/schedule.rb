@@ -26,6 +26,12 @@ every 1.hour do
   runner 'SendViewingRemindersJob.perform_later'
 end
 
+# Refresh Topnlab counts cache (processed_requests metric on landing).
+# Topnlab API throttles to 1 req/6s — full sweep ≈ 8 min, must NOT run inline.
+every 1.hour do
+  runner 'RefreshTopnlabStatsJob.perform_later'
+end
+
 # Update property statistics daily at 3 AM
 every 1.day, at: '3:00 am' do
   runner 'UpdatePropertyStatisticsJob.perform_later'

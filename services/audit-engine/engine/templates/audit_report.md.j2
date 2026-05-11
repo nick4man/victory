@@ -1,0 +1,124 @@
+{# Jinja2-шаблон для генерации Markdown-отчёта аудита под ЛЮБОЙ ЖК.
+
+Контракт:
+  result            : audit_engine.models.AuditResult
+  retro             : audit_engine.models.RetroResult | None
+  financial_context : dict | None
+  narrative         : dict | None — LLM-нарратив (см. services/narrative_llm.py)
+  report_date       : строка с датой отчёта (по умолч. сегодня)
+
+Раньше эта структура жила прямо в report_generator.py (170 строк). Вынос
+в Jinja2 позволяет менять формат без правки кода и иметь несколько
+вариантов под разные клиентов/задачи.
+#}
+# АУДИТ ЖК «{{ result.complex_name }}»
+## Дата: {{ result.audit_date }}
+
+### {{ verdict_emoji(result.verdict) }} ВЕРДИКТ: {{ verdict_label(result.verdict) }}
+> {{ result.verdict_explanation }}
+{%- if narrative and narrative.get("summary") %}
+
+**{{ narrative.summary }}**
+{%- endif %}
+
+---
+
+### 1. Карточка объекта
+- **ЖК:** {{ result.complex_name }}
+- **Тип:** {{ result.apartment_type }}
+- **Площадь:** {{ result.area_sqm }} м²
+- **Цена:** {{ "{:,.0f}".format(result.price_total).replace(",", " ") }} руб.
+- **Цена за м²:** {{ "{:,.0f}".format(result.price_per_sqm).replace(",", " ") }} руб.
+
+{% if financial_context %}
+### 2. Финансовая сетка
+{% for key, value in financial_context.items() -%}
+- **{{ key }}:** {{ value }}
+{% endfor %}
+{% endif %}
+
+### 3. Индекс Целесообразности (матрица 3×3)
+
+| Сценарий | Cash EI | Deposit EI | Mortgage EI | Лучшая стратегия |
+|----------|---------|------------|-------------|------------------|
+{% for s in result.scenarios -%}
+| {{ s.scenario_name }} | {{ "%.2f"|format(s.cash.ei) }} | {{ "%.2f"|format(s.deposit.ei) }} | {{ "%.2f"|format(s.mortgage.ei) }} | {{ s.best_strategy }} |
+{% endfor %}
+
+{% for s in result.scenarios %}
+#### {{ s.scenario_name }} сценарий
+- Рост цен: {{ "%.1f"|format(s.params.price_growth_annual) }}% / год
+- Ставка ипотеки: {{ "%.1f"|format(s.params.mortgage_rate) }}%
+- Ставка депозита: {{ "%.1f"|format(s.params.deposit_rate) }}%
+- Инфляция: {{ "%.1f"|format(s.params.inflation) }}%
+
+  **Ипотека:** ПВ {{ "{:,.0f}".format(s.mortgage.down_payment).replace(",", " ") }} руб, платёж {{ "{:,.0f}".format(s.mortgage.monthly_payment).replace(",", " ") }} руб/мес, переплата {{ "{:,.0f}".format(s.mortgage.total_interest).replace(",", " ") }} руб, EI = **{{ "%.2f"|format(s.mortgage.ei) }}**
+  **Cash:** Цена со скидкой {{ "{:,.0f}".format(s.cash.price_with_discount).replace(",", " ") }} руб, упущенная выгода {{ "{:,.0f}".format(s.cash.opportunity_cost).replace(",", " ") }} руб, EI = **{{ "%.2f"|format(s.cash.ei) }}**
+  **Deposit:** Капитал через N лет {{ "{:,.0f}".format(s.deposit.capital_after_horizon).replace(",", " ") }} руб, будущая цена {{ "{:,.0f}".format(s.deposit.projected_price).replace(",", " ") }} руб, EI = **{{ "%.2f"|format(s.deposit.ei) }}**
+{% endfor %}
+
+### 4. Таблица чувствительности (Ипотека)
+Как меняется целесообразность в зависимости от ставки:
+
+| Ставка (%) | EI | Статус |
+|------------|----|--------|
+{% for row in result.sensitivity_table[::2] -%}
+| {{ row.rate }}% | {{ "%.2f"|format(row.ei) }} | {{ "✅ Выгодно" if row.is_profitable else "❌ Невыгодно" }} |
+{% endfor %}
+
+{% if retro and retro.snapshots %}
+### 5. Ретроспектива
+
+| Дата | Цена за м² | Дельта (%) | EI тогда |
+|------|-----------|-----------|----------|
+{% for d in retro.delta_analysis -%}
+| {{ d.purchase_date }} | {{ "{:,.0f}".format(d.purchase_price / result.area_sqm).replace(",", " ") }} руб | {{ "+" if d.delta_pct > 0 else "" }}{{ d.delta_pct }}% | {{ "%.2f"|format(d.ei_at_that_time) }} |
+{% endfor %}
+{% if retro.developer_accuracy_pct is not none %}
+**Точность прогнозов застройщика:** {{ "%.1f"|format(retro.developer_accuracy_pct) }}%
+{% endif %}
+{% endif %}
+
+{% if monte_carlo %}
+### 6. Monte-Carlo (доверительный интервал 95%)
+
+Симуляций: **{{ "{:,}".format(monte_carlo.num_simulations).replace(",", " ") }}**, рекомендуемая стратегия: **{{ monte_carlo.recommended_strategy }}** ({{ monte_carlo.confidence_level }}).
+
+| Стратегия | Mean EI | Median | p5 | p95 | P(EI ≥ 1.2) |
+|-----------|---------|--------|----|----|--------------|
+{% for key in ["cash", "mortgage", "deposit"] -%}
+{% set mc = monte_carlo[key] -%}
+| {{ key }} | {{ "%.2f"|format(mc.ei_mean) }} | {{ "%.2f"|format(mc.ei_median) }} | {{ "%.2f"|format(mc.ei_p5) }} | {{ "%.2f"|format(mc.ei_p95) }} | {{ "%.0f"|format(mc.buy_probability * 100) }}% |
+{% endfor %}
+{% endif %}
+
+### 7. Риски
+{% if result.risks -%}
+{% for r in result.risks -%}
+- ⚠️ {{ r }}
+{% endfor %}
+{% else -%}
+- Существенных рисков не выявлено.
+{%- endif %}
+
+### 8. Допущения
+{% for a in result.assumptions -%}
+- {{ a }}
+{% endfor %}
+
+{%- if narrative and narrative.get("why_so") %}
+
+### 9. Почему так?
+{{ narrative.why_so }}
+{%- endif %}
+
+{%- if narrative and narrative.get("final_recommendation") %}
+
+### 🎯 Итоговый вердикт
+{{ narrative.final_recommendation }}
+{%- endif %}
+
+---
+*Отчёт сформирован агентством недвижимости «Виктори» · {{ report_date }}*
+
+*Примечание: Все расчёты носят информационный характер и не являются инвестиционной рекомендацией.*

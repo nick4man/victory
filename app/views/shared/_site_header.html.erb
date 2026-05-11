@@ -2,9 +2,11 @@
   <div class="flex items-center justify-between px-6 py-4 lg:px-12">
     <%= link_to root_path, class: "text-xl font-light tracking-[0.3em] text-foreground" do %>АН ВИКТОРИ<% end %>
 
-    <nav class="hidden lg:flex items-center gap-12">
+    <nav class="hidden lg:flex items-center gap-10 xl:gap-12">
       <%= link_to "Каталог",     properties_path,     class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
       <%= link_to "Услуги",      services_page_path,  class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
+      <%= link_to "Оценка",      valuations_path,     class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
+      <%= link_to "Отзывы",      reviews_path,        class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
       <%= link_to "О компании",  about_path,          class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
       <%= link_to "Контакты",    contacts_path,       class: "text-sm tracking-widest text-muted-foreground hover:text-foreground transition-colors duration-300" %>
     </nav>
@@ -35,6 +37,8 @@
     <nav class="flex flex-col py-4 px-6">
       <%= link_to "Каталог",     properties_path,    class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
       <%= link_to "Услуги",      services_page_path, class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
+      <%= link_to "Оценка",      valuations_path,    class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
+      <%= link_to "Отзывы",      reviews_path,       class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
       <%= link_to "О компании",  about_path,         class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
       <%= link_to "Контакты",    contacts_path,      class: "py-3 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
       <% if user_signed_in? %>

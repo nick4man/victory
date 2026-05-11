@@ -9,7 +9,9 @@ module ChatTools
       'semantic_search'          => ChatTools::SemanticSearch,
       'get_property_details'     => ChatTools::GetPropertyDetails,
       'aggregate_market'         => ChatTools::AggregateMarket,
-      'find_in_district_polygon' => ChatTools::FindInDistrictPolygon
+      'find_in_district_polygon' => ChatTools::FindInDistrictPolygon,
+      'submit_review'            => ChatTools::SubmitReview,
+      'run_investment_audit'     => ChatTools::RunInvestmentAudit
     }.freeze
 
     module_function

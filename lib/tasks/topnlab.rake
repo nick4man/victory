@@ -53,6 +53,31 @@ namespace :topnlab do
     puts "Result: #{result.inspect}"
   end
 
+  desc 'Refresh Topnlab counts cache (counts per state for realty + orders) — synchronous, ~8 min'
+  task refresh_stats: :environment do
+    Topnlab::StatsClient.bust!
+    AgencyMetricsService.bust!
+    stats = Topnlab::StatsClient.compute_now!
+    puts "realty_total=#{stats[:realty_total]} (per state: #{stats[:realty_per_state].inspect})"
+    puts "order_total=#{stats[:order_total]} (per state: #{stats[:order_per_state].inspect})"
+    puts "processed_total=#{stats[:processed_total]}"
+    puts "closed_deals=#{stats[:closed_deals]}"
+    puts "stale=#{stats[:stale]}"
+  end
+
+  desc 'Backfill all completed deals (deal_state=deal) from Topnlab + bust metrics cache'
+  task backfill_completed: :environment do
+    require_relative '../../app/services/topnlab/importer' rescue nil
+    result = Topnlab::Importer.new(filter: { deal_state: Topnlab::Importer::COMPLETED_STATES }).call
+    completed = Property.unscoped.where(deal_state: 'deal').count
+    volume    = Property.unscoped.where(deal_state: 'deal').sum(:price).to_i
+    puts "Result: #{result.inspect}"
+    puts "Now Property.where(deal_state='deal').count = #{completed}"
+    puts "Total volume RUB = #{volume}"
+    AgencyMetricsService.bust!
+    puts AgencyMetricsService.call.inspect
+  end
+
   desc 'Import a single object by Topnlab id'
   task :import_one, [:id] => :environment do |_t, args|
     raise 'Usage: rake topnlab:import_one[ID]' if args[:id].blank?
@@ -91,6 +116,47 @@ namespace :topnlab do
     puts "BuyerOrder.count = #{BuyerOrder.count}"
     puts "BuyerOrder.active.count = #{BuyerOrder.active.count}"
   end
+
+  desc 'Re-fetch in_ad / in_mls flags from Topnlab for all imported properties + bust metrics cache'
+  task refresh_ad_flags: :environment do
+    ids = Property.unscoped.where(external_source: 'topnlab').pluck(:external_id).compact
+    if ids.empty?
+      puts 'No Topnlab properties found.'
+      next
+    end
+
+    client = Topnlab::Client.new
+    was = Property.unscoped.where(external_source: 'topnlab')
+                  .where('in_ad = TRUE OR in_mls = TRUE').count
+    updated = 0
+
+    ids.each_slice(300) do |chunk|
+      payloads = client.get_entities(chunk, type: 'realty')
+      payloads.each_value do |payload|
+        next unless payload.is_a?(Hash)
+        prop = Property.unscoped.find_by(external_source: 'topnlab', external_id: payload['id'].to_s)
+        next unless prop
+        prop.update_columns(
+          in_ad:  payload['in_ad']  == true,
+          in_mls: payload['in_mls'] == true
+        )
+        updated += 1
+      end
+      print '.'
+    end
+    puts
+    now = Property.unscoped.where(external_source: 'topnlab')
+                  .where('in_ad = TRUE OR in_mls = TRUE').count
+    n_ad  = Property.unscoped.where(external_source: 'topnlab', in_ad: true).count
+    n_mls = Property.unscoped.where(external_source: 'topnlab', in_mls: true).count
+    puts "Updated: #{updated}"
+    puts "Advertising (in_ad OR in_mls): #{now} (было: #{was})"
+    puts "  breakdown: in_ad=true → #{n_ad}, in_mls=true → #{n_mls}"
+    AgencyMetricsService.bust! if defined?(AgencyMetricsService)
+  end
+
+  # Kept as alias for backward compatibility with existing scripts/docs.
+  task refresh_in_ad: :refresh_ad_flags
 
   desc 'Re-derive area / land_area_m2 / price_per_sqm for all Topnlab properties'
   task refresh_areas: :environment do

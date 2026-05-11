@@ -1,0 +1,150 @@
+<%# Inline DaData address autocomplete dropdown. Renders an input + an
+    absolute-positioned suggestion list driven by /api/v1/addresses/autocomplete.
+    250ms debounce, arrow-key navigation, Enter to pick, Esc to close, click
+    outside to dismiss. JS is inline because importmap-rails is disabled
+    in this project (see layouts/application.html.erb). %>
+<% input_id ||= "addr-#{SecureRandom.hex(4)}" %>
+<% input_name ||= 'address' %>
+<% placeholder ||= 'г. Рязань, ул. ...' %>
+<% value ||= nil %>
+<% required = local_assigns.fetch(:required, false) %>
+<% form ||= nil %>
+
+<div class="relative" data-addr-autocomplete>
+  <input type="text"
+         id="<%= input_id %>"
+         name="<%= input_name %>"
+         placeholder="<%= placeholder %>"
+         value="<%= value %>"
+         autocomplete="street-address"
+         <%= 'required' if required %>
+         <% if form %>form="<%= form %>"<% end %>
+         class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground"
+         data-addr-input>
+  <ul class="absolute z-30 left-0 right-0 top-full mt-1 bg-card border border-border max-h-72 overflow-y-auto hidden shadow-lg"
+      data-addr-dropdown></ul>
+</div>
+
+<%# Inline init script — guarded so partial may be rendered multiple times.
+    Uses document.createElement + textContent (no innerHTML) — DaData payload
+    is server-validated, but defence-in-depth: even if API ever returns
+    HTML-bearing text, it cannot execute. %>
+<% content_for :body_end, flush: true do %>
+  <% unless content_for?(:address_autocomplete_initialized) %>
+    <% content_for :address_autocomplete_initialized, '1' %>
+    <script>
+      (function () {
+        if (window.__addrAutocompleteInit) return;
+        window.__addrAutocompleteInit = true;
+
+        var DEBOUNCE_MS = 250;
+
+        function debounce(fn, wait) {
+          var t; return function () {
+            var args = arguments, self = this;
+            clearTimeout(t);
+            t = setTimeout(function () { fn.apply(self, args); }, wait);
+          };
+        }
+
+        function bind(wrap) {
+          var input = wrap.querySelector('[data-addr-input]');
+          var dd    = wrap.querySelector('[data-addr-dropdown]');
+          if (!input || !dd) return;
+
+          var current = -1;
+          var items = [];
+
+          function open()  { dd.classList.remove('hidden'); }
+          function close() { dd.classList.add('hidden'); current = -1; }
+
+          function clearDropdown() {
+            while (dd.firstChild) dd.removeChild(dd.firstChild);
+          }
+
+          function render(suggestions) {
+            items = Array.isArray(suggestions) ? suggestions : [];
+            clearDropdown();
+            if (items.length === 0) { close(); return; }
+            items.forEach(function (s, i) {
+              var li = document.createElement('li');
+              li.dataset.i = String(i);
+              li.className = 'px-3 py-2 text-sm text-foreground hover:bg-secondary cursor-pointer';
+              li.textContent = String(s.value || '');
+              dd.appendChild(li);
+            });
+            open();
+          }
+
+          function highlight(idx) {
+            var lis = dd.querySelectorAll('li');
+            for (var j = 0; j < lis.length; j++) {
+              lis[j].classList.toggle('bg-secondary', j === idx);
+            }
+            current = idx;
+          }
+
+          function pick(idx) {
+            if (idx < 0 || idx >= items.length) return;
+            input.value = items[idx].value;
+            close();
+            input.focus();
+          }
+
+          var fetchSuggestions = debounce(function (q) {
+            if (!q || q.length < 2) { close(); return; }
+            fetch('/api/v1/addresses/autocomplete?q=' + encodeURIComponent(q),
+                  { headers: { Accept: 'application/json' } })
+              .then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (data) {
+                if (!data) return;
+                render(data.suggestions || []);
+              })
+              .catch(function (e) { console.warn('addr fetch failed', e); });
+          }, DEBOUNCE_MS);
+
+          input.addEventListener('input', function () { fetchSuggestions(input.value); });
+          input.addEventListener('focus', function () { if (items.length) open(); });
+
+          input.addEventListener('keydown', function (e) {
+            if (dd.classList.contains('hidden')) return;
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              highlight(Math.min(current + 1, items.length - 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              highlight(Math.max(current - 1, 0));
+            } else if (e.key === 'Enter') {
+              if (current >= 0) { e.preventDefault(); pick(current); }
+            } else if (e.key === 'Escape') {
+              close();
+            }
+          });
+
+          dd.addEventListener('mousedown', function (e) {
+            var li = e.target.closest('[data-i]');
+            if (!li) return;
+            e.preventDefault();
+            pick(parseInt(li.getAttribute('data-i'), 10));
+          });
+
+          document.addEventListener('mousedown', function (e) {
+            if (!wrap.contains(e.target)) close();
+          });
+        }
+
+        function attach() {
+          document.querySelectorAll('[data-addr-autocomplete]').forEach(function (w) {
+            if (!w.__bound) { bind(w); w.__bound = true; }
+          });
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', attach);
+        } else {
+          attach();
+        }
+      })();
+    </script>
+  <% end %>
+<% end %>

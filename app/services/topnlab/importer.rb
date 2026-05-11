@@ -14,13 +14,18 @@ require 'set'
 #   Topnlab::Importer.new(filter: {}).call                  # fetch every card (incl. archive)
 module Topnlab
   class Importer
-    REALTY_TYPES = %w[flat room house land commerce garage].freeze
-    ACTIONS      = %w[sale rent].freeze
-    ACTIVE_STATES = %w[ad active lead prepayment deferred].freeze
+    REALTY_TYPES    = %w[flat room house land commerce garage].freeze
+    ACTIONS         = %w[sale rent].freeze
+    ACTIVE_STATES   = %w[ad active lead prepayment deferred].freeze
+    COMPLETED_STATES = %w[deal].freeze
 
-    def initialize(client: Topnlab::Client.new, filter: { deal_state: ACTIVE_STATES })
+    # In completed-mode (deal_states: COMPLETED_STATES) we ask Topnlab to
+    # `append=deals` so payloads include closure date and final amount.
+    # Live-mode keeps the existing `append=stages` behaviour.
+    def initialize(client: Topnlab::Client.new, filter: { deal_state: ACTIVE_STATES }, mode: nil)
       @client = client
       @filter = filter
+      @mode   = mode || infer_mode
     end
 
     def call
@@ -41,7 +46,7 @@ module Topnlab
             next if ids.empty?
 
             ids.each_slice(300) do |chunk|
-              entities = @client.get_entities(chunk, type: 'realty')
+              entities = @client.get_entities(chunk, type: 'realty', append: append_param)
               entities.each_value do |payload|
                 result = upsert_one(payload, agents_index, type_index, fallback&.id)
                 case result
@@ -59,7 +64,10 @@ module Topnlab
         end
       end
 
-      archived = archive_missing(seen_ids)
+      # Completed-mode is additive: missing IDs from a deal-only sweep don't mean
+      # the property went away — it could just be in another (live) state. Don't
+      # archive in that mode.
+      archived = completed_mode? ? 0 : archive_missing(seen_ids)
 
       summary = { success: true, imported: imported, skipped: skipped, failed: failed, archived: archived }
       Rails.logger.info("Topnlab importer summary: #{summary}")
@@ -82,6 +90,21 @@ module Topnlab
     end
 
     private
+
+    def append_param
+      completed_mode? ? 'deals' : 'stages'
+    end
+
+    def completed_mode?
+      @mode == :completed
+    end
+
+    def infer_mode
+      states = Array(@filter && @filter[:deal_state])
+      return :completed if states.any? && (states - COMPLETED_STATES).empty?
+
+      :live
+    end
 
     def upsert_one(payload, agents_index, type_index, fallback_id)
       mapper = Topnlab::PropertyMapper.new(payload, agents_index, type_index, fallback_user_id: fallback_id)

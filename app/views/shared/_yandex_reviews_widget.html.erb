@@ -1,0 +1,25 @@
+<%# Official Yandex Maps reviews iframe widget. Shows up to 5 reviews from the
+    organisation's Yandex card, themed white inside (no dark mode support
+    cross-origin). We wrap it in a dark-themed border/header so it visually
+    fits the rest of the page. ENV-gated so it self-degrades. %>
+<% if (org_id = ENV['YANDEX_ORG_ID']).present? %>
+  <div class="border border-border bg-card overflow-hidden">
+    <div class="px-5 py-4 border-b border-border">
+      <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Отзывы на Яндекс.Картах</p>
+    </div>
+    <iframe
+      src="https://yandex.ru/maps-reviews-widget/<%= org_id %>?comments"
+      width="100%"
+      height="500"
+      frameborder="0"
+      loading="lazy"
+      title="Отзывы на Яндекс.Картах"
+      style="background:white"></iframe>
+    <div class="px-5 py-3 border-t border-border">
+      <a href="https://yandex.ru/maps/org/<%= org_id %>/reviews/" target="_blank" rel="noopener nofollow"
+         class="text-[10px] tracking-[0.3em] text-foreground hover:text-muted-foreground uppercase">
+        ОСТАВИТЬ ОТЗЫВ В Я.КАРТАХ →
+      </a>
+    </div>
+  </div>
+<% end %>

@@ -35,11 +35,21 @@ class PropertyEvaluationService
       return success(fallback_estimate)
     end
 
-    estimate = PropertyEvaluation::PriceEstimator.new(@v, pool[:comparables]).call
+    base_estimate = PropertyEvaluation::PriceEstimator.new(@v, pool[:comparables]).call
+
+    # Layer hedonic regression + bootstrap CI on top of the median estimate.
+    # If sample is too thin (< 8) or regression degenerates, returns
+    # base_estimate unchanged.
+    estimate = PropertyEvaluation::CompositeEstimator.call(
+      comparables: pool[:comparables],
+      target_area: subject_area,
+      target_rooms: @v.rooms.to_i,
+      base_estimate: base_estimate
+    )
 
     success(
       estimate.merge(
-        confidence_level: confidence_for(pool),
+        confidence_level: confidence_for(pool, estimate),
         tier:             pool[:tier],
         comparables:      serialize(pool[:comparables].first(5)),
         market_analysis:  build_market_analysis(pool[:comparables], estimate),
@@ -69,7 +79,7 @@ class PropertyEvaluationService
     subject_area.positive?
   end
 
-  def confidence_for(pool)
+  def confidence_for(pool, estimate = nil)
     base = case pool[:tier]
            when 1 then 0.85
            when 2 then 0.65
@@ -78,6 +88,11 @@ class PropertyEvaluationService
            end
     base += 0.05 if @v.building_year.present?
     base += 0.05 if @v.metro_station.present?
+    # Hedonic regression with R²>0.5 — bumps confidence (model explains
+    # majority of variance in our comparables).
+    if estimate&.dig(:hedonic, :r_squared).to_f > 0.5
+      base += 0.05
+    end
     [base, 0.95].min.round(2)
   end
 

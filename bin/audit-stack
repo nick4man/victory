@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Convenience wrapper for the audit-engine sidecar stack.
+#
+# Usage:
+#   bin/audit-stack up [-d]            # bring up audit-* services
+#   bin/audit-stack down               # stop them (keeps volumes)
+#   bin/audit-stack logs [service]     # tail logs
+#   bin/audit-stack rebuild            # rebuild images (after upstream-sync.sh)
+#   bin/audit-stack smoke              # POST smoke_apartment.json
+#   bin/audit-stack seed               # one-time: seed bank offers
+#   bin/audit-stack psql               # psql into re_audit DB
+#   bin/audit-stack <any docker-compose subcommand>
+#
+# Wraps the multi --env-file pattern so callers don't have to remember it.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
+if [[ ! -f .env.audit ]]; then
+  echo "ERROR: .env.audit not found. Copy from .env.audit.example and fill in secrets." >&2
+  exit 1
+fi
+
+COMPOSE=(
+  docker compose
+  --env-file .env
+  --env-file .env.audit
+  -f docker-compose.yml
+  -f docker-compose.audit.yml
+)
+
+AUDIT_SERVICES=(audit-postgres audit-redis audit-api audit-mc-worker)
+
+case "${1:-}" in
+  up)
+    shift
+    "${COMPOSE[@]}" up "$@" "${AUDIT_SERVICES[@]}"
+    ;;
+  down)
+    "${COMPOSE[@]}" stop "${AUDIT_SERVICES[@]}"
+    ;;
+  rebuild)
+    "${COMPOSE[@]}" build audit-api audit-mc-worker
+    ;;
+  logs)
+    shift
+    "${COMPOSE[@]}" logs --tail=200 -f "${@:-audit-api}"
+    ;;
+  smoke)
+    TOKEN=$(grep '^AUDIT_API_TOKEN=' .env | cut -d= -f2)
+    "${COMPOSE[@]}" exec -T audit-api curl -fsS \
+      -H "X-Audit-Token: ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      -d @/dev/stdin \
+      http://localhost:8000/api/v2/audit/ < services/audit-engine/stack/smoke_apartment.json
+    echo
+    ;;
+  seed)
+    "${COMPOSE[@]}" exec audit-api python -m scripts.seed_bank_offers
+    ;;
+  psql)
+    "${COMPOSE[@]}" exec audit-postgres psql -U audit_user -d re_audit
+    ;;
+  health)
+    "${COMPOSE[@]}" exec -T audit-api curl -fsS http://localhost:8000/api/v2/health
+    echo
+    ;;
+  '')
+    echo "Usage: $0 {up|down|rebuild|logs|smoke|seed|psql|health|<compose-subcommand>}" >&2
+    exit 2
+    ;;
+  *)
+    "${COMPOSE[@]}" "$@"
+    ;;
+esac

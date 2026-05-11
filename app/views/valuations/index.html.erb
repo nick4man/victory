@@ -1,0 +1,58 @@
+<% content_for :title, "Оценка недвижимости — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background">
+  <div class="max-w-5xl mx-auto text-center mb-16">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОЦЕНКА</p>
+    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight text-foreground mb-4 leading-tight">
+      Что вы хотите узнать?
+    </h1>
+    <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto">
+      Два инструмента для разных вопросов — выберите подходящий.
+    </p>
+  </div>
+
+  <div class="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+    <%# === Express === %>
+    <%= link_to new_property_valuation_path,
+          class: "group bg-card border border-border p-8 lg:p-10 hover:border-foreground/40 transition-colors flex flex-col" do %>
+      <p class="text-xs tracking-[0.4em] text-muted-foreground mb-3">ЭКСПРЕСС-ОЦЕНКА</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-4 leading-tight">
+        Сколько стоит<br>мой объект?
+      </h2>
+      <ul class="space-y-2 text-sm text-muted-foreground flex-1 mb-6">
+        <li>— Анализ 5-8 аналогов из нашего каталога</li>
+        <li>— Hedonic regression на 271+ объектах</li>
+        <li>— Доверительный интервал цены</li>
+        <li>— Результат за 2-3 минуты</li>
+      </ul>
+      <div class="flex items-center gap-3 text-sm tracking-widest text-foreground group-hover:translate-x-1 transition-transform">
+        НАЧАТЬ →
+      </div>
+    <% end %>
+
+    <%# === Investment Audit === %>
+    <%= link_to investment_audit_new_path,
+          class: "group bg-foreground text-background p-8 lg:p-10 hover:bg-foreground/90 transition-colors flex flex-col" do %>
+      <p class="text-xs tracking-[0.4em] text-background/70 mb-3">ИНВЕСТ-АУДИТ</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-tight mb-4 leading-tight">
+        Стоит ли<br>покупать?
+      </h2>
+      <ul class="space-y-2 text-sm text-background/80 flex-1 mb-6">
+        <li>— EI для cash / ипотеки / депозита</li>
+        <li>— Monte Carlo 1M симуляций</li>
+        <li>— Вердикт BUY / WAIT / NEUTRAL</li>
+        <li>— Подбор ипотечных программ</li>
+        <li>— Брендированный PDF-отчёт</li>
+      </ul>
+      <div class="flex items-center gap-3 text-sm tracking-widest group-hover:translate-x-1 transition-transform">
+        ЗАПУСТИТЬ АУДИТ →
+      </div>
+    <% end %>
+  </div>
+
+  <p class="max-w-2xl mx-auto mt-12 text-xs text-muted-foreground/70 text-center leading-relaxed">
+    Инвест-аудит — собственный аналитический инструмент АН&nbsp;Виктори:
+    актуальные ставки ЦБ&nbsp;РФ, 22 ипотечные программы, миллион сценариев
+    Monte&nbsp;Carlo для оценки рисков. Расчёт занимает 20–40 секунд.
+  </p>
+</section>

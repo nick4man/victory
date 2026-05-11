@@ -1,0 +1,28 @@
+FROM nvidia/cuda:12.4-runtime-ubuntu22.04
+
+# Системные зависимости для Python и компиляции
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-dev \
+    libpq-dev gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Копируем зависимости проекта
+COPY pyproject.toml .
+# Устанавливаем cupy для CUDA 12.x и numpy
+RUN pip3 install --no-cache-dir cupy-cuda12x numpy
+# Устанавливаем проект audit-engine (остальные зависимости из pyproject.toml)
+RUN pip3 install --no-cache-dir .
+
+# Копируем исходный код
+COPY src/ src/
+COPY alembic.ini .
+COPY migrations/ migrations/
+
+# Переменные окружения для GPU
+ENV MC_USE_GPU=true
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Запуск Monte-Carlo worker
+CMD ["python3", "-m", "audit_engine.monte_carlo_worker"]

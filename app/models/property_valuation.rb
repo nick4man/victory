@@ -27,6 +27,13 @@ class PropertyValuation < ApplicationRecord
     completed: 'completed',
     failed: 'failed'
   }
+
+  # Express = local hedonic + bootstrap CI on Property+MlsListing.
+  # Investment = full audit-engine-v2 pipeline (EI/Monte Carlo/PDF).
+  enum audit_mode: {
+    express: 'express',
+    investment: 'investment'
+  }, _prefix: :audit_mode
   
   enum building_type: {
     panel: 'panel',
@@ -77,6 +84,8 @@ class PropertyValuation < ApplicationRecord
   scope :completed, -> { where(status: 'completed') }
   scope :pending, -> { where(status: 'pending') }
   scope :with_email, -> { where.not(email: nil) }
+  scope :investment_audits, -> { where(audit_mode: 'investment') }
+  scope :express_estimates, -> { where(audit_mode: 'express') }
   
   # Instance Methods
   
@@ -140,7 +149,15 @@ class PropertyValuation < ApplicationRecord
   def created_at_formatted
     I18n.l(created_at, format: :long)
   end
-  
+
+  # Short human-readable identifier — printed on PDF, shown in UI, used by
+  # staff to look up an audit ("откройте отчёт №10042"). Falls back to id
+  # for legacy rows that haven't been backfilled (should not happen — the
+  # migration backfills all existing rows and the column is NOT NULL).
+  def report_label
+    "№#{report_number || id}"
+  end
+
   private
   
   def generate_token

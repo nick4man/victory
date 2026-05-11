@@ -1,0 +1,56 @@
+<% content_for :title, 'Отзывы клиентов — АН «Виктори»' %>
+
+<section class="px-6 lg:px-12 pt-16 pb-12 bg-background border-b border-border">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОТЗЫВЫ</p>
+    <h1 class="text-4xl lg:text-6xl font-light tracking-wider text-foreground uppercase mb-8">
+      Что говорят клиенты
+    </h1>
+    <% if @aggregate[:reviews_count].to_i.positive? %>
+      <div class="flex flex-wrap items-baseline gap-x-6 gap-y-2 mb-2">
+        <span class="text-5xl lg:text-6xl font-light tracking-wider text-foreground"><%= @aggregate[:average_rating] %></span>
+        <span class="text-yellow-500 tracking-widest text-2xl" aria-hidden="true">
+          <%= '★' * @aggregate[:average_rating].round + '☆' * (5 - @aggregate[:average_rating].round) %>
+        </span>
+        <span class="text-xs tracking-[0.3em] text-muted-foreground">НА ОСНОВЕ <%= @aggregate[:reviews_count] %> ОТЗЫВОВ</span>
+      </div>
+    <% else %>
+      <p class="text-base text-muted-foreground tracking-wide">
+        Принимаем отзывы от наших клиентов. Будьте первым — оставьте отзыв ниже.
+      </p>
+    <% end %>
+    <div class="mt-8">
+      <%= link_to new_review_path, class: 'inline-block px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors' do %>ОСТАВИТЬ ОТЗЫВ →<% end %>
+    </div>
+  </div>
+</section>
+
+<%= render 'shared/jsonld_review', reviews: @reviews, aggregate: @aggregate %>
+
+<section class="px-6 lg:px-12 py-16 bg-background">
+  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12">
+    <div class="lg:col-span-2 space-y-6">
+      <% if @reviews.any? %>
+        <% @reviews.each do |review| %>
+          <%= render 'shared/review_card', review: review %>
+        <% end %>
+
+        <div class="pt-8 flex justify-center">
+          <%= paginate @reviews if respond_to?(:paginate) %>
+        </div>
+      <% else %>
+        <div class="border border-border bg-card p-12 text-center">
+          <p class="text-sm tracking-wider text-muted-foreground">
+            Пока ни одного отзыва на нашем сайте. Можно посмотреть отзывы на Яндекс.Картах справа,
+            либо <%= link_to 'оставить первый отзыв', new_review_path, class: 'underline text-foreground' %>.
+          </p>
+        </div>
+      <% end %>
+    </div>
+
+    <aside class="lg:col-span-1 space-y-8">
+      <%= render 'shared/yandex_reviews_widget' %>
+      <%= render 'shared/twogis_rating_badge' %>
+    </aside>
+  </div>
+</section>

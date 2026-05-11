@@ -1,0 +1,37 @@
+<%# Single review card. Used in landing/about strip and on /reviews feed.
+    locals: review (Review) %>
+<article class="border border-border bg-card p-6 lg:p-8 flex flex-col h-full">
+  <header class="flex items-start justify-between mb-4 gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-12 h-12 rounded-full bg-foreground/10 flex items-center justify-center text-sm tracking-widest text-foreground">
+        <%= review.display_initials %>
+      </div>
+      <div>
+        <p class="text-sm tracking-wide text-foreground"><%= review.display_author %></p>
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mt-0.5">
+          <%= l(review.created_at.to_date, format: :long) rescue review.created_at.strftime('%d.%m.%Y') %>
+        </p>
+      </div>
+    </div>
+    <span class="text-yellow-500 tracking-widest text-base whitespace-nowrap" aria-label="<%= review.rating %> из 5">
+      <%= review.stars %>
+    </span>
+  </header>
+
+  <% if review.title.present? %>
+    <p class="text-sm tracking-wide text-foreground font-medium mb-3"><%= review.title %></p>
+  <% end %>
+
+  <p class="text-sm text-muted-foreground leading-relaxed flex-1"><%= review.body %></p>
+
+  <% if review.source_label.present? || review.external_url.present? %>
+    <footer class="mt-5 pt-4 border-t border-border flex items-center gap-3 text-[10px] tracking-[0.3em] text-muted-foreground/70 uppercase">
+      <% if review.source_label.present? %>
+        <span>Источник: <%= review.source_label %></span>
+      <% end %>
+      <% if review.external_url.present? %>
+        <%= link_to 'Оригинал', review.external_url, target: '_blank', rel: 'noopener nofollow', class: 'underline hover:text-foreground' %>
+      <% end %>
+    </footer>
+  <% end %>
+</article>

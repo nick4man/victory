@@ -17,16 +17,19 @@ class PagesController < ApplicationController
     )
     
     add_breadcrumb 'О компании'
-    
-    # Load statistics for about page
+
+    @metrics = AgencyMetricsService.call
+    @reviews = Review.public_facing.limit(6).to_a
+
+    # Legacy hash kept for backwards compat with anything still using @statistics.
     @statistics = {
-      years_in_business: Time.current.year - 2010,
-      total_deals: Property.where(status: [:sold, :rented]).count,
+      years_in_business: @metrics[:years_on_market],
+      total_deals:       @metrics[:completed_deals],
       active_properties: Property.published.count,
-      satisfied_clients: User.clients.count,
+      satisfied_clients: @metrics[:happy_clients],
       professional_agents: User.agents.count
     }
-    
+
     track_event('about_page_viewed')
   end
   

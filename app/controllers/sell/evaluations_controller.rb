@@ -4,12 +4,15 @@ module Sell
   class EvaluationsController < ApplicationController
     include ComingSoonSection
 
+    # Phase 4.5 — the /sell/evaluation stub is superseded by /valuations
+    # (mode-picker: Express + Investment Audit). Redirect rather than show a
+    # "coming soon" placeholder.
     def new
-      render_coming_soon('Продать недвижимость', 'Бесплатная экспресс-оценка вашего объекта. Раздел в разработке — пока вы можете воспользоваться <a href="/valuations/new" class="underline">детальной онлайн-оценкой</a>.'.html_safe)
+      redirect_to valuations_path, status: :moved_permanently
     end
 
     def create
-      redirect_to new_property_valuation_path, notice: 'Перенаправляем в детальную оценку.'
+      redirect_to valuations_path, notice: 'Перенаправляем на оценку.'
     end
 
     def show

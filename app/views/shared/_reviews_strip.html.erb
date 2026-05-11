@@ -1,0 +1,44 @@
+<%# Embeddable strip used on /landing and /about. Self-degrades:
+    - reviews.empty? + aggregate[:reviews_count] == 0  → only Yandex/2GIS widgets sidebar (no own feed)
+    - reviews.empty? + no widgets configured           → entire section is hidden
+    locals: reviews (array), aggregate (hash from AgencyMetricsService) %>
+<% has_own = reviews.any? %>
+<% has_yandex = ENV['YANDEX_ORG_ID'].present? %>
+<% return ''.html_safe unless has_own || has_yandex %>
+<% avg = aggregate[:average_rating] || 0.0 %>
+<% cnt = aggregate[:reviews_count] || 0 %>
+
+<section class="py-24 lg:py-32 px-6 lg:px-12 bg-background border-b border-border">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-16">
+      <div>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОТЗЫВЫ КЛИЕНТОВ</p>
+        <h2 class="text-3xl lg:text-5xl font-light tracking-wider text-foreground uppercase">
+          Что о нас говорят
+        </h2>
+      </div>
+      <% if cnt.positive? %>
+        <div class="flex items-baseline gap-4">
+          <span class="text-3xl font-light tracking-wider text-foreground"><%= avg %></span>
+          <span class="text-yellow-500 tracking-widest text-lg" aria-hidden="true">
+            <%= '★' * avg.round + '☆' * (5 - avg.round) %>
+          </span>
+          <span class="text-xs tracking-[0.3em] text-muted-foreground"><%= cnt %> ОТЗЫВОВ</span>
+        </div>
+      <% end %>
+    </div>
+
+    <% if has_own %>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+        <% reviews.first(3).each do |r| %>
+          <%= render 'shared/review_card', review: r %>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="flex flex-wrap gap-x-8 gap-y-3 text-sm tracking-[0.3em]">
+      <%= link_to reviews_path, class: 'text-foreground hover:text-muted-foreground transition-colors' do %>ВСЕ ОТЗЫВЫ →<% end %>
+      <%= link_to new_review_path, class: 'text-foreground hover:text-muted-foreground transition-colors' do %>ОСТАВИТЬ ОТЗЫВ →<% end %>
+    </div>
+  </div>
+</section>

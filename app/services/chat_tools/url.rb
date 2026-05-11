@@ -9,5 +9,9 @@ module ChatTools
     def property_path(slug)
       "/properties/#{slug}"
     end
+
+    def investment_audit_path(token)
+      "/valuations/audit/#{token}"
+    end
   end
 end
