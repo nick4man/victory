@@ -21,12 +21,19 @@
 
 ## Параллельные сессии Claude Code
 
-Работают **на одной кодбазе** `/home/q/victory`:
+Работают **на одной кодбазе** `/home/q/victory` (минимум три сессии в проекте):
 
-- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. chruby/rbenv с Ruby 3.2.2 активирован. Сюда — Edit/Write/RSpec/runner.
-- **session «chat»** — планирование, документы, TG-доставка. Системный Ruby 3.3 — `bin/rails runner` НЕ работает. Сюда — Plan, AskUser, curl к TG Bot API напрямую.
+- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. chruby/rbenv с Ruby 3.2.2 активирован. Сюда — Edit/Write/RSpec/runner, миграции, рефакторинги, тесты.
+- **session «chat»** — **site-chatbot разработка** + планирование, документы, TG-доставка. Системный Ruby 3.3 — `bin/rails runner` НЕ работает. Сюда — Plan, AskUser, curl к TG Bot API напрямую, prompt-engineering для `chat_responder.rb` + `chat_tools/*`.
+- **session «seo»** — SEO-работа: meta-теги, JSON-LD, sitemap/robots, friendly_id, контент-SEO, lighthouse-аудиты. Эта сессия работает с тем же codebase; для Rails-изменений (helpers, view-partials, controllers) предпочитает hand-off в victory-сессию (там dev-server и тесты).
 
-Координация: Memory-bank и `.mcp.json` проектные → обе сессии видят одинаковую конфигурацию.
+Координация: Memory-bank, `.mcp.json`, `.claude/agents/`, `.claude/skills/` проектные → все сессии видят одинаковую конфигурацию. Для одновременных правок одного файла — lock-file pattern (см. skill `session-coordination` и agent `session-coordinator`).
+
+Session-domain split (рекомендуемый):
+- Rails-код / migrations / specs → **victory**
+- Site-chatbot tools / prompts / LLM chain → **chat**
+- SEO meta / JSON-LD / sitemap / content-SEO → **seo** (Rails-side изменения — hand-off в victory)
+- Документы / планирование / TG-доставка → любая, но обычно **chat**
 
 ## Что сейчас «в фокусе» при работе
 

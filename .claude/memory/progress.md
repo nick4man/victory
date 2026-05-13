@@ -53,7 +53,12 @@
 
 ## Известные проблемы / tech debt
 
-- **Тесты**: 5 spec файлов на 328 модулей. Покрытие минимальное — рефакторинг крупных файлов рискованный.
-- **Линтинг**: `.rubocop.yml` есть, но rubocop/brakeman/bundler-audit отсутствуют в Gemfile. Phase 4 — добавить.
-- **Hot-spots по LOC**: `Property` модель ~710, `DashboardController` ~624, `PropertiesController` ~584. Кандидаты на декомпозицию (Phase 2 — rails-architect агент).
+- **Тесты**: 5 spec файлов на 328 модулей. Покрытие минимальное — рефакторинг крупных файлов рискованный. Агент `test-bootstrapper` + skill `rspec-bootstrap` помогают добавлять coverage инкрементально.
+- **Линтинг**: `.rubocop.yml` есть, но rubocop/brakeman/bundler-audit отсутствуют в Gemfile. Phase 3 — добавить.
+- **Hot-spots по LOC**: `Property` модель ~710, `DashboardController` ~624, `PropertiesController` ~584. Кандидаты на декомпозицию через агента `rails-architect`.
 - **Hedonic valuation overshoot**: ранее наблюдалось завышение (Дубровичи 25.2М ₽ вместо 7М). `property-valuation-expert` агент компенсирует через CMA-аналоги.
+- **SEO gaps**: WebSite+SearchAction JSON-LD на главной отсутствует; Yandex.Metrika+GA4 ENV-vars в `.env.example` но не подключены в layout; lazy-loading images не систематический. Phase 2B — quick wins; агент `seo-content-curator` + skill `victory-seo-checklist` подключены.
+
+## Strategic future migration
+
+- **Topnlab → собственная CRM**: миграция стратегическая, инкрементальная (Phase 0-4). См. `futureCrm.md` + `.claude/docs/topnlab/migration-roadmap.md`. Агент `topnlab-api-expert` обслуживает текущую интеграцию + миграционные решения. TG staff bot уже играет роль CRM-канала через `app/services/telegram/work_bot/`.
