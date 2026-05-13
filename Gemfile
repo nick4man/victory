@@ -105,4 +105,13 @@ gem 'stoplight', '~> 4.1'
 group :development do
   gem 'ruby-lsp',       '~> 0.26', require: false
   gem 'ruby-lsp-rails', require: false
+
+  # Linters & security scanners — run locally via `bundle exec` and in CI
+  # (.github/workflows/lint.yml). All three are require: false so they
+  # don't load into the app process.
+  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
+  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
+  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
+  gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
 end
