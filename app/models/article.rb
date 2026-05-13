@@ -42,6 +42,8 @@ class Article < ApplicationRecord
 
   before_save :render_markdown, if: :body_changed?
   after_commit :enqueue_embedding, on: %i[create update]
+  after_commit :notify_indexnow_on_publish, on: %i[create update],
+               if: :should_notify_indexnow?
 
   scope :published,    -> { where.not(published_at: nil).where('published_at <= ?', Time.current) }
   scope :recent,       -> { order(published_at: :desc) }
@@ -136,5 +138,28 @@ class Article < ApplicationRecord
                                  strikethrough: true,
                                  superscript: true)
     self.body_html = md.render(body.to_s).html_safe
+  end
+
+  # Push IndexNow notification when article transitions to public state
+  # (published_at set, hidden_at clear). Skipped silently if
+  # INDEXNOW_API_KEY is unset or we're not in production.
+  def should_notify_indexnow?
+    return false if hidden_at.present?
+    return false if published_at.blank? || published_at > Time.current
+
+    return true if previously_new_record?
+    saved_change_to_published_at? ||
+      saved_change_to_hidden_at? ||
+      saved_change_to_title? ||
+      saved_change_to_body?
+  end
+
+  def notify_indexnow_on_publish
+    url = Rails.application.routes.url_helpers.article_url(
+      self,
+      host: 'victory62.org',
+      protocol: 'https'
+    )
+    Seo::IndexNowNotifyJob.perform_later(url: url)
   end
 end

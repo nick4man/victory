@@ -187,6 +187,8 @@ class Property < ApplicationRecord
   after_touch :update_search_index
   after_commit :enqueue_embed_if_changed, on: %i[create update]
   after_commit :bust_agency_metrics_cache
+  after_commit :notify_indexnow_on_publish, on: %i[create update],
+               if: :should_notify_indexnow?
 
   # ============================================
   # GEOCODING
@@ -707,5 +709,33 @@ class Property < ApplicationRecord
 
   def condition_i18n
     I18n.t("activerecord.attributes.property.conditions.#{condition}")
+  end
+
+  private
+
+  # Push IndexNow notification when property becomes (or remains) publicly
+  # discoverable. We notify on transition to :active AND on subsequent
+  # significant edits while active. Skipped silently if INDEXNOW_API_KEY
+  # is unset or we're not in production.
+  def should_notify_indexnow?
+    return false unless status_active?
+    return false if deleted_at.present?
+
+    # On create when published directly into :active, or on update when
+    # status just transitioned to :active, or when an active property had
+    # its price or title materially changed.
+    return true if previously_new_record?
+    saved_change_to_status? ||
+      saved_change_to_price? ||
+      saved_change_to_title?
+  end
+
+  def notify_indexnow_on_publish
+    url = Rails.application.routes.url_helpers.property_url(
+      self,
+      host: 'victory62.org',
+      protocol: 'https'
+    )
+    Seo::IndexNowNotifyJob.perform_later(url: url)
   end
 end

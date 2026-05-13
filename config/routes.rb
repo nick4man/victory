@@ -572,6 +572,14 @@ Rails.application.routes.draw do
   # different lastmod expectations, only articles ≤ 2 days old are eligible).
   get 'sitemap-news.xml', to: 'sitemap#news', defaults: { format: 'xml' }
   get 'robots.txt', to: 'robots#index', defaults: { format: 'txt' }
+  # IndexNow ownership-proof file at /<key>.txt — Bing/Yandex/Brave/Yep/Naver
+  # fetch this to verify we own ENV['INDEXNOW_API_KEY'] before accepting
+  # push notifications via Seo::IndexNowNotifier.
+  get ':key.txt',
+      to:          'index_now_key#show',
+      constraints: { key: /[a-fA-F0-9]{8,128}/ },
+      defaults:    { format: 'txt' },
+      as:          :index_now_key
 
   # Aggregator feeds (Yandex.Недвижимость / ЦИАН / Авито / МирКвартир /
   # Restate / Domofond). Three native formats — each aggregator has its own
