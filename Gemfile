@@ -95,3 +95,14 @@ gem 'rqrcode', '~> 2.2'
 gem 'faraday', '~> 2.9'
 gem 'faraday-retry', '~> 2.2'
 gem 'stoplight', '~> 4.1'
+
+# === Development tooling ===
+# ruby-lsp нужен Serena MCP / IDE для navigation-by-symbol (find_definition,
+# find_referencing_symbols, rename, etc) в Ruby-файлах проекта. `ruby-lsp-rails`
+# — addon, добавляющий понимание Rails-конвенций (моделей, миграций, роутов,
+# AR-связей). require: false — гем грузится только когда LSP-сервер
+# поднимается, не нужен в runtime приложения.
+group :development do
+  gem 'ruby-lsp',       '~> 0.26', require: false
+  gem 'ruby-lsp-rails', require: false
+end

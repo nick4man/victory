@@ -245,7 +245,12 @@ ehthumbs.db
 # TG inbox (incoming screenshots/notes from operators)
 /inbox/
 
-.mcp.json
+# .mcp.json — теперь в репо. Секреты внутри подставляются через ${VAR}
+# из env разработчика; литералов токенов в файле нет.
+
+# Serena MCP — локальное состояние LSP-сервера (memories, индексы).
+# Per-user/per-machine, не делится между разработчиками.
+.serena/
 
 *.pdf
 *.png
