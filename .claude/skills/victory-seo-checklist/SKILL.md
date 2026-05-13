@@ -83,21 +83,42 @@ JSON-LD генерится автоматом через `breadcrumb_jsonld` hel
 
 ### 8. Images: alt + lazy + responsive
 
-```erb
-<!-- hero (above fold) -->
-<%= image_tag property.images.first,
-              alt: property_image_alt(property),
-              loading: 'eager', decoding: 'async' %>
+Routing **по типу изображения**:
 
-<!-- below fold -->
+| Тип изображения | Используй | Почему |
+|---|---|---|
+| Property attachment (главное!) | `property_picture(img, alt:, priority:)` из `PropertyImageHelper` | Авто webp+jpeg + srcset на 3 breakpoints + lazy/eager + LCP fetchpriority |
+| Article hero/любая Active Storage картинка | `image_with_lazy(src, alt:, eager_first:)` из `SeoHelper` | Простой `<img>` с lazy + async decoding + опц. high-priority |
+| Иконка / decoration / стат. asset | `image_with_lazy(asset_path(...), alt: 'описательное')` | Тот же helper |
+
+Примеры:
+
+```erb
+<%# Property hero (LCP slot) %>
+<%= property_picture(property.images.first,
+                     alt: property_image_alt(property),
+                     priority: true,
+                     sizes: '(min-width: 1024px) 67vw, 100vw') %>
+
+<%# Property gallery — остальные картинки %>
 <% property.images[1..].each do |img| %>
-  <%= image_tag img, alt: property_image_alt(property),
-                loading: 'lazy', decoding: 'async' %>
+  <%= property_picture(img, alt: property_image_alt(property), priority: false) %>
 <% end %>
+
+<%# Article hero %>
+<%= image_with_lazy(article.cover_image, alt: article.title, eager_first: true,
+                    class: 'w-full rounded-2xl') %>
+
+<%# Decorative icon (1st screen but не LCP) %>
+<%= image_with_lazy(asset_path('icons/feature-1.svg'),
+                    alt: 'Бесплатная консультация') %>
 ```
 
-- `property_image_alt` уже есть; генерит «Купить 2-комн, 65 м² в Советском, Рязань»
-- Responsive: используй Active Storage variants (`thumb`/`card`/`hero`)
+**Правила**:
+- На странице **только ОДНА** картинка с `priority: true` / `eager_first: true` — это LCP-кандидат
+- `alt` всегда содержательный: «Купить 2-комн квартиру в Канищево» лучше чем «фото квартиры»
+- `property_image_alt(property, idx)` helper уже есть — используй для всех Property images
+- Decoration-only картинки (например, узор фона) лучше через CSS background-image, не `<img>` с пустым alt
 
 ### 9. Robots
 
