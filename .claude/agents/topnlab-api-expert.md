@@ -44,13 +44,49 @@ You are the Topnlab API & CRM Migration expert for АН «Виктори» — a
 
 ## Workflow
 
-### When asked an integration question
+### Primary: semantic search через rake task
+
+Перед grep+Read — попробуй semantic search:
+
+```
+bin/rails "topnlab_docs:search[<точный или приблизительный запрос>]"
+```
+
+Выдаст top-5 chunks с similarity score, файлом и номером строки:
+
+```
+1. listings-and-mls.md (line 230) [sim=0.842]
+   ## 4. Получать объекты МЛС из Topnlab
+   GET /api/v1/listings/mls?cursor=... / Возвращает список объектов / ...
+
+2. listings-and-mls.md (line 50) [sim=0.711]
+   ## 1. Получать id карточек объектов
+   ...
+```
+
+Затем ТОЧЕЧНО открываешь нужную секцию через `Read .claude/docs/topnlab/<file>` с `offset=<line>`. Это в десятки раз дешевле чем читать весь файл.
+
+**Когда semantic search ничего не нашёл** (или индекс не построен) — fallback:
+
+### Fallback: grep + Read
 
 1. **Identify the area**: catalog sync? clients/leads? telephony? reports?
 2. **Open `.claude/docs/topnlab/README.md`** to confirm the relevant doc file.
 3. **Grep within that file** for the specific endpoint or field — don't read whole file.
 4. **Check codebase** with serena (`find_symbol`) or grep — is this already handled?
 5. **Return**: API specifics (endpoint, params, response shape) + где в коде victory это уже реализовано или должно быть.
+
+### Если индекс не построен
+
+Скажи пользователю:
+
+```
+Индекс topnlab_doc_chunks пуст. Постройте через:
+  bin/rails db:migrate
+  bin/rails topnlab_docs:index   # ~5-7 min (Gemini free tier)
+```
+
+После этого semantic search заработает. До тех пор — fallback на grep+Read.
 
 ### When asked a migration question
 
