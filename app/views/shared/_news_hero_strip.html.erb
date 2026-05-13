@@ -22,7 +22,8 @@
       <% end %>
     </div>
 
-    <%= link_to news_item_path(article.slug),
+    <%= link_to news_path(article: article.slug),
+          data: { news_card_slug: article.slug },
           class: "group grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-baseline" do %>
       <div class="lg:col-span-2 space-y-1">
         <p class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= category_ru %></p>

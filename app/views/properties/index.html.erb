@@ -61,13 +61,13 @@
         property show aside, mode-picker landing). %>
     <div class="mb-12 border border-border bg-card p-4 lg:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <p class="text-sm text-muted-foreground">
-        Не знаете, какой объект выгоднее? Запустите бесплатный инвест-аудит — EI, Monte Carlo, вердикт BUY/WAIT за ~30 сек.
+        Не знаете, какой объект выгоднее? Запустите бесплатный инвест-аудит — индекс эффективности, симуляция Монте-Карло, рекомендация «Покупать» или «Подождать» за ~30 секунд.
       </p>
       <%= link_to "ЗАПУСТИТЬ АУДИТ →", investment_audit_new_path,
             class: "shrink-0 text-xs tracking-[0.3em] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors" %>
     </div>
 
-    <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
+    <div class="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-8">
       <div>
         <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КАТАЛОГ</p>
         <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground">ОБЪЕКТЫ НЕДВИЖИМОСТИ</h1>
@@ -80,6 +80,22 @@
           <%= link_to label, properties_path(q.any? ? { q: q } : {}), class: "px-5 py-2 text-sm tracking-wider border #{active ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground'} transition-colors" %>
         <% end %>
       </div>
+    </div>
+
+    <%# District chips — entry points to SEO landings. Each chip links to
+        /kupit/kvartira/rayon/<slug>, which has its own editorial partial
+        in landings/content/. Top 8 priority micro-districts (highest search
+        traffic). Full list lives in the header's mega-menu (Каталог). %>
+    <% chip_slugs = %w[centr kanishchevo dashkovo-pesochnya priokskiy semchino gorroshcha kalnoe solotcha] %>
+    <div class="flex flex-wrap items-center gap-2 mb-16 -mt-4">
+      <span class="text-xs tracking-[0.3em] text-muted-foreground mr-2">РАЙОНЫ:</span>
+      <% chip_slugs.each do |slug| %>
+        <%= link_to RyazanDistricts.name_for(slug),
+                    buy_district_landing_path(type: 'kvartira', district: slug),
+                    class: "px-3 py-1 text-xs tracking-wider border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors" %>
+      <% end %>
+      <%= link_to "Все районы →", buy_landing_path(type: 'kvartira'),
+                  class: "px-3 py-1 text-xs tracking-[0.2em] text-foreground hover:text-muted-foreground transition-colors" %>
     </div>
 
     <%= search_form_for @q, url: properties_path, html: { class: "grid grid-cols-1 md:grid-cols-4 gap-px bg-border mb-12" } do |f| %>

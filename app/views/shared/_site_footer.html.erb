@@ -1,6 +1,6 @@
 <footer class="bg-card border-t border-border">
   <div class="px-6 lg:px-12 py-16 lg:py-24">
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-12 lg:gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-8">
       <div class="lg:col-span-1">
         <%= link_to root_path, class: "text-2xl font-light tracking-[0.3em] text-foreground" do %>АН ВИКТОРИ<% end %>
         <p class="text-sm text-muted-foreground mt-4 leading-relaxed max-w-xs">
@@ -24,8 +24,28 @@
           <%= link_to "Подбор недвижимости",       properties_path,                          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Оценка недвижимости",       valuations_path,                          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Инвестиционный аудит",      investment_audit_new_path,                class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
-          <%= link_to "Ипотечный калькулятор",     services_mortgage_calculator_path,        class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Ипотечный калькулятор",     services_mortgage_path,                   class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%= link_to "Депозитный калькулятор",    services_deposit_path,                    class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Юридическое сопровождение", services_legal_services_path,             class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+        </nav>
+      </div>
+
+      <div>
+        <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">РАЙОНЫ РЯЗАНИ</h4>
+        <%# Footer district column — top 8 priority micro-districts that
+            drive most search traffic. Full list available via the mega-menu
+            in the header (Каталог → Районы). Keeping this column short
+            preserves footer visual rhythm. %>
+        <% footer_districts = %w[
+          centr kanishchevo dashkovo-pesochnya priokskiy
+          semchino gorroshcha kalnoe solotcha
+        ] %>
+        <nav class="flex flex-col gap-3">
+          <% footer_districts.each do |slug| %>
+            <%= link_to RyazanDistricts.name_for(slug),
+                        buy_district_landing_path(type: 'kvartira', district: slug),
+                        class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <% end %>
         </nav>
       </div>
 

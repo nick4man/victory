@@ -24,7 +24,7 @@
       <td>Агент:</td>
       <td>
         <%= @agent.full_name %><br>
-        <a href="tel:<%= @agent.phone %>" style="color: #667eea;"><%= @agent.phone %></a>
+        <a href="tel:<%= @agent.display_phone_tel %>" style="color: #667eea;"><%= @agent.display_phone %></a>
       </td>
     </tr>
     <% end %>
@@ -97,8 +97,8 @@
     <strong style="font-size: 18px;"><%= @agent.full_name %></strong>
   </p>
   <p style="margin: 5px 0; font-size: 20px; color: #667eea;">
-    <a href="tel:<%= @agent.phone %>" style="color: #667eea; text-decoration: none;">
-      <%= @agent.phone %>
+    <a href="tel:<%= @agent.display_phone_tel %>" style="color: #667eea; text-decoration: none;">
+      <%= @agent.display_phone %>
     </a>
   </p>
   <% if @agent.email.present? %>

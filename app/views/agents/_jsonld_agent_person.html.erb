@@ -22,7 +22,7 @@
     '@type' => 'Person',
     'name' => @agent.display_name,
     'jobTitle' => (@agent.try(:crm_role_name).presence || 'Агент по недвижимости'),
-    'telephone' => @agent.phone.presence,
+    'telephone' => @agent.display_phone,
     'email' => @agent.email.presence,
     'image' => avatar_url,
     'url' => page_url,

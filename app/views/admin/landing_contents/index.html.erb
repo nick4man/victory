@@ -1,0 +1,100 @@
+<% content_for :title, "Админка · SEO-страницы — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">SEO-страницы районов</h1>
+      </div>
+      <%= link_to "+ Новая страница",
+            new_admin_landing_content_path,
+            class: "px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors" %>
+    </div>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <% tabs = [
+      ['all',       "ВСЕ · #{@counts[:all]}"],
+      ['published', "ОПУБЛИКОВАНО · #{@counts[:published]}"],
+      ['drafts',    "ЧЕРНОВИКИ · #{@counts[:drafts]}"]
+    ] %>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <% tabs.each do |slug, label| %>
+        <%= link_to label, admin_landing_contents_path(scope: slug),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <% if @landing_contents.any? %>
+      <table class="w-full text-sm border border-border">
+        <thead class="bg-card text-[10px] tracking-[0.25em] text-muted-foreground uppercase">
+          <tr>
+            <th class="text-left p-3">Сделка / Тип</th>
+            <th class="text-left p-3">Район</th>
+            <th class="text-left p-3">Заголовок</th>
+            <th class="text-left p-3">Блоков</th>
+            <th class="text-left p-3">Статус</th>
+            <th class="text-right p-3">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @landing_contents.each do |lc| %>
+            <tr class="border-t border-border hover:bg-card/40 transition-colors">
+              <td class="p-3 text-muted-foreground"><%= lc.intent %> / <%= lc.type %></td>
+              <td class="p-3"><%= lc.district_slug ? RyazanDistricts.name_for(lc.district_slug) || lc.district_slug : '—' %></td>
+              <td class="p-3"><%= lc.title.to_s.truncate(60) %></td>
+              <td class="p-3 text-muted-foreground"><%= (lc.body_blocks || []).size %></td>
+              <td class="p-3">
+                <% if lc.published %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">ОНЛАЙН</span>
+                <% else %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">ЧЕРНОВИК</span>
+                <% end %>
+              </td>
+              <td class="p-3 text-right space-x-3">
+                <%= link_to "Открыть на сайте →", lc.public_path,
+                      target: "_blank", rel: "noopener",
+                      class: "text-xs text-muted-foreground hover:text-foreground" %>
+                <%= link_to "Редактировать",
+                      edit_admin_landing_content_path(lc),
+                      class: "text-xs text-foreground underline hover:no-underline" %>
+                <% if lc.published %>
+                  <%= button_to "Снять", unpublish_admin_landing_content_path(lc),
+                        method: :post, class: "text-xs text-muted-foreground hover:text-foreground inline" %>
+                <% else %>
+                  <%= button_to "Опубликовать", publish_admin_landing_content_path(lc),
+                        method: :post, class: "text-xs text-foreground hover:opacity-80 inline" %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p class="text-muted-foreground text-sm">В этой выборке пока нет страниц.</p>
+    <% end %>
+
+    <%# Coverage map — districts without a kvartira-sale landing yet %>
+    <% if @missing_district_slugs.any? %>
+      <div class="mt-12 p-6 border border-border bg-card/40">
+        <h3 class="text-sm tracking-[0.3em] text-muted-foreground mb-4">НЕТ КОНТЕНТА (квартиры — продажа)</h3>
+        <p class="text-xs text-muted-foreground mb-4">
+          У этих микрорайонов нет отдельной SEO-страницы в БД. Сайт пока показывает текст из ERB-партиала; добавьте сюда — будет полный контроль из админки.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <% @missing_district_slugs.each do |slug| %>
+            <%= link_to RyazanDistricts.name_for(slug),
+                  new_admin_landing_content_path(landing_content: { intent: 'sale', type: 'kvartira', district_slug: slug, title: "#{RyazanDistricts.name_for(slug)} — продажа квартир" }),
+                  class: "px-3 py-1.5 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-foreground transition-colors" %>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+  </div>
+</section>

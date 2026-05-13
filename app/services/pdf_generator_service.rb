@@ -295,11 +295,13 @@ class PdfGeneratorService
     site_url = (defined?(AgencyInfo) ? AgencyInfo::WEBSITE_URL : 'https://victory62.org')
     tg_url   = 'https://t.me/rznvictory'
 
-    site_png = QrRenderer.png(site_url, size: 200)
-    tg_png   = QrRenderer.png(tg_url,   size: 200)
+    # Solid pixel-modules at 12 px/module — survives Prawn → PDF-viewer
+    # downscale without anti-aliasing washout.
+    site_png = QrRenderer.png(site_url)
+    tg_png   = QrRenderer.png(tg_url)
     return if site_png.nil? && tg_png.nil?
 
-    qr_size = 60 # PDF points
+    qr_size = 80 # PDF points — larger for legibility
     gap     = 60
     page_w  = pdf.bounds.width
     block_w = (qr_size * 2) + gap + 240

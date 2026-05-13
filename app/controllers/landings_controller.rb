@@ -53,23 +53,12 @@ class LandingsController < ApplicationController
 
   INTENT_VERB = { 'sale' => 'Купить', 'rent' => 'Снять' }.freeze
 
-  # Latin slug → list of accepted district strings as they appear in the
-  # Property#district column. Multiple aliases handle CRM data variance
-  # (e.g. "ДП" vs full "Дашково-Песочня").
-  DISTRICT_MAP = {
-    'kanishchevo'        => ['Канищево'],
-    'dashkovo-pesochnya' => ['Дашково-Песочня', 'ДП'],
-    'moskovskiy'         => ['Московский', 'Московский (народный)'],
-    'sovetskiy'          => ['Советский'],
-    'oktyabrskiy'        => ['Октябрьский'],
-    'zheleznodorozhnyy'  => ['Железнодорожный'],
-    'semchino'           => ['Семчино'],
-    'priokskiy'          => ['Приокский'],
-    'sokolovka'          => ['Соколовка'],
-    'gorroshcha'         => ['Горроща'],
-    'nedostoyevo'        => ['Недостоево'],
-    'vostochnyy'         => ['Восточный', 'Восточный промузел']
-  }.freeze
+  # District aliases now live in `RyazanDistricts` (app/services/) — single
+  # source of truth used by header mega-menu, sitemap, catalog chips, footer.
+  # Kept here for back-compat with consumers that haven't migrated yet.
+  DISTRICT_MAP = (RyazanDistricts::MICRO.merge(RyazanDistricts::ADMIN))
+                 .transform_values { |v| v[:aliases] }
+                 .freeze
 
   def show
     @intent        = params[:intent] || 'sale'
@@ -96,6 +85,15 @@ class LandingsController < ApplicationController
     @meta_title       = "#{@h1} | АН «Виктори»"
     @meta_description = build_meta_description
     @canonical_path   = request.path
+
+    # DB-backed editorial content (admin-editable). If found and published,
+    # the view renders it instead of the file-backed ERB partial. The
+    # partial path is preserved as fallback for landings without a DB row
+    # yet (gradual rollout).
+    @landing_content = LandingContent.for_landing(
+      intent: @intent, type: @type,
+      district_slug: @district_slug, rooms: @rooms_raw
+    ).published.first
 
     add_breadcrumb 'Каталог', properties_path
     add_breadcrumb @h1

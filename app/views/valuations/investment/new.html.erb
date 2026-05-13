@@ -7,7 +7,7 @@
       Стоит ли<br>покупать этот объект?
     </h1>
     <p class="text-base lg:text-lg text-muted-foreground">
-      Полный анализ: EI (cash / ипотека / депозит), Monte Carlo 1M симуляций, вердикт BUY / WAIT / NEUTRAL.
+      Полный анализ: индекс эффективности (наличные / ипотека / депозит), симуляция Монте-Карло на 1 млн прогонов, вердикт «Покупать / Подождать / Нейтрально».
       <br>Время расчёта — около 30 секунд.
     </p>
   </div>
@@ -87,6 +87,35 @@
                  placeholder="<%= @macro[:deposit_rate] %>"
                  value="<%= init_ro['deposit_rate'] %>"
                  class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground">
+          <%# Опциональный выбор конкретной депозитной программы. Если
+              выбрана — её ставка автоматически подставляется в поле выше
+              и сохраняется в evaluation_data для отображения в результате. %>
+          <% deposit_programs = Deposit::ProgramsService.all rescue [] %>
+          <% if deposit_programs.any? %>
+            <select id="ro-deposit-program" form="investment-form" name="rate_overrides[deposit_program_id]"
+                    class="mt-1 w-full border border-border bg-background px-2 py-1 text-[11px] focus:outline-none focus:border-foreground">
+              <option value="">— по ключевой ставке ЦБ —</option>
+              <% deposit_programs.each do |d| %>
+                <option value="<%= Deposit::ProgramsService.id_for(d) %>"
+                        data-rate="<%= d[:rate_max] %>"
+                        <%= 'selected' if init_ro['deposit_program_id'] == Deposit::ProgramsService.id_for(d) %>>
+                  <%= d[:bank_name] %> · <%= d[:product_name] %> (<%= d[:rate_max] %>%)
+                </option>
+              <% end %>
+            </select>
+            <script type="module">
+              (function () {
+                const sel = document.getElementById('ro-deposit-program');
+                const rateInput = document.getElementById('ro-deposit');
+                if (!sel || !rateInput) return;
+                sel.addEventListener('change', (e) => {
+                  const opt = e.target.options[e.target.selectedIndex];
+                  const rate = opt && opt.dataset ? opt.dataset.rate : '';
+                  if (rate) rateInput.value = rate;
+                });
+              })();
+            </script>
+          <% end %>
         </div>
         <div>
           <label class="block text-xs text-muted-foreground mb-1" for="ro-growth">Рост цен, %/год</label>

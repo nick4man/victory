@@ -11,13 +11,15 @@ module Admin
   #   - publish drafts (set published_at)
   #   - create manual "site update" articles
   class ArticlesController < ApplicationController
+    include AdminTokenAuth
     layout 'application'
-    before_action :require_admin_token
-    before_action :set_article, only: %i[show edit update hide unhide publish destroy]
+    before_action :set_article, only: %i[show edit update hide unhide publish publish_to_telegram destroy]
 
     def index
-      @scope = params[:scope].presence || 'visible'
+      @scope    = params[:scope].presence || 'visible'
+      @category = params[:category].presence if Article::CATEGORIES.include?(params[:category])
       base = Article.order(created_at: :desc)
+      base = base.where(category: @category) if @category
       @articles = case @scope
                   when 'hidden'  then base.where.not(hidden_at: nil)
                   when 'pending' then base.where(published_at: nil)
@@ -43,7 +45,9 @@ module Admin
         published_at: publish_now? ? Time.current : nil
       ))
       if @article.save
-        redirect_to admin_articles_path(token: params[:token]), notice: 'Статья создана.'
+        tg_msg = maybe_post_to_telegram(@article)
+        flash[:notice] = ['Статья создана.', tg_msg].compact.join(' ')
+        redirect_to admin_articles_path
       else
         render :new, status: :unprocessable_entity
       end
@@ -73,7 +77,21 @@ module Admin
 
     def publish
       @article.update!(published_at: Time.current)
-      redirect_back fallback_location: admin_articles_path(token: params[:token]), notice: 'Опубликовано.'
+      redirect_back fallback_location: admin_articles_path, notice: 'Опубликовано.'
+    end
+
+    # POST /admin/articles/:id/publish_to_telegram — ad-hoc TG dispatch for an
+    # already-saved article. Idempotent: refuses if `metadata.telegram_message_id`
+    # is set (chat-host post or a previous click).
+    def publish_to_telegram
+      result = Articles::TelegramPublisher.new(@article).call
+      if result[:success]
+        redirect_back fallback_location: edit_admin_article_path(@article),
+                      notice: "Опубликовано в @rznvictory (msg ##{result[:message_id]})."
+      else
+        redirect_back fallback_location: edit_admin_article_path(@article),
+                      alert: "TG: #{result[:error]}"
+      end
     end
 
     def destroy
@@ -87,12 +105,6 @@ module Admin
       @article = Article.find(params[:id])
     end
 
-    def require_admin_token
-      expected = ENV['ADMIN_TOKEN']
-      head :forbidden and return if expected.blank?
-      head :forbidden and return unless ActiveSupport::SecurityUtils.secure_compare(params[:token].to_s, expected)
-    end
-
     def article_params
       params.require(:article).permit(:title, :slug, :excerpt, :body, :category,
                                       :region, :schema_type, :published_at)
@@ -100,6 +112,20 @@ module Admin
 
     def publish_now?
       params[:publish] == '1' || params[:publish] == 'true'
+    end
+
+    # If the admin checked «Также опубликовать в Telegram» during creation,
+    # fire the publisher synchronously and return a flash-friendly summary.
+    # Errors don't block the create — the article exists either way.
+    def maybe_post_to_telegram(article)
+      return nil unless params[:publish_to_telegram] == '1'
+
+      result = Articles::TelegramPublisher.new(article).call
+      if result[:success]
+        "В Telegram: опубликовано (msg ##{result[:message_id]})."
+      else
+        "TG не отправлено: #{result[:error]}."
+      end
     end
   end
 end

@@ -168,7 +168,7 @@
         Стоит ли вкладывать?
       </h3>
       <p class="text-sm text-muted-foreground flex-1 mb-4">
-        Запустим инвест-аудит с этой ставкой и взносом — Monte Carlo 1M симуляций, вердикт BUY / WAIT.
+        Запустим инвест-аудит с этой ставкой и взносом — 1 млн симуляций Монте-Карло, рекомендация «Покупать» или «Подождать».
       </p>
       <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
         ЗАПУСТИТЬ АУДИТ →
@@ -182,7 +182,7 @@
         Сколько стоит мой объект?
       </h3>
       <p class="text-sm text-muted-foreground flex-1 mb-4">
-        Бесплатная экспресс-оценка: 5-8 аналогов из каталога + hedonic regression + доверительный интервал.
+        Бесплатная экспресс-оценка: 5–8 аналогов из каталога + гедоническая модель ценообразования + доверительный интервал.
       </p>
       <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
         ЗАКАЗАТЬ ОЦЕНКУ →
@@ -270,12 +270,425 @@
       <% end %>
     </div>
   <% else %>
-    <div class="max-w-5xl mx-auto mb-20 bg-card border border-border p-8 text-center">
-      <p class="text-sm text-muted-foreground">
-        Каталог программ временно недоступен. Калькулятор работает — попробуйте обновить страницу через пару минут.
+    <div class="max-w-5xl mx-auto mb-20 border border-amber-500/30 bg-amber-500/5 p-6 text-center">
+      <p class="text-sm text-amber-300 mb-2">Каталог банковских программ временно недоступен</p>
+      <p class="text-xs text-muted-foreground leading-relaxed max-w-xl mx-auto">
+        Калькулятор продолжает работать с усреднённой ставкой
+        <% if @macro && @macro[:mortgage_rate] %>
+          <span class="text-foreground"><%= @macro[:mortgage_rate] %>%</span>
+        <% end %>
+        — данные ЦБ РФ. Свяжитесь с менеджером для актуальных предложений
+        конкретных банков.
       </p>
     </div>
   <% end %>
+
+  <%# ============================================================
+      Альтернатива — депозиты / сравнение (на отдельных страницах)
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto mb-20 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <%= link_to services_deposit_path, class: 'block p-6 bg-card border border-border hover:border-foreground transition-colors group' do %>
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">АЛЬТЕРНАТИВА</p>
+      <p class="text-base text-foreground group-hover:text-muted-foreground transition-colors mb-1">Депозитный калькулятор →</p>
+      <p class="text-xs text-muted-foreground leading-relaxed">Что будет, если положить деньги на вклад вместо ипотеки. Доход, капитализация, программы крупнейших банков.</p>
+    <% end %>
+    <%= link_to services_mortgage_vs_deposit_path, class: 'block p-6 bg-card border border-border hover:border-foreground transition-colors group' do %>
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">СРАВНЕНИЕ</p>
+      <p class="text-base text-foreground group-hover:text-muted-foreground transition-colors mb-1">Вклад или ипотека →</p>
+      <p class="text-xs text-muted-foreground leading-relaxed">Купить квартиру в ипотеку или положить на депозит и снимать? Полный расчёт на 20 лет.</p>
+    <% end %>
+  </div>
+
+  <% _hide_legacy_inline_deposit_sections = false %>
+  <% if _hide_legacy_inline_deposit_sections && @deposit_programs&.any? %>
+    <div class="max-w-5xl mx-auto mb-20" id="deposit-programs">
+      <div class="bg-card border border-border">
+        <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">АЛЬТЕРНАТИВА</p>
+          <h2 class="text-xl lg:text-2xl font-light tracking-tight text-foreground">
+            Депозитные программы · <%= @deposit_programs.size %>
+          </h2>
+          <p class="text-sm text-muted-foreground mt-2 max-w-2xl">
+            Думаете «оставить деньги на вкладе или взять ипотеку?» — вот ставки крупнейших банков.
+            Сравните доходность депозита с переплатой по кредиту выше.
+          </p>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-background/40 text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+              <tr>
+                <th class="text-left p-3">Банк</th>
+                <th class="text-left p-3">Программа</th>
+                <th class="text-right p-3">Ставка</th>
+                <th class="text-left p-3">Срок</th>
+                <th class="text-right p-3">От суммы</th>
+                <th class="text-left p-3">Условия</th>
+                <th class="text-right p-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @deposit_programs.each do |d| %>
+                <tr class="border-t border-border hover:bg-background/30 transition-colors"
+                    data-deposit-rate="<%= d[:rate_max] %>"
+                    data-deposit-term-max="<%= d[:term_months_max] %>"
+                    data-deposit-min-amount="<%= d[:min_amount] %>">
+                  <td class="p-3 font-medium text-foreground"><%= d[:bank_name] %></td>
+                  <td class="p-3 text-foreground"><%= d[:product_name] %></td>
+                  <td class="p-3 text-right text-emerald-300 font-medium"><%= d[:rate_max] %>%</td>
+                  <td class="p-3 text-muted-foreground whitespace-nowrap"><%= d[:term_months_min] %>–<%= d[:term_months_max] %> мес.</td>
+                  <td class="p-3 text-right text-muted-foreground whitespace-nowrap"><%= number_with_delimiter(d[:min_amount], delimiter: ' ') %> ₽</td>
+                  <td class="p-3 text-xs text-muted-foreground">
+                    <%= d[:capitalization]   ? 'капитализация' : 'без капитализации' %><% if d[:withdraw_allowed] %>, можно снимать<% end %>
+                  </td>
+                  <td class="p-3 text-right whitespace-nowrap">
+                    <% if d[:source_url].present? %>
+                      <%= link_to '→', d[:source_url], target: '_blank', rel: 'noopener nofollow',
+                            class: 'text-xs text-muted-foreground hover:text-foreground' %>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="px-6 py-3 text-[11px] text-muted-foreground/70 border-t border-border">
+          Ставки актуальны на <%= I18n.l(@deposit_programs.first[:as_of], format: :long) rescue @deposit_programs.first[:as_of] %>.
+          Точные условия и оформление — на сайтах банков.
+        </p>
+      </div>
+
+      <%# === Депозит-калькулятор === %>
+      <div class="mt-8 bg-card border border-border" id="deposit-calculator">
+        <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">РАСЧЁТ ДОХОДА</p>
+          <h3 class="text-lg lg:text-xl font-light tracking-tight text-foreground">Калькулятор депозита</h3>
+          <p class="text-xs text-muted-foreground mt-1">
+            Клик по строке таблицы выше — программа автоматически подставится в калькулятор.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-0">
+          <div class="p-6 lg:p-8 space-y-5">
+            <div>
+              <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-2">СУММА ВКЛАДА, ₽</label>
+              <input type="number" id="dc-amount" value="1000000" min="1000" step="10000"
+                     class="w-full px-3 py-2 bg-background border border-border text-foreground focus:border-foreground focus:outline-none text-lg">
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between mb-2">
+                <label class="text-xs tracking-[0.25em] text-muted-foreground">СРОК, МЕСЯЦЕВ</label>
+                <span class="text-sm text-foreground" id="dc-term-display">12</span>
+              </div>
+              <input type="range" id="dc-term" min="1" max="36" value="12" step="1"
+                     class="w-full accent-foreground">
+              <div class="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>1</span><span>12</span><span>24</span><span>36</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between mb-2">
+                <label class="text-xs tracking-[0.25em] text-muted-foreground">СТАВКА, %</label>
+                <span class="text-sm text-foreground" id="dc-rate-display">16.0%</span>
+              </div>
+              <input type="number" id="dc-rate" value="16.0" min="1" max="30" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border text-foreground focus:border-foreground focus:outline-none">
+              <p id="dc-program-label" class="text-[11px] text-muted-foreground mt-2 hidden">
+                Программа: <span class="text-foreground"></span>
+              </p>
+            </div>
+
+            <div>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="dc-capitalization" checked class="accent-foreground">
+                <span class="text-sm text-foreground">Капитализация процентов (ежемесячно)</span>
+              </label>
+              <p class="text-[11px] text-muted-foreground mt-1">При капитализации проценты прибавляются к телу вклада и в следующем месяце начисляются на бóльшую сумму.</p>
+            </div>
+          </div>
+
+          <div class="bg-foreground text-background p-6 lg:p-8 lg:min-w-[320px] flex flex-col justify-center">
+            <p class="text-xs tracking-[0.3em] mb-2 opacity-70">ИТОГОВАЯ СУММА</p>
+            <p class="text-3xl md:text-4xl font-light tracking-tight mb-5" id="dc-final">—</p>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p class="opacity-70 mb-1">Чистый доход</p>
+                <p class="text-base" id="dc-profit">—</p>
+              </div>
+              <div>
+                <p class="opacity-70 mb-1">Эффективная %</p>
+                <p class="text-base" id="dc-effective">—</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // Deposit calculator — annuity-style compound growth. Vanilla JS,
+      // no Stimulus (project doesn't use it). State lives in the inputs;
+      // every change rerenders the right-side summary.
+      (function () {
+        const $ = (id) => document.getElementById(id);
+        const amountEl  = $('dc-amount');
+        const termEl    = $('dc-term');
+        const termDisp  = $('dc-term-display');
+        const rateEl    = $('dc-rate');
+        const rateDisp  = $('dc-rate-display');
+        const capEl     = $('dc-capitalization');
+        const finalEl   = $('dc-final');
+        const profitEl  = $('dc-profit');
+        const effEl     = $('dc-effective');
+        const progLbl   = $('dc-program-label');
+
+        const fmtRub = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+
+        function compute() {
+          const principal = Math.max(0, Number(amountEl.value || 0));
+          const months    = Math.max(1, Number(termEl.value || 1));
+          const annualPct = Math.max(0, Number(rateEl.value || 0));
+          const cap       = capEl.checked;
+
+          let final;
+          if (cap) {
+            const monthlyRate = annualPct / 100 / 12;
+            final = principal * Math.pow(1 + monthlyRate, months);
+          } else {
+            const years = months / 12;
+            final = principal + principal * (annualPct / 100) * years;
+          }
+          const profit = final - principal;
+          const yearsFraction = months / 12;
+          const effective = yearsFraction > 0 ? (profit / principal / yearsFraction) * 100 : 0;
+
+          finalEl.textContent = fmtRub(final);
+          profitEl.textContent = fmtRub(profit);
+          effEl.textContent = effective.toFixed(2) + '%';
+          termDisp.textContent = months;
+          rateDisp.textContent = annualPct.toFixed(1) + '%';
+        }
+
+        [amountEl, termEl, rateEl, capEl].forEach((el) => {
+          el && el.addEventListener('input', compute);
+        });
+
+        // Click any deposit-table row → preselect rate/term/min-amount.
+        document.querySelectorAll('#deposit-programs tr[data-deposit-rate]').forEach((row) => {
+          row.style.cursor = 'pointer';
+          row.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A') return;  // don't hijack external links
+            const rate = row.dataset.depositRate;
+            const termMax = row.dataset.depositTermMax;
+            const minAmount = row.dataset.depositMinAmount;
+            if (rate)    rateEl.value = rate;
+            if (termMax) termEl.value = Math.min(36, Number(termMax) || 12);
+            if (minAmount && Number(amountEl.value) < Number(minAmount)) {
+              amountEl.value = minAmount;
+            }
+            const bank = row.cells[0]?.textContent?.trim();
+            const prod = row.cells[1]?.textContent?.trim();
+            if (bank && prod && progLbl) {
+              progLbl.classList.remove('hidden');
+              progLbl.querySelector('span').textContent = `${bank} — ${prod}`;
+            }
+            compute();
+            // Scroll calculator into view so user sees the result update.
+            document.getElementById('deposit-calculator')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
+        });
+
+        compute();
+      })();
+    </script>
+  <% end %>
+
+  <%# ============================================================
+      VS-block теперь живёт на /services/mortgage_vs_deposit. Inline-блок
+      ниже свёрнут под `<% if false %>` чтобы не удалять историю — при
+      необходимости вернуться, инвертируй условие.
+      ============================================================ %>
+  <% if false %>
+  <div class="max-w-5xl mx-auto mb-20" id="vs-block">
+    <div class="bg-card border border-border">
+      <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">СРАВНЕНИЕ</p>
+        <h2 class="text-xl lg:text-2xl font-light tracking-tight text-foreground">Что выгоднее: вклад или ипотека?</h2>
+        <p class="text-sm text-muted-foreground mt-2 max-w-2xl">
+          Допустим, у вас есть N миллионов. Купить квартиру в ипотеку — или положить деньги на депозит и снимать жильё? Расчёт через 20 лет с учётом роста цен и аренды.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+        <%# Сценарий 1: Ипотека %>
+        <div class="p-6 lg:p-8 border-b md:border-b-0 md:border-r border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">СЦЕНАРИЙ 1 · ИПОТЕКА</p>
+          <div class="space-y-3">
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Цена квартиры, ₽</span>
+              <input type="number" id="vs-price" value="7000000" min="500000" step="100000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Первый взнос, ₽</span>
+              <input type="number" id="vs-down" value="5000000" min="0" step="50000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Ставка ипотеки, %</span>
+              <input type="number" id="vs-mortgage-rate" value="22" min="1" max="40" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Срок, лет</span>
+              <input type="number" id="vs-years" value="20" min="1" max="30" step="1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+          </div>
+          <div class="mt-5 pt-5 border-t border-border space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-muted-foreground">Платёж в месяц:</span> <span class="text-foreground" id="vs-monthly">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Переплата:</span> <span class="text-foreground" id="vs-overpay">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Квартира через срок:</span> <span class="text-foreground" id="vs-flat-future">—</span></div>
+            <div class="flex justify-between font-medium border-t border-border pt-2 mt-2"><span>Чистая позиция:</span> <span class="text-foreground" id="vs-mortgage-net">—</span></div>
+          </div>
+        </div>
+
+        <%# Сценарий 2: Депозит + аренда %>
+        <div class="p-6 lg:p-8">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">СЦЕНАРИЙ 2 · ВКЛАД + АРЕНДА</p>
+          <div class="space-y-3">
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Сумма на депозите, ₽ <span class="text-[10px] opacity-60">(= первый взнос)</span></span>
+              <input type="number" id="vs-deposit-amount" value="5000000" min="0" step="50000" readonly
+                     class="w-full px-3 py-2 bg-background border border-border opacity-70 focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Ставка депозита, %</span>
+              <input type="number" id="vs-deposit-rate" value="16" min="1" max="30" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Аренда в месяц, ₽</span>
+              <input type="number" id="vs-rent" value="35000" min="0" step="1000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <details class="text-xs">
+              <summary class="cursor-pointer text-muted-foreground tracking-wider">Расширенные параметры</summary>
+              <div class="mt-3 space-y-3">
+                <label class="block">
+                  <span class="text-xs text-muted-foreground block mb-1">Рост цен на недвижимость, %/год</span>
+                  <input type="number" id="vs-price-growth" value="5" min="0" max="30" step="0.5"
+                         class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+                </label>
+                <label class="block">
+                  <span class="text-xs text-muted-foreground block mb-1">Рост аренды, %/год</span>
+                  <input type="number" id="vs-rent-growth" value="7" min="0" max="30" step="0.5"
+                         class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+                </label>
+              </div>
+            </details>
+          </div>
+          <div class="mt-5 pt-5 border-t border-border space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-muted-foreground">Депозит через срок:</span> <span class="text-foreground" id="vs-deposit-future">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Заплатите аренды:</span> <span class="text-foreground" id="vs-total-rent">—</span></div>
+            <div class="flex justify-between font-medium border-t border-border pt-2 mt-2"><span>Чистая позиция:</span> <span class="text-foreground" id="vs-deposit-net">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <%# Вердикт %>
+      <div id="vs-verdict-box" class="px-6 lg:px-8 py-5 lg:py-6 border-t border-border bg-foreground text-background">
+        <p class="text-[10px] tracking-[0.4em] mb-1 opacity-70">ВЕРДИКТ ЧЕРЕЗ <span id="vs-verdict-years">20</span> ЛЕТ</p>
+        <p class="text-xl lg:text-2xl font-light tracking-tight" id="vs-verdict">—</p>
+        <p class="text-xs opacity-70 mt-2">Учтены: переплата по кредиту, рост стоимости квартиры, рост аренды, капитализация процентов на депозите.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      const fmt = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+
+      // Sync deposit amount to mortgage down payment automatically.
+      const downEl = $('vs-down');
+      const depEl  = $('vs-deposit-amount');
+      const inputs = ['vs-price','vs-down','vs-mortgage-rate','vs-years',
+                      'vs-deposit-rate','vs-rent','vs-price-growth','vs-rent-growth'];
+
+      function annuityMonthly(loan, annualRate, months) {
+        if (loan <= 0) return 0;
+        const r = annualRate / 100 / 12;
+        if (r === 0) return loan / months;
+        return loan * r * Math.pow(1 + r, months) / (Math.pow(1 + r, months) - 1);
+      }
+
+      function compute() {
+        // Mortgage scenario
+        const price       = Math.max(0, Number($('vs-price').value || 0));
+        const down        = Math.max(0, Number($('vs-down').value || 0));
+        const mortRate    = Math.max(0, Number($('vs-mortgage-rate').value || 0));
+        const years       = Math.max(1, Number($('vs-years').value || 1));
+        const months      = years * 12;
+        const loan        = Math.max(0, price - down);
+        const monthly     = annuityMonthly(loan, mortRate, months);
+        const totalPaid   = monthly * months;
+        const overpay     = totalPaid - loan;
+        const priceGrowth = Math.max(0, Number($('vs-price-growth').value || 0)) / 100;
+        const flatFuture  = price * Math.pow(1 + priceGrowth, years);
+        const mortgageNet = flatFuture - (down + totalPaid);
+
+        // Deposit scenario — sum invested = mortgage down payment
+        depEl.value = down;
+        const depRate     = Math.max(0, Number($('vs-deposit-rate').value || 0));
+        const monthlyDepR = depRate / 100 / 12;
+        const depositFuture = down * Math.pow(1 + monthlyDepR, months);
+        const rent0       = Math.max(0, Number($('vs-rent').value || 0));
+        const rentGrowth  = Math.max(0, Number($('vs-rent-growth').value || 0)) / 100;
+        // Sum of geometric series for annual rent, paid monthly.
+        let totalRent = 0;
+        for (let y = 0; y < years; y++) {
+          totalRent += rent0 * Math.pow(1 + rentGrowth, y) * 12;
+        }
+        const depositNet = depositFuture - totalRent;
+
+        // Render
+        $('vs-monthly').textContent     = fmt(monthly);
+        $('vs-overpay').textContent     = fmt(overpay);
+        $('vs-flat-future').textContent = fmt(flatFuture);
+        $('vs-mortgage-net').textContent = fmt(mortgageNet);
+        $('vs-deposit-future').textContent = fmt(depositFuture);
+        $('vs-total-rent').textContent    = fmt(totalRent);
+        $('vs-deposit-net').textContent   = fmt(depositNet);
+        $('vs-verdict-years').textContent = years;
+
+        // Verdict
+        const diff = mortgageNet - depositNet;
+        const verdict = $('vs-verdict');
+        const box     = $('vs-verdict-box');
+        if (Math.abs(diff) < 100000) {
+          verdict.textContent = 'Сценарии примерно равны — разница в пределах 100 000 ₽';
+          box.className = box.className.replace(/(bg-\S+|text-\S+)/g, '').trim() + ' bg-foreground text-background';
+        } else if (diff > 0) {
+          verdict.textContent = `Ипотека выгоднее на ${fmt(diff)}`;
+          box.className = box.className.replace(/(bg-\S+|text-\S+)/g, '').trim() + ' bg-emerald-900/30 text-emerald-200 border-emerald-500/30';
+        } else {
+          verdict.textContent = `Вклад выгоднее на ${fmt(Math.abs(diff))}`;
+          box.className = box.className.replace(/(bg-\S+|text-\S+)/g, '').trim() + ' bg-amber-900/30 text-amber-200 border-amber-500/30';
+        }
+      }
+
+      inputs.forEach((id) => {
+        const el = $(id);
+        el && el.addEventListener('input', compute);
+      });
+      compute();
+    })();
+  </script>
+  <% end %><%# end of `if false` guard around the legacy VS-block (see comment above) %>
 
   <%# ============================================================
       FAQ
@@ -306,6 +719,8 @@
     Точные условия — у банка-кредитора. АН&nbsp;Виктори помогает с пакетом документов.
   </p>
 </section>
+
+<%= render 'services/finance_subnav', current: :mortgage %>
 
 <%# ============================================================
     JSON-LD: WebApplication + FAQPage
@@ -432,7 +847,22 @@
       if (caret != null) try { el.setSelectionRange(el.value.length, el.value.length); } catch (e) {}
     }
 
-    priceEl.addEventListener('input', function () { reformatRubField(priceEl); recalc(); });
+    // Keep the down-payment PERCENTAGE invariant when the price changes:
+    // user picks a bank program with min DP = 20%, slides to 20% → 1.6M for
+    // an 8M flat; then bumps price to 10M → down should become 2M (still 20%),
+    // not stay frozen at 1.6M which would silently fall below the program's
+    // minimum. The slider is the source of truth for the %.
+    function syncDownFromPriceByPercent() {
+      var price = parseRub(priceEl.value);
+      var pct   = parseInt(downSlider.value, 10);
+      if (isNaN(pct) || price <= 0) return;
+      downEl.value = fmtRub(Math.round(price * pct / 100)).replace(' ₽', '');
+    }
+    priceEl.addEventListener('input', function () {
+      reformatRubField(priceEl);
+      syncDownFromPriceByPercent();
+      recalc();
+    });
     downEl.addEventListener('input',  function () { reformatRubField(downEl); recalc(); });
 
     downSlider.addEventListener('input', function () {

@@ -1,12 +1,11 @@
 <% content_for :title, "Результат аудита — АН Виктори" %>
 
 <%
-  # In-template helpers (lambdas — Rails doesn't allow `def` inside ERB).
-  verdict_ru_map = { 'BUY' => 'ПОКУПАТЬ', 'WAIT' => 'ПОДОЖДАТЬ', 'NEUTRAL' => 'НЕЙТРАЛЬНО' }
-  strategy_ru_map = { 'cash' => 'Наличными', 'mortgage' => 'Ипотека', 'deposit' => 'Депозит',
-                      'Cash' => 'Наличные', 'Mortgage' => 'Ипотека', 'Deposit' => 'Депозит' }
-  confidence_ru_map = { 'high' => 'Высокая уверенность', 'medium' => 'Средняя уверенность',
-                        'low' => 'Низкая уверенность' }
+  # Verdict/strategy/confidence labels live in ValuationsHelper now —
+  # single source of truth, also used by PDF generator.
+  verdict_ru_map     = ValuationsHelper::VERDICT_RU
+  strategy_ru_map    = ValuationsHelper::STRATEGY_RU
+  confidence_ru_map  = ValuationsHelper::CONFIDENCE_RU
   fmt_rub = ->(v) {
     next '—' if v.blank?
     "#{v.to_f.round.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\1 ').reverse} ₽"
@@ -33,11 +32,11 @@
           </svg>
         </div>
         <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4">
-          Запускаем 1&nbsp;000&nbsp;000 Monte Carlo симуляций
+          Запускаем 1&nbsp;000&nbsp;000 симуляций Монте-Карло
         </h1>
         <p class="text-base text-muted-foreground max-w-xl mx-auto">
-          Считаем EI для cash / ипотеки / депозита, отбираем top-5 банковских программ, готовим PDF.
-          Обычно занимает 20-40 секунд.
+          Считаем индекс эффективности для трёх стратегий (наличные, ипотека, депозит), отбираем 5 лучших банковских программ, готовим PDF-отчёт.
+          Обычно занимает 20–40 секунд.
         </p>
         <p class="mt-8 text-xs tracking-[0.3em] text-muted-foreground/70" id="poll-status">
           Ожидание...
@@ -148,11 +147,13 @@
           <%= verdict_ru %>
         </h1>
         <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          <%= @audit['verdict_explanation'] || 'Расчёт завершён.' %>
+          <%# Engine иногда возвращает «EI» в verdict_explanation/decision_rationale —
+              post-process на стороне Rails чтобы пользователь видел «индекс эффективности». %>
+          <%= (@audit['verdict_explanation'] || 'Расчёт завершён.').to_s.gsub(/\bEI\b/, 'индекс эффективности') %>
         </p>
         <% if recommended.present? %>
           <p class="mt-6 text-sm text-foreground">
-            Лучшая стратегия по Monte&nbsp;Carlo: <strong><%= strategy_ru_map[recommended] || recommended.to_s.capitalize %></strong>
+            Лучшая стратегия по симуляции Монте-Карло: <strong><%= strategy_ru_map[recommended] || recommended.to_s.capitalize %></strong>
             <% if confidence.present? %>
               <span class="text-muted-foreground">· <%= confidence_ru_map[confidence] || confidence %></span>
             <% end %>
@@ -161,14 +162,18 @@
       </div>
 
       <%# === EI tiles (3 strategies with MC range) === %>
-      <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ЭФФЕКТИВНОСТЬ ИНВЕСТИЦИИ (EI) ПО СТРАТЕГИЯМ</p>
+      <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИНДЕКС ЭФФЕКТИВНОСТИ ПО СТРАТЕГИЯМ</p>
       <p class="text-xs text-muted-foreground mb-4 leading-relaxed max-w-3xl">
-        EI = соотношение полезного результата к затратам. <strong>≥ 1.2</strong> — выгодно (BUY),
-        <strong>0.9-1.1</strong> — нейтрально, <strong>&lt; 0.8</strong> — невыгодно (WAIT).
-        Median — центральное значение по 1M симуляций; p5/p95 — пессимистичная и оптимистичная границы.
+        Индекс эффективности — соотношение полезного результата к затратам. <strong>≥ 1.2</strong> — выгодно (рекомендация «Покупать»),
+        <strong>0.9–1.1</strong> — нейтрально, <strong>&lt; 0.8</strong> — невыгодно (рекомендация «Подождать»).
+        Медиана — центральное значение по 1 млн симуляций Монте-Карло; интервал p5–p95 — пессимистичный и оптимистичный сценарии.
       </p>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
         <%
+          # If the user picked a specific deposit program in the form
+          # (см. attach_rate_overrides), отображаем её рядом с ДЕПОЗИТ-карточкой.
+          user_ov = (@valuation.evaluation_data || {})['user_overrides'] || {}
+          deposit_label = user_ov['deposit_program_label']
           ei_data = [
             ['НАЛИЧНЫМИ (100%)', @audit['ei_cash'], mc['cash'], 'cash'],
             ['ИПОТЕКА',          @audit['ei_mortgage'], mc['mortgage'], 'mortgage'],
@@ -183,12 +188,18 @@
             <% end %>
             <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3"><%= title %></p>
             <p class="text-4xl font-light text-foreground mb-1"><%= ei ? ei.to_f.round(2) : '—' %></p>
-            <p class="text-xs text-muted-foreground mb-4">EI median (детерминированный)</p>
+            <% if key == 'deposit' && deposit_label.present? %>
+              <p class="text-[11px] text-muted-foreground mb-3">
+                Программа: <span class="text-foreground"><%= deposit_label %></span>
+                <% if user_ov['deposit_rate'] %>· ставка <span class="text-foreground"><%= user_ov['deposit_rate'] %>%</span><% end %>
+              </p>
+            <% end %>
+            <p class="text-xs text-muted-foreground mb-4">Медиана индекса (детерминированный расчёт)</p>
 
             <% if mc_strat %>
               <div class="pt-4 border-t border-border space-y-2">
                 <div class="flex justify-between text-xs">
-                  <span class="text-muted-foreground">Monte Carlo median:</span>
+                  <span class="text-muted-foreground">Медиана Монте-Карло:</span>
                   <span class="text-foreground"><%= mc_strat['ei_median']&.to_f&.round(2) %></span>
                 </div>
                 <div class="flex justify-between text-xs">
@@ -196,7 +207,7 @@
                   <span class="text-foreground"><%= mc_strat['ei_p5']&.to_f&.round(2) %>–<%= mc_strat['ei_p95']&.to_f&.round(2) %></span>
                 </div>
                 <div class="flex justify-between text-xs">
-                  <span class="text-muted-foreground">P(BUY):</span>
+                  <span class="text-muted-foreground">Вероятность «Покупать»:</span>
                   <span class="text-foreground"><%= fmt_pct.(mc_strat['buy_probability']) %></span>
                 </div>
               </div>
@@ -207,7 +218,7 @@
 
       <%# === 3 scenarios table (Оптим / Реал / Пессим) === %>
       <% if scenarios.any? %>
-        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">EI ПРИ РАЗНЫХ СЦЕНАРИЯХ РЫНКА</p>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИНДЕКС ЭФФЕКТИВНОСТИ ПРИ РАЗНЫХ СЦЕНАРИЯХ</p>
         <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
           Зависимость от макропараметров (рост цен, ставки ЦБ, инфляция). Лучшая стратегия выбирается отдельно для каждого сценария.
         </p>
@@ -218,9 +229,9 @@
                 <th class="text-left p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">СЦЕНАРИЙ</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">РОСТ ЦЕН</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИПОТЕКА</th>
-                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">EI НАЛИЧ.</th>
-                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">EI ИПОТЕКА</th>
-                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">EI ДЕПОЗИТ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · НАЛИЧНЫЕ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · ИПОТЕКА</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · ДЕПОЗИТ</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ЛУЧШАЯ</th>
               </tr>
             </thead>
@@ -241,7 +252,7 @@
         </div>
       <% end %>
 
-      <%# === Bank offers — multi-offer Monte Carlo over real bank programs === %>
+      <%# === Bank offers — банковские программы с симуляцией Монте-Карло === %>
       <%
         per_offer = @bank_offers&.dig('per_offer') || []
         recommended_offer_id = @bank_offers&.dig('recommended_offer_id')
@@ -251,8 +262,8 @@
       <% if per_offer.any? %>
         <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИПОТЕЧНЫЕ ПРОГРАММЫ БАНКОВ</p>
         <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
-          Каждая программа просчитана отдельной Monte&nbsp;Carlo — реальные ставки банков, требования по первому взносу и сроку.
-          Сортировка по EI ипотеки (выше — выгоднее).
+          Каждая программа просчитана отдельной симуляцией Монте-Карло — реальные ставки банков, требования по первому взносу и сроку.
+          Сортировка по индексу ипотеки (выше — выгоднее).
         </p>
         <% if recommended_bank.present? %>
           <p class="text-sm text-foreground mb-4">
@@ -265,9 +276,9 @@
               <tr class="border-b border-border">
                 <th class="text-left p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">БАНК / ПРОГРАММА</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">СТАВКА</th>
-                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">EI MEDIAN</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС (МЕДИАНА)</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">P5–P95</th>
-                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">P(BUY)</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ВЕРОЯТНОСТЬ ВЫГОДЫ</th>
                 <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">&nbsp;</th>
               </tr>
             </thead>
@@ -325,9 +336,9 @@
 
       <%# === Sensitivity table (mortgage rate) — compact SVG sparkline === %>
       <% if sensitivity.any? %>
-        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ЧУВСТВИТЕЛЬНОСТЬ EI К СТАВКЕ ИПОТЕКИ</p>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ВЛИЯНИЕ СТАВКИ ИПОТЕКИ НА ИНДЕКС</p>
         <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
-          Как меняется EI ипотеки если ставка ниже или выше. Линия порога 1.0 — точка безубыточности.
+          Как меняется индекс ипотеки если ставка ниже или выше. Линия порога 1.0 — точка безубыточности.
         </p>
         <%
           rates_with_ei = sensitivity.map { |r| [r['rate'].to_f, r['ei'].to_f] }
@@ -344,13 +355,13 @@
         <div class="bg-card border border-border p-6 mb-12 overflow-x-auto">
           <svg viewBox="0 0 <%= w %> <%= h %>" preserveAspectRatio="xMidYMid meet" class="w-full h-auto">
             <line x1="40" y1="<%= threshold_y %>" x2="<%= w - 20 %>" y2="<%= threshold_y %>" stroke="currentColor" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
-            <text x="<%= w - 24 %>" y="<%= threshold_y - 4 %>" font-size="10" text-anchor="end" fill="currentColor" opacity="0.5">EI = 1.0 (порог)</text>
+            <text x="<%= w - 24 %>" y="<%= threshold_y - 4 %>" font-size="10" text-anchor="end" fill="currentColor" opacity="0.5">Индекс = 1.0 (порог)</text>
             <path d="<%= path %>" fill="none" stroke="currentColor" stroke-width="1.5"/>
             <% [x_min, (x_min + x_max) / 2.0, x_max].each do |x| %>
               <text x="<%= x_of.call(x) %>" y="<%= h - 4 %>" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.6"><%= x.to_i %>%</text>
             <% end %>
           </svg>
-          <p class="mt-2 text-xs text-muted-foreground text-center">Ось X — ставка ипотеки (%). Ось Y — EI.</p>
+          <p class="mt-2 text-xs text-muted-foreground text-center">Ось X — ставка ипотеки (%). Ось Y — индекс эффективности.</p>
         </div>
       <% end %>
 

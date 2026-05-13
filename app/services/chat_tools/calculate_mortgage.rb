@@ -99,7 +99,7 @@ module ChatTools
         term_years:   term,
         rate:         rate.round(2)
       }
-      "/services/mortgage_calculator?#{params.to_query}"
+      "/services/mortgage?#{params.to_query}"
     end
 
     def self.format_message(monthly:, overpay:, term:, rate:, url:)

@@ -199,15 +199,30 @@ class Valuations::InvestmentController < ApplicationController
 
   # Sanitise + persist user-entered ставки overrides. Allowed keys:
   # mortgage_rate, deposit_rate, price_growth_annual — each must be in
-  # [0, 50]. Anything else is dropped silently (better than rejecting a
-  # whole submission for a typo'd rate field).
+  # [0, 50]. Additionally accepts deposit_program_id (the id from
+  # Deposit::ProgramsService) — when set, the program's rate overrides
+  # any manually-typed deposit_rate, and the program reference is stored
+  # so the result page can show "сравнили с депозитом Альфа-Банка 17.0%".
+  # Anything else is dropped silently (better than rejecting a whole
+  # submission for a typo'd rate field).
   def attach_rate_overrides(valuation, overrides_param)
     return unless overrides_param.is_a?(ActionController::Parameters) || overrides_param.is_a?(Hash)
     raw = overrides_param.to_unsafe_h.with_indifferent_access
+
     cleaned = %w[mortgage_rate deposit_rate price_growth_annual].each_with_object({}) do |k, h|
       v = raw[k]&.to_s&.tr(',', '.')&.to_f
       h[k] = v.round(2) if v && v.positive? && v <= 50
     end
+
+    if (program_id = raw['deposit_program_id'].presence)
+      program = Deposit::ProgramsService.find_by_id(program_id)
+      if program
+        cleaned['deposit_rate']       = program[:rate_max].to_f.round(2)
+        cleaned['deposit_program_id'] = program_id
+        cleaned['deposit_program_label'] = "#{program[:bank_name]} · #{program[:product_name]}"
+      end
+    end
+
     return if cleaned.empty?
     valuation.evaluation_data ||= {}
     valuation.evaluation_data['user_overrides'] = cleaned

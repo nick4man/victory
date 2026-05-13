@@ -7,7 +7,9 @@
 #   • disallow dashboard/api routes from generic crawlers
 class RobotsController < ApplicationController
   def index
-    sitemap_url = "#{request.protocol}#{request.host_with_port}/sitemap.xml"
+    base_url     = "#{request.protocol}#{request.host_with_port}"
+    sitemap_url  = "#{base_url}/sitemap.xml"
+    news_sm_url  = "#{base_url}/sitemap-news.xml"
     body = <<~ROBOTS
       User-agent: *
       Allow: /
@@ -71,7 +73,8 @@ class RobotsController < ApplicationController
       Disallow: /
 
       Sitemap: #{sitemap_url}
-      Host: #{request.protocol}#{request.host_with_port}
+      Sitemap: #{news_sm_url}
+      Host: #{base_url}
     ROBOTS
     render plain: body, content_type: 'text/plain'
   end

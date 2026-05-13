@@ -1,0 +1,73 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe TelegramUser do
+  describe 'validations' do
+    it 'требует tg_user_id' do
+      expect(described_class.new(tg_user_id: nil)).not_to be_valid
+    end
+
+    it 'tg_user_id уникален' do
+      described_class.create!(tg_user_id: 12_345)
+      dup = described_class.new(tg_user_id: 12_345)
+      expect(dup).not_to be_valid
+      expect(dup.errors[:tg_user_id]).to be_present
+    end
+
+    it 'status — только из STATUSES' do
+      u = described_class.new(tg_user_id: 1, status: 'wat')
+      expect(u).not_to be_valid
+    end
+  end
+
+  describe '.find_by_username' do
+    let!(:user) { described_class.create!(tg_user_id: 1, tg_username: 'IvanPetrov') }
+
+    it 'находит по точному username' do
+      expect(described_class.find_by_username('IvanPetrov')).to eq(user)
+    end
+
+    it 'не чувствителен к регистру' do
+      expect(described_class.find_by_username('ivanpetrov')).to eq(user)
+    end
+
+    it 'отрезает @-префикс' do
+      expect(described_class.find_by_username('@IvanPetrov')).to eq(user)
+    end
+
+    it 'возвращает nil для blank' do
+      expect(described_class.find_by_username(nil)).to be_nil
+      expect(described_class.find_by_username('')).to be_nil
+    end
+  end
+
+  describe '#mention' do
+    it 'возвращает @username если есть' do
+      u = described_class.new(tg_user_id: 1, tg_username: 'ivan')
+      expect(u.mention).to eq('@ivan')
+    end
+
+    it 'возвращает display_name если нет username' do
+      u = described_class.new(tg_user_id: 1, first_name: 'Иван', last_name: 'Петров')
+      expect(u.mention).to eq('Иван Петров')
+    end
+
+    it 'фоллбэк tg:<id> когда нет ни username ни имени' do
+      u = described_class.new(tg_user_id: 999)
+      expect(u.mention).to eq('tg:999')
+    end
+  end
+
+  describe '#linked_to_crm?' do
+    it 'true когда есть и topnlab_user_id и email' do
+      u = described_class.new(tg_user_id: 1, topnlab_user_id: 7, email: 'a@b.ru')
+      expect(u.linked_to_crm?).to be(true)
+    end
+
+    it 'false когда чего-то не хватает' do
+      expect(described_class.new(tg_user_id: 1, topnlab_user_id: 7).linked_to_crm?).to be(false)
+      expect(described_class.new(tg_user_id: 1, email: 'a@b.ru').linked_to_crm?).to be(false)
+    end
+  end
+end

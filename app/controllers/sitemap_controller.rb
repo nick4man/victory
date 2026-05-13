@@ -13,4 +13,18 @@ class SitemapController < ApplicationController
       format.xml
     end
   end
+
+  # Google News sitemap — only articles published in the last 48 hours are
+  # eligible (Google drops older entries). Yandex News reads the same schema.
+  # Separate route lets us emit news:news structured data without polluting
+  # the main sitemap (which would slow crawl of the steady-state catalog).
+  def news
+    @articles = Article.published
+                       .where('published_at >= ?', 2.days.ago)
+                       .order(published_at: :desc)
+                       .limit(1000)
+    respond_to do |format|
+      format.xml
+    end
+  end
 end

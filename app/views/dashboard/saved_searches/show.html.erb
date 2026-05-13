@@ -1,0 +1,116 @@
+<% content_for :title, "#{@search.name} — сохранённый поиск" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<%
+  filters = (@search.filters || {}).symbolize_keys
+  human_filter = filters.map do |k, v|
+    case k
+    when :deal_type then "Сделка: #{{ 'sale' => 'покупка', 'rent' => 'аренда', 'daily' => 'посуточно' }[v] || v}"
+    when :property_type then nil # show name below via type lookup
+    when :price_min then "Цена от #{number_with_delimiter(v.to_i, delimiter: ' ')} ₽"
+    when :price_max then "Цена до #{number_with_delimiter(v.to_i, delimiter: ' ')} ₽"
+    when :rooms     then "Комнат: #{v}"
+    when :district  then "Район: #{v}"
+    when :city      then "Город: #{v}"
+    end
+  end.compact
+%>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <%= link_to '← К списку поисков', dashboard_saved_searches_path,
+          class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground mb-8' %>
+
+    <div class="flex items-baseline justify-between flex-wrap gap-3 mb-8 pb-6 border-b border-border">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">СОХРАНЁННЫЙ ПОИСК</p>
+        <h1 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground"><%= @search.name %></h1>
+        <% if @search.description.present? %>
+          <p class="text-sm text-muted-foreground mt-2"><%= @search.description %></p>
+        <% end %>
+      </div>
+      <div class="flex items-center gap-3">
+        <%= link_to 'РЕД', edit_dashboard_saved_search_path(@search),
+              class: 'px-4 py-2 text-xs tracking-[0.25em] border border-foreground/40 text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+        <% if @search.active? %>
+          <%= button_to 'ВЫКЛ', deactivate_dashboard_saved_search_path(@search), method: :post,
+                class: 'px-4 py-2 text-xs tracking-[0.25em] border border-border text-muted-foreground hover:text-foreground bg-transparent cursor-pointer',
+                form: { class: 'inline' } %>
+        <% else %>
+          <%= button_to 'ВКЛ', activate_dashboard_saved_search_path(@search), method: :post,
+                class: 'px-4 py-2 text-xs tracking-[0.25em] border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-colors bg-transparent cursor-pointer',
+                form: { class: 'inline' } %>
+        <% end %>
+        <%= button_to 'УДАЛИТЬ', dashboard_saved_search_path(@search), method: :delete,
+              data: { turbo_confirm: 'Удалить этот поиск?' },
+              class: 'px-4 py-2 text-xs tracking-[0.25em] border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors bg-transparent cursor-pointer',
+              form: { class: 'inline' } %>
+      </div>
+    </div>
+
+    <% if flash[:notice] %>
+      <div class="mb-6 px-4 py-3 border border-emerald-500/40 bg-emerald-500/5 text-sm text-emerald-300">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+
+    <%# === Filter summary === %>
+    <div class="bg-card border border-border p-5 mb-6 flex flex-wrap gap-2 items-center">
+      <p class="text-[10px] tracking-[0.3em] text-muted-foreground mr-2">ФИЛЬТР:</p>
+      <% if human_filter.any? %>
+        <% human_filter.each do |chip| %>
+          <span class="text-xs tracking-wider text-foreground border border-border px-2 py-1"><%= chip %></span>
+        <% end %>
+      <% else %>
+        <span class="text-xs text-muted-foreground">Без фильтра — все объекты в рекламе</span>
+      <% end %>
+      <% if filters[:property_type].present? %>
+        <% pt = PropertyType.find_by(id: filters[:property_type]) %>
+        <% if pt %>
+          <span class="text-xs tracking-wider text-foreground border border-border px-2 py-1">Тип: <%= pt.name %></span>
+        <% end %>
+      <% end %>
+    </div>
+
+    <%# === Matches === %>
+    <div class="flex items-baseline justify-between mb-4">
+      <p class="text-sm text-muted-foreground">
+        Найдено: <span class="text-foreground"><%= @matches.size %></span>
+        <% if @search.last_checked_at %>
+          <span class="opacity-50 ml-3">проверено <%= time_ago_in_words(@search.last_checked_at) %> назад</span>
+        <% end %>
+      </p>
+      <%= link_to 'В каталоге →', properties_path(@search.search_url.to_s.start_with?('?') ? @search.search_url[1..] : ''),
+            class: 'text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground' if @search.search_url.present? %>
+    </div>
+
+    <% if @matches.any? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <% @matches.each do |p| %>
+          <%= link_to property_path(p), target: '_blank',
+                class: 'block bg-card border border-border p-4 hover:border-foreground/60 transition-colors' do %>
+            <% if p.images.attached? %>
+              <%= image_tag p.images.first, class: 'w-full aspect-video object-cover border border-border mb-3' %>
+            <% end %>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">
+              <%= p.deal_type %> · <%= p.rooms.presence || '—' %>-комн.
+            </p>
+            <p class="text-sm text-foreground truncate"><%= p.title %></p>
+            <p class="text-xs text-muted-foreground mt-1 truncate"><%= p.address %></p>
+            <% if p.price.to_f.positive? %>
+              <p class="text-base text-foreground mt-2"><%= number_with_delimiter(p.price.to_i, delimiter: ' ') %> ₽</p>
+            <% end %>
+          <% end %>
+        <% end %>
+      </div>
+    <% else %>
+      <div class="bg-card border border-border p-10 text-center">
+        <p class="text-sm text-muted-foreground mb-2">По этому фильтру пока ничего не найдено.</p>
+        <p class="text-xs text-muted-foreground/70">
+          Включите email-уведомления выше — пришлём как только появится подходящий объект.
+        </p>
+      </div>
+    <% end %>
+  </div>
+</section>

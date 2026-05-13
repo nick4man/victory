@@ -1,73 +1,31 @@
 # frozen_string_literal: true
 
-# Sync MLS-network listings from Topnlab into MlsListing.
+# DEPRECATED — Topnlab API does NOT expose cross-agency MLS data.
 #
-# Strategy: for each (action × realty_type) combination, call get_ids with type='mls'
-# (network/feed listings — distinct from agency's own type='realty'); fetch entities in
-# batches of 100 via get_entities_from_mls (1s throttle). Upsert by [source, external_id].
+# Per Topnlab API docs (sections 2 + 4):
+#   - GET /get-ids?type=...  accepts ONLY realty | order | service. There is
+#     no `type=mls` parameter; passing it returns HTTP 422 «Неизвестный тип
+#     карточки».
+#   - GET /get-entities-from-mls?id=... returns OUR OWN realty cards in their
+#     MLS network projection (with extra fields used by the MLS broadcast),
+#     not other agencies' listings.
 #
-# If get_ids type='mls' is unsupported by the agency's account, the loop completes with
-# zero results and the rake task reports "0 imported" — valuation falls back to local
-# Property records or regional averages.
+# Conclusion: this sync would duplicate our Property table into MlsListing
+# (same objects, different table) — useless for comparable-search.
+#
+# True cross-agency comparable data comes from:
+#   - ExternalListings::YrlParser  — Yandex YRL feeds of other Ryazan agencies
+#   - Future: Avito Data API, CIAN headless scrape
+#
+# The service is left in place as a no-op so the rake task and sidekiq-cron
+# entry don't 500. Remove once the cron entry is deleted in a follow-up.
 module MlsSync
   class TopnlabSyncService
-    REALTY_TYPES = %w[flat room house land commerce garage].freeze
-    ACTIONS      = %w[sale rent].freeze
-    MLS_TYPE     = 'mls'
-
-    def initialize(client: Topnlab::Client.new, source: 'topnlab_mls')
-      @client = client
-      @source = source
-    end
+    def initialize(*_args, **_kwargs); end
 
     def call
-      total_ids = 0
-      total_upserted = 0
-      errors = []
-
-      ACTIONS.each do |action|
-        REALTY_TYPES.each do |realty_type|
-          ids = fetch_ids(action: action, realty_type: realty_type)
-          total_ids += ids.size
-          next if ids.empty?
-
-          payloads = fetch_entities(ids)
-          payloads.each_value do |payload|
-            attrs = MlsSync::ListingMapper.new(payload, source: @source).to_attributes
-            next unless attrs
-
-            upsert(attrs)
-            total_upserted += 1
-          end
-        rescue StandardError => e
-          errors << "#{action}/#{realty_type}: #{e.class} #{e.message}"
-          Rails.logger.warn("[MlsSync] #{action}/#{realty_type} failed: #{e.class} #{e.message}")
-        end
-      end
-
-      { success: errors.empty?, ids_seen: total_ids, upserted: total_upserted, errors: errors }
-    end
-
-    private
-
-    def fetch_ids(action:, realty_type:)
-      Array(@client.get_ids(type: MLS_TYPE, action: action, realty_type: realty_type, is_feed: true))
-    rescue Topnlab::Client::Error => e
-      Rails.logger.warn("[MlsSync] get_ids #{action}/#{realty_type} failed: #{e.message}")
-      []
-    end
-
-    def fetch_entities(ids)
-      hash = @client.get_entities_from_mls(ids)
-      hash.is_a?(Hash) ? hash : {}
-    end
-
-    def upsert(attrs)
-      record = MlsListing.find_or_initialize_by(
-        external_source: attrs[:external_source], external_id: attrs[:external_id]
-      )
-      record.assign_attributes(attrs)
-      record.save!
+      Rails.logger.info('[MlsSync::TopnlabSync] noop — Topnlab MLS endpoint exposes own listings only, not comps')
+      { success: true, ids_seen: 0, upserted: 0, errors: [], noop: true }
     end
   end
 end

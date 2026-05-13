@@ -20,6 +20,13 @@ class BankProductType(str, Enum):
     SUBSIDIZED = "subsidized"
     REFINANCE = "refinance"
     CONSUMER_LOAN = "consumer_loan"
+    # Regional / specialty mortgage programs — already present in DB seed
+    # but were missing from the enum, causing /bank-offers/ to 500.
+    FAR_EAST_MORTGAGE = "far_east_mortgage"
+    MILITARY_MORTGAGE = "military_mortgage"
+    # Savings side — bank pays the customer. Used by the deposit table
+    # on /services/mortgage_calculator and by the investment audit.
+    DEPOSIT = "deposit"
 
 
 class PropertyType(str, Enum):

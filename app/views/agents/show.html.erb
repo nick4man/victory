@@ -62,13 +62,12 @@
           <% end %>
         </div>
 
-        <%# Contact strip — sticky-like row of channels %>
+        <%# Contact strip — sticky-like row of channels. If agent has no
+            personal phone in CRM, falls back to the agency main line. %>
         <div class="flex flex-wrap gap-3 mb-8">
-          <% if @agent.phone.present? %>
-            <%= link_to "tel:#{@agent.phone.gsub(/\D/, '')}",
-                  class: 'px-6 py-3 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors' do %>
-              ПОЗВОНИТЬ
-            <% end %>
+          <%= link_to "tel:#{@agent.display_phone_tel}",
+                class: 'px-6 py-3 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors' do %>
+            ПОЗВОНИТЬ <%= @agent.display_phone %>
           <% end %>
           <% if @agent.email.present? %>
             <%= link_to "mailto:#{@agent.email}",

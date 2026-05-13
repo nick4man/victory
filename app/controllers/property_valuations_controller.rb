@@ -44,7 +44,7 @@ class PropertyValuationsController < ApplicationController
           min_price:        result[:min_price],
           max_price:        result[:max_price],
           confidence_level: result[:confidence_level],
-          evaluation_data:  result.except(:success).to_json,
+          evaluation_data:  result.except(:success),
           hedonic_data:     hedonic_payload,
           status:           'completed'
         )
@@ -66,7 +66,7 @@ class PropertyValuationsController < ApplicationController
         redirect_to result_property_valuations_path(token: @valuation.token),
                     notice: 'Оценка успешно выполнена!'
       else
-        @valuation.update(status: 'failed', evaluation_data: { error: result[:error] }.to_json)
+        @valuation.update(status: 'failed', evaluation_data: { error: result[:error] })
         @step = 4
         flash.now[:alert] = result[:error] || 'Не удалось рассчитать оценку.'
         render :new, status: :unprocessable_entity
@@ -81,7 +81,14 @@ class PropertyValuationsController < ApplicationController
   # GET /sell/valuation/:token/result
   def result
     @valuation = PropertyValuation.find_by!(token: params[:token])
-    @evaluation_result = JSON.parse(@valuation.evaluation_data, symbolize_names: true)
+    # evaluation_data is jsonb — Rails returns a Hash directly. Legacy rows
+    # that were stored as JSON strings get parsed once; new rows pass through.
+    raw = @valuation.evaluation_data
+    @evaluation_result = case raw
+                         when Hash   then raw.deep_symbolize_keys
+                         when String then (JSON.parse(raw, symbolize_names: true) rescue {})
+                         else {}
+                         end
     @similar_properties = find_similar_properties(@valuation)
     
     set_meta_tags(

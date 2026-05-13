@@ -20,11 +20,12 @@ module Services
     include ComingSoonSection
 
     def show
-      @macro           = safe_macro
-      @programs        = Mortgage::ProgramsService.all
-      @source_property = lookup_property(params[:from_property])
-      @form_state      = build_form_state
-      @faq             = faq_items
+      @macro            = safe_macro
+      @programs         = Mortgage::ProgramsService.all
+      @deposit_programs = Deposit::ProgramsService.all
+      @source_property  = lookup_property(params[:from_property])
+      @form_state       = build_form_state
+      @faq              = faq_items
 
       set_meta_tags(
         title:       'Ипотечный калькулятор онлайн — Рязань 2026',

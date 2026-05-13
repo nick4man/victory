@@ -43,9 +43,24 @@ module PropertyEvaluation
     private
 
     def collect(tier)
-      ([property_scope(tier).to_a, mls_scope(tier).to_a]
+      ([property_scope(tier).to_a, mls_scope(tier).to_a, external_scope(tier).to_a]
         .flatten
         .uniq { |r| [r.class.name, r.id] })
+    end
+
+    # Comparable data from third-party feeds (Yandex YRL of other Ryazan
+    # agencies, future Avito API, etc). Same filters as `mls_scope` —
+    # area-band, rooms-band, geo or district fallback.
+    def external_scope(tier)
+      slug = REALTY_TYPE_TO_SLUG[@v.property_type.to_s]
+      return ExternalListing.none unless slug
+
+      s = ExternalListing.active.priced.recent(60)
+                         .for_deal(@v.deal_type)
+                         .for_type(slug)
+                         .area_band(@v.total_area.to_f, tier.area_pct)
+                         .rooms_band(@v.rooms.to_i, tier.rooms_delta)
+      apply_geo(s, tier).limit(50)
     end
 
     def property_scope(tier)

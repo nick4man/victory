@@ -20,8 +20,11 @@ module Dadata
     MIN_QUERY = 2
     MAX_LIMIT = 10
 
-    # Optional: bias toward Ryazan region. Empty array → country-wide.
-    LOCATIONS = [{ region: 'Рязанская' }].freeze
+    # Country-wide suggestions — empty array tells DaData not to bias the
+    # result. Previously we biased toward Рязанская обл., but the agency
+    # now serves clients across Russia (Topnlab catalog contains rows from
+    # Moscow, SPb, Krasnodar, etc.).
+    LOCATIONS = [].freeze
 
     Suggestion = Struct.new(:value, :unrestricted_value, :city, :region,
                             :street, :house, :fias_id, :latitude, :longitude,

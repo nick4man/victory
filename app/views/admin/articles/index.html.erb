@@ -10,7 +10,7 @@
         <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Статьи и новости</h1>
       </div>
       <%= link_to "+ Новая статья",
-            new_admin_article_path(token: params[:token]),
+            new_admin_article_path(),
             class: "px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors" %>
     </div>
 
@@ -21,16 +21,27 @@
       </div>
     <% end %>
 
-    <%# === Scope tabs === %>
+    <%# === Scope tabs (status) === %>
     <% tabs = [
       ['visible', "ОПУБЛИКОВАНО · #{@counts[:visible]}"],
       ['pending', "ЧЕРНОВИКИ · #{@counts[:pending]}"],
       ['hidden',  "СКРЫТО · #{@counts[:hidden]}"]
     ] %>
-    <div class="flex flex-wrap gap-2 mb-8">
+    <div class="flex flex-wrap gap-2 mb-3">
       <% tabs.each do |slug, label| %>
-        <%= link_to label, admin_articles_path(token: params[:token], scope: slug),
+        <%= link_to label, admin_articles_path(scope: slug, category: @category),
               class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <%# === Category filter === %>
+    <% cat_labels = { 'news' => 'НОВОСТИ', 'market' => 'РЫНОК', 'mortgage' => 'ИПОТЕКА', 'investment' => 'ИНВЕСТ', 'analytics' => 'АНАЛИТИКА', 'guide' => 'ГАЙДЫ' } %>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <%= link_to "ВСЕ КАТЕГОРИИ", admin_articles_path(scope: @scope),
+            class: "px-3 py-1 text-[10px] tracking-[0.25em] border #{@category.nil? ? 'border-foreground text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% Article::CATEGORIES.each do |cat| %>
+        <%= link_to (cat_labels[cat] || cat.upcase), admin_articles_path(scope: @scope, category: cat),
+              class: "px-3 py-1 text-[10px] tracking-[0.25em] border #{@category == cat ? 'border-foreground text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
       <% end %>
     </div>
 
@@ -81,24 +92,24 @@
               <% end %>
             </div>
             <div class="col-span-2 text-right space-x-2 text-xs tracking-wider">
-              <%= link_to "ОТКР", news_item_path(a.slug), target: "_blank",
+              <%= link_to "ОТКР", news_path(article: a.slug), target: "_blank",
                     class: "text-muted-foreground hover:text-foreground" if a.published? && !a.hidden? %>
-              <%= link_to "РЕД", edit_admin_article_path(a, token: params[:token]),
+              <%= link_to "РЕД", edit_admin_article_path(a),
                     class: "text-muted-foreground hover:text-foreground" %>
               <% unless a.published? %>
-                <%= button_to "ПУБЛ", publish_admin_article_path(a, token: params[:token]),
+                <%= button_to "ПУБЛ", publish_admin_article_path(a),
                       method: :post,
                       class: "inline-block text-foreground hover:text-muted-foreground bg-transparent border-0 p-0 cursor-pointer",
                       form: { class: "inline" },
                       data: { turbo_confirm: "Опубликовать сейчас?" } %>
               <% end %>
               <% if a.hidden? %>
-                <%= button_to "ВЕРН", unhide_admin_article_path(a, token: params[:token]),
+                <%= button_to "ВЕРН", unhide_admin_article_path(a),
                       method: :post,
                       class: "inline-block text-foreground hover:text-muted-foreground bg-transparent border-0 p-0 cursor-pointer",
                       form: { class: "inline" } %>
               <% else %>
-                <%= button_to "СКР", hide_admin_article_path(a, token: params[:token]),
+                <%= button_to "СКР", hide_admin_article_path(a),
                       method: :post,
                       class: "inline-block text-destructive hover:text-destructive/80 bg-transparent border-0 p-0 cursor-pointer",
                       form: { class: "inline" },

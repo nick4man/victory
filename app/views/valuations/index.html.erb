@@ -3,8 +3,14 @@
 <%
   audit_address = @featured_audit&.address&.truncate(48)
   audit_area    = @featured_audit&.total_area&.to_f
-  audit_verdict = @featured_audit&.evaluation_data&.dig('audit', 'verdict')
-  verdict_ru    = { 'BUY' => 'BUY', 'WAIT' => 'WAIT', 'NEUTRAL' => 'NEUTRAL' }[audit_verdict] || audit_verdict
+  # Defensive cast — legacy rows wrote `evaluation_data` as a JSON string
+  # into a jsonb column (double-encoded). Parse on read until those rows
+  # have aged out. New writes store Hash directly.
+  audit_data    = @featured_audit&.evaluation_data
+  audit_data    = (JSON.parse(audit_data) rescue {}) if audit_data.is_a?(String)
+  audit_verdict = audit_data.is_a?(Hash) ? audit_data.dig('audit', 'verdict') : nil
+  # Use ValuationsHelper::VERDICT_SHORT_RU for canonical RU labels
+  verdict_ru    = ValuationsHelper::VERDICT_SHORT_RU[audit_verdict] || audit_verdict
   verdict_color = case audit_verdict
                   when 'BUY'     then 'text-emerald-400'
                   when 'WAIT'    then 'text-rose-400'
@@ -71,7 +77,7 @@
         <span class="opacity-40">·</span>
         <span><span class="text-foreground"><%= @stats[:catalog_count] %>+</span> АНАЛОГОВ</span>
         <span class="opacity-40">·</span>
-        <span>HEDONIC + BOOTSTRAP</span>
+        <span>МОДЕЛЬ&nbsp;+&nbsp;ИНТЕРВАЛ</span>
       </div>
 
       <div class="flex items-center gap-3 text-sm tracking-[0.2em] text-foreground group-hover:translate-x-1 transition-transform">
@@ -103,7 +109,7 @@
         Стоит ли<br>покупать?
       </h2>
       <p class="text-sm lg:text-base text-background/80 mb-6 leading-relaxed flex-1">
-        EI, Monte Carlo, ипотека — за ~30 секунд получите вердикт BUY / WAIT.
+        Индекс эффективности, Монте-Карло, ипотека — за ~30 секунд рекомендация «Покупать» или «Подождать».
       </p>
 
       <%# Meta-bar %>
@@ -171,6 +177,6 @@
       ============================================================ %>
   <p class="max-w-2xl mx-auto mt-16 text-[11px] tracking-[0.2em] text-muted-foreground/70 text-center leading-relaxed">
     Инвест-аудит — собственный аналитический движок АН&nbsp;Виктори.<br class="hidden sm:block">
-    Актуальные ставки ЦБ&nbsp;РФ · Hedonic regression · Monte&nbsp;Carlo 1M симуляций.
+    Актуальные ставки ЦБ&nbsp;РФ · гедоническая модель · 1&nbsp;млн симуляций Монте-Карло.
   </p>
 </section>

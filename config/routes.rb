@@ -104,7 +104,12 @@ Rails.application.routes.draw do
     # CRM-synced views
     resources :staff, only: [:index]
     resources :orders, only: %i[index show]
-    resources :properties, only: [:index]   # agent's assigned properties
+    resources :properties, only: [:index] do
+      member do
+        post :sync_from_crm
+      end
+    end
+    resources :listings, only: [:index]
 
     # CRM bidirectional notes (creates Note → push to Topnlab)
     resources :notes, only: [:create]
@@ -171,6 +176,7 @@ Rails.application.routes.draw do
     resource :settings, only: [:show, :update] do
       get :notifications, action: :notification_settings
       patch :notifications, action: :update_notification_settings
+      delete :account, action: :destroy_account
     end
     
     # Viewing history
@@ -246,24 +252,41 @@ Rails.application.routes.draw do
   # SERVICES (Сервисы)
   # ============================================
   namespace :services do
-    # Mortgage calculator
-    resource :mortgage_calculator, only: [:show] do
+    # Финансы — 4 страницы раздела. Раньше всё было на одном
+    # /services/mortgage_calculator; теперь разделено на отдельные URL'ы
+    # для лучшей навигации и SEO.
+
+    # 1. Ипотечный калькулятор + программы ипотеки
+    resource :mortgage, only: [:show], controller: 'mortgage_calculators' do
       post :calculate
       get :banks
       get :programs
     end
-    
-    # Mortgage application
+
+    # 2. Депозитный калькулятор + программы вкладов
+    resource :deposit, only: [:show], controller: 'deposit_calculators'
+
+    # 3. Сравнение «вклад vs ипотека» — интерактивный калькулятор
+    get 'mortgage_vs_deposit', to: 'finance_compare#show', as: :mortgage_vs_deposit
+
+    # Back-compat alias — старый URL `/services/mortgage_calculator`
+    # уже проиндексирован Яндексом / Google, в чатботе, в письмах.
+    # 301 redirect передаёт SEO-вес на новую страницу.
+    get 'mortgage_calculator',          to: redirect('/services/mortgage', status: 301)
+    get 'mortgage_calculator/programs', to: redirect('/services/mortgage', status: 301)
+    get 'mortgage_calculator/banks',    to: redirect('/services/mortgage', status: 301)
+
+    # 4. Заявка на ипотеку (без изменений)
     resources :mortgage_applications, only: [:new, :create, :show] do
       member do
         get :status
       end
     end
 
-    # Per-program application entry (B.3 cross-link from audit result page).
+    # Per-program application entry (cross-link from audit result page).
     # `:id` is the bank-offer UUID from audit-engine; controller resolves it
     # via Mortgage::ProgramsService.find and prefills the form.
-    get 'mortgage_calculator/programs/:id/apply',
+    get 'mortgage/programs/:id/apply',
         to: 'mortgage_applications#new',
         as: :mortgage_program_apply
     
@@ -406,6 +429,15 @@ Rails.application.routes.draw do
   # Token-based auth (ENV['ADMIN_TOKEN']) until Devise comes back online.
   # See Admin::ReviewsController#require_admin_token.
   namespace :admin do
+    # Token-cookie login flow (AdminTokenAuth concern). Lets ops paste the
+    # ENV['ADMIN_TOKEN'] once on /admin/login, then navigate without dragging
+    # it through every URL.
+    get  'login',  to: 'sessions#new',     as: :login
+    post 'login',  to: 'sessions#create'
+    delete 'logout', to: 'sessions#destroy', as: :logout
+
+    root to: 'dashboard#index'
+
     resources :reviews, only: %i[index show] do
       member do
         post :approve
@@ -413,14 +445,46 @@ Rails.application.routes.draw do
       end
     end
 
-    # Article moderation + manual creation. Token-guarded (?token=$ADMIN_TOKEN).
+    # Article moderation + manual creation. Token-guarded via AdminTokenAuth.
     resources :articles do
       member do
         post :hide
         post :unhide
         post :publish
+        post :publish_to_telegram
       end
     end
+
+    # SEO landing content CRUD — edit district/type landing copy from the
+    # panel. Each row is rendered by LandingsController#show in preference
+    # to the file-backed ERB partials, so changes are live immediately
+    # (no deploy required).
+    resources :landing_contents do
+      member do
+        post :publish
+        post :unpublish
+      end
+      collection do
+        post :upload_image
+      end
+    end
+
+    # Property publication dashboard — shows the result of the
+    # ready_for_site? gate for every CRM-synced Property, plus the
+    # force_publish override toggle. Lets admins fix "missing from
+    # catalog" cases without touching CRM.
+    resources :properties, only: %i[index] do
+      member do
+        post :toggle_force_publish
+      end
+    end
+
+    # Topnlab sync health dashboard — recent runs + counts.
+    get 'topnlab_status', to: 'topnlab_status#index', as: :topnlab_status
+
+    # Bank-rates scraper dashboard — last snapshot + diff vs previous.
+    get  'bank_rates',         to: 'bank_rates#index',   as: :bank_rates
+    post 'bank_rates/refresh', to: 'bank_rates#refresh', as: :refresh_bank_rates
   end
 
   # ============================================
@@ -504,6 +568,9 @@ Rails.application.routes.draw do
   # SITEMAP & SEO
   # ============================================
   get 'sitemap.xml', to: 'sitemap#index', defaults: { format: 'xml' }
+  # Google News sitemap (separate from main sitemap.xml — different schema,
+  # different lastmod expectations, only articles ≤ 2 days old are eligible).
+  get 'sitemap-news.xml', to: 'sitemap#news', defaults: { format: 'xml' }
   get 'robots.txt', to: 'robots#index', defaults: { format: 'txt' }
 
   # Aggregator feeds (Yandex.Недвижимость / ЦИАН / Авито / МирКвартир /
@@ -534,6 +601,15 @@ Rails.application.routes.draw do
   match '/404', to: 'errors#not_found', via: :all
   match '/422', to: 'errors#unprocessable_entity', via: :all
   match '/500', to: 'errors#internal_server_error', via: :all
+
+  # Catch-all for any path that didn't match a real route above. Renders the
+  # branded 404 instead of Rails' debug page in development or the bare
+  # public/404.html fallback in production. Must remain the LAST route in the
+  # file — anything below it will be unreachable.
+  match '*unmatched',
+        to: 'errors#not_found',
+        via: :all,
+        constraints: ->(req) { !req.path.start_with?('/rails/', '/cable', '/assets/') }
 
   # ============================================
   # DEVELOPMENT TOOLS (only in development) - Temporarily disabled

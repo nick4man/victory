@@ -20,7 +20,7 @@
       <% if File.exist?(Rails.public_path.join('tg-rznvictory-qr.svg')) %>
         <img src="/tg-rznvictory-qr.svg"
              alt="QR — Telegram-канал АН «Виктори» <%= tg_handle %>"
-             class="block w-28 h-28 lg:w-32 lg:h-32" />
+             class="block w-32 h-32 lg:w-40 lg:h-40" />
       <% else %>
         <%# Asset missing — fallback so deploy without `rake qr:tg` doesn't 500. %>
         <div class="w-28 h-28 lg:w-32 lg:h-32 flex items-center justify-center text-foreground/40">
@@ -33,7 +33,10 @@
 
     <div class="flex-1 min-w-0">
       <p class="text-lg lg:text-xl text-foreground mb-1.5">
-        Больше новостей в нашем <span class="font-medium"><%= tg_handle %></span>
+        Больше новостей в нашем
+        <%= link_to 'Telegram', tg_url,
+              target: '_blank', rel: 'noopener',
+              class: "font-medium underline decoration-foreground/40 underline-offset-4 hover:decoration-foreground transition-colors" %>
       </p>
       <p class="text-sm text-muted-foreground leading-relaxed mb-4">
         Свежие события рынка недвижимости Рязани, аналитика и комментарии

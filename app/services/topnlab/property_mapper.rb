@@ -72,7 +72,6 @@ module Topnlab
         is_featured:     bool(@p['is_first_sale']),
         property_type_id: @types[(@p['realty_type'] || '').to_s]&.id,
         user_id:         resolve_user_id,
-        status:          :active,
         deal_state:      @p['deal_state'].presence,
         # Topnlab tracks two independent advertising channels:
         # `in_ad`  — listing on agency's own site
@@ -81,15 +80,20 @@ module Topnlab
         in_ad:           @p['in_ad']  == true,
         in_mls:          @p['in_mls'] == true,
         closed_at:       derive_closed_at,
-        published_at:    Time.current,
         synced_at:       Time.current
       }
+      # NB: `status` and `published_at` are NOT set here — they belong to
+      # `Property#publish_if_ready!`, which the Importer calls after save.
+      # Letting mapper hardcode `status: :active` (the old behaviour) made
+      # every re-import re-publish properties even when CRM had cleared
+      # in_ad / moved them off deal_state=ad.
 
       # Property has NOT NULL constraints on title/price/address; area is now nullable
       # (objects without a real area get filtered from advertising scope, better than fake "1 м²").
       attrs[:title]   = "Объект #{@p['id']}"            if attrs[:title].blank?  || attrs[:title].length < 10
       attrs[:address] = attrs[:title]                    if attrs[:address].blank?
-      attrs[:description] = "Объект из CRM Topnlab"      if attrs[:description].blank?
+      # No description fallback: if CRM card lacks a real description, leave it
+      # blank so `ready_for_site?` correctly refuses to publish.
       attrs
     end
 

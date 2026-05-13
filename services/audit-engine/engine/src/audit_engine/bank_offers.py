@@ -6,9 +6,12 @@ CRUD + выборка активных офферов. Используется 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from typing import Optional
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,17 +32,31 @@ _COLS = (
 )
 
 
-def _row_to_offer(row_mapping) -> BankOffer:
-    """Перевести строку Postgres в BankOffer (dict или RowMapping)."""
+def _row_to_offer(row_mapping):
+    """Перевести строку Postgres в BankOffer (dict или RowMapping).
+
+    Returns BankOffer or None — None means "skip this row" (unknown
+    product_type that isn't yet in the enum). The caller filters Nones
+    so one bad row doesn't 500 the whole list endpoint.
+    """
     m = dict(row_mapping)
     # requirements из JSONB приходит как dict — ок; на всякий случай поддерживаем str
     req = m.get("requirements")
     if isinstance(req, str):
         req = json.loads(req or "{}")
+    try:
+        product_type = BankProductType(m["product_type"])
+    except ValueError:
+        logger.warning(
+            "skipping bank_offer id=%s with unknown product_type=%r — "
+            "add the value to BankProductType enum if it should be visible",
+            m.get("id"), m.get("product_type"),
+        )
+        return None
     return BankOffer(
         id=str(m["id"]) if m.get("id") is not None else None,
         bank_name=m["bank_name"],
-        product_type=BankProductType(m["product_type"]),
+        product_type=product_type,
         product_name=m["product_name"],
         rate_min=float(m["rate_min"]),
         rate_max=float(m["rate_max"]) if m.get("rate_max") is not None else None,
@@ -79,7 +96,7 @@ async def list_active_offers(
         f"ORDER BY rate_min ASC, bank_name ASC"
     )
     result = await db.execute(text(sql), params)
-    return [_row_to_offer(r._mapping) for r in result.fetchall()]
+    return [o for o in (_row_to_offer(r._mapping) for r in result.fetchall()) if o is not None]
 
 
 async def list_all_offers(
@@ -92,7 +109,7 @@ async def list_all_offers(
         sql += " WHERE is_active = true"
     sql += " ORDER BY bank_name, product_name"
     result = await db.execute(text(sql))
-    return [_row_to_offer(r._mapping) for r in result.fetchall()]
+    return [o for o in (_row_to_offer(r._mapping) for r in result.fetchall()) if o is not None]
 
 
 async def get_offer(db: AsyncSession, offer_id: UUID | str) -> Optional[BankOffer]:

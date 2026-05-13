@@ -147,7 +147,7 @@
         <%= render 'shared/address_autocomplete',
               input_id:    'express-address',
               input_name:  'property_valuation[address]',
-              placeholder: 'г. Рязань, ул. Пушкина, д. 10',
+              placeholder: 'Например: Москва, ул. Тверская, д. 1',
               value:       valuation.address,
               required:    true,
               city_field:  'property_valuation[city]',
@@ -159,7 +159,7 @@
            class="hidden inline-block text-[10px] tracking-[0.25em] text-foreground bg-secondary px-2 py-1 uppercase">
         </p>
         <p class="text-xs text-muted-foreground">
-          Начните вводить — появятся подсказки из ФИАС/КЛАДР по Рязани и области.
+          Начните вводить — появятся подсказки из ФИАС/КЛАДР по всей России.
         </p>
       </div>
 
@@ -169,13 +169,13 @@
                 class="text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-0.5"
                 aria-expanded="<%= valuation.district.present? %>">
           <span data-optional-label>
-            <%= valuation.district.present? ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН РЯЗАНИ' %>
+            <%= valuation.district.present? ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН' %>
           </span>
         </button>
         <div data-optional-pane class="<%= valuation.district.present? ? '' : 'hidden' %> pt-3">
-          <%= f.text_field :district, placeholder: 'Канищево, Дашково-Песочня, Центральный...',
+          <%= f.text_field :district, placeholder: 'Микрорайон или район города (например, Центр, Хамовники, Песочня)',
                 class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
-          <p class="text-xs text-muted-foreground mt-1">Для уточнения локации в пределах Рязани (необязательно).</p>
+          <p class="text-xs text-muted-foreground mt-1">Для уточнения локации в пределах города (необязательно).</p>
         </div>
       </div>
 
@@ -267,11 +267,23 @@
         </div>
 
         <div class="space-y-2" data-show-for="apartment room house commercial garage">
-          <label class="text-sm text-muted-foreground">Состояние</label>
+          <label class="text-sm text-muted-foreground">Состояние <span class="text-red-400">*</span></label>
+          <%# Rails refuses required + include_blank: false on the same select
+              (an empty option is the only way HTML5 required validation can
+              trigger on a select). We keep `required` and let the empty
+              placeholder serve as the include_blank value. %>
           <%= f.select :property_condition,
-                [["Выберите", ""], ["Дизайнерский ремонт", "designer"], ["Отличное", "excellent"], ["Хорошее", "good"], ["Среднее", "average"], ["Требует ремонта", "needs_repair"]],
-                {},
+                [["Дизайнерский ремонт",    "designer"],
+                 ["Евроремонт",              "excellent"],
+                 ["С ремонтом",              "good"],
+                 ["Жилое состояние",         "average"],
+                 ["Требует ремонта",         "needs_repair"]],
+                { include_blank: "— выберите состояние —" },
+                required: true,
                 class: "w-full h-12 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground/70">
+            Состояние сильно влияет на цену. Дизайн +18%, евроремонт +10%, ремонт +3%, требует ремонта −12% к рыночной средней.
+          </p>
         </div>
       </div>
 

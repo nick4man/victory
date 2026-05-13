@@ -3,7 +3,7 @@
 namespace :qr do
   desc 'Regenerate the static @rznvictory Telegram channel QR SVG asset'
   task tg: :environment do
-    svg = QrRenderer.svg('https://t.me/rznvictory', module_size: 8, color: '000000')
+    svg = QrRenderer.svg('https://t.me/rznvictory', module_size: 12, color: '000000')
     abort '[qr:tg] generation failed (rqrcode error)' if svg.blank?
 
     # Two destinations:

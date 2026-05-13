@@ -10,7 +10,19 @@ class PropertyValuationMailer < ApplicationMailer
     @evaluation_result = JSON.parse(valuation.evaluation_data, symbolize_names: true)
     @result_url = property_valuation_result_url(valuation.token)
     @pdf_url = property_valuation_download_pdf_url(valuation.token, format: :pdf)
-    
+
+    # In-app notification — only for logged-in users (PropertyValuation has
+    # `user_id` for those who submitted while authenticated, or it got
+    # back-filled on registration via User#link_existing_records).
+    Notification.notify!(
+      valuation.user,
+      kind:       'valuation',
+      title:      'Онлайн-оценка готова',
+      body:       "Адрес: #{valuation.address}".truncate(200),
+      url:        @result_url,
+      notifiable: valuation
+    )
+
     attach_logo
     track_email("valuation_#{valuation.id}")
     

@@ -1,8 +1,10 @@
-<%# Shared article card. Accepts `article` (required) and `path_helper`
-    (optional, defaults to news_item_path — blog passes blog_post_path).
-    Used by /news index, /blog index, related-articles sidebars. %>
+<%# Shared article card. The standalone /news/:slug page is gone — clicking
+    a card opens the in-page modal on /news (intercepted by the modal JS
+    initializer via [data-news-card-slug]). Pages without the modal (or with
+    JS off) follow the link to /news?article=slug, which auto-opens the
+    modal server-side after page load. %>
 <%
-  target_path = local_assigns.fetch(:path, news_item_path(article.slug))
+  target_path = local_assigns.fetch(:path, news_path(article: article.slug))
   category_ru = {
     'news' => 'НОВОСТИ',
     'market' => 'РЫНОК',
@@ -12,6 +14,7 @@
   }[article.category.to_s] || article.category.to_s.upcase
 %>
 <%= link_to target_path,
+      data: { news_card_slug: article.slug },
       class: "group block bg-card border border-border p-6 hover:border-foreground/40 transition-colors flex flex-col h-full" do %>
   <div class="flex items-baseline justify-between mb-3 flex-wrap gap-1">
     <span class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= category_ru %></span>

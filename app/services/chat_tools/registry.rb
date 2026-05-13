@@ -12,7 +12,9 @@ module ChatTools
       'find_in_district_polygon' => ChatTools::FindInDistrictPolygon,
       'submit_review'            => ChatTools::SubmitReview,
       'run_investment_audit'     => ChatTools::RunInvestmentAudit,
-      'calculate_mortgage'       => ChatTools::CalculateMortgage
+      'calculate_mortgage'       => ChatTools::CalculateMortgage,
+      'get_landing_content'      => ChatTools::GetLandingContent,
+      'estimate_property_valuation' => ChatTools::EstimatePropertyValuation
     }.freeze
 
     module_function

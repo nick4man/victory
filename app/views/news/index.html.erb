@@ -135,3 +135,9 @@
     </aside>
   </div>
 </section>
+
+<%# Modal + per-article body templates — clicking any card on /news opens the
+    modal instead of navigating to a standalone page. `?article=:slug` in the
+    URL also auto-opens the matching article. %>
+<%= render 'shared/article_modal' %>
+<%= render 'shared/article_modal_templates', articles: @articles, autoopen_slug: @autoopen_slug %>

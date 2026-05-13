@@ -103,6 +103,7 @@ class Inquiry < ApplicationRecord
   after_create :assign_to_agent
   after_create :send_notifications
   after_create :sync_to_crm
+  after_create_commit :push_to_work_bot
   after_update :notify_status_change, if: :saved_change_to_status?
 
   # ============================================
@@ -440,6 +441,35 @@ class Inquiry < ApplicationRecord
 
   def sync_to_crm
     sync_to_crm! if ENV['AMOCRM_ENABLED'] == 'true'
+  end
+
+  # Публикуем карточку нового лида в Telegram-бот АН.
+  # Не блокирует пользователя (после commit, в фоне через перформ-later когда подключим Sidekiq).
+  # Если интегра отключена (ENV) или ошибка — мы её не пробрасываем; сайт работает.
+  def push_to_work_bot
+    return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
+    return if Thread.current[:skip_workbot_push] == true  # рекурсия из Lead::Intake::SiteSource#fallback_inquiry
+    source = case inquiry_type
+             when 'evaluation' then 'site_valuation'
+             when 'mortgage'   then 'site_mortgage'
+             else                   'site_form'
+             end
+    Lead::Intake.call(
+      source: source,
+      payload: {
+        name:        name,
+        phone:       phone,
+        email:       email,
+        message:     message,
+        summary:     message.presence || comment,
+        property_id: property_id,
+        inquiry_id:  id,
+        origin:      referrer_url,
+        utm:         { source: utm_source, medium: utm_medium, campaign: utm_campaign }.compact_blank
+      }
+    )
+  rescue StandardError => e
+    Rails.logger.error("[Inquiry#push_to_work_bot] inquiry=#{id} #{e.class}: #{e.message}")
   end
 
   def notify_status_change

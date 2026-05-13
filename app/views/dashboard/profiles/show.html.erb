@@ -1,0 +1,94 @@
+<% content_for :title, 'Профиль — АН Виктори' %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto">
+
+    <div class="flex items-baseline justify-between mb-10 pb-6 border-b border-border">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">ЛИЧНЫЙ КАБИНЕТ</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Профиль</h1>
+      </div>
+      <%= link_to 'РЕДАКТИРОВАТЬ', edit_dashboard_profile_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] border border-foreground/40 text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+    </div>
+
+    <% if flash[:notice] %>
+      <div class="mb-6 px-4 py-3 border border-emerald-500/40 bg-emerald-500/5 text-sm text-emerald-300">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+
+    <div class="bg-card border border-border p-7 lg:p-10">
+      <%# Avatar + name header %>
+      <div class="flex items-center gap-5 mb-8 pb-6 border-b border-border">
+        <% if @user.avatar.attached? %>
+          <%= image_tag @user.avatar, class: 'w-20 h-20 rounded-full object-cover border border-border' %>
+        <% else %>
+          <div class="w-20 h-20 rounded-full bg-secondary border border-border flex items-center justify-center">
+            <span class="text-foreground text-2xl font-light"><%= @user.avatar_initials %></span>
+          </div>
+        <% end %>
+        <div>
+          <p class="text-xl text-foreground"><%= @user.display_name %></p>
+          <p class="text-sm text-muted-foreground mt-1">
+            <%= case @user.role
+                when 'admin'  then 'Администратор'
+                when 'agent'  then 'Сотрудник'
+                else 'Клиент'
+                end %>
+          </p>
+        </div>
+      </div>
+
+      <%# Fields grid %>
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5 text-sm">
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ИМЯ</dt>
+          <dd class="text-foreground"><%= @user.first_name.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ФАМИЛИЯ</dt>
+          <dd class="text-foreground"><%= @user.last_name.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ОТЧЕСТВО</dt>
+          <dd class="text-foreground"><%= @user.middle_name.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ТЕЛЕФОН</dt>
+          <dd class="text-foreground">
+            <% if @user.phone.present? %>
+              <a href="tel:<%= @user.phone.gsub(/\D/, '') %>" class="hover:text-muted-foreground">
+                <%= @user.phone %>
+              </a>
+            <% else %>
+              —
+            <% end %>
+          </dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">EMAIL</dt>
+          <dd class="text-foreground"><%= @user.email %></dd>
+          <p class="text-xs text-muted-foreground mt-1">
+            Сменить email или пароль —
+            <%= link_to 'настройки безопасности', edit_user_registration_path,
+                  class: 'underline hover:text-foreground' %>
+          </p>
+        </div>
+        <% if @user.created_at %>
+          <div class="sm:col-span-2 pt-4 border-t border-border">
+            <p class="text-xs text-muted-foreground">
+              Аккаунт создан <%= l(@user.created_at.to_date, format: :long) rescue @user.created_at.strftime('%d.%m.%Y') %>
+              <% if @user.last_sign_in_at %>
+                <span class="opacity-50 mx-2">·</span>
+                Последний вход <%= l(@user.last_sign_in_at, format: :long) rescue @user.last_sign_in_at.strftime('%d.%m.%Y %H:%M') %>
+              <% end %>
+            </p>
+          </div>
+        <% end %>
+      </dl>
+    </div>
+  </div>
+</section>

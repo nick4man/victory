@@ -4,11 +4,9 @@ topnlab_sync:
   queue: scheduled
   description: "Pull all in_ad properties from Topnlab CRM and upsert into Property"
 
-mls_sync:
-  cron: "15 */6 * * *"     # every 6 hours at :15 (offset from topnlab_sync)
-  class: MlsSyncJob
-  queue: scheduled
-  description: "Pull Topnlab MLS network listings into MlsListing cache for valuations"
+# mls_sync disabled — Topnlab API does not expose cross-agency MLS data,
+# only our own listings in MLS projection. See MlsSync::TopnlabSyncService.
+# Comparable data now comes from external_yrl_sync (Yandex YRL feeds).
 
 topnlab_staff_sync:
   cron: "30 6 * * *"       # daily at 06:30
@@ -21,3 +19,15 @@ topnlab_orders_sync:
   class: TopnlabOrdersSyncJob
   queue: scheduled
   description: "Sync Topnlab buyer/renter orders (type=order) into BuyerOrder"
+
+external_yrl_sync:
+  cron: "25 */4 * * *"     # every 4 hours at :25
+  class: ExternalListings::YrlSyncJob
+  queue: scheduled
+  description: "Refresh public Yandex Realty YRL feeds from other Ryazan agencies (comp data)"
+
+bank_rates_refresh:
+  cron: "0 4 * * SUN"      # weekly Sunday 04:00 MSK
+  class: BankRatesRefreshJob
+  queue: scheduled
+  description: "Refresh deposit/mortgage program rates from banki.ru aggregator"

@@ -5,12 +5,13 @@
   is_admin = current_user.role_admin?
 
   links = [
-    ['Главная',     dashboard_root_path,           true],
-    ['Профиль',     dashboard_profile_path,        true],
-    ['Избранное',   dashboard_favorites_path,      true],
-    ['Мои заявки',  dashboard_inquiries_path,      true],
-    ['Поиски',      dashboard_saved_searches_path, true],
-    ['Сообщения',   dashboard_messages_path,       true],
+    ['Главная',          dashboard_root_path,           true],
+    ['Профиль',          dashboard_profile_path,        true],
+    ['Мои оценки',       dashboard_listings_path,       !is_staff],
+    ['Избранное',        dashboard_favorites_path,      true],
+    ['Мои заявки',       dashboard_inquiries_path,      true],
+    ['Поиски',           dashboard_saved_searches_path, true],
+    ['Сообщения',        dashboard_messages_path,       true],
     ['—',           nil,                           is_staff],
     ['Мои объекты', dashboard_properties_path,     is_staff],
     ['Сотрудники',  dashboard_staff_index_path,    is_staff],

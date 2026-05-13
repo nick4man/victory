@@ -269,15 +269,15 @@ class ApplicationController < ActionController::Base
   
   def render_404
     respond_to do |format|
-      format.html { render file: Rails.public_path.join('404.html'), status: :not_found, layout: false }
+      format.html { render template: 'errors/not_found', status: :not_found, layout: 'application' }
       format.json { render json: { error: 'Not found' }, status: :not_found }
       format.any  { head :not_found }
     end
   end
-  
+
   def render_500
     respond_to do |format|
-      format.html { render file: Rails.public_path.join('500.html'), status: :internal_server_error, layout: false }
+      format.html { render template: 'errors/internal_server_error', status: :internal_server_error, layout: 'application' }
       format.json { render json: { error: 'Internal server error' }, status: :internal_server_error }
       format.any  { head :internal_server_error }
     end
@@ -408,9 +408,24 @@ class ApplicationController < ActionController::Base
   # ============================================
   private
   
-  # Override Devise's after_sign_in_path
+  # Role-based dispatch after a successful sign-in. Stored location (the page
+  # the user came from) wins so deep-linking still works; otherwise the role
+  # decides which cabinet shows by default:
+  #   admin  → /admin            (moderation + content management)
+  #   agent  → /dashboard/staff  (CRM-synced workload view)
+  #   client → /dashboard        (favourites/inquiries/saved searches)
   def after_sign_in_path_for(resource)
-    stored_location_for(resource) || dashboard_root_path || root_path
+    stored_location_for(resource) || default_cabinet_for(resource)
+  end
+
+  def default_cabinet_for(resource)
+    case
+    when resource.respond_to?(:admin?) && resource.admin? then admin_root_path
+    when resource.respond_to?(:agent?) && resource.agent? then dashboard_staff_index_path
+    else dashboard_root_path
+    end
+  rescue StandardError
+    dashboard_root_path
   end
   
   # Override Devise's after_sign_out_path

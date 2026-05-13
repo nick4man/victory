@@ -7,22 +7,53 @@ module Mortgage
   # without an upstream call on every hit, and so a flapping engine doesn't
   # blank the programs table.
   class ProgramsService
-    CACHE_KEY = 'mortgage:programs:v1'
-    CACHE_TTL = 6.hours
+    CACHE_KEY       = 'mortgage:programs:v1'
+    STALE_CACHE_KEY = 'mortgage:programs:stale:v1'
+    CACHE_TTL       = 6.hours
+    STALE_TTL       = 7.days  # keep last-good list around for engine-down windows
 
+    # Engine values from BankProductType enum (Python side) → Russian
+    # display label. Engine product_type comes verbatim from the DB; we
+    # normalise here so the view doesn't need to know the wire values.
+    # If a new product type appears in the engine, add it here AND in the
+    # Python BankProductType enum.
     PRODUCT_TYPES = {
-      'ready'         => 'Готовое жильё',
-      'primary'       => 'Новостройка',
-      'family'        => 'Семейная',
-      'it'            => 'IT-ипотека',
-      'rural'         => 'Сельская',
-      'far_east'      => 'Дальневосточная',
-      'consumer'      => 'Потребительский кредит'
+      'mortgage'           => 'Готовое жильё',
+      'family_mortgage'    => 'Семейная ипотека',
+      'it_mortgage'        => 'IT-ипотека',
+      'subsidized'         => 'Господдержка',
+      'refinance'          => 'Рефинансирование',
+      'consumer_loan'      => 'Потребительский кредит',
+      'far_east_mortgage'  => 'Дальневосточная ипотека',
+      'military_mortgage'  => 'Военная ипотека',
+      'deposit'            => 'Депозит',
+      # Legacy short labels (kept for back-compat if any old caller passes them)
+      'ready'              => 'Готовое жильё',
+      'primary'            => 'Новостройка',
+      'family'             => 'Семейная',
+      'it'                 => 'IT-ипотека',
+      'rural'              => 'Сельская',
+      'far_east'           => 'Дальневосточная',
+      'consumer'           => 'Потребительский кредит'
     }.freeze
 
     class << self
+      # Fresh cache → 6h. If fresh is missing AND engine call fails,
+      # fall back to the long-lived stale snapshot so the page keeps
+      # rendering programs through brief engine outages.
       def all
-        Rails.cache.fetch(CACHE_KEY, expires_in: CACHE_TTL) { fetch_from_engine }
+        cached = Rails.cache.read(CACHE_KEY)
+        return cached if cached.is_a?(Array) && cached.any?
+
+        fresh = fetch_from_engine
+        if fresh.any?
+          Rails.cache.write(CACHE_KEY, fresh, expires_in: CACHE_TTL)
+          Rails.cache.write(STALE_CACHE_KEY, fresh, expires_in: STALE_TTL)
+          fresh
+        else
+          stale = Rails.cache.read(STALE_CACHE_KEY)
+          stale.is_a?(Array) ? stale : []
+        end
       end
 
       def find(id)
@@ -36,6 +67,15 @@ module Mortgage
 
       def bust!
         Rails.cache.delete(CACHE_KEY)
+        # Keep STALE_CACHE_KEY — bust! forces re-fetch but preserves
+        # the safety net for the next request if the engine is down.
+      end
+
+      # Force-reset everything including the stale snapshot. Use after
+      # major catalog migrations when the old shape would break the view.
+      def hard_bust!
+        Rails.cache.delete(CACHE_KEY)
+        Rails.cache.delete(STALE_CACHE_KEY)
       end
 
       private

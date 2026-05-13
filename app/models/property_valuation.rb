@@ -78,6 +78,7 @@ class PropertyValuation < ApplicationRecord
   before_validation :generate_token, on: :create
   before_validation :resolve_coordinates, on: :create
   before_validation :normalize_phone
+  after_create_commit :push_to_work_bot
   
   # Scopes
   scope :recent, -> { order(created_at: :desc) }
@@ -206,6 +207,29 @@ class PropertyValuation < ApplicationRecord
         errors.add(:photos, 'должны быть в формате JPEG, PNG или WebP')
       end
     end
+  end
+
+  # Публикуем заявку оценки в Telegram-бот АН (auto-route в топик ОЦЕНКА).
+  # Не блокирует — ошибки логируем и проглатываем.
+  def push_to_work_bot
+    return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
+    return if Thread.current[:skip_workbot_push] == true
+    Lead::Intake.call(
+      source: 'site_valuation',
+      payload: {
+        name:    full_name.presence || 'Клиент сайта',
+        phone:   phone,
+        email:   email,
+        address: address,
+        area:    total_area,
+        rooms:   rooms,
+        budget:  estimated_price_formatted,
+        valuation_id: id,
+        summary: "Запрос оценки: #{address}, #{total_area} м²#{", #{rooms}-комн" if rooms.present?}"
+      }
+    )
+  rescue StandardError => e
+    Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
   end
 end
 

@@ -20,12 +20,21 @@ class MortgageApplicationNotifier
 
   def deliver
     chat_id = ENV['TELEGRAM_STAFF_CHAT_ID'].to_s
-    token   = ENV['TELEGRAM_STAFF_BOT_TOKEN'].to_s
+    # Use the dedicated staff bot if set, otherwise fall back to the main
+    # @victory62_bot token — same bot delivers audit/express/escalation
+    # notifications already.
+    token = ENV['TELEGRAM_STAFF_BOT_TOKEN'].presence || ENV['TELEGRAM_BOT_TOKEN'].to_s
     return false if chat_id.empty? || token.empty?
 
-    client = Telegram::Client.new(bot_token: token)
-    client.send_message(text: summary_text, chat_id: chat_id, parse_mode: 'HTML', disable_web_page_preview: true)
+    # Telegram::Client.new takes `token:` (not `bot_token:`), and #send_message
+    # takes `text` as a positional arg — both were wrong before, causing every
+    # mortgage application to silently miss the staff TG channel.
+    client = Telegram::Client.new(token: token)
+    client.send_message(summary_text, chat_id: chat_id, parse_mode: 'HTML', disable_web_page_preview: true)
     true
+  rescue Telegram::Client::Error => e
+    Rails.logger.warn("[MortgageApplicationNotifier] #{e.message}")
+    false
   end
 
   private

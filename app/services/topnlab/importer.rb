@@ -29,6 +29,29 @@ module Topnlab
     end
 
     def call
+      # Wrap the entire sweep in a TopnlabSyncRun row so the admin status
+      # page can show "last sync 5 min ago, ingested 99, archived 84"
+      # without mining logs. Track is idempotent re-entry-safe — if the
+      # model doesn't exist yet (migration not run), it no-ops gracefully.
+      sync_run = (TopnlabSyncRun.start rescue nil)
+      result = call_inner
+      sync_run&.finish!(
+        ids_seen:       result[:imported].to_i + result[:skipped].to_i + result[:failed].to_i,
+        upserted:       result[:imported].to_i,
+        archived:       result[:archived].to_i,
+        photos_pending: 0,
+        errors:         (result[:failed].to_i.positive? ? ["#{result[:failed]} failed"] : [])
+      )
+      result
+    rescue StandardError => e
+      sync_run&.update(
+        finished_at: Time.current, status: 'failed',
+        errors: "#{e.class}: #{e.message.to_s.truncate(500)}"
+      )
+      raise
+    end
+
+    def call_inner
       agents_index = build_agents_index
       type_index   = PropertyType.where(slug: REALTY_TYPES).index_by(&:slug)
       fallback     = User.find_by(email: ENV.fetch('TOPNLAB_FALLBACK_USER_EMAIL', 'topnlab@viktory-realty.ru'))
@@ -119,6 +142,11 @@ module Topnlab
       # Save without strict validations — Property has many "nice to have" validates that
       # CRM payloads can't always satisfy (length min, owners_count, etc.).
       if property.save(validate: false)
+        # Single source of truth for publication: same gate runs for the
+        # webhook path (`import_one`) AND the cron bulk sync (`#call`). Without
+        # this call, the mapper used to hardcode status=:active and we'd never
+        # archive properties that CRM had moved off the «ad» stage.
+        property.publish_if_ready!
         urls = mapper.photo_urls
         TopnlabPhotoSyncJob.perform_later(property.id, urls) if urls.any?
         :imported

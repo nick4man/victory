@@ -93,7 +93,16 @@ class User < ApplicationRecord
   
   # Reviews
   has_many :reviews, dependent: :destroy
-  
+
+  # Online valuations / investment audits this user ordered (linked by
+  # user_id at creation OR backfilled by email after sign-up — see
+  # `after_create_commit :link_existing_valuations` below).
+  has_many :property_valuations, dependent: :nullify
+
+  # Properties the user is selling THROUGH AN (vs `properties` which is
+  # «assigned agent» — same column, different role).
+  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id', dependent: :nullify
+
   # Viewing Schedules
   has_many :viewing_schedules, dependent: :destroy
   
@@ -126,6 +135,20 @@ class User < ApplicationRecord
     [first_name, last_name].compact_blank.join(' ').presence || email
   end
 
+  # Phone to show on public pages (property cards, agent profiles, mailers,
+  # JSON-LD). If the agent doesn't have a personal phone synced from CRM
+  # we fall back to the agency's main line — better to send the caller to
+  # the office than to render a broken / empty tel-link.
+  def display_phone
+    phone.presence || AgencyInfo::PHONE_PRIMARY
+  end
+
+  # Same number, normalized to digits-only — for `tel:` href and
+  # JSON-LD `telephone` properties that don't tolerate parentheses/spaces.
+  def display_phone_tel
+    display_phone.to_s.gsub(/\D/, '')
+  end
+
   def avatar_initials
     parts = [first_name, last_name].compact_blank
     return '?' if parts.empty?
@@ -149,6 +172,7 @@ class User < ApplicationRecord
   before_validation :normalize_phone
   before_save :set_default_preferences, if: :new_record?
   after_create :send_welcome_notification
+  after_create_commit :link_existing_records
 
   # ============================================
   # SCOPES
@@ -234,6 +258,21 @@ class User < ApplicationRecord
   # Activity
   def touch_activity!
     update_column(:last_activity_at, Time.current)
+  end
+
+  # After registration, attach any pre-existing online valuations / inquiries
+  # the visitor had submitted anonymously under the same email. Matching is
+  # email-only (case-insensitive); we don't try phone because of formatting
+  # ambiguity. The new account's owner then sees their history immediately
+  # under /dashboard/listings without staff intervention.
+  def link_existing_records
+    return if email.blank?
+
+    norm = email.to_s.strip.downcase
+    PropertyValuation.where(user_id: nil).where('LOWER(email) = ?', norm).update_all(user_id: id)
+    Inquiry.where(user_id: nil).where('LOWER(email) = ?', norm).update_all(user_id: id) if defined?(Inquiry)
+  rescue StandardError => e
+    Rails.logger.warn("User#link_existing_records failed for user=#{id}: #{e.class} #{e.message}")
   end
 
   def active?

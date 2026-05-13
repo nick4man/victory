@@ -97,21 +97,138 @@
             </div>
           </div>
 
-          <!-- Accuracy -->
-          <div class="mt-6 p-4 bg-secondary/50 border border-border flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 text-foreground">
-                <circle cx="12" cy="12" r="10"/>
-                <path d="m9 12 2 2 4-4"/>
-              </svg>
-              <span class="text-sm text-foreground">Точность оценки:</span>
+          <!-- Confidence — three-tier color signal (high/medium/low) -->
+          <%
+            conf = @valuation.confidence_level.to_f
+            conf_tier = case conf
+                        when 0.75..  then :high
+                        when 0.50...0.75 then :medium
+                        else :low
+                        end
+            conf_label = { high: 'Высокая уверенность', medium: 'Средняя уверенность', low: 'Низкая уверенность' }[conf_tier]
+            conf_blurb = {
+              high: 'Выборка качественная, аналогов достаточно — оценка надёжна.',
+              medium: 'Аналогов мало или они различаются — оценка ориентировочна.',
+              low: 'Похожих объектов почти нет. Рекомендуем заказать выезд эксперта.'
+            }[conf_tier]
+            conf_color = { high: 'border-emerald-500/40 text-emerald-300 bg-emerald-500/5',
+                           medium: 'border-amber-500/40 text-amber-300 bg-amber-500/5',
+                           low: 'border-red-500/40 text-red-300 bg-red-500/5' }[conf_tier]
+            # Source-breakdown по аналогам и breakdown confidence-формулы.
+            # evaluation_data приходит из engine с массивом comparables —
+            # группируем по source, считаем сколько real/synthetic.
+            data_hash_for_conf = @valuation.evaluation_data.is_a?(String) ?
+                                   (JSON.parse(@valuation.evaluation_data) rescue {}) :
+                                   (@valuation.evaluation_data || {})
+            comps_list = data_hash_for_conf['comparables'] || []
+            comps_count = comps_list.size
+            tier = data_hash_for_conf['tier'].to_i
+
+            sources_breakdown = comps_list.group_by { |c| (c['source'] || c[:source]).to_s }
+            real_n  = comps_list.count { |c| %w[agency mls external_yrl semantic cross_city_adapted].include?((c['source']||c[:source]).to_s) }
+            synth_n = comps_list.count { |c| (c['source']||c[:source]).to_s == 'ai_synthesized' }
+
+            source_label = {
+              'agency'             => 'из агентства',
+              'mls'                => 'из MLS',
+              'external_yrl'       => 'из Яндекс.Недвижимости',
+              'semantic'           => 'семантически похожих',
+              'cross_city_adapted' => 'адаптированных из соседнего города',
+              'ai_synthesized'     => 'расчётных (моделирование)'
+            }
+
+            conf_detail = if real_n >= 3
+                            "Найдено #{real_n} настоящих аналогов + #{synth_n} расчётных. Выборка статистически содержательна, оценка опирается на реальные сделки."
+                          elsif real_n >= 1
+                            "Найдено #{real_n} настоящих + #{synth_n} расчётных аналогов. Реальная выборка тонкая, расширена моделированием для расчёта интервала."
+                          elsif synth_n >= 3
+                            "Реальных аналогов в нашей базе не нашлось — выборка построена из #{synth_n} расчётных аналогов на основе медианы города и характеристик объекта."
+                          else
+                            "Аналогов мало. Оценка построена по медиане города #{@valuation.city}. Рекомендуем заказать выезд эксперта для точной цены."
+                          end
+            conf_action = if conf >= 0.80
+                            'Можно использовать как ориентир при переговорах.'
+                          elsif conf >= 0.65
+                            'Сравните с ценой выезда эксперта — точность ±10-15%.'
+                          else
+                            'Закажите бесплатный выезд эксперта АН «Виктори» — он осмотрит объект и даст точную цену.'
+                          end
+          %>
+          <div class="mt-6 border <%= conf_color %>">
+            <div class="p-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-medium"><%= conf_label %></span>
+                <span class="text-xs opacity-80"><%= (conf * 100).round %>%</span>
+              </div>
+              <p class="text-xs leading-relaxed opacity-90"><%= conf_blurb %></p>
             </div>
-            <div class="flex items-center gap-2">
-              <span class="text-lg font-medium text-foreground"><%= @valuation.confidence_percentage %>%</span>
-              <span class="text-xs px-2 py-1 bg-foreground/10 text-foreground"><%= @valuation.accuracy_level %></span>
-            </div>
+            <details class="border-t border-current/20">
+              <summary class="px-4 py-2 cursor-pointer text-[11px] tracking-[0.2em] uppercase opacity-80 hover:opacity-100 select-none">
+                Что это значит и из чего сложилось
+              </summary>
+              <div class="px-4 pb-4 pt-2 text-xs leading-relaxed opacity-90 space-y-2">
+                <p><%= conf_detail %></p>
+
+                <% if sources_breakdown.any? %>
+                  <p><strong>Источники аналогов:</strong></p>
+                  <ul class="list-disc list-inside space-y-0.5 opacity-90 pl-1">
+                    <% sources_breakdown.each do |src, list| %>
+                      <li><%= list.size %> <%= source_label[src] || src %></li>
+                    <% end %>
+                  </ul>
+                <% end %>
+
+                <p><strong>Из чего складывается <%= (conf * 100).round %>%:</strong></p>
+                <ul class="list-disc list-inside space-y-0.5 opacity-90 pl-1 font-mono text-[11px]">
+                  <li>+ 50% — базовый уровень любой расчётной оценки</li>
+                  <% if real_n >= 3 %><li>+ 20% — ≥3 настоящих аналогов</li><% end %>
+                  <% if real_n >= 1 %><li>+ 10% — есть настоящие аналоги (не только модельные)</li><% end %>
+                  <% if synth_n >= 3 %><li>+ 10% — ≥3 расчётных аналогов для статистики</li><% end %>
+                  <% if @valuation.city.present? && CityMedianPrice.lookup(@valuation.city, @valuation.property_type) %>
+                    <li>+ 10% — город <%= @valuation.city %> есть в нашей базе медиан (точная регионная привязка)</li>
+                    <% if comps_count >= 1 %><li>+ 5% — anchor + хотя бы один аналог для сравнения</li><% end %>
+                  <% end %>
+                  <% if @valuation.building_year.present? && @valuation.condition.present? %>
+                    <li>+ 5% — год постройки и состояние известны</li>
+                  <% end %>
+                  <% if comps_count >= 5 %><li>+ 5% — выборка ≥5 значений</li><% end %>
+                </ul>
+
+                <p><strong>Шкала:</strong></p>
+                <ul class="list-disc list-inside space-y-1 opacity-90 pl-1">
+                  <li><span class="text-emerald-300">Высокая (≥75%)</span> — выборка содержательна, оценка надёжна.</li>
+                  <li><span class="text-amber-300">Средняя (50–75%)</span> — оценка ориентировочна, точность ±10-15%.</li>
+                  <li><span class="text-red-300">Низкая (&lt;50%)</span> — аналогов мало, используем медиану города.</li>
+                </ul>
+
+                <% if synth_n.positive? %>
+                  <p class="text-[11px] text-amber-300/80 mt-2">
+                    ⚙ Расчётные аналоги — построены моделью на основе характеристик объекта и медианы города. Используются чтобы расширить выборку, когда реальных сделок мало. В отчёте помечены значком.
+                  </p>
+                <% end %>
+
+                <p class="pt-1"><strong>Что делать сейчас:</strong> <%= conf_action %></p>
+              </div>
+            </details>
           </div>
         </div>
+
+        <%# AI Summary — Russian narrative explanation (Phase 5A) %>
+        <% data_hash = @valuation.evaluation_data.is_a?(String) ? (JSON.parse(@valuation.evaluation_data) rescue {}) : (@valuation.evaluation_data || {}) %>
+        <% ai_summary = data_hash['ai_summary'] || data_hash[:ai_summary] %>
+        <% if ai_summary.present? %>
+          <div class="bg-card border border-border p-6 lg:p-8 mt-6">
+            <div class="flex items-baseline gap-3 mb-4">
+              <p class="text-[10px] tracking-[0.4em] text-muted-foreground">АНАЛИЗ ЭКСПЕРТА</p>
+              <span class="text-[10px] tracking-[0.25em] text-muted-foreground/60">— подготовлено ИИ-помощником</span>
+            </div>
+            <div class="text-sm lg:text-base text-foreground leading-relaxed whitespace-pre-line
+                        [&_strong]:text-foreground [&_strong]:font-medium
+                        [&_p]:mb-3">
+              <%= simple_format(ai_summary.gsub(/\*\*(.+?)\*\*/, '<strong>\1</strong>').html_safe) %>
+            </div>
+          </div>
+        <% end %>
 
         <!-- Property info -->
         <div class="bg-card border border-border p-6">
@@ -232,8 +349,16 @@
                         details << "#{distance} км" if distance.present?
                       %>
                       <%= details.join(" • ") %>
-                      <% if source.to_s == 'mls' %>
-                        <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider bg-foreground/10 text-foreground">MLS</span>
+                      <% src = source.to_s %>
+                      <% case src
+                         when 'ai_synthesized' %>
+                        <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider border border-amber-500/40 bg-amber-500/10 text-amber-300" title="Расчётный аналог — построен моделью на основе характеристик объекта и медианы города">⚙ Модель</span>
+                      <% when 'cross_city_adapted' %>
+                        <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider border border-blue-500/40 bg-blue-500/10 text-blue-300" title="Адаптировано из другого города по соотношению медиан">⇄ Адаптировано</span>
+                      <% when 'semantic' %>
+                        <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider border border-violet-500/40 bg-violet-500/10 text-violet-300" title="Семантически близкий аналог из каталога — найден по сходству характеристик">≈ Похожий</span>
+                      <% when 'mls', 'external_yrl' %>
+                        <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider bg-foreground/10 text-foreground">База агентств</span>
                       <% else %>
                         <span class="ml-2 inline-block px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider border border-border text-muted-foreground">Виктори</span>
                       <% end %>

@@ -18,7 +18,10 @@ module Telegram
     end
 
     # @return [Hash] Telegram message object on success ({message_id:, chat:, text:, ...})
-    def send_message(text, chat_id:, reply_to_message_id: nil, parse_mode: 'HTML', disable_web_page_preview: true)
+    # @param message_thread_id [Integer, nil] id топика форум-группы (для постов в конкретный топик)
+    # @param reply_markup [Hash, nil] payload inline-клавиатуры (Telegram сериализует сам)
+    def send_message(text, chat_id:, reply_to_message_id: nil, message_thread_id: nil,
+                     reply_markup: nil, parse_mode: 'HTML', disable_web_page_preview: true)
       body = {
         chat_id:                  chat_id,
         text:                     text,
@@ -26,7 +29,50 @@ module Telegram
         disable_web_page_preview: disable_web_page_preview
       }
       body[:reply_to_message_id] = reply_to_message_id if reply_to_message_id
+      body[:message_thread_id]   = message_thread_id   if message_thread_id
+      body[:reply_markup]        = reply_markup        if reply_markup
       api_call('sendMessage', body)
+    end
+
+    # Редактирование текста и/или клавиатуры существующего сообщения бота.
+    # Используется для обновления карточки лида после /assign, /stage и т.п.
+    def edit_message_text(text, chat_id:, message_id:, reply_markup: nil,
+                          parse_mode: 'HTML', disable_web_page_preview: true)
+      body = {
+        chat_id:                  chat_id,
+        message_id:               message_id,
+        text:                     text,
+        parse_mode:               parse_mode,
+        disable_web_page_preview: disable_web_page_preview
+      }
+      body[:reply_markup] = reply_markup if reply_markup
+      api_call('editMessageText', body)
+    end
+
+    # Удаление сообщения. Бот может удалить любое сообщение в группе с can_delete_messages,
+    # либо своё в течение 48ч. Telegram возвращает true либо ошибку.
+    def delete_message(chat_id:, message_id:)
+      api_call('deleteMessage', chat_id: chat_id, message_id: message_id)
+    rescue Error => e
+      # Сообщение уже удалено / не существует / слишком старое — это не критично, логируем.
+      Rails.logger.warn("[Telegram] deleteMessage failed (chat=#{chat_id} msg=#{message_id}): #{e.message}")
+      nil
+    end
+
+    # Ответ на нажатие inline-кнопки. БЕЗ этого вызова у пользователя крутится спиннер.
+    # `text` — короткое уведомление (toast); `show_alert=true` — модальное окно вместо toast.
+    def answer_callback_query(callback_query_id, text: nil, show_alert: false)
+      body = { callback_query_id: callback_query_id, show_alert: show_alert }
+      body[:text] = text if text.present?
+      api_call('answerCallbackQuery', body)
+    end
+
+    # Закрепление сообщения в чате/топике. Нужен can_pin_messages.
+    def pin_chat_message(chat_id:, message_id:, disable_notification: true)
+      api_call('pinChatMessage',
+               chat_id:               chat_id,
+               message_id:            message_id,
+               disable_notification:  disable_notification)
     end
 
     # Upload a binary document (PDF/etc) with optional caption via the
@@ -57,6 +103,18 @@ module Telegram
       data = JSON.parse(res.body) rescue {}
       raise Error, "Telegram sendDocument: #{data['description'] || res.code}" unless data['ok']
       data['result']
+    end
+
+    # Post a photo via URL (Telegram fetches it server-side) with optional
+    # caption. Caption max length is 1024 characters per Telegram API — caller
+    # is responsible for trimming.
+    def send_photo(chat_id, photo_url, caption: nil, parse_mode: 'HTML',
+                   message_thread_id: nil, reply_markup: nil)
+      body = { chat_id: chat_id, photo: photo_url, parse_mode: parse_mode }
+      body[:caption]           = caption           if caption.present?
+      body[:message_thread_id] = message_thread_id if message_thread_id
+      body[:reply_markup]      = reply_markup      if reply_markup
+      api_call('sendPhoto', body)
     end
 
     def get_me

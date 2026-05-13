@@ -1,0 +1,10 @@
+<% content_for :title, "Админка · #{@landing_content.title} — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА · РЕДАКТИРОВАНИЕ</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2"><%= @landing_content.title %></h1>
+    <p class="text-xs text-muted-foreground mb-8 break-all"><%= @landing_content.public_path %></p>
+    <%= render 'form', landing_content: @landing_content %>
+  </div>
+</section>

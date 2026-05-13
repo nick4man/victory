@@ -1,0 +1,264 @@
+<%# Депозитный калькулятор — вынесено из mortgage_calculator/show.html.erb
+    в свою страницу. Содержит: hero про депозиты, таблицу программ
+    (источник — еженедельный snapshot banki.ru), inline-калькулятор
+    доходности с капитализацией, FAQ и subnav на соседние разделы
+    финансового хаба. %>
+
+<%# === Hero === %>
+<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">ФИНАНСЫ · ВКЛАДЫ</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4">Депозитный калькулятор</h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-2xl">
+      Рассчитайте доход от вклада с учётом ежемесячной капитализации и сравните
+      программы крупнейших банков. <% if @deposit_programs.any? %>Ставки актуальны на
+      <span class="text-foreground"><%= I18n.l(@deposit_programs.first[:as_of], format: :long) rescue @deposit_programs.first[:as_of] %></span> —
+      еженедельный snapshot с banki.ru.<% end %>
+    </p>
+    <div class="mt-6 flex flex-wrap gap-3">
+      <%= link_to 'Сравнить с ипотекой →', services_mortgage_vs_deposit_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+      <%= link_to 'Ипотечный калькулятор', services_mortgage_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] border border-border hover:border-foreground transition-colors' %>
+    </div>
+  </div>
+</section>
+
+<%# === Macro rates band === %>
+<section class="px-6 lg:px-12 py-6 bg-card/30 border-y border-border">
+  <div class="max-w-5xl mx-auto flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
+    <span class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Текущая макроэкономика</span>
+    <span><span class="text-foreground"><%= @macro[:key_rate] %>%</span> <span class="text-muted-foreground">ставка ЦБ</span></span>
+    <span><span class="text-foreground"><%= @macro[:deposit_rate] %>%</span> <span class="text-muted-foreground">средний депозит</span></span>
+    <span><span class="text-foreground"><%= @macro[:mortgage_rate] %>%</span> <span class="text-muted-foreground">средняя ипотека</span></span>
+    <span class="text-[11px] text-muted-foreground/70">Источник: <%= @macro[:source] %></span>
+  </div>
+</section>
+
+<section class="px-6 lg:px-12 py-12 lg:py-20 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <% if @deposit_programs&.any? %>
+      <%# === Таблица программ === %>
+      <div class="bg-card border border-border mb-8" id="deposit-programs">
+        <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">КАТАЛОГ БАНКОВ</p>
+          <h2 class="text-xl lg:text-2xl font-light tracking-tight text-foreground">
+            Депозитные программы · <%= @deposit_programs.size %>
+          </h2>
+          <p class="text-sm text-muted-foreground mt-2 max-w-2xl">
+            Клик по строке — программа автоматически подставится в калькулятор ниже.
+          </p>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead class="bg-background/40 text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+              <tr>
+                <th class="text-left p-3">Банк</th>
+                <th class="text-left p-3">Программа</th>
+                <th class="text-right p-3">Ставка</th>
+                <th class="text-left p-3">Срок</th>
+                <th class="text-right p-3">От суммы</th>
+                <th class="text-left p-3">Условия</th>
+                <th class="text-right p-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              <% @deposit_programs.each do |d| %>
+                <tr class="border-t border-border hover:bg-background/30 transition-colors"
+                    data-deposit-rate="<%= d[:rate_max] %>"
+                    data-deposit-term-max="<%= d[:term_months_max] %>"
+                    data-deposit-min-amount="<%= d[:min_amount] %>">
+                  <td class="p-3 font-medium text-foreground"><%= d[:bank_name] %></td>
+                  <td class="p-3 text-foreground"><%= d[:product_name] %></td>
+                  <td class="p-3 text-right text-emerald-300 font-medium"><%= d[:rate_max] %>%</td>
+                  <td class="p-3 text-muted-foreground whitespace-nowrap"><%= d[:term_months_min] %>–<%= d[:term_months_max] %> мес.</td>
+                  <td class="p-3 text-right text-muted-foreground whitespace-nowrap"><%= number_with_delimiter(d[:min_amount], delimiter: ' ') %> ₽</td>
+                  <td class="p-3 text-xs text-muted-foreground">
+                    <%= d[:capitalization]   ? 'капитализация' : 'без капитализации' %><% if d[:withdraw_allowed] %>, можно снимать<% end %>
+                  </td>
+                  <td class="p-3 text-right whitespace-nowrap">
+                    <% if d[:source_url].present? %>
+                      <%= link_to '→', d[:source_url], target: '_blank', rel: 'noopener nofollow',
+                            class: 'text-xs text-muted-foreground hover:text-foreground' %>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="px-6 py-3 text-[11px] text-muted-foreground/70 border-t border-border">
+          Источник: <%= @deposit_programs.first[:source] %>. Ставки могут меняться — переходите на сайт банка для подачи заявки.
+        </p>
+      </div>
+
+      <%# === Калькулятор === %>
+      <div class="bg-card border border-border" id="deposit-calculator">
+        <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">РАСЧЁТ ДОХОДА</p>
+          <h3 class="text-lg lg:text-xl font-light tracking-tight text-foreground">Калькулятор депозита</h3>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-0">
+          <div class="p-6 lg:p-8 space-y-5">
+            <div>
+              <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-2">СУММА ВКЛАДА, ₽</label>
+              <input type="number" id="dc-amount" value="1000000" min="1000" step="10000"
+                     class="w-full px-3 py-2 bg-background border border-border text-foreground focus:border-foreground focus:outline-none text-lg">
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between mb-2">
+                <label class="text-xs tracking-[0.25em] text-muted-foreground">СРОК, МЕСЯЦЕВ</label>
+                <span class="text-sm text-foreground" id="dc-term-display">12</span>
+              </div>
+              <input type="range" id="dc-term" min="1" max="36" value="12" step="1"
+                     class="w-full accent-foreground">
+              <div class="flex justify-between text-[10px] text-muted-foreground mt-1">
+                <span>1</span><span>12</span><span>24</span><span>36</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex items-baseline justify-between mb-2">
+                <label class="text-xs tracking-[0.25em] text-muted-foreground">СТАВКА, %</label>
+                <span class="text-sm text-foreground" id="dc-rate-display">16.0%</span>
+              </div>
+              <input type="number" id="dc-rate" value="16.0" min="1" max="30" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border text-foreground focus:border-foreground focus:outline-none">
+              <p id="dc-program-label" class="text-[11px] text-muted-foreground mt-2 hidden">
+                Программа: <span class="text-foreground"></span>
+              </p>
+            </div>
+
+            <div>
+              <label class="inline-flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="dc-capitalization" checked class="accent-foreground">
+                <span class="text-sm text-foreground">Капитализация процентов (ежемесячно)</span>
+              </label>
+              <p class="text-[11px] text-muted-foreground mt-1">При капитализации проценты прибавляются к телу вклада и в следующем месяце начисляются на бóльшую сумму.</p>
+            </div>
+          </div>
+
+          <div class="bg-foreground text-background p-6 lg:p-8 lg:min-w-[320px] flex flex-col justify-center">
+            <p class="text-xs tracking-[0.3em] mb-2 opacity-70">ИТОГОВАЯ СУММА</p>
+            <p class="text-3xl md:text-4xl font-light tracking-tight mb-5" id="dc-final">—</p>
+            <div class="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <p class="opacity-70 mb-1">Чистый доход</p>
+                <p class="text-base" id="dc-profit">—</p>
+              </div>
+              <div>
+                <p class="opacity-70 mb-1">Эффективная %</p>
+                <p class="text-base" id="dc-effective">—</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    <% else %>
+      <div class="p-6 border border-amber-500/30 bg-amber-500/5 text-amber-300 text-sm">
+        Каталог программ временно недоступен. Калькулятор использует усреднённую ставку <%= @macro[:deposit_rate] %>% (источник: ЦБ РФ).
+      </div>
+    <% end %>
+  </div>
+</section>
+
+<%# === FAQ === %>
+<section class="px-6 lg:px-12 py-12 lg:py-20 bg-background border-t border-border">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-xs tracking-[0.4em] text-muted-foreground mb-4">ЧАСТЫЕ ВОПРОСЫ</p>
+    <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-8">Что важно знать о вкладах</h2>
+    <div class="space-y-3">
+      <% @faq.each do |item| %>
+        <details class="group bg-card border border-border">
+          <summary class="px-5 py-4 cursor-pointer list-none flex items-center justify-between gap-4">
+            <span class="text-sm lg:text-base text-foreground pr-2"><%= item[:q] %></span>
+            <span class="text-foreground/60 text-lg leading-none group-open:rotate-45 transition-transform">+</span>
+          </summary>
+          <div class="px-5 pb-5 text-sm text-muted-foreground leading-relaxed">
+            <%= item[:a] %>
+          </div>
+        </details>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<%= render 'services/finance_subnav', current: :deposit %>
+
+<script type="module">
+  (function () {
+    const $ = (id) => document.getElementById(id);
+    const amountEl  = $('dc-amount');
+    const termEl    = $('dc-term');
+    const termDisp  = $('dc-term-display');
+    const rateEl    = $('dc-rate');
+    const rateDisp  = $('dc-rate-display');
+    const capEl     = $('dc-capitalization');
+    const finalEl   = $('dc-final');
+    const profitEl  = $('dc-profit');
+    const effEl     = $('dc-effective');
+    const progLbl   = $('dc-program-label');
+
+    if (!amountEl) return;  // page rendered without programs (empty state)
+
+    const fmtRub = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+
+    function compute() {
+      const principal = Math.max(0, Number(amountEl.value || 0));
+      const months    = Math.max(1, Number(termEl.value || 1));
+      const annualPct = Math.max(0, Number(rateEl.value || 0));
+      const cap       = capEl.checked;
+
+      let final;
+      if (cap) {
+        const monthlyRate = annualPct / 100 / 12;
+        final = principal * Math.pow(1 + monthlyRate, months);
+      } else {
+        const years = months / 12;
+        final = principal + principal * (annualPct / 100) * years;
+      }
+      const profit = final - principal;
+      const yearsFraction = months / 12;
+      const effective = yearsFraction > 0 ? (profit / principal / yearsFraction) * 100 : 0;
+
+      finalEl.textContent = fmtRub(final);
+      profitEl.textContent = fmtRub(profit);
+      effEl.textContent = effective.toFixed(2) + '%';
+      termDisp.textContent = months;
+      rateDisp.textContent = annualPct.toFixed(1) + '%';
+    }
+
+    [amountEl, termEl, rateEl, capEl].forEach((el) => {
+      el && el.addEventListener('input', compute);
+    });
+
+    document.querySelectorAll('#deposit-programs tr[data-deposit-rate]').forEach((row) => {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', (e) => {
+        if (e.target.tagName === 'A') return;
+        const rate = row.dataset.depositRate;
+        const termMax = row.dataset.depositTermMax;
+        const minAmount = row.dataset.depositMinAmount;
+        if (rate)    rateEl.value = rate;
+        if (termMax) termEl.value = Math.min(36, Number(termMax) || 12);
+        if (minAmount && Number(amountEl.value) < Number(minAmount)) {
+          amountEl.value = minAmount;
+        }
+        const bank = row.cells[0]?.textContent?.trim();
+        const prod = row.cells[1]?.textContent?.trim();
+        if (bank && prod && progLbl) {
+          progLbl.classList.remove('hidden');
+          progLbl.querySelector('span').textContent = `${bank} — ${prod}`;
+        }
+        compute();
+        document.getElementById('deposit-calculator')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    });
+
+    compute();
+  })();
+</script>

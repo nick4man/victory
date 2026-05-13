@@ -427,6 +427,93 @@ class Property < ApplicationRecord
     )
   end
 
+  # Auto-publish gate used by the Topnlab import job (and any manual sync).
+  # Four gates, in priority order:
+  #   1. deal_state == 'ad'  — CRM business-stage primary signal
+  #   2. in_ad == true       — explicit «show on our site» flag
+  #   3. images attached     — at least one photo
+  #   4. description present — non-blank descriptive text
+  # All four must hold. If any fails after a re-import (e.g. agent moves the
+  # card off the «ad» stage), the listing auto-archives so it disappears
+  # from the catalogue and feeds in the same tick.
+  #
+  # `update_columns` skips validations and callbacks deliberately: Topnlab
+  # payloads often miss "nice to have" fields that Property validates, and
+  # we don't want emails / notifiers firing on every CRM sync.
+  def publish_if_ready!
+    if ready_for_site?
+      update_columns(
+        status:       Property.statuses[:active],
+        published_at: published_at || Time.current,
+        updated_at:   Time.current
+      )
+      true
+    else
+      if status_active?
+        Rails.logger.info(
+          "[publish] archiving Property##{id} CRM##{external_id}: " \
+          "deal_state=#{deal_state.inspect} in_ad=#{in_ad} " \
+          "images=#{images.attached? ? images.attachments.count : 0} " \
+          "description_len=#{description.to_s.strip.length}"
+        )
+        update_columns(
+          status:       Property.statuses[:archived],
+          published_at: nil,
+          updated_at:   Time.current
+        )
+      end
+      false
+    end
+  end
+
+  # Minimum description length of 30 chars filters out CRM-fallback junk like
+  # «.», «—», «нет описания» without rejecting genuinely terse listings.
+  MIN_DESCRIPTION_LENGTH = 30
+
+  # Minimum image count that lets a listing pass without a long description.
+  # Commercial listings often have an empty `description` in CRM (the sale
+  # flow is phone-driven) but carry 30+ photos — that's enough visual
+  # context to publish.
+  MIN_IMAGES_WITHOUT_DESCRIPTION = 3
+
+  def ready_for_site?
+    # Manual admin override — bypasses the entire gate. Used when CRM state
+    # is misaligned (agent forgot to flip in_ad) and we want to keep the
+    # listing on the site anyway.
+    return true if respond_to?(:force_publish) && force_publish
+
+    deal_state.to_s == 'ad' &&
+      in_ad? &&
+      images.attached? &&
+      ready_content?
+  end
+
+  # Either: a non-trivial description, or enough photos to stand on their
+  # own. The agent's choice — one of the two has to be there.
+  def ready_content?
+    description.to_s.strip.length >= MIN_DESCRIPTION_LENGTH ||
+      images.attachments.count >= MIN_IMAGES_WITHOUT_DESCRIPTION
+  end
+
+  # Human-readable reason a listing isn't on the site (or nil if it is).
+  # Used by the admin status page to surface "fix this in CRM".
+  def publication_blockers
+    return [] if ready_for_site?
+
+    reasons = []
+    reasons << "deal_state=#{deal_state.inspect} (нужно 'ad')" unless deal_state.to_s == 'ad'
+    reasons << 'in_ad=false (не помечено в рекламу в CRM)' unless in_ad?
+    reasons << 'нет фото' unless images.attached?
+    if images.attached?
+      desc_len = description.to_s.strip.length
+      img_count = images.attachments.count
+      if desc_len < MIN_DESCRIPTION_LENGTH && img_count < MIN_IMAGES_WITHOUT_DESCRIPTION
+        reasons << "мало контента (описание #{desc_len} симв., фото #{img_count})"
+      end
+    end
+    reasons
+  end
+
   # Soft delete
   def soft_delete!
     update(deleted_at: Time.current, status: :archived)

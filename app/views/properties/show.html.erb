@@ -423,7 +423,7 @@
             СТОИТ ЛИ ПОКУПАТЬ?
           <% end %>
           <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
-            ИНВЕСТ-АУДИТ: EI · MONTE CARLO · ВЕРДИКТ
+            ИНВЕСТ-АУДИТ: ИНДЕКС · МОНТЕ-КАРЛО · РЕКОМЕНДАЦИЯ
           </p>
 
           <%# Mortgage calculator CTA — same prefill mechanic via ?from_property=.
@@ -439,12 +439,13 @@
           <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">КОНТАКТ АГЕНТА</p>
           <% agent = @property.user %>
           <p class="text-base tracking-wider text-foreground"><%= agent&.full_name.presence || 'АН Виктори' %></p>
-          <% if agent&.phone.present? %>
-            <a href="tel:<%= agent.phone.gsub(/\D/, '') %>" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">
-              <%= agent.phone %>
-            </a>
-          <% else %>
-            <a href="tel:+74951234567" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">+7 495 123 45 67</a>
+          <%# If the agent has no personal phone synced from CRM, User#display_phone
+              falls back to AgencyInfo::PHONE_PRIMARY (the main office line). %>
+          <% phone = (agent&.display_phone || AgencyInfo::PHONE_PRIMARY) %>
+          <a href="tel:<%= phone.gsub(/\D/, '') %>" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">
+            <%= phone %>
+          </a>
+          <% if agent&.phone.blank? %>
             <p class="text-xs tracking-wider text-muted-foreground mt-1">общий телефон агентства</p>
           <% end %>
         </div>

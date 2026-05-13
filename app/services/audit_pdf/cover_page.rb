@@ -168,12 +168,14 @@ module AuditPdf
       tg_url   = 'https://t.me/rznvictory'
       site_url = AgencyInfo::WEBSITE_URL
 
-      site_png = QrRenderer.png(site_url, size: 200)
-      tg_png   = QrRenderer.png(tg_url,   size: 200)
+      # Solid pixel-modules at 12 px/module — survives Prawn → PDF-viewer
+      # downscale without anti-aliasing washout.
+      site_png = QrRenderer.png(site_url)
+      tg_png   = QrRenderer.png(tg_url)
       return if site_png.nil? && tg_png.nil?
 
-      @doc.move_cursor_to(125)
-      qr_h = 70 # rendered height in PDF points
+      @doc.move_cursor_to(160)
+      qr_h = 90 # rendered height in PDF points — larger for legibility
       gap  = 40
 
       # Centre the two QR blocks on the page width.

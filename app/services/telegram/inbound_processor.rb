@@ -21,6 +21,16 @@ module Telegram
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 
+      # Discovery топиков рабочей группы — пассивно: смотрим каждое сообщение,
+      # которое прилетает с message_thread_id, и сохраняем маппинг key → thread_id
+      # если по имени удалось определить топик. См. TopicDiscovery.
+      Telegram::WorkBot::TopicDiscovery.maybe_record(msg)
+
+      # Рабочий бот: команды в работчей группе или DM от привязанного сотрудника.
+      # Router сам решает что обрабатывать (см. WorkBot::Router#call).
+      workbot_result = Telegram::WorkBot::Router.new(msg).call
+      return workbot_result if %i[handled verified code_failed].include?(workbot_result)
+
       # Inbox saver — enqueued, NOT synchronous. Telegram disconnects the
       # webhook after ~5s, and large photo/document downloads from
       # api.telegram.org easily blow past that. The job does the actual

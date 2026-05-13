@@ -1,0 +1,81 @@
+<% content_for :title, "Админка · Topnlab sync — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-8">Topnlab sync</h1>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <% [
+        ['Всего объектов из CRM', @counts[:total], 'text-foreground'],
+        ['На сайте',              @counts[:published], 'text-emerald-300'],
+        ['В архиве',              @counts[:archived],  'text-rose-300'],
+        ['Force-publish',         @counts[:force],     'text-amber-300']
+      ].each do |label, value, color| %>
+        <div class="p-4 border border-border bg-card/40">
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= label %></p>
+          <p class="text-3xl <%= color %> font-light mt-2"><%= value %></p>
+        </div>
+      <% end %>
+    </div>
+
+    <% if @last %>
+      <% age = (Time.current - @last.started_at).to_i / 60 %>
+      <div class="mb-8 p-4 border <%= age < 35 ? 'border-emerald-500/30' : 'border-amber-500/30' %>">
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2">ПОСЛЕДНИЙ ЗАПУСК</p>
+        <p class="text-sm text-foreground">
+          <%= @last.started_at.strftime('%d.%m.%Y %H:%M') %>
+          <span class="text-muted-foreground">(<%= age %> мин назад,
+            длительность <%= @last.duration_seconds || '—' %> с)</span>
+        </p>
+        <p class="text-sm text-muted-foreground mt-2">
+          Статус: <span class="text-foreground"><%= @last.status %></span> ·
+          увидели IDs: <%= @last.ids_seen %> ·
+          обновили: <%= @last.upserted %> ·
+          архивировали: <%= @last.archived %>
+          <% if @last.errors.present? %>
+            <br><span class="text-rose-300 text-xs">Ошибки: <%= @last.errors.to_s.truncate(200) %></span>
+          <% end %>
+        </p>
+      </div>
+    <% else %>
+      <div class="mb-8 p-4 border border-amber-500/30 text-amber-300 text-sm">
+        Ещё ни одного запуска. Cron `topnlab_sync` запускается каждые 30 минут — подождите или запустите вручную через Sidekiq.
+      </div>
+    <% end %>
+
+    <% if @runs.any? %>
+      <h2 class="text-lg tracking-tight text-foreground mb-3">История запусков (30)</h2>
+      <table class="w-full text-xs border border-border">
+        <thead class="bg-card text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+          <tr>
+            <th class="text-left p-3">Старт</th>
+            <th class="text-right p-3">Длит.</th>
+            <th class="text-left p-3">Статус</th>
+            <th class="text-right p-3">IDs</th>
+            <th class="text-right p-3">Обновлено</th>
+            <th class="text-right p-3">Архив</th>
+            <th class="text-left p-3">Ошибки</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @runs.each do |r| %>
+            <tr class="border-t border-border">
+              <td class="p-3 font-mono text-muted-foreground"><%= r.started_at.strftime('%d.%m %H:%M') %></td>
+              <td class="p-3 text-right text-muted-foreground"><%= r.duration_seconds || '—' %>с</td>
+              <td class="p-3">
+                <% color = { 'success' => 'text-emerald-300', 'partial' => 'text-amber-300', 'failed' => 'text-rose-300', 'running' => 'text-muted-foreground' }[r.status] %>
+                <span class="<%= color %>"><%= r.status %></span>
+              </td>
+              <td class="p-3 text-right"><%= r.ids_seen %></td>
+              <td class="p-3 text-right"><%= r.upserted %></td>
+              <td class="p-3 text-right"><%= r.archived %></td>
+              <td class="p-3 text-muted-foreground text-[11px]"><%= r.errors.to_s.truncate(60) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+</section>

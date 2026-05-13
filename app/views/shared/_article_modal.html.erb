@@ -40,18 +40,18 @@
     <%# Body — content cloned in by JS %>
     <div data-modal-body class="px-6 lg:px-10 py-8"></div>
 
-    <%# Footer — link out to standalone page + TG channel %>
+    <%# Footer — back to listing + Telegram channel %>
     <div class="px-6 lg:px-10 py-5 border-t border-border bg-card/40 flex items-center justify-between gap-4 flex-wrap">
-      <a data-modal-full-link href="#"
-         class="inline-flex items-center gap-2 text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors">
-        ОТКРЫТЬ В ОТДЕЛЬНОЙ СТРАНИЦЕ
+      <%= link_to news_path,
+            class: "inline-flex items-center gap-2 text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors" do %>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M2 8h12M9 3l5 5-5 5"/>
+          <path d="M14 8H2M7 3l-5 5 5 5"/>
         </svg>
-      </a>
+        К ДРУГИМ НОВОСТЯМ
+      <% end %>
       <a href="https://t.me/rznvictory" target="_blank" rel="noopener"
          class="inline-flex items-center gap-2 text-xs tracking-[0.25em] text-foreground hover:text-muted-foreground transition-colors">
-        @RZNVICTORY
+        НАШ ТЕЛЕГРАМ
         <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M2 8h12M9 3l5 5-5 5"/>
         </svg>

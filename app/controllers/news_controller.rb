@@ -17,10 +17,19 @@ class NewsController < ApplicationController
     scope     = scope.where(category: @category) if @category && Article::CATEGORIES.include?(@category)
     scope     = scope.where(category: FEED_CATEGORIES) unless @category
     scope     = apply_tag_filter(scope, @tag) if @tag
-    @articles = scope.page(params[:page]).per(12)
+    @articles = scope.page(params[:page]).per(12).to_a
     @macro    = safe_macro
     @counts   = Article.published.visible.where(category: FEED_CATEGORIES)
                        .reorder(nil).group(:category).count
+
+    # ?article=slug — auto-open modal for that article. If it isn't already in
+    # the page's listing (different category/tag/page), prepend it so the
+    # modal-template partial has the body markup to clone.
+    @autoopen_slug = params[:article].presence
+    if @autoopen_slug
+      extra = Article.public_facing.friendly.find_by(slug: @autoopen_slug)
+      @articles = ([extra] + @articles).uniq(&:id) if extra
+    end
 
     set_meta_tags(
       title:       'Новости рынка недвижимости — Рязань',
@@ -31,22 +40,13 @@ class NewsController < ApplicationController
     )
   end
 
+  # Legacy per-article page is gone — the modal on /news is the single
+  # reading surface now. Redirect any stragglers (Google index, share links,
+  # webhook responses) to /news?article=:slug where JS auto-opens the modal.
   def show
-    @article = Article.friendly.find(params[:id])
-    if @article.hidden? || !@article.published?
-      redirect_to news_path, alert: 'Эта статья сейчас недоступна.' and return
-    end
-    @article.increment!(:views_count)
-    @related      = fetch_related(@article)
-    @prev_article = adjacent_article(@article, :older)
-    @next_article = adjacent_article(@article, :newer)
-
-    set_meta_tags(
-      title:       @article.title,
-      description: @article.short_excerpt(length: 160),
-      canonical:   news_item_url(@article.slug),
-      og: { type: 'article', title: @article.title, description: @article.short_excerpt(length: 160) }
-    )
+    article = Article.friendly.find(params[:id])
+    article.increment!(:views_count) if article.published? && !article.hidden?
+    redirect_to news_path(article: article.slug), status: :moved_permanently
   rescue ActiveRecord::RecordNotFound
     redirect_to news_path, alert: 'Статья не найдена.'
   end

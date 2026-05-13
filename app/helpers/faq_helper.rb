@@ -44,6 +44,25 @@ module FaqHelper
     ])
   end
 
+  # Scans an HTML fragment for <details><summary>Q</summary>A</details> blocks
+  # and returns [[q, a], ...] pairs suitable for `faq_jsonld`. Used by SEO
+  # landing pages where the partial author writes FAQ as plain HTML — letting
+  # them keep the visible markup hand-written while still emitting matching
+  # FAQPage structured data.
+  def faq_pairs_from_html(html_fragment)
+    return [] if html_fragment.blank?
+    doc = Nokogiri::HTML.fragment(html_fragment)
+    doc.css('details').filter_map do |d|
+      summary = d.at_css('summary')&.content&.strip
+      next nil if summary.blank?
+      # Answer = everything inside <details> except the <summary> itself.
+      answer_html = d.children.reject { |c| c.name == 'summary' }.map(&:to_s).join
+      answer_text = Nokogiri::HTML.fragment(answer_html).content.gsub(/\s+/, ' ').strip
+      next nil if answer_text.blank?
+      [summary, answer_text]
+    end
+  end
+
   # Emits just the JSON-LD FAQPage script. Use when the visible FAQ markup
   # already exists in the template and you only need the structured-data hook.
   #

@@ -1,118 +1,359 @@
 <%
-  # Active-link helper — adds a subtle border under the current page.
-  # Single source for both the visible underline (h-px under each item)
-  # and the colour change (text-foreground vs text-muted-foreground).
-  nav_link = ->(label, path) do
-    active = current_page?(path)
-    base   = 'group relative whitespace-nowrap text-sm tracking-widest transition-colors duration-300 py-1'
-    color  = active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-    bar    = active ? 'bg-foreground' : 'bg-foreground/0 group-hover:bg-foreground/40'
-    link_to path, class: "#{base} #{color}" do
-      label.to_s.html_safe +
-        content_tag(:span, '',
-          class: "absolute left-0 right-0 -bottom-0.5 h-px #{bar} transition-colors duration-300")
-    end
-  end
+  # Active-link helper — adds a subtle underline + colour change for the
+  # current page. Same logic for top nav links and dropdown items.
+  active_class = ->(path) { current_page?(path) ? 'text-foreground' : 'text-muted-foreground hover:text-foreground' }
 
-  mobile_link = ->(label, path) do
-    active = current_page?(path)
-    color  = active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-    link_to label, path, class: "py-3 text-sm tracking-wider #{color} transition-colors"
-  end
+  # Cabinet URL depends on role (admin → /admin, agent → /dashboard/staff,
+  # client → /dashboard). Computed once so the link is identical in desktop
+  # nav and mobile drawer.
+  cabinet_path = if user_signed_in?
+                   if current_user.admin?
+                     admin_root_path
+                   elsif current_user.agent?
+                     dashboard_staff_index_path
+                   else
+                     dashboard_root_path
+                   end
+                 end
 %>
 
-<header class="fixed top-0 left-0 right-0 z-50 bg-background/85 backdrop-blur-md border-b border-border">
-  <div class="flex items-center justify-between px-6 py-4 lg:px-12">
-    <%= link_to root_path, class: "text-xl lg:text-[1.35rem] font-light tracking-[0.32em] text-foreground hover:text-foreground/85 transition-colors" do %>
+<header class="fixed top-0 left-0 right-0 z-50 bg-background/85 backdrop-blur-md border-b border-border"
+        data-site-header>
+
+  <div class="flex items-center justify-between px-6 lg:px-10 py-4">
+    <%# === LOGO === %>
+    <%= link_to root_path,
+          class: "text-xl lg:text-[1.35rem] font-light tracking-[0.32em] text-foreground hover:text-foreground/85 transition-colors flex-shrink-0" do %>
       АН&nbsp;ВИКТОРИ
     <% end %>
 
-    <nav class="hidden lg:flex items-center gap-6 xl:gap-9">
-      <%= nav_link.call('Каталог',    properties_path) %>
-      <%= nav_link.call('Новости',    news_path) %>
-      <%= nav_link.call('Оценка',     valuations_path) %>
-      <%= nav_link.call('Ипотека',    services_mortgage_calculator_path) %>
-      <%= nav_link.call('Отзывы',     reviews_path) %>
-      <%= content_tag(:span, class: 'hidden xl:inline-block') do
-            nav_link.call('О нас', about_path)
-          end %>
-      <%= nav_link.call('Контакты',   contacts_path) %>
+    <%# ============================================================
+        DESKTOP NAV (lg+) — 6 items with dropdowns + mega-menu
+        ============================================================ %>
+    <nav class="hidden lg:flex items-center gap-6 xl:gap-8" aria-label="Главная навигация">
+
+      <%# --- 1. Каталог (mega-menu) --- %>
+      <div class="relative" data-nav-menu-target="item">
+        <button type="button" aria-expanded="false" aria-haspopup="true"
+                data-nav-toggle
+                class="flex items-center gap-1 text-sm tracking-widest <%= active_class.call(properties_path) %> py-1 transition-colors">
+          Каталог
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path d="M2 4l3 3 3-3"/>
+          </svg>
+        </button>
+        <div data-nav-menu-target="panel"
+             class="hidden absolute left-0 top-full mt-2 w-[640px] bg-background border border-border shadow-2xl"
+             role="menu">
+          <div class="grid grid-cols-2">
+            <%# Left col — by type %>
+            <div class="p-6 border-r border-border">
+              <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">ПО ТИПУ</p>
+              <ul class="space-y-2.5 text-sm">
+                <li><%= link_to 'Все объекты',       properties_path,                class: 'text-foreground hover:text-muted-foreground' %></li>
+                <li><%= link_to 'Купить квартиру',   '/kupit/kvartira',              class: 'text-foreground hover:text-muted-foreground' %></li>
+                <li><%= link_to 'Снять квартиру',    '/snyat/kvartira',              class: 'text-foreground hover:text-muted-foreground' %></li>
+                <li><%= link_to 'Купить дом',        '/kupit/dom',                   class: 'text-foreground hover:text-muted-foreground' %></li>
+                <li><%= link_to 'Коммерческая',      '/kupit/commerce',              class: 'text-foreground hover:text-muted-foreground' %></li>
+                <li><%= link_to 'Земельные участки', '/kupit/uchastok',              class: 'text-foreground hover:text-muted-foreground' %></li>
+              </ul>
+            </div>
+            <%# Right col — by district %>
+            <div class="p-6">
+              <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">ПО РАЙОНАМ РЯЗАНИ</p>
+              <ul class="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
+                <% RyazanDistricts.micro_grouped_by_admin.values.flatten(1).each do |slug, meta| %>
+                  <li>
+                    <%= link_to meta[:name], "/kupit/kvartira/rayon/#{slug}",
+                          class: 'text-muted-foreground hover:text-foreground transition-colors' %>
+                  </li>
+                <% end %>
+              </ul>
+              <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 mt-4 pt-3 border-t border-border">
+                4 АДМИНИСТРАТИВНЫХ РАЙОНА
+              </p>
+              <ul class="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs">
+                <% RyazanDistricts::ADMIN.each do |slug, meta| %>
+                  <li><%= link_to meta[:name], "/kupit/kvartira/rayon/#{slug}",
+                            class: 'text-muted-foreground hover:text-foreground' %></li>
+                <% end %>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <%# --- 2. Оценка --- %>
+      <div class="relative" data-nav-menu-target="item">
+        <button type="button" aria-expanded="false" aria-haspopup="true"
+                data-nav-toggle
+                class="flex items-center gap-1 text-sm tracking-widest <%= active_class.call(valuations_path) %> py-1 transition-colors">
+          Оценка
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+        </button>
+        <div data-nav-menu-target="panel"
+             class="hidden absolute left-0 top-full mt-2 w-64 bg-background border border-border shadow-2xl p-5">
+          <ul class="space-y-2.5 text-sm">
+            <li><%= link_to 'Экспресс-оценка',         valuations_path,                  class: 'text-foreground hover:text-muted-foreground block' %></li>
+            <li><%= link_to 'Инвестиционный аудит',    investment_audit_new_path,        class: 'text-foreground hover:text-muted-foreground block' %></li>
+          </ul>
+        </div>
+      </div>
+
+      <%# --- 3. Финансы — раздел из 4 страниц --- %>
+      <div class="relative" data-nav-menu-target="item">
+        <%
+          finance_paths = [services_mortgage_path, services_deposit_path,
+                           services_mortgage_vs_deposit_path, new_services_mortgage_application_path]
+          finance_active = finance_paths.any? { |p| request.path.start_with?(p) }
+        %>
+        <button type="button" aria-expanded="false" aria-haspopup="true"
+                data-nav-toggle
+                class="flex items-center gap-1 text-sm tracking-widest <%= finance_active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground' %> py-1 transition-colors">
+          Финансы
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+        </button>
+        <div data-nav-menu-target="panel"
+             class="hidden absolute left-0 top-full mt-2 w-[340px] bg-background border border-border shadow-2xl p-5">
+          <ul class="space-y-3 text-sm" role="menu">
+            <li>
+              <%= link_to services_mortgage_path, class: 'block group', role: 'menuitem' do %>
+                <span class="block text-foreground group-hover:text-muted-foreground">Ипотечный калькулятор</span>
+                <span class="block text-[11px] text-muted-foreground mt-0.5">Платёж, переплата и программы банков</span>
+              <% end %>
+            </li>
+            <li>
+              <%= link_to services_deposit_path, class: 'block group', role: 'menuitem' do %>
+                <span class="block text-foreground group-hover:text-muted-foreground">Депозитный калькулятор</span>
+                <span class="block text-[11px] text-muted-foreground mt-0.5">Доход вклада, программы банков, капитализация</span>
+              <% end %>
+            </li>
+            <li>
+              <%= link_to services_mortgage_vs_deposit_path, class: 'block group', role: 'menuitem' do %>
+                <span class="block text-foreground group-hover:text-muted-foreground">Вклад или ипотека</span>
+                <span class="block text-[11px] text-muted-foreground mt-0.5">Что выгоднее: купить или копить — расчёт на 20 лет</span>
+              <% end %>
+            </li>
+            <li class="pt-3 mt-1 border-t border-border">
+              <%= link_to new_services_mortgage_application_path, class: 'block group', role: 'menuitem' do %>
+                <span class="block text-foreground group-hover:text-muted-foreground">Подать заявку</span>
+                <span class="block text-[11px] text-muted-foreground mt-0.5">Свяжем с банком — без выезда и звонков</span>
+              <% end %>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <%# --- 4. Новости --- %>
+      <%= link_to 'Новости', news_path,
+            class: "text-sm tracking-widest #{active_class.call(news_path)} py-1 transition-colors" %>
+
+      <%# --- 5. О нас --- %>
+      <div class="relative" data-nav-menu-target="item">
+        <button type="button" aria-expanded="false" aria-haspopup="true"
+                data-nav-toggle
+                class="flex items-center gap-1 text-sm tracking-widest <%= active_class.call(about_path) %> py-1 transition-colors">
+          О нас
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 4l3 3 3-3"/></svg>
+        </button>
+        <div data-nav-menu-target="panel"
+             class="hidden absolute right-0 top-full mt-2 w-56 bg-background border border-border shadow-2xl p-5">
+          <ul class="space-y-2.5 text-sm">
+            <li><%= link_to 'О компании', about_path,                class: 'text-foreground hover:text-muted-foreground block' %></li>
+            <li><%= link_to 'Команда',    team_path,                 class: 'text-foreground hover:text-muted-foreground block' %></li>
+            <li><%= link_to 'Контакты',   contacts_path,             class: 'text-foreground hover:text-muted-foreground block' %></li>
+            <li><%= link_to 'Отзывы',     reviews_path,              class: 'text-foreground hover:text-muted-foreground block' %></li>
+            <li><%= link_to 'FAQ',        faq_path,                  class: 'text-foreground hover:text-muted-foreground block' %></li>
+          </ul>
+        </div>
+      </div>
     </nav>
 
-    <div class="hidden lg:flex items-center gap-5 xl:gap-7">
-      <%# Phone — only at xl+ to keep lg breathing room. Mobile click-to-call
-          lives in mobile nav, footer, and per-page "позвонить" CTAs. %>
-      <a href="<%= agency_phone_tel %>"
-         class="hidden xl:flex items-center gap-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors"
-         aria-label="Позвонить">
-        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-        </svg>
-        <%= agency_phone_primary %>
-      </a>
-      <%# Login link hidden at lg — too cramped with 6 nav items; available
-          via mobile menu and via the chat-widget after консультация. %>
+    <%# ============================================================
+        RIGHT SIDE — auth + CTA
+        ============================================================ %>
+    <div class="flex items-center gap-3 lg:gap-5 flex-shrink-0">
       <% if user_signed_in? %>
-        <%= link_to "КАБИНЕТ",  dashboard_root_path,
-              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
-        <%= button_to "ВЫХОД",  destroy_user_session_path, method: :delete,
-              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer",
-              form: { class: "inline" } %>
+        <%= link_to "КАБИНЕТ", cabinet_path,
+              class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
+      <% elsif session[:admin_token_digest].present? %>
+        <%= link_to "АДМИН", admin_root_path,
+              class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% else %>
         <%= link_to "ВОЙТИ", new_user_session_path,
-              class: "hidden xl:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
+              class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% end %>
       <button type="button" data-chat-trigger
-              class="px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors whitespace-nowrap">
+              class="hidden lg:inline-block px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors whitespace-nowrap">
         КОНСУЛЬТАЦИЯ
+      </button>
+      <%# Burger — visible <lg %>
+      <button type="button" data-drawer-open
+              class="lg:hidden text-foreground" aria-label="Меню">
+        <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <%# ============================================================
+      MOBILE DRAWER (slide-in from right, < lg)
+      ============================================================ %>
+  <div data-drawer-backdrop
+       data-drawer-close
+       class="lg:hidden fixed inset-0 bg-foreground/40 backdrop-blur-sm opacity-0 pointer-events-none transition-opacity duration-300 z-40"></div>
+
+  <aside data-drawer-panel
+         class="lg:hidden fixed top-0 right-0 h-screen w-[88%] max-w-sm bg-background border-l border-border translate-x-full transition-transform duration-300 ease-out z-50 overflow-y-auto">
+    <div class="flex items-center justify-between px-6 py-5 border-b border-border">
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground">МЕНЮ</p>
+      <button type="button" data-drawer-close aria-label="Закрыть">
+        <svg class="w-6 h-6 text-foreground" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
     </div>
 
-    <button class="lg:hidden text-foreground" onclick="document.getElementById('mobile-nav').classList.toggle('hidden')" aria-label="Меню">
-      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h16M4 6h16M4 18h16"/></svg>
-    </button>
-  </div>
-
-  <div id="mobile-nav" class="hidden lg:hidden border-t border-border bg-background/95 backdrop-blur-md">
-    <nav class="flex flex-col py-4 px-6">
-      <%= mobile_link.call('Каталог',    properties_path) %>
-      <%= mobile_link.call('Новости',    news_path) %>
-      <%= mobile_link.call('Оценка',     valuations_path) %>
-      <%= mobile_link.call('Ипотека',    services_mortgage_calculator_path) %>
-      <%= mobile_link.call('Услуги',     services_page_path) %>
-      <%= mobile_link.call('Отзывы',     reviews_path) %>
-      <%= mobile_link.call('О компании', about_path) %>
-      <%= mobile_link.call('Контакты',   contacts_path) %>
-
-      <div class="mt-2 pt-3 border-t border-border flex flex-col gap-2">
-        <a href="<%= agency_phone_tel %>" class="py-2 text-sm tracking-wider text-foreground flex items-center gap-2">
-          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          <%= agency_phone_primary %>
-        </a>
-        <% if user_signed_in? %>
-          <%= link_to "Кабинет",  dashboard_root_path, class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-          <%= button_to "Выход",  destroy_user_session_path, method: :delete,
-                class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors bg-transparent border-0 p-0 cursor-pointer text-left",
-                form: { class: "block" } %>
-        <% else %>
-          <%= link_to "Войти",        new_user_session_path,      class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-          <%= link_to "Регистрация",  new_user_registration_path, class: "py-2 text-sm tracking-wider text-muted-foreground hover:text-foreground transition-colors" %>
-        <% end %>
-        <button type="button" data-chat-trigger
-                class="mt-2 py-3 text-sm tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors w-full">
-          КОНСУЛЬТАЦИЯ
-        </button>
+    <nav class="flex flex-col gap-1 px-6 py-5">
+      <%= link_to 'Каталог',                properties_path,                  class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'Новости',                news_path,                        class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'Экспресс-оценка',        valuations_path,                  class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'Инвестиционный аудит',   investment_audit_new_path,        class: 'py-3 text-base text-foreground border-b border-border' %>
+      <div class="py-3 border-b border-border">
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">ФИНАНСЫ</p>
+        <%= link_to 'Ипотечный калькулятор',  services_mortgage_path,            class: 'block py-1.5 text-sm text-foreground' %>
+        <%= link_to 'Депозитный калькулятор', services_deposit_path,             class: 'block py-1.5 text-sm text-foreground' %>
+        <%= link_to 'Вклад или ипотека',      services_mortgage_vs_deposit_path, class: 'block py-1.5 text-sm text-foreground' %>
+        <%= link_to 'Подать заявку',          new_services_mortgage_application_path, class: 'block py-1.5 text-sm text-foreground' %>
       </div>
+      <%= link_to 'Команда',                team_path,                        class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'О компании',             about_path,                       class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'Отзывы',                 reviews_path,                     class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'FAQ',                    faq_path,                         class: 'py-3 text-base text-foreground border-b border-border' %>
+      <%= link_to 'Контакты',               contacts_path,                    class: 'py-3 text-base text-foreground border-b border-border' %>
     </nav>
-  </div>
+
+    <div class="px-6 py-5 border-t border-border">
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-3">ПО РАЙОНАМ РЯЗАНИ</p>
+      <div class="flex flex-wrap gap-2">
+        <% RyazanDistricts.micro_grouped_by_admin.values.flatten(1).each do |slug, meta| %>
+          <%= link_to meta[:name], "/kupit/kvartira/rayon/#{slug}",
+                class: 'px-3 py-1.5 text-xs text-muted-foreground border border-border hover:text-foreground hover:border-foreground/60' %>
+        <% end %>
+      </div>
+    </div>
+
+    <div class="px-6 py-5 border-t border-border space-y-3">
+      <% if user_signed_in? %>
+        <%= link_to "Личный кабинет",  cabinet_path,             class: 'block py-2 text-sm text-foreground' %>
+        <%= button_to "Выйти",         destroy_user_session_path, method: :delete,
+              class: 'block py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent border-0 p-0 cursor-pointer text-left',
+              form: { class: 'block' } %>
+      <% else %>
+        <%= link_to "Войти",          new_user_session_path,      class: 'block py-2 text-sm text-foreground' %>
+        <%= link_to "Регистрация",    new_user_registration_path, class: 'block py-2 text-sm text-muted-foreground hover:text-foreground' %>
+      <% end %>
+      <a href="<%= agency_phone_tel %>" class="block py-2 text-sm text-foreground">
+        <%= agency_phone_primary %>
+      </a>
+      <button type="button" data-chat-trigger
+              class="w-full mt-2 px-5 py-3 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors">
+        КОНСУЛЬТАЦИЯ
+      </button>
+    </div>
+  </aside>
 </header>
 
 <script>
-  // Globally route any data-chat-trigger button to open the floating widget.
-  document.addEventListener('click', function (e) {
-    const btn = e.target.closest('[data-chat-trigger]');
-    if (!btn) return;
-    e.preventDefault();
-    window.dispatchEvent(new Event('chat:open'));
-  });
+  (function () {
+    if (window.__siteHeaderInit) return;
+    window.__siteHeaderInit = true;
+
+    var header = document.querySelector('[data-site-header]');
+    if (!header) return;
+
+    // ============================================================
+    // Desktop nav dropdowns — click + hover + Esc + click-outside.
+    // ============================================================
+    function closeAllNavMenus() {
+      header.querySelectorAll('[data-nav-menu-target="item"]').forEach(function (item) {
+        item.classList.remove('is-open');
+        var trigger = item.querySelector('[aria-expanded]');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        var panel = item.querySelector('[data-nav-menu-target="panel"]');
+        if (panel) panel.classList.add('hidden');
+      });
+    }
+    function openNavMenu(item) {
+      item.classList.add('is-open');
+      var trigger = item.querySelector('[aria-expanded]');
+      if (trigger) trigger.setAttribute('aria-expanded', 'true');
+      var panel = item.querySelector('[data-nav-menu-target="panel"]');
+      if (panel) panel.classList.remove('hidden');
+    }
+
+    header.querySelectorAll('[data-nav-toggle]').forEach(function (trigger) {
+      trigger.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var item = trigger.closest('[data-nav-menu-target="item"]');
+        if (!item) return;
+        var wasOpen = item.classList.contains('is-open');
+        closeAllNavMenus();
+        if (!wasOpen) openNavMenu(item);
+      });
+    });
+
+    if (window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
+      header.querySelectorAll('[data-nav-menu-target="item"]').forEach(function (item) {
+        item.addEventListener('mouseenter', function () {
+          closeAllNavMenus();
+          openNavMenu(item);
+        });
+      });
+      header.addEventListener('mouseleave', closeAllNavMenus);
+    }
+
+    document.addEventListener('click', function (e) {
+      if (!header.contains(e.target)) closeAllNavMenus();
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { closeAllNavMenus(); closeDrawer(); }
+    });
+
+    // ============================================================
+    // Mobile drawer — right-side slide-in.
+    // ============================================================
+    var panel    = header.querySelector('[data-drawer-panel]');
+    var backdrop = header.querySelector('[data-drawer-backdrop]');
+    function openDrawer() {
+      if (!panel || !backdrop) return;
+      panel.classList.remove('translate-x-full');
+      panel.classList.add('translate-x-0');
+      backdrop.classList.remove('opacity-0', 'pointer-events-none');
+      backdrop.classList.add('opacity-100');
+      document.documentElement.style.overflow = 'hidden';
+    }
+    function closeDrawer() {
+      if (!panel || !backdrop) return;
+      panel.classList.add('translate-x-full');
+      panel.classList.remove('translate-x-0');
+      backdrop.classList.add('opacity-0', 'pointer-events-none');
+      backdrop.classList.remove('opacity-100');
+      document.documentElement.style.overflow = '';
+    }
+    header.querySelectorAll('[data-drawer-open]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) { e.preventDefault(); openDrawer(); });
+    });
+    header.querySelectorAll('[data-drawer-close]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) { e.preventDefault(); closeDrawer(); });
+    });
+
+    // ============================================================
+    // Chat-trigger — opens the floating chat widget.
+    // ============================================================
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-chat-trigger]');
+      if (!btn) return;
+      e.preventDefault();
+      window.dispatchEvent(new Event('chat:open'));
+    });
+  })();
 </script>

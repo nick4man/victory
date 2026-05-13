@@ -49,6 +49,27 @@
       <span class="ml-2">Печатает…</span>
     </div>
 
+    <%# Quick-reply onboarding pills — visible while the conversation has
+        no user-authored messages, hidden as soon as the user sends one.
+        The JS below toggles `data-quick-replies-state="hidden"` after the
+        first user message and restores it if the dialog is cleared. %>
+    <div id="chat-widget-quick-replies"
+         class="px-3 pt-2 pb-1 border-t border-border bg-background flex flex-wrap gap-1.5"
+         data-quick-replies-state="visible">
+      <% [
+        ['💰 Оценить квартиру', 'Сделай экспресс-оценку моей квартиры'],
+        ['🔍 Найти объект',     'Помоги подобрать квартиру в Рязани до 5 млн ₽'],
+        ['📊 Ипотека',          'Посчитай ипотеку: квартира 5 млн ₽, первоначальный взнос 1 млн, 20 лет'],
+        ['🏘️ Про район',         'Расскажи про район Канищево в Рязани']
+      ].each do |label, prompt| %>
+        <button type="button"
+                data-chat-preset="<%= prompt %>"
+                class="px-2.5 py-1 text-[11px] tracking-wider border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
+          <%= label %>
+        </button>
+      <% end %>
+    </div>
+
     <form id="chat-widget-form" class="border-t border-border bg-background">
       <div class="flex items-end gap-2 p-3">
         <textarea id="chat-widget-input" rows="1" maxlength="2000"
@@ -178,6 +199,7 @@
 
     const wrap = document.createElement('div');
     wrap.dataset.msgId = m.id;
+    wrap.dataset.msgRole = m.role || '';
     const me = m.role === 'user';
     wrap.className = 'flex ' + (me ? 'justify-end' : 'justify-start');
 
@@ -296,4 +318,37 @@
   // Apply persisted open-state on first load and bootstrap if open.
   applyOpenState();
   if (openState) bootstrap();
+
+  // === Quick-reply pills ===
+  // Visible while the conversation has no user message; hidden after the
+  // first send. Click → fill input + auto-submit, so the user gets to the
+  // estimate / search / mortgage flow in one tap.
+  const quickRepliesEl = document.getElementById('chat-widget-quick-replies');
+
+  function updateQuickRepliesVisibility() {
+    if (!quickRepliesEl) return;
+    const hasUserMessage = Array.from(messages.children).some(
+      (el) => el.dataset && el.dataset.msgRole === 'user'
+    );
+    quickRepliesEl.hidden = hasUserMessage;
+  }
+
+  if (quickRepliesEl) {
+    quickRepliesEl.querySelectorAll('button[data-chat-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        input.value = btn.dataset.chatPreset || '';
+        // Submit via the form's native flow so we reuse all the bootstrap +
+        // CSRF + error handling above.
+        form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true }));
+      });
+    });
+
+    // Re-check visibility every time we append a message — cheap enough.
+    const origAppend = appendMessage;
+    appendMessage = function (m, scroll = true) {
+      origAppend(m, scroll);
+      updateQuickRepliesVisibility();
+    };
+    updateQuickRepliesVisibility();
+  }
 </script>

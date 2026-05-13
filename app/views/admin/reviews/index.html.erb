@@ -8,10 +8,10 @@
     </h1>
 
     <nav class="mb-8 flex flex-wrap gap-3 text-sm tracking-[0.3em]">
-      <%= link_to 'ВСЕ',         admin_reviews_path(token: params[:token]),                      class: "px-5 py-2 border #{params[:status].blank? ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
-      <%= link_to 'PENDING',     admin_reviews_path(token: params[:token], status: 'pending'),   class: "px-5 py-2 border #{params[:status] == 'pending' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
-      <%= link_to 'APPROVED',    admin_reviews_path(token: params[:token], status: 'approved'),  class: "px-5 py-2 border #{params[:status] == 'approved' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
-      <%= link_to 'REJECTED',    admin_reviews_path(token: params[:token], status: 'rejected'),  class: "px-5 py-2 border #{params[:status] == 'rejected' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'ВСЕ',         admin_reviews_path(),                      class: "px-5 py-2 border #{params[:status].blank? ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'PENDING',     admin_reviews_path(status: 'pending'),   class: "px-5 py-2 border #{params[:status] == 'pending' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'APPROVED',    admin_reviews_path(status: 'approved'),  class: "px-5 py-2 border #{params[:status] == 'approved' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'REJECTED',    admin_reviews_path(status: 'rejected'),  class: "px-5 py-2 border #{params[:status] == 'rejected' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
     </nav>
 
     <% if @reviews.empty? %>
@@ -57,18 +57,18 @@
 
             <div class="flex flex-col gap-2">
               <% if r.status_pending? %>
-                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r, token: params[:token]),
+                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r),
                       method: :post,
                       class: 'px-5 py-2 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
-                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r, token: params[:token]),
+                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r),
                       method: :post,
                       class: 'px-5 py-2 text-xs tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
               <% elsif r.status_approved? %>
-                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r, token: params[:token]),
+                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r),
                       method: :post,
                       class: 'px-5 py-2 text-xs tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
               <% elsif r.status_rejected? %>
-                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r, token: params[:token]),
+                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r),
                       method: :post,
                       class: 'px-5 py-2 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
               <% end %>

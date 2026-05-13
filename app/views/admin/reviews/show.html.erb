@@ -3,7 +3,7 @@
 <section class="px-6 lg:px-12 py-12 bg-background">
   <div class="max-w-4xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-2">
-      <%= link_to '← К СПИСКУ', admin_reviews_path(token: params[:token]), class: 'hover:text-foreground' %>
+      <%= link_to '← К СПИСКУ', admin_reviews_path(), class: 'hover:text-foreground' %>
     </p>
     <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-8">
       Отзыв #<%= @review.id %>
@@ -57,12 +57,12 @@
 
     <div class="mt-8 flex flex-wrap gap-4">
       <% if @review.status_pending? || @review.status_rejected? %>
-        <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(@review, token: params[:token]),
+        <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(@review),
               method: :post,
               class: 'px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
       <% end %>
       <% unless @review.status_rejected? %>
-        <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(@review, token: params[:token]),
+        <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(@review),
               method: :post,
               class: 'px-8 py-4 text-sm tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
       <% end %>

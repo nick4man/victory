@@ -24,11 +24,34 @@
     </url>
   <% end %>
   <%#
-    NB: SEO landings (/kupit/*, /snyat/*) are intentionally NOT in this
-    sitemap yet. Without editorial content per landing they're soft-404
-    candidates and Google will demote the whole sitemap if many entries
-    look thin. Add them here as content arrives via landings/content/.
+    SEO district landings — each has a 300-500 word editorial partial in
+    landings/content/sale_kvartira_<slug>.html.erb. All 20 micro-districts
+    plus 4 admin districts. Type/rooms variants without per-page content
+    are NOT listed to avoid soft-404 demotion.
   %>
+  <% RyazanDistricts::MICRO.each_key do |slug| %>
+    <url>
+      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <changefreq>weekly</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
+  <% RyazanDistricts::ADMIN.each_key do |slug| %>
+    <url>
+      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+  <%# Type-only landings (no district filter) — also have editorial weight via
+      the landing's H1, intro, and downstream catalog grid. %>
+  <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
+    <url>
+      <loc><%= buy_landing_url(type: t) %></loc>
+      <changefreq>daily</changefreq>
+      <priority>0.8</priority>
+    </url>
+  <% end %>
   <% base_host = "#{request.protocol}#{request.host_with_port}" %>
   <% @properties.each do |property| %>
     <url>

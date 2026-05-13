@@ -7,6 +7,21 @@
 <% if (og_lead = @properties.first) && og_lead.images.attached? %>
   <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
 <% end %>
+<%# Body content — prefer DB-backed (admin-editable) LandingContent. If
+    none exists for this slot, fall back to the file-backed ERB partial
+    in app/views/landings/content/. FAQ-pair extraction works on both
+    since both emit <details><summary>Q</summary><p>A</p></details>. %>
+<% if @landing_content
+     rendered_content = @landing_content.body_html.to_s.html_safe
+   else
+     content_slot = [
+       "landings/content/#{@intent}_#{@type}_#{@district_slug || @rooms_raw}",
+       "landings/content/#{@intent}_#{@type}"
+     ].find { |p| lookup_context.exists?(p, [], true) }
+     rendered_content = content_slot ? render(content_slot) : nil
+   end %>
+<% faq_pairs = rendered_content.present? ? faq_pairs_from_html(rendered_content) : [] %>
+
 <% content_for :head do %>
   <meta name="description" content="<%= @meta_description %>">
 
@@ -29,12 +44,15 @@
     }
   }.to_json) %>
   </script>
-<% end %>
 
-<% content_slot = [
-     "landings/content/#{@intent}_#{@type}_#{@district_slug || @rooms_raw}",
-     "landings/content/#{@intent}_#{@type}"
-   ].find { |p| lookup_context.exists?(p, [], true) } %>
+  <%# FAQPage JSON-LD — district landings carry 3 Q&A pairs in their content
+      partial as <details><summary>. Surfacing them as structured data unlocks
+      the SERP FAQ accordion (both Google and Yandex). Pairs come from the
+      same HTML the user sees, so they cannot drift out of sync. %>
+  <% if faq_pairs.any? %>
+    <%= faq_jsonld(faq_pairs) %>
+  <% end %>
+<% end %>
 
 <!-- Hero / H1 -->
 <section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
@@ -54,10 +72,10 @@
 </section>
 
 <!-- Optional editorial content slot (per-landing partial in landings/content/) -->
-<% if content_slot %>
+<% if rendered_content %>
   <section class="px-6 lg:px-12 pb-12 bg-background">
     <div class="max-w-4xl mx-auto prose prose-lg text-foreground">
-      <%= render content_slot %>
+      <%= rendered_content %>
     </div>
   </section>
 <% end %>

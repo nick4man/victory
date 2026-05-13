@@ -244,3 +244,9 @@ ehthumbs.db
 
 # TG inbox (incoming screenshots/notes from operators)
 /inbox/
+
+.mcp.json
+
+*.pdf
+*.png
+.playwright-mcp/
