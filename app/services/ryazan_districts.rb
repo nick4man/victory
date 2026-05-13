@@ -122,4 +122,24 @@ module RyazanDistricts
   def self.all_admin_slugs
     ADMIN.keys
   end
+
+  # Sibling micro-slugs that share an admin parent with the given micro-slug.
+  # Used by landing/show.html.erb to render "Соседние районы" cross-link block.
+  # Cross-linking distributes PageRank across the landing pyramid so Yandex
+  # can discover all 20 micro landings from any one of them (sitemap + chips
+  # alone don't reliably propagate authority).
+  #
+  # Кальное straddles two admin parents (Советский + Октябрьский) — siblings
+  # of both are merged, then capped at 5 entries to keep the chip block tidy.
+  def self.neighbors_of(slug)
+    micro = MICRO[slug]
+    return [] unless micro
+
+    micro[:admin].flat_map do |admin_name|
+      admin_slug = ADMIN.find { |_, v| v[:name] == admin_name }&.first
+      next [] unless admin_slug
+
+      ADMIN[admin_slug][:children] - [slug]
+    end.uniq.first(5)
+  end
 end

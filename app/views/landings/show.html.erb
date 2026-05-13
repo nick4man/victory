@@ -25,6 +25,15 @@
 <% content_for :head do %>
   <meta name="description" content="<%= @meta_description %>">
 
+  <%# Soft-404 guard. Landings with zero inventory still serve content (the
+      content slot + "оставьте заявку" CTA) so we keep them at 200, but tell
+      Yandex/Google not to index them while still following internal links
+      to sibling districts — empty-result pages otherwise drag the whole
+      landings/ namespace down in crawl quality scoring. %>
+  <% if @total_count.zero? %>
+    <meta name="robots" content="noindex,follow">
+  <% end %>
+
   <%# ItemList JSON-LD — exposes the listing as a curated collection so
       Yandex/Google can interpret each result card as a discrete entity
       within the landing's topic, not just inline links. %>
@@ -78,6 +87,14 @@
       <%= rendered_content %>
     </div>
   </section>
+<% end %>
+
+<%# Cross-link sibling districts so Yandex/Google discover the full pyramid
+    laterally, not just from the sitemap. Only rendered when this landing
+    is district-scoped — type-only and room-variant landings have no
+    natural sibling set. %>
+<% if @district_slug %>
+  <%= render 'shared/landing_neighbors' %>
 <% end %>
 
 <!-- Listings -->

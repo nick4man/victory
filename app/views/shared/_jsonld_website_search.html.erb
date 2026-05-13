@@ -5,6 +5,11 @@
   search box in SERP. Duplicates on inner pages confuse the signal — keep
   this single instance on the landing only.
 
+  Stable @id "#{WEBSITE_URL}/#website" lets other entities (Articles,
+  Property pages) declare `isPartOf` for entity-graph composition.
+  `publisher` references the existing RealEstateAgent @id #agent emitted
+  by shared/_jsonld_agent.html.erb on every page.
+
   Target URL: /properties/search?q[title_or_description_cont]={search_term_string}
   matches the existing Ransack collection action `get :search` on /properties.
 %>
@@ -12,10 +17,12 @@
 <%= raw JSON.pretty_generate(
   '@context'        => 'https://schema.org',
   '@type'           => 'WebSite',
+  '@id'             => "#{AgencyInfo::WEBSITE_URL}/#website",
   'url'             => root_url,
-  'name'            => 'АН «Виктори»',
-  'alternateName'   => 'Victory Real Estate Agency',
+  'name'            => AgencyInfo::NAME,
+  'alternateName'   => ['Виктори62', 'Victory Real Estate Agency'],
   'inLanguage'      => 'ru-RU',
+  'publisher'       => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent" },
   'potentialAction' => {
     '@type'       => 'SearchAction',
     'target'      => {
