@@ -64,6 +64,8 @@
     <%# Site-wide JSON-LD: RealEstateAgent (Schema.org) %>
     <%= render 'shared/jsonld_agent' %>
     <%= yield :head %>
+    <%# Analytics — Yandex.Metrika + GA4. Fires only in production with ENV present. %>
+    <%= render 'shared/analytics' %>
   </head>
   <body class="bg-background text-foreground min-h-screen antialiased">
     <%= render "shared/site_header" %>

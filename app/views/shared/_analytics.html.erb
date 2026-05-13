@@ -1,0 +1,52 @@
+<%#
+  Analytics partial — Yandex.Metrika (active) + Google Analytics 4 (dormant).
+
+  Fires ONLY in production AND when the corresponding ENV var is present.
+  Either block can be skipped by leaving the ENV var unset; nothing fails.
+
+  ⚠️ 152-ФЗ: Yandex.Metrika is configured with webvisor:true (records mouse,
+  scroll, form input). This requires user notification in the site's privacy
+  notice. Verify before deploying to production.
+%>
+
+<% yandex_id = ENV.fetch('YANDEX_METRIKA_ID', nil) %>
+<% if yandex_id.present? && Rails.env.production? %>
+<!-- Yandex.Metrika counter -->
+<script type="text/javascript">
+  (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+   m[i].l=1*new Date();
+   for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
+   k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+  })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id=<%= yandex_id %>', 'ym');
+
+  ym(<%= yandex_id %>, 'init', {
+    ssr: true,
+    webvisor: true,
+    clickmap: true,
+    ecommerce: 'dataLayer',
+    referrer: document.referrer,
+    url: location.href,
+    accurateTrackBounce: true,
+    trackLinks: true
+  });
+</script>
+<noscript>
+  <div>
+    <img src="https://mc.yandex.ru/watch/<%= yandex_id %>" style="position:absolute; left:-9999px;" alt="" />
+  </div>
+</noscript>
+<!-- /Yandex.Metrika counter -->
+<% end %>
+
+<% ga_id = ENV.fetch('GOOGLE_ANALYTICS_ID', nil) %>
+<% if ga_id.present? && Rails.env.production? %>
+<!-- Google Analytics 4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=<%= ga_id %>"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', '<%= ga_id %>');
+</script>
+<!-- /Google Analytics 4 -->
+<% end %>
