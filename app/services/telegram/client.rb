@@ -143,6 +143,16 @@ module Telegram
       api_call('getWebhookInfo')
     end
 
+    # Pull pending updates. Useful when webhook is blocked / for one-off drain.
+    # Telegram REQUIRES webhook deleted before calling getUpdates (409 conflict
+    # otherwise) — caller is responsible for orchestrating delete→get→set.
+    # @param offset [Integer] update_id to start from (use last_id + 1)
+    # @param limit  [Integer] 1-100
+    # @param timeout [Integer] long-polling seconds (0 = short poll)
+    def get_updates(offset: 0, limit: 100, timeout: 0)
+      api_call('getUpdates', offset: offset, limit: limit, timeout: timeout)
+    end
+
     private
 
     def unpack_file(file)

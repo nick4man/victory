@@ -56,6 +56,10 @@ module Telegram
         cmd, rest = text.split(/\s+/, 2)
         cmd = cmd.downcase
 
+        # В групповых чатах TG автоматически дописывает @bot_name к команде:
+        # «/whoami@victory62_bot brettiney370@gmail.com». Убираем суффикс перед lookup.
+        cmd = cmd.sub(/@\w+\z/, '') if cmd.include?('@')
+
         case COMMANDS[cmd]
         when Class
           tg_user = TelegramUser.find_by(tg_user_id: @msg.dig('from', 'id'))
