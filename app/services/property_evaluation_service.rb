@@ -40,7 +40,14 @@ class PropertyEvaluationService
   def call
     return error('Недостаточно данных для оценки') unless valid?
 
-    # === Ensemble: 5 источников аналогов ===
+    # === Ensemble: 5+ источников аналогов ===
+    # 0. External-web seeder: Tavily search + Firecrawl scrape +
+    #    Sonnet parse → persist to ExternalListing. Это side-effect ДО
+    #    ComparableFinder, чтобы tier 1-4 уже подхватили свежие external
+    #    listings через external_scope. Skipped gracefully if
+    #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы.
+    Valuations::WebsearchCompFinder.new(@v).call
+
     # 1. Geo-tier (real comps): Property + MlsListing + ExternalListing
     pool = PropertyEvaluation::ComparableFinder.new(@v).call
     real_comps = pool[:comparables]

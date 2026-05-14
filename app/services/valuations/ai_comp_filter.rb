@@ -17,7 +17,12 @@ module Valuations
   # first attempt is a free model — only escalates to paid Sonnet when every
   # free option fails. Typical run: 8-15 candidates → ~$0 to ~$0.01 total.
   class AiCompFilter
-    MIN_KEPT = 4                  # if AI throws everything out, fall back to raw
+    # Was 4 — too aggressive. Когда Sonnet корректно отвергал 11/11 weak
+    # comps (студии для 100м² subject), guardrail fallback'ил к raw set
+    # и терялся весь смысл AI judgement. После интеграции
+    # WebsearchCompFinder (Tavily+Firecrawl) sample обычно богаче
+    # external листингами, и filter может быть строже без риска empty.
+    MIN_KEPT = 2
     MAX_TOKENS = 220
     TEMPERATURE = 0.2
     CACHE_TTL = 7 * 24 * 60 * 60  # 7 days
