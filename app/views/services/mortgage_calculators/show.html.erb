@@ -751,6 +751,35 @@
   }
 }.to_json) %>
 </script>
+<%# Service Schema — represents the actual human consulting service that
+    accompanies the calculator tool. WebApplication above covers the
+    tool itself; Service makes the offering itself eligible for Yandex's
+    "услуги" rich-snippet (sidebar card with phone CTA in SERP). Free
+    consultation modelled as Offer with price=0. %>
+<script type="application/ld+json">
+<%= raw({
+  "@context": "https://schema.org",
+  "@type": "Service",
+  "@id": "#{AgencyInfo::WEBSITE_URL}/services/mortgage#service",
+  "name": "Подбор ипотечной программы",
+  "serviceType": "MortgageConsulting",
+  "url": "#{AgencyInfo::WEBSITE_URL}/services/mortgage",
+  "description": "Бесплатный подбор ипотечной программы по 22 продуктам от 9 банков. Расчёт ежемесячного платежа, сравнение ставок, помощь с подачей заявки и сопровождение сделки.",
+  "provider": { "@id": "#{AgencyInfo::WEBSITE_URL}/#agent" },
+  "areaServed": [
+    { "@type": "City", "name": AgencyInfo::ADDRESS_CITY },
+    { "@type": "AdministrativeArea", "name": AgencyInfo::ADDRESS_REGION }
+  ],
+  "offers": {
+    "@type": "Offer",
+    "price": 0,
+    "priceCurrency": "RUB",
+    "description": "Первичная консультация бесплатно",
+    "availability": "https://schema.org/InStock"
+  },
+  "audience": { "@type": "Audience", "audienceType": "Покупатели жилья в ипотеку" }
+}.to_json) %>
+</script>
 <% end %>
 
 <%# ============================================================

@@ -14,7 +14,12 @@
     <% end %>
   <% end %>
 
-  <% page_url = url_for(only_path: false, host: request.host_with_port) %>
+  <%# Always anchor CollectionPage + AggregateOffer to the canonical
+      /properties URL — url_for(...) would otherwise carry the current
+      ransack q[] params and ?page=N into structured data, conflicting
+      with <link rel="canonical"> (which strips both). Mismatched
+      canonical ↔ JSON-LD trips Google Rich Results validation. %>
+  <% page_url = properties_url %>
   <script type="application/ld+json">
   <%= raw({
     '@context' => 'https://schema.org',

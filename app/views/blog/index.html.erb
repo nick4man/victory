@@ -4,6 +4,20 @@
    'Аналитика рынка недвижимости Рязани, инструкции для покупателей и продавцов, обзоры районов и инвест-разборы.') %>
 
 <% content_for :head do %>
+  <%# Pagination rel hints — Google deprecated rel=prev/next as a ranking
+      signal in 2019, but Yandex still uses them to recognise a multi-page
+      collection vs duplicate content. Without these, /blog?page=2 risks
+      being flagged as a near-duplicate of /blog in Я.Вебмастер's
+      "Исключённые: дубли" report. %>
+  <% if @articles.respond_to?(:total_pages) && @articles.total_pages > 1 %>
+    <% if @articles.respond_to?(:prev_page) && @articles.prev_page %>
+      <link rel="prev" href="<%= url_for(only_path: false, page: (@articles.prev_page == 1 ? nil : @articles.prev_page)) %>">
+    <% end %>
+    <% if @articles.respond_to?(:next_page) && @articles.next_page %>
+      <link rel="next" href="<%= url_for(only_path: false, page: @articles.next_page) %>">
+    <% end %>
+  <% end %>
+
   <script type="application/ld+json">
   <%= raw({
     '@context' => 'https://schema.org',
