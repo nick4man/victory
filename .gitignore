@@ -255,3 +255,10 @@ ehthumbs.db
 *.pdf
 *.png
 .playwright-mcp/
+
+# Playwright (Phase 2E) — но baselines committed
+/test-results/
+/playwright-report/
+/playwright/.cache/
+!tests/visual/__screenshots__/**/*.png
+
