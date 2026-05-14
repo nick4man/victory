@@ -61,6 +61,13 @@ class LandingsController < ApplicationController
                  .freeze
 
   def show
+    # 15-minute public cache — landings aggregate Property.in_advertising
+    # and LandingContent; both change on Topnlab sync (hourly) and admin
+    # edits (sporadic). 15 min is a safe compromise between freshness for
+    # users and crawl-rate savings for Yandex/Google. Yandex pages with
+    # consistent fast TTFB get higher crawl quotas.
+    expires_in 15.minutes, public: true
+
     @intent        = params[:intent] || 'sale'
     @type          = params[:type]
     @district_slug = params[:district]

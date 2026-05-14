@@ -57,10 +57,13 @@
     </div>
 
     <div class="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-xs tracking-[0.3em]">
-      <a href="<%= ymaps_url %>" target="_blank" rel="noopener" class="text-foreground hover:text-muted-foreground transition-colors">
+      <%# nofollow on outbound Yandex Maps links — they shouldn't pass
+          PageRank away from our property pages and they're not editorial
+          citations, just utility deeplinks. %>
+      <a href="<%= ymaps_url %>" target="_blank" rel="noopener nofollow" class="text-foreground hover:text-muted-foreground transition-colors">
         ОТКРЫТЬ В ЯНДЕКС.КАРТАХ →
       </a>
-      <a href="<%= route_url %>" target="_blank" rel="noopener" class="text-foreground hover:text-muted-foreground transition-colors">
+      <a href="<%= route_url %>" target="_blank" rel="noopener nofollow" class="text-foreground hover:text-muted-foreground transition-colors">
         ПОСТРОИТЬ МАРШРУТ →
       </a>
     </div>

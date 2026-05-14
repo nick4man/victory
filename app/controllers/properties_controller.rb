@@ -59,6 +59,13 @@ class PropertiesController < ApplicationController
   
   # GET /properties/:id
   def show
+    # Conditional GET — 304 when the bot/browser already has a copy whose
+    # ETag matches @property's cache_key_with_version. Big crawl-rate win
+    # for Yandex (304 responses cost ~5ms vs 800ms+ full render), and the
+    # early return also prevents bot revisits from inflating view counters
+    # below since side effects only run on stale (200) responses.
+    return if stale?(@property, public: true)
+
     # Increment view counter
     @property.increment_views!
     
