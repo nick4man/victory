@@ -106,6 +106,9 @@
 
     <%= render "shared/site_footer" %>
     <%= render "shared/chat_widget" %>
+    <%# 152-ФЗ cookie/Metrika notice — sticky bottom, dismissable.
+        Light consent: не блокирует Метрику, только информирует. %>
+    <%= render "shared/consent_banner" %>
     <%# Pages can append scripts that must run after DOMContentLoaded
         (DaData autocomplete partial, etc.) %>
     <%= yield :body_end %>

@@ -1,20 +1,151 @@
-<% content_for :title, "Политика конфиденциальности — АН Виктори" %>
+<% content_for :title, "Политика конфиденциальности — #{AgencyInfo::NAME}" %>
+<% content_for :seo_description, "Политика обработки персональных данных #{AgencyInfo::NAME}: оператор, цели обработки, использование Яндекс.Метрики и Webvisor, права субъектов ПДн." %>
+
+<%# Политика конфиденциальности по 152-ФЗ.
+    Структура 10 секций: оператор → данные → цели → основания →
+    третьи лица → cookies → Метрика/Webvisor → срок хранения →
+    права субъектов → изменения политики. %>
 
 <section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
   <div class="max-w-3xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ДОКУМЕНТЫ</p>
-    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground mb-12">ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ</h1>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground mb-4">ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ</h1>
+    <p class="text-xs tracking-wider text-muted-foreground/70 mb-12">
+      Редакция от <%= AgencyInfo::OPERATOR_PRIVACY_UPDATED.strftime('%d.%m.%y') %>
+    </p>
 
     <div class="space-y-6 text-sm text-muted-foreground leading-relaxed">
-      <p>АН «Виктори» уважает вашу конфиденциальность и обязуется защищать персональные данные, которые вы нам предоставляете.</p>
-      <h2 class="text-foreground tracking-wider text-lg pt-4">1. Какие данные мы собираем</h2>
-      <p>Имя, контактный телефон, e-mail, параметры поиска недвижимости, история взаимодействия с сайтом.</p>
-      <h2 class="text-foreground tracking-wider text-lg pt-4">2. Как мы используем данные</h2>
-      <p>Для подбора объектов, отправки коммерческих предложений, заключения договоров, обратной связи.</p>
-      <h2 class="text-foreground tracking-wider text-lg pt-4">3. Передача третьим лицам</h2>
-      <p>Мы не передаём ваши данные третьим лицам без вашего явного согласия, за исключением случаев, предусмотренных законом.</p>
-      <h2 class="text-foreground tracking-wider text-lg pt-4">4. Ваши права</h2>
-      <p>Вы можете запросить доступ, изменение или удаление ваших данных, написав на <a href="mailto:<%= agency_email %>" class="underline"><%= agency_email %></a>.</p>
+      <p>
+        Настоящая Политика обработки персональных данных составлена в соответствии с требованиями
+        Федерального закона от 27.07.2006 № 152-ФЗ «О персональных данных» и определяет порядок
+        обработки персональных данных и меры по обеспечению безопасности персональных данных,
+        предпринимаемые Оператором.
+      </p>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">1. Оператор персональных данных</h2>
+      <p>Обработку персональных данных осуществляет:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Организационно-правовая форма: <%= AgencyInfo::OPERATOR_FORM %></li>
+        <li>ФИО: <%= AgencyInfo::OPERATOR_NAME %></li>
+        <li>ИНН: <%= AgencyInfo::OPERATOR_INN %></li>
+        <li>ОГРНИП: <%= AgencyInfo::OPERATOR_OGRNIP %></li>
+        <li>Адрес регистрации: <%= AgencyInfo::OPERATOR_LEGAL_ADDRESS %></li>
+        <li>Бренд: <%= AgencyInfo::NAME %></li>
+        <li>Контактный email: <a href="mailto:<%= agency_email %>" class="underline hover:text-foreground"><%= agency_email %></a></li>
+        <li>Контактный телефон: <a href="<%= agency_phone_tel %>" class="underline hover:text-foreground"><%= agency_phone_primary %></a></li>
+        <li>Адрес офиса: <%= AgencyInfo.full_address %></li>
+        <% if AgencyInfo::OPERATOR_RKN_NUMBER.present? %>
+          <li>Регистрационный номер в Реестре операторов Роскомнадзора: <%= AgencyInfo::OPERATOR_RKN_NUMBER %></li>
+        <% end %>
+      </ul>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">2. Какие данные мы собираем</h2>
+      <p>В процессе оказания услуг и работы сайта <%= AgencyInfo::WEBSITE_URL %> Оператор может обрабатывать следующие категории данных:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Имя, фамилия, отчество</li>
+        <li>Контактный телефон и адрес электронной почты</li>
+        <li>Параметры поиска недвижимости (бюджет, район, тип объекта, площадь)</li>
+        <li>Паспортные данные — только на стадии заключения и исполнения договора</li>
+        <li>IP-адрес, тип браузера (User-Agent), реферер, операционная система устройства</li>
+        <li>Файлы cookies, идентификаторы посетителя сайта</li>
+        <li>История взаимодействия со страницами сайта, поведенческие события (клики, скролл, заполнение форм)</li>
+      </ul>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">3. Цели обработки</h2>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Заключение, исполнение и сопровождение договоров на оказание риэлторских и сопутствующих услуг</li>
+        <li>Подбор объектов недвижимости по параметрам пользователя и обратная связь</li>
+        <li>Отправка коммерческих предложений и информации об объектах в ответ на запрос</li>
+        <li>Аналитика поведения посетителей сайта для улучшения сервиса и интерфейса</li>
+        <li>Маркетинговые коммуникации (только при отдельном явном согласии пользователя)</li>
+        <li>Исполнение обязательств, предусмотренных законодательством Российской Федерации</li>
+      </ul>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">4. Правовые основания</h2>
+      <p>Обработка персональных данных осуществляется на следующих основаниях согласно ст. 6 152-ФЗ:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>п. 5 ч. 1 ст. 6 — обработка необходима для исполнения договора, стороной которого является субъект ПДн</li>
+        <li>п. 7 ч. 1 ст. 6 — обработка необходима для законного интереса Оператора (аналитика и улучшение сервиса)</li>
+        <li>п. 1 ч. 1 ст. 6 — согласие субъекта ПДн (для маркетинговых рассылок и Webvisor-записей действий)</li>
+      </ul>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">5. Передача третьим лицам</h2>
+      <p>
+        Оператор не передаёт персональные данные третьим лицам без явного согласия субъекта,
+        за исключением случаев, предусмотренных законодательством РФ. В качестве обработчика
+        данных аналитики привлечено:
+      </p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>
+          ООО «ЯНДЕКС» (ИНН 7736207543, ОГРН 1027700229193, юр. адрес: 119021, г. Москва,
+          ул. Льва Толстого, д. 16) — сервис веб-аналитики «Яндекс.Метрика».
+          Данные обрабатываются на серверах в Российской Федерации.
+          <a href="https://yandex.ru/legal/confidential/" target="_blank" rel="noopener" class="underline hover:text-foreground">Политика конфиденциальности Яндекса</a>.
+        </li>
+      </ul>
+      <p>Трансграничная передача персональных данных за пределы РФ Оператором не осуществляется.</p>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">6. Cookies</h2>
+      <p>Сайт использует следующие категории cookies:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li><strong class="text-foreground">Технические</strong> — необходимы для базовой работы сайта (сессия, CSRF-защита, выбор формы заявки). Не могут быть отключены без потери функциональности.</li>
+        <li><strong class="text-foreground">Аналитические</strong> — Яндекс.Метрика (идентификатор посетителя, длительность сессии, источник перехода). Используются для понимания поведения пользователей.</li>
+        <li><strong class="text-foreground">Маркетинговые</strong> — на сайте не используются.</li>
+      </ul>
+      <p>
+        Пользователь может управлять cookies через настройки своего браузера:
+        <a href="https://support.google.com/chrome/answer/95647" target="_blank" rel="noopener" class="underline hover:text-foreground">Chrome</a>,
+        <a href="https://support.mozilla.org/ru/kb/udalenie-kuki-i-dannyh-sajtov-v-firefox" target="_blank" rel="noopener" class="underline hover:text-foreground">Firefox</a>,
+        <a href="https://support.apple.com/ru-ru/guide/safari/sfri11471/mac" target="_blank" rel="noopener" class="underline hover:text-foreground">Safari</a>.
+        Отключение аналитических cookies не влияет на возможность использования сайта.
+      </p>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">7. Яндекс.Метрика и Webvisor</h2>
+      <p>
+        На сайте установлен счётчик веб-аналитики Яндекс.Метрика № 109194595 с включёнными
+        возможностями Webvisor, карты кликов и анализа форм. Webvisor выполняет анонимную
+        запись действий посетителя в сессии, включая:
+      </p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Движения курсора, перемещения по странице, прокрутку</li>
+        <li>Клики по элементам интерфейса</li>
+        <li>Заполнение полей форм (за исключением полей паролей и платёжных данных — фильтрация на стороне Яндекс.Метрики)</li>
+      </ul>
+      <p>
+        Цель — диагностика проблем с интерфейсом и улучшение пользовательского опыта.
+        Записи хранятся на серверах ООО «ЯНДЕКС» в Российской Федерации и доступны
+        только Оператору в обезличенной форме (без привязки к ФИО и контактным данным).
+        Подробнее: <a href="https://yandex.ru/support/metrica/general/webvisor.html" target="_blank" rel="noopener" class="underline hover:text-foreground">документация Webvisor</a>.
+      </p>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">8. Срок хранения</h2>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Персональные данные клиентов хранятся в течение срока действия договора и до 5 лет после его прекращения (общий срок исковой давности по ст. 196 ГК РФ)</li>
+        <li>Данные посетителей сайта, не заключивших договор, хранятся до 1 года с момента последнего взаимодействия</li>
+        <li>Аналитические данные Яндекс.Метрики — до 25 месяцев (стандартный срок хранения сервиса)</li>
+        <li>Cookies — до окончания сессии или согласно сроку, установленному браузером пользователя</li>
+      </ul>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">9. Ваши права</h2>
+      <p>В соответствии со ст. 14 152-ФЗ субъект персональных данных имеет право:</p>
+      <ul class="list-disc list-inside space-y-1 pl-2">
+        <li>Получить информацию об обработке своих персональных данных</li>
+        <li>Требовать уточнения, блокирования или уничтожения данных в случае их неточности</li>
+        <li>Отозвать согласие на обработку персональных данных</li>
+        <li>Обжаловать действия Оператора в уполномоченном органе (Роскомнадзор) или в суде</li>
+      </ul>
+      <p>
+        Запрос направляется на <a href="mailto:<%= agency_email %>" class="underline hover:text-foreground"><%= agency_email %></a>
+        с приложением копии документа, удостоверяющего личность. Срок ответа — 30 дней
+        с момента получения запроса.
+      </p>
+
+      <h2 class="text-foreground tracking-wider text-lg pt-4">10. Изменения политики</h2>
+      <p>
+        Оператор оставляет за собой право вносить изменения в настоящую Политику.
+        Актуальная редакция всегда доступна по адресу <%= AgencyInfo::WEBSITE_URL %>/privacy.
+        Дата последнего обновления указана в начале страницы.
+      </p>
     </div>
   </div>
 </section>

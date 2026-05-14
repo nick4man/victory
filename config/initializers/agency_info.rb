@@ -43,6 +43,28 @@ module AgencyInfo
     # add VK / Telegram / YouTube / Я.Бизнес as they're created
   ].freeze
 
+  # Оператор персональных данных по 152-ФЗ §18.1. Reads из ENV для гибкости
+  # (можно подменить в продовой .env без пересборки контейнера), с TODO-
+  # fallback'ами для разработки. Используется в app/views/pages/privacy.html.erb.
+  # Заполнить через `.env`:
+  #   OPERATOR_NAME=Иванов Иван Иванович
+  #   OPERATOR_INN=123456789012
+  #   OPERATOR_OGRNIP=123456789012345
+  #   OPERATOR_LEGAL_ADDRESS=Рязанская обл., г. Рязань, ул. ..., д. ..., кв. ...
+  #   OPERATOR_RKN_NUMBER=12-34-567890     # (опционально, после регистрации в реестре РКН)
+  OPERATOR_FORM           = 'Индивидуальный предприниматель'
+  OPERATOR_NAME           = ENV.fetch('OPERATOR_NAME',          'TODO_FILL_FIO')
+  OPERATOR_INN            = ENV.fetch('OPERATOR_INN',           'TODO_FILL_INN')
+  OPERATOR_OGRNIP         = ENV.fetch('OPERATOR_OGRNIP',        'TODO_FILL_OGRNIP')
+  OPERATOR_LEGAL_ADDRESS  = ENV.fetch('OPERATOR_LEGAL_ADDRESS', 'TODO_FILL_LEGAL_ADDR')
+  OPERATOR_RKN_NUMBER     = ENV.fetch('OPERATOR_RKN_NUMBER',    nil)
+  OPERATOR_PRIVACY_UPDATED = Date.new(2026, 5, 14)
+
+  if defined?(Rails) && OPERATOR_INN.to_s.start_with?('TODO_')
+    Rails.logger.warn '[AgencyInfo] OPERATOR_* placeholders not filled — /privacy will display TODO markers. ' \
+                      'Set OPERATOR_NAME, OPERATOR_INN, OPERATOR_OGRNIP, OPERATOR_LEGAL_ADDRESS in .env.'
+  end
+
   module_function
 
   def full_address
