@@ -52,6 +52,32 @@
       <priority>0.8</priority>
     </url>
   <% end %>
+  <%# Rent (snyat) variant of the URL pyramid — mirrors the buy side because
+      every landing route has a sale/rent twin. Rent has thinner inventory
+      today, but the URLs still pass the noindex,follow guard in landings/show
+      when zero-inventory and rank as soon as a listing appears. Adding them
+      now doubles the discoverable URL set in Yandex without any new content. %>
+  <% RyazanDistricts::MICRO.each_key do |slug| %>
+    <url>
+      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+  <% RyazanDistricts::ADMIN.each_key do |slug| %>
+    <url>
+      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <changefreq>weekly</changefreq>
+      <priority>0.5</priority>
+    </url>
+  <% end %>
+  <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
+    <url>
+      <loc><%= rent_landing_url(type: t) %></loc>
+      <changefreq>daily</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
   <% base_host = "#{request.protocol}#{request.host_with_port}" %>
   <% @properties.each do |property| %>
     <url>

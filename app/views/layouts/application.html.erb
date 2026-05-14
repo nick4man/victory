@@ -22,6 +22,13 @@
         WhatsApp, Дзен, Facebook and Yandex's social-share carousel. Each
         page can override og_image/og_type via content_for; defaults below
         keep the agency branded if a page forgot to set them. %>
+    <%# Standard meta description — Yandex/Google read this BEFORE falling
+        back to og:description for the SERP snippet. Sourced from the same
+        :seo_description content_for that drives OG/Twitter, so the three
+        stay in sync per page. The fallback below mirrors the OG default
+        so listings without per-page content_for still get a sensible
+        catalog-wide blurb (catalog index, error pages, etc). %>
+    <meta name="description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'АН «Виктори» — покупка, продажа и аренда квартир, домов, коммерческой недвижимости в Рязани. Онлайн-оценка, ипотека, юридическое сопровождение.' %>">
     <meta property="og:type" content="<%= content_for?(:og_type) ? yield(:og_type) : 'website' %>">
     <meta property="og:locale" content="ru_RU">
     <meta property="og:site_name" content="АН «Виктори»">

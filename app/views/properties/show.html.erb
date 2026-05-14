@@ -1,11 +1,20 @@
 <% content_for :title, "#{@property.title} — АН Виктори" %>
+<%# Per-property meta description — Property#generate_meta_description
+    builds "2-комн., 54 м² за 4.5 млн ₽. <first 100 chars of описание>".
+    Without this, all 100+ listings fell back to the agency tagline and
+    Yandex/Google rendered identical snippets across the catalog — direct
+    CTR hit on SERP. %>
+<% content_for :seo_description, @property.generate_meta_description %>
 <%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
     Telegram, Дзен all generate richer preview cards when they get a
     landscape image ≥1200px on the long side. %>
 <% if @property.images.attached? %>
   <% content_for :og_image, property_image_url(@property.images.first, variant: :hero) %>
 <% end %>
-<% content_for :og_type, 'article' %>
+<%# og:type left to layout default ('website'). The previous 'article'
+    value made VK/Telegram render this listing as a news post — wrong
+    semantic, and the Apartment/House JSON-LD already carries the
+    correct entity type for crawlers. %>
 <% content_for :head do %>
   <%# LCP preload — kicks off the hero image fetch as soon as <head> parses,
       not when the picture tag in body is reached. Cuts ~300ms off Largest
