@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+# bin/claude-inbox — inter-session message inbox
+#
+# Sessions identified by CLAUDE_SESSION env (victory|chat|seo).
+# Messages stored as markdown in .claude/sessions/inbox/<session>/
+
+set -e
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+INBOX_DIR="$ROOT/.claude/sessions/inbox"
+MY_SESSION="${CLAUDE_SESSION:-unknown}"
+
+valid_sessions=("victory" "chat" "seo")
+
+is_valid_session() {
+  local s="$1"
+  for v in "${valid_sessions[@]}"; do
+    [ "$s" = "$v" ] && return 0
+  done
+  return 1
+}
+
+usage() {
+  cat <<USAGE
+Usage: bin/claude-inbox <command> [args...]
+
+Commands:
+  send <to> "<message>"     Create message FROM me TO <to> (victory|chat|seo)
+  list                       List pending messages for my session
+  read <id>                  Display message by id prefix (timestamp)
+  done <id>                  Move message to archive/
+
+Environment:
+  CLAUDE_SESSION   identifies your current session — must be set for list/done.
+                   Current value: $MY_SESSION
+USAGE
+}
+
+cmd_send() {
+  local to="$1"; shift
+  local msg="$*"
+  if [ -z "$to" ] || [ -z "$msg" ]; then
+    echo "Usage: send <to> \"<message>\"" >&2
+    exit 1
+  fi
+  if ! is_valid_session "$to"; then
+    echo "Unknown receiver: $to (expected victory|chat|seo)" >&2
+    exit 1
+  fi
+  if [ "$MY_SESSION" = "unknown" ]; then
+    echo "⚠️  CLAUDE_SESSION not set. Sender will be 'unknown' in the message." >&2
+  fi
+  mkdir -p "$INBOX_DIR/$to"
+  local ts
+  ts=$(date +'%Y-%m-%dT%H-%M-%S')
+  local slug
+  slug=$(printf '%s' "$msg" | head -c 60 | tr -c '[:alnum:][:cntrl:]' '-' | tr -s '-' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
+  [ -z "$slug" ] && slug="msg"
+  local fname="${ts}_from-${MY_SESSION}_${slug}.md"
+  local fpath="$INBOX_DIR/$to/$fname"
+
+  cat > "$fpath" <<EOF
+---
+from: $MY_SESSION
+to: $to
+created: $(date -Iseconds)
+priority: normal
+related_files: []
+---
+
+$msg
+EOF
+
+  echo "✓ Sent to $to:"
+  echo "  $fname"
+  echo "  ($fpath)"
+}
+
+cmd_list() {
+  if [ "$MY_SESSION" = "unknown" ]; then
+    echo "⚠️  CLAUDE_SESSION not set. Export CLAUDE_SESSION=victory|chat|seo first." >&2
+    exit 1
+  fi
+  local my_dir="$INBOX_DIR/$MY_SESSION"
+  if [ ! -d "$my_dir" ]; then
+    echo "No inbox directory for $MY_SESSION"
+    exit 0
+  fi
+  local count=0
+  shopt -s nullglob
+  for msg in "$my_dir"/*.md; do
+    local name
+    name=$(basename "$msg" .md)
+    local from
+    from=$(grep '^from:' "$msg" 2>/dev/null | head -1 | sed 's/from: *//')
+    local created
+    created=$(grep '^created:' "$msg" 2>/dev/null | head -1 | sed 's/created: *//')
+    local prio
+    prio=$(grep '^priority:' "$msg" 2>/dev/null | head -1 | sed 's/priority: *//')
+    local preview
+    preview=$(awk '/^---$/{n++; next} n==2' "$msg" 2>/dev/null | sed '/^$/d' | head -1 | head -c 80)
+    printf '[%s]\n' "$name"
+    printf '  from: %s  created: %s  priority: %s\n' "$from" "$created" "$prio"
+    printf '  %s\n\n' "$preview"
+    count=$((count + 1))
+  done
+  shopt -u nullglob
+  echo "Total pending: $count"
+}
+
+cmd_read() {
+  local id="$1"
+  if [ -z "$id" ]; then
+    echo "Usage: read <id>" >&2
+    exit 1
+  fi
+  if [ "$MY_SESSION" = "unknown" ]; then
+    echo "⚠️  CLAUDE_SESSION not set." >&2
+    exit 1
+  fi
+  local found
+  found=$(find "$INBOX_DIR/$MY_SESSION" -maxdepth 1 -name "${id}*.md" 2>/dev/null | head -1)
+  if [ -z "$found" ]; then
+    echo "No such message: $id" >&2
+    exit 1
+  fi
+  cat "$found"
+}
+
+cmd_done() {
+  local id="$1"
+  if [ -z "$id" ]; then
+    echo "Usage: done <id>" >&2
+    exit 1
+  fi
+  if [ "$MY_SESSION" = "unknown" ]; then
+    echo "⚠️  CLAUDE_SESSION not set." >&2
+    exit 1
+  fi
+  local archive="$INBOX_DIR/$MY_SESSION/archive"
+  mkdir -p "$archive"
+  local found
+  found=$(find "$INBOX_DIR/$MY_SESSION" -maxdepth 1 -name "${id}*.md" 2>/dev/null | head -1)
+  if [ -z "$found" ]; then
+    echo "No such message: $id" >&2
+    exit 1
+  fi
+  mv "$found" "$archive/"
+  echo "✓ Archived: $(basename "$found")"
+}
+
+main() {
+  if [ $# -eq 0 ]; then
+    usage
+    exit 0
+  fi
+  local cmd="$1"; shift
+  case "$cmd" in
+    send) cmd_send "$@" ;;
+    list) cmd_list ;;
+    read) cmd_read "$@" ;;
+    done) cmd_done "$@" ;;
+    -h|--help|help) usage ;;
+    *)
+      echo "Unknown command: $cmd" >&2
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

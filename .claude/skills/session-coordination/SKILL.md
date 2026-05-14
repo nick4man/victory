@@ -58,41 +58,40 @@ rm tmp/claude-locks/<file>.lock
 
 > `tmp/claude-locks/` входит в `.gitignore` (через `/tmp/*`).
 
-## Hand-off pattern
+## Hand-off pattern (formalized via inbox)
 
-Когда нужно передать работу между сессиями:
+**С commit `bin/claude-inbox` и `.claude/sessions/inbox/` — informal pattern `.remember/now.md` deprecated** (но остаётся для history). Использовать formal protocol:
 
-### Sender
+См. skill `session-handoff-protocol` — он описывает frontmatter format, priority levels, related_files, sender/receiver rules.
+
+### Sender — обновлённый workflow
 
 1. Закоммить или stash uncommitted state (важное)
-2. Обнови `.claude/memory/activeContext.md` (текущая фаза/фокус)
-3. Напиши hand-off в `.remember/now.md` — TODO для receiver
+2. Обнови `.claude/memory/activeContext.md` (текущая фаза/фокус) если фаза меняется
+3. Используй formal inbox:
+   ```bash
+   bin/claude-inbox send <receiver> "стук-стук, нужна migration для X"
+   ```
+4. Receiver увидит pending на старте сессии через SessionStart hook (если `$CLAUDE_SESSION` set)
 
-Пример:
+### Receiver — обновлённый workflow
 
-```markdown
-## Hand-off chat → victory (2026-05-13 22:30)
+1. SessionStart hook автоматически показывает inbox pending count + headlines (если `$CLAUDE_SESSION` set)
+2. `bin/claude-inbox read <id>` — открыть полное сообщение
+3. `git status` + `git log --oneline -5` — что свежее
+4. `head -60 .claude/memory/activeContext.md` — текущий фокус
+5. Выполни TODO → `bin/claude-inbox done <id>` (move to archive/)
 
-**State**: chat сделала design-stub нового tool `find_similar_news` в `app/services/chat_tools/find_similar_news.rb`. Stub без реализации — нужна migration для индекса pgvector на news_embeddings + bundle install не требуется.
+## Lock cleaner
 
-**TODO для victory**:
-- [ ] Migration `AddIvfflatIndexToNewsEmbeddings`
-- [ ] `bin/rails db:migrate`
-- [ ] Реализовать `#call` в `find_similar_news.rb`
-- [ ] Spec в `spec/services/chat_tools/find_similar_news_spec.rb`
-- [ ] Закоммитить (текущий stub uncommitted)
+Stale locks накапливаются (empty или > 2h old). Раз в неделю или при подсветке в hook:
 
-**Uncommitted files**:
-- `app/services/chat_tools/find_similar_news.rb` (stub)
-- `app/services/chat_tools/registry.rb` (added registration line)
+```bash
+bin/lock-clean              # dry-run, показывает кандидатов
+bin/lock-clean --force      # actually rm
 ```
 
-### Receiver
-
-1. `git status` + `git log --oneline -5` — что свежее
-2. `head -60 .claude/memory/activeContext.md` — текущий фокус
-3. `cat .remember/now.md` — hand-off note
-4. Продолжай с TODO list
+Hook на старте автоматически подсвечивает stale locks — это сигнал запустить cleaner.
 
 ## Routine commands
 

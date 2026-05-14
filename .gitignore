@@ -257,6 +257,13 @@ ehthumbs.db
 # не делится между разработчиками.
 .claude/agent-memory/
 
+# Claude Code inter-session inbox — ephemeral local messaging between
+# parallel sessions (victory/chat/seo). Архив тоже не коммитим.
+# Сама структура папок остаётся через `.gitkeep`.
+.claude/sessions/inbox/**/*.md
+.claude/sessions/inbox/**/archive/
+.claude/sessions/kpi-cache.txt
+
 *.pdf
 *.png
 .playwright-mcp/

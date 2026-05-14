@@ -24,7 +24,7 @@
 | **рыночная аналитика контент**, weekly market digest, district analytics block, разбор ЖК, market intel | `market-analytics-publisher` | skill `russian-real-estate-copywriting` (для финального tone), `property-valuation-expert` (для CMA single objects) |
 | **post-deal кейс**, case study, /cases landing, видео-сценарий, success story, анонимизированный кейс | `case-study-writer` | `pdf-report-designer` (PDF dossier вёрстка), `seo-content-curator` (landing publish), skill `russian-real-estate-copywriting` (tone), `market-analytics-publisher` (market context within case) |
 
-## 6 проектных скиллов
+## 7 проектных скиллов
 
 | Trigger | Skill | Notes |
 |---|---|---|
@@ -34,6 +34,7 @@
 | Новый view/route/контроллер | `victory-seo-checklist` | title/meta/OG/JSON-LD/canonical/hreflang/breadcrumb/alt/robots checklist |
 | Figma frame → ERB+Tailwind | `figma-to-erb-handoff` | workflow с figma:figma-implement-design; mapping на partials |
 | Любой user-facing русский копирайт (landing/meta/TG/email/PDF/video) | `russian-real-estate-copywriting` | tone-of-voice (экспертный + тёплый + действие-ориентированный), anti-patterns, segment-specific (premium/foreign/средний), CTA library |
+| Hand-off контекста между сессиями (inbox/structured) | `session-handoff-protocol` | replaces informal `.remember/now.md`; uses `bin/claude-inbox` + frontmatter format + priority levels |
 
 ## Когда НЕ делегировать (anti-patterns)
 
