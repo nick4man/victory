@@ -10,7 +10,9 @@
 %>
 
 <% yandex_id = ENV.fetch('YANDEX_METRIKA_ID', nil) %>
-<% if yandex_id.present? && Rails.env.production? %>
+<%# Gated only on ENV — single-container stack runs RAILS_ENV=development
+    but serves prod traffic on victory62.org; toggle Metrika via env var. %>
+<% if yandex_id.present? %>
 <!-- Yandex.Metrika counter -->
 <script type="text/javascript">
   (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
