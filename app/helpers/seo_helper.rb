@@ -24,4 +24,23 @@ module SeoHelper
       **opts.compact
     )
   end
+
+  # ISO 3166-2 region code for <meta name="geo.region">. Yandex weights
+  # geo.region heavily for regional ranking — hardcoded RU-RYA across the
+  # site previously suppressed МСК/СПб property pages in their respective
+  # local SERPs. Locality input comes from Property#address_locality
+  # (commit 6bd043b), which parses the address string.
+  #
+  # The fallback to RU-RYA is intentional: pages without a property in
+  # context (landings, /blog, statics, homepage) represent the agency,
+  # and the agency office is in Рязань.
+  def geo_region_code(locality)
+    case locality.to_s
+    when 'Москва'           then 'RU-MOW'
+    when 'Санкт-Петербург'  then 'RU-SPE'
+    when 'Красногорск'      then 'RU-MOS'
+    when 'Рязань'           then 'RU-RYA'
+    else                         'RU-RYA'
+    end
+  end
 end

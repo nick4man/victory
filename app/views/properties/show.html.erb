@@ -6,6 +6,19 @@
     listings used the agency tagline → identical SERP snippets → CTR hit. %>
 <% content_for :title, @property.effective_seo_title %>
 <% content_for :seo_description, @property.effective_seo_description %>
+<%# Geo meta overrides — Yandex regional ranking expects the page's geo
+    signals to match the property's actual location. Without these, every
+    listing emitted Рязань-агентство coords, suppressing МСК/СПб objects
+    in their local SERPs. Locality drives ISO 3166-2 region code via
+    SeoHelper#geo_region_code; placename mirrors the human-readable city;
+    position/ICBM come from the property's own lat/lng (with fallback to
+    the agency via the layout default for properties without geocoding). %>
+<% content_for :geo_region, geo_region_code(@property.address_locality) %>
+<% content_for :geo_placename, @property.address_locality %>
+<% if @property.latitude.to_f != 0 && @property.longitude.to_f != 0 %>
+  <% content_for :geo_position, "#{@property.latitude};#{@property.longitude}" %>
+  <% content_for :icbm, "#{@property.latitude}, #{@property.longitude}" %>
+<% end %>
 <%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
     Telegram, Дзен all generate richer preview cards when they get a
     landscape image ≥1200px on the long side. %>

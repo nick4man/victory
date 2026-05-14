@@ -43,11 +43,14 @@
     <meta name="twitter:description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'Покупка, продажа и аренда недвижимости в Рязани.' %>">
     <meta name="twitter:image" content="<%= og_image_url %>">
 
-    <%# Geo meta — Яндекс особенно ценит для регионального ранжирования %>
-    <meta name="geo.region" content="RU-RYA">
-    <meta name="geo.placename" content="<%= AgencyInfo::ADDRESS_CITY %>">
-    <meta name="geo.position" content="<%= AgencyInfo::GEO_LAT %>;<%= AgencyInfo::GEO_LNG %>">
-    <meta name="ICBM" content="<%= AgencyInfo::GEO_LAT %>, <%= AgencyInfo::GEO_LNG %>">
+    <%# Geo meta — Яндекс особенно ценит для регионального ранжирования.
+        Дефолты — Рязань (агентство). Property show переопределяет через
+        content_for :geo_region / :geo_placename / :geo_position / :icbm
+        чтобы МСК/СПб объекты сигналили корректный регион в Яндекс/Google. %>
+    <meta name="geo.region" content="<%= content_for?(:geo_region) ? yield(:geo_region) : 'RU-RYA' %>">
+    <meta name="geo.placename" content="<%= content_for?(:geo_placename) ? yield(:geo_placename) : AgencyInfo::ADDRESS_CITY %>">
+    <meta name="geo.position" content="<%= content_for?(:geo_position) ? yield(:geo_position) : "#{AgencyInfo::GEO_LAT};#{AgencyInfo::GEO_LNG}" %>">
+    <meta name="ICBM" content="<%= content_for?(:icbm) ? yield(:icbm) : "#{AgencyInfo::GEO_LAT}, #{AgencyInfo::GEO_LNG}" %>">
 
     <%# Search engine ownership verification (set ENV after creating accounts) %>
     <% if ENV['YANDEX_VERIFICATION'].present? %>
