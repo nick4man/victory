@@ -253,6 +253,15 @@ class Property < ApplicationRecord
   
   # Featured
   scope :featured, -> { where(is_featured: true).order(featured_order: :desc) }
+
+  # Premium segment — Phase A focus. Hybrid definition: price threshold OR
+  # explicit marketing override via is_premium boolean. Used by /properties
+  # filter, premium landing pyramid (/kupit/:type/premium), property card
+  # badge, and admin marking UI. See `.claude/memory/strategicVector.md`.
+  PREMIUM_THRESHOLD = 15_000_000
+  scope :premium, lambda {
+    where('price >= ? OR is_premium = ?', PREMIUM_THRESHOLD, true)
+  }
   
   # Sorting
   scope :recent, -> { order(created_at: :desc) }
@@ -309,7 +318,7 @@ class Property < ApplicationRecord
       title description price area rooms floor total_floors
       address district metro_station deal_type status condition
       building_year building_type has_parking has_balcony
-      pets_allowed latitude longitude created_at
+      pets_allowed latitude longitude created_at is_premium
     ]
   end
 
@@ -318,7 +327,7 @@ class Property < ApplicationRecord
   end
 
   def self.ransackable_scopes(auth_object = nil)
-    %i[published active for_sale for_rent featured]
+    %i[published active for_sale for_rent featured premium]
   end
 
   # ============================================
@@ -430,6 +439,12 @@ class Property < ApplicationRecord
 
   def sold_or_rented?
     status_sold? || status_rented?
+  end
+
+  # Premium-сегмент check — same logic as `Property.premium` scope.
+  # Used by _property_card.html.erb badge + admin UI.
+  def premium?
+    is_premium || price.to_f >= PREMIUM_THRESHOLD
   end
 
   # Features
