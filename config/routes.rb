@@ -234,6 +234,7 @@ Rails.application.routes.draw do
   resources :property_valuations, path: 'valuations', only: [:new, :create] do
     collection do
       get ':token/result', to: 'property_valuations#result', as: :result
+      get ':token/status', to: 'property_valuations#status', as: :status # async loader polling
       get ':token/download', to: 'property_valuations#download_pdf', as: :download_pdf
       post ':token/request_call', to: 'property_valuations#request_call', as: :request_call
     end

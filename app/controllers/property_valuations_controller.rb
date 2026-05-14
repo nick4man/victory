@@ -20,57 +20,33 @@ class PropertyValuationsController < ApplicationController
   end
   
   # POST /sell/valuation
+  #
+  # Async-flow (mirrors Valuations::InvestmentController#create pattern):
+  #   1. Save PropertyValuation with status: 'pending' immediately.
+  #   2. Enqueue PropertyValuationJob (computes price, sends mailer, CRM,
+  #      Telegram staff dispatch — all only when status flips to :completed).
+  #   3. Redirect to /:token/result which renders processing.html.erb loader
+  #      while pending, then result.html.erb when completed.
+  #
+  # Staff Telegram (ExpressReportNotifier) теперь срабатывает ВНУТРИ job'а
+  # only после status: :completed — соответствует user requirement: «в
+  # группу сотрудникам отправлять только после получения результата».
   def create
     @valuation = PropertyValuation.new(valuation_params)
-    @valuation.user = current_user if user_signed_in?
-    @valuation.ip_address = request.remote_ip
-    @valuation.user_agent = request.user_agent
-    
+    @valuation.user        = current_user if user_signed_in?
+    @valuation.ip_address  = request.remote_ip
+    @valuation.user_agent  = request.user_agent
+    @valuation.status      = 'pending'
+
     if @valuation.save
-      result = PropertyEvaluationService.new(@valuation).call
+      PropertyValuationJob.perform_later(@valuation.id)
 
-      if result[:success]
-        # Phase 4.6: extract hedonic + composite + bootstrap metadata
-        # into the dedicated `hedonic_data` jsonb column so analytics can
-        # query R² / n_used / weights without parsing evaluation_data.
-        hedonic_payload = {
-          hedonic:      result[:hedonic],
-          composite:    result[:composite],
-          bootstrap_ci: result[:bootstrap_ci]
-        }.compact
+      track_event('valuation_submitted', {
+        property_type: @valuation.property_type,
+        has_email:     @valuation.email.present?
+      })
 
-        @valuation.update(
-          estimated_price:  result[:estimated_price],
-          min_price:        result[:min_price],
-          max_price:        result[:max_price],
-          confidence_level: result[:confidence_level],
-          evaluation_data:  result.except(:success),
-          hedonic_data:     hedonic_payload,
-          status:           'completed'
-        )
-
-        PropertyValuationMailer.valuation_completed(@valuation).deliver_later if @valuation.email.present?
-        create_crm_lead(@valuation) if @valuation.email.present?
-        # Staff Telegram dispatch (Phase 7) — async-safe in the sense that
-        # the notifier itself swallows any errors. Runs synchronously here
-        # because the controller already commits the valuation; user is
-        # about to be redirected. ≤2s typical (engine-free).
-        ExpressReportNotifier.notify(@valuation)
-
-        track_event('valuation_completed', {
-          property_type:   @valuation.property_type,
-          estimated_price: @valuation.estimated_price,
-          tier:            result[:tier]
-        })
-
-        redirect_to result_property_valuations_path(token: @valuation.token),
-                    notice: 'Оценка успешно выполнена!'
-      else
-        @valuation.update(status: 'failed', evaluation_data: { error: result[:error] })
-        @step = 4
-        flash.now[:alert] = result[:error] || 'Не удалось рассчитать оценку.'
-        render :new, status: :unprocessable_entity
-      end
+      redirect_to result_property_valuations_path(token: @valuation.token)
     else
       @step = determine_error_step
       flash.now[:alert] = 'Пожалуйста, исправьте ошибки в форме'
@@ -81,6 +57,13 @@ class PropertyValuationsController < ApplicationController
   # GET /sell/valuation/:token/result
   def result
     @valuation = PropertyValuation.find_by!(token: params[:token])
+
+    # Async loader: если PropertyValuationJob ещё работает, рендерим страницу
+    # ожидания со spinner'ом + JS-polling on /:token/status. Соответствует
+    # pattern'у investment audit (см. Valuations::InvestmentController#show).
+    return render :processing, layout: 'application' if @valuation.pending?
+    return render :failed,     layout: 'application' if @valuation.failed?
+
     # evaluation_data is jsonb — Rails returns a Hash directly. Legacy rows
     # that were stored as JSON strings get parsed once; new rows pass through.
     raw = @valuation.evaluation_data
@@ -90,18 +73,31 @@ class PropertyValuationsController < ApplicationController
                          else {}
                          end
     @similar_properties = find_similar_properties(@valuation)
-    
+
     set_meta_tags(
       title: "Результат оценки недвижимости - #{helpers.number_to_currency(@valuation.estimated_price, precision: 0)}",
       description: "Оценочная стоимость вашей недвижимости составляет #{helpers.number_to_currency(@valuation.estimated_price, precision: 0)}"
     )
-    
+
     track_event('valuation_result_viewed', {
       valuation_id: @valuation.id,
       estimated_price: @valuation.estimated_price
     })
   rescue ActiveRecord::RecordNotFound
     redirect_to new_property_valuation_path, alert: 'Оценка не найдена'
+  end
+
+  # GET /valuations/:token/status — JSON polling endpoint для loader'а на
+  # processing.html.erb. Возвращает {status, age_seconds}. Status один из
+  # 'pending' / 'completed' / 'failed' (PropertyValuation.statuses).
+  def status
+    valuation = PropertyValuation.find_by!(token: params[:token])
+    render json: {
+      status:      valuation.status,
+      age_seconds: (Time.current - valuation.created_at).to_i
+    }
+  rescue ActiveRecord::RecordNotFound
+    render json: { status: 'not_found' }, status: :not_found
   end
   
   # GET /sell/valuation/:token/download — Express valuation PDF report.

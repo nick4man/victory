@@ -533,5 +533,23 @@
 
     applyFieldVisibility();
     render();
+
+    // Submit-once guard — предотвращает повторные POST'ы при быстрых
+    // двойных кликах / impatient retry'ах. Disabled button + smart label
+    // + return false на второй submit. Controller redirect'нёт на loader
+    // page после первого save, повторный submit бессмыслен.
+    root.addEventListener('submit', function (e) {
+      if (!submitBtn) return;
+      if (submitBtn.disabled || submitBtn.dataset.submitting === '1') {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      submitBtn.disabled = true;
+      submitBtn.dataset.submitting = '1';
+      submitBtn.dataset.originalLabel = submitBtn.textContent.trim();
+      submitBtn.textContent = 'Обрабатываем…';
+      submitBtn.classList.add('opacity-60', 'cursor-wait');
+    }, true); // capture phase — fire before любых других listener'ов
   })();
 </script>
