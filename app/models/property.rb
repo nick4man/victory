@@ -383,6 +383,48 @@ class Property < ApplicationRecord
     "#{price_per_sqm.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1 ').reverse} ₽/м²"
   end
 
+  # ============================================
+  # SEO META (cached LLM-generated, with safe fallbacks)
+  # ============================================
+  # See Seo::PropertyMetaGenerator (Phase 2C). Views call effective_*
+  # to always get a non-empty string — LLM-generated copy when available,
+  # rule-based fallback otherwise, so a property without generated meta
+  # still ranks reasonably.
+
+  def seo_generated?
+    seo_generated_at.present?
+  end
+
+  def effective_seo_title
+    return seo_title if seo_title.present?
+
+    parts = []
+    parts << deal_type_i18n.to_s.capitalize
+    parts << "#{rooms}-комн" if rooms.to_i.positive?
+    parts << "квартиру" if property_type&.name.to_s.include?('квартира')
+    parts << "#{area.to_i} м²" if area.to_f.positive?
+    parts << "в #{district}" if district.present?
+    parts << '— АН «Виктори»'
+    parts.join(' ').truncate(70, omission: '')
+  end
+
+  def effective_seo_description
+    return seo_description if seo_description.present?
+
+    summary = []
+    summary << "#{deal_type_i18n.capitalize} — #{title}." if title.present?
+    summary << "Цена #{price_formatted}." if price.to_f.positive?
+    summary << "Площадь #{area.to_i} м², #{condition_i18n}." if area.to_f.positive?
+    summary << "Адрес: #{address}." if address.present?
+    summary << 'Звоните в АН «Виктори» — Рязань.'
+    summary.join(' ').truncate(200)
+  end
+
+  def effective_seo_h1
+    return seo_h1 if seo_h1.present?
+    title.presence || effective_seo_title
+  end
+
   # Stats
   def increment_views!
     increment!(:views_count)
