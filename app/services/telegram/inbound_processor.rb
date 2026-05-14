@@ -14,10 +14,24 @@ module Telegram
   # Anything else is logged and ignored (silent ack so Telegram doesn't retry).
   class InboundProcessor
     def initialize(payload)
-      @update = payload.is_a?(Hash) ? payload : (JSON.parse(payload.to_s) rescue {})
+      @update = if payload.is_a?(Hash)
+                  payload
+                else
+                  begin
+                    JSON.parse(payload.to_s)
+                  rescue StandardError
+                    {}
+                  end
+                end
     end
 
     def call
+      # Phase 2 — callback_query от inline-кнопок маршрутизации/назначения/спама.
+      # Должен сработать ДО разбора message — это отдельный тип апдейта без message.
+      if (cb = @update['callback_query'])
+        return Telegram::WorkBot::CallbacksRouter.new(cb).call
+      end
+
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 
@@ -29,7 +43,14 @@ module Telegram
       # Рабочий бот: команды в работчей группе или DM от привязанного сотрудника.
       # Router сам решает что обрабатывать (см. WorkBot::Router#call).
       workbot_result = Telegram::WorkBot::Router.new(msg).call
-      return workbot_result if %i[handled verified code_failed].include?(workbot_result)
+
+      # Phase 2 — хэштеги в сообщениях рабочей группы (только #ахтунг). Не блокирует
+      # дальнейшую обработку — это side-effect handler. Хэштеги вне группы (DM) игнорируем.
+      if msg.dig('chat', 'type') == 'supergroup' && msg['text'].to_s.match?(/#ахтунг/i)
+        Telegram::WorkBot::HashtagHandler.new(msg).call
+      end
+
+      return workbot_result if [:handled, :verified, :code_failed].include?(workbot_result)
 
       # Inbox saver — enqueued, NOT synchronous. Telegram disconnects the
       # webhook after ~5s, and large photo/document downloads from
@@ -61,17 +82,16 @@ module Telegram
       author = resolve_author(msg)
 
       message = ChatMessage.create!(
-        conversation:        conv,
-        role:                :agent,
-        body:                text,
-        author:              author,
+        conversation: conv,
+        role: :agent,
+        body: text,
+        author: author,
         telegram_message_id: msg['message_id']
       )
 
       ConversationChannel.broadcast_to(conv,
-        type: 'message',
-        message: serialize(message)
-      )
+                                       type: 'message',
+                                       message: serialize(message))
 
       Rails.logger.info("[Telegram] agent reply ##{message.id} on conversation ##{conv.id}")
     end
@@ -97,15 +117,16 @@ module Telegram
       from = msg['from'] || {}
       username = from['username'].to_s
       return nil if username.blank?
+
       User.where('LOWER(email) LIKE ?', "#{username.downcase}@%").first
     end
 
     def serialize(m)
       {
-        id:         m.id,
-        role:       m.role,
-        body:       m.body,
-        author:     m.author&.short_name,
+        id: m.id,
+        role: m.role,
+        body: m.body,
+        author: m.author&.short_name,
         created_at: m.created_at.iso8601
       }
     end

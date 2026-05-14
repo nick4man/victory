@@ -16,13 +16,13 @@ module Telegram
     class LeadAnnouncer
       ROUTING_BUTTONS_PER_ROW = 3
       STAGE_EMOJI = {
-        'new'           => '🆕',
+        'new' => '🆕',
         'first_contact' => '📞',
-        'show'          => '🏠',
-        'contract'      => '📄',
-        'deal'          => '🤝',
-        'closed_won'    => '✅',
-        'closed_lost'   => '❌'
+        'show' => '🏠',
+        'contract' => '📄',
+        'deal' => '🤝',
+        'closed_won' => '✅',
+        'closed_lost' => '❌'
       }.freeze
 
       def initialize(lead_event, client: Telegram::Client.new)
@@ -32,34 +32,52 @@ module Telegram
 
       def call
         topic_key = resolve_target_topic
-        is_general = Telegram::TopicRegistry.general_topic?(topic_key)
-        thread_id  = Telegram::TopicRegistry.thread_id(topic_key)
-
-        # General-топик не имеет thread_id (пишем в корень группы). Для всех
-        # остальных без discovered thread_id — пропускаем с warning.
-        unless thread_id || is_general
-          Rails.logger.warn("[LeadAnnouncer] no thread_id for ##{topic_key} — skipping")
-          return false
-        end
-
-        result = @client.send_message(
-          format_card,
-          chat_id: Telegram::TopicRegistry.chat_id,
-          message_thread_id: thread_id,   # nil для General — Telegram::Client опускает параметр
-          reply_markup: routing_keyboard_for(topic_key),
-          parse_mode: 'HTML'
-        )
+        result = send_card(topic_key)
+        return false if result.nil?
 
         @lead.update!(
-          anchor_thread_id:       thread_id,
-          anchor_message_id:      result['message_id'],
-          anchor_topic_key:       topic_key,
-          dispatcher_message_id:  (topic_key == 'dispatcher' ? result['message_id'] : nil)
+          anchor_thread_id: Telegram::TopicRegistry.thread_id(topic_key),
+          anchor_message_id: result['message_id'],
+          anchor_topic_key: topic_key,
+          dispatcher_message_id: (topic_key == 'dispatcher' ? result['message_id'] : nil)
         )
         true
       end
 
+      # Публичная точка для AnchorMigrator (Phase 2 шаг 4): постит карточку
+      # в указанный топик БЕЗ обновления LeadEvent — обновлением занимается
+      # сам AnchorMigrator (он же сохраняет routing_history). Возвращает TG
+      # message hash либо nil, если у топика нет thread_id и он не General.
+      def repost_to(target_topic_key)
+        send_card(target_topic_key)
+      end
+
+      # Текст карточки — публичный геттер для AnchorMigrator/Stage edit'ов.
+      def format_card_text
+        format_card
+      end
+
       private
+
+      def send_card(topic_key)
+        is_general = Telegram::TopicRegistry.general_topic?(topic_key)
+        thread_id  = Telegram::TopicRegistry.thread_id(topic_key)
+
+        # General-топик не имеет thread_id. Для всех остальных без discovered
+        # thread_id — пропускаем с warning.
+        unless thread_id || is_general
+          Rails.logger.warn("[LeadAnnouncer] no thread_id for ##{topic_key} — skipping")
+          return nil
+        end
+
+        @client.send_message(
+          format_card,
+          chat_id: Telegram::TopicRegistry.chat_id,
+          message_thread_id: thread_id, # nil для General — Telegram::Client опускает параметр
+          reply_markup: routing_keyboard_for(topic_key),
+          parse_mode: 'HTML'
+        )
+      end
 
       # Если у lead.source есть auto_route в YAML — кладём сразу в специализацию.
       # Иначе — в ДИСПЕТЧЕРСКУЮ.
@@ -70,6 +88,7 @@ module Telegram
       def format_card
         meta = @lead.metadata || {}
         lines = []
+        lines << '⚡ <b>HIGH PRIORITY</b>' if meta['priority'].to_s == 'high'
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"
@@ -96,17 +115,18 @@ module Telegram
 
       def source_label
         {
-          'site_form'      => 'сайт-форма',
+          'site_form' => 'сайт-форма',
           'site_valuation' => 'сайт-оценка',
-          'site_mortgage'  => 'сайт-ипотека',
-          'tg_dm'          => 'DM боту',
-          'manual'         => 'ручной /lead',
-          'crm_webhook'    => 'CRM (Topnlab)'
+          'site_mortgage' => 'сайт-ипотека',
+          'tg_dm' => 'DM боту',
+          'manual' => 'ручной /lead',
+          'crm_webhook' => 'CRM (Topnlab)'
         }[@lead.source.to_s] || @lead.source.to_s
       end
 
       def phone_suffix(phone)
         return '' if phone.blank?
+
         ", #{escape(phone.to_s)}"
       end
 

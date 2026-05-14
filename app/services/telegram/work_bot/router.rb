@@ -15,13 +15,19 @@ module Telegram
     # отвечают «Команда будет в Phase N» — это сразу видно агенту, не молчит.
     class Router
       WORK_CHAT_ID = -1_003_779_115_845
-      CODE_REGEX   = /\A\d{6}\z/.freeze
+      CODE_REGEX   = /\A\d{6}\z/
       COMMAND_PREFIX = '/'
 
       COMMANDS = {
-        '/whoami'      => Commands::Whoami,
-        '/learn_topic' => :handle_learn_topic
-        # other commands added in later phases
+        '/whoami' => Commands::Whoami,
+        '/learn_topic' => :handle_learn_topic,
+        '/lead' => Commands::Lead,
+        '/route' => Commands::Route,
+        '/assign' => Commands::Assign,
+        '/stage' => Commands::Stage,
+        '/note' => Commands::Note,
+        '/close' => Commands::Close,
+        '/task' => Commands::Task
       }.freeze
 
       def initialize(message, client: Telegram::Client.new)
@@ -84,6 +90,7 @@ module Telegram
       def dm_code?
         chat_type = @msg.dig('chat', 'type')
         return false unless chat_type == 'private'
+
         text = @msg['text'].to_s.strip
         text.match?(CODE_REGEX)
       end
@@ -101,10 +108,10 @@ module Telegram
       def reply(text)
         @client.send_message(
           text,
-          chat_id:             @msg.dig('chat', 'id'),
+          chat_id: @msg.dig('chat', 'id'),
           reply_to_message_id: @msg['message_id'],
-          message_thread_id:   @msg['message_thread_id'],
-          parse_mode:          'HTML'
+          message_thread_id: @msg['message_thread_id'],
+          parse_mode: 'HTML'
         )
       end
 

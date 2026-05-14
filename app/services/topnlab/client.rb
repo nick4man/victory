@@ -17,7 +17,7 @@ module Topnlab
     SLOW_DELAY = 6.0   # /get-ids, /get-entities
     FAST_DELAY = 1.0   # /mls, /parser, /logs
 
-    def initialize(api_key: ENV['TOPNLAB_API_KEY'], base_url: ENV['TOPNLAB_BASE_URL'])
+    def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
       raise Error, 'TOPNLAB_API_KEY missing' if api_key.blank?
       raise Error, 'TOPNLAB_BASE_URL missing' if base_url.blank?
 
@@ -172,7 +172,81 @@ module Topnlab
                      patch: [{ id: id, data: fields }])
     end
 
+    # POST /call/main/importClient/ — создать лид в Topnlab CRM.
+    # Используется Lead::Intake::* источниками для проброса заявок с сайта/TG в CRM.
+    #
+    # @param phone [String] любой формат — нормализуется в 11 цифр (7XXXXXXXXXX)
+    # @param name [String] ФИО / имя клиента (обязательно)
+    # @param source [String] Lead::Intake источник (site_form|site_valuation|site_mortgage|tg_dm|manual)
+    # @param realty_id [Integer, nil] Topnlab short_id объекта если лид по конкретному
+    # @param comment [String, nil] до 500 символов
+    # @param action [Integer, nil] 0=аренда, 1=продажа (если nil — выводится из source)
+    # @param object_type [String] flat|room|commerce|house|land|garage
+    # @param to_number [String, nil] входящий номер (если лид пришёл по звонку)
+    # @return [Hash] {"status" => "ok", "insertedId" => <order_id>}
+    # @raise [Topnlab::Client::Error] на любую неуспешную попытку
+    def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
+                      action: nil, object_type: 'flat', to_number: nil)
+      body = {
+        appkey: @api_key,
+        fullname: name.to_s.strip,
+        phone: normalize_phone_11d(phone),
+        action: action || source_to_action(source),
+        object_type: object_type
+      }
+      body[:comment]                    = comment.to_s[0, 500]                  if comment.present?
+      body[:called_for_object_short_id] = realty_id.to_i                        if realty_id
+      body[:to_number]                  = to_number if to_number.present?
+
+      res = http_post_json('/call/main/importClient/', body)
+      unless res.is_a?(Hash) && res['status'] == 'ok'
+        raise Error, "importClient failed: #{res.inspect}"
+      end
+
+      res
+    end
+
+    # POST /call/main/transferClient/ — назначить лид агенту в Topnlab по email.
+    # Опционально меняет stage_id (стадия воронки).
+    #
+    # @param order_id [Integer] CRM id заявки (insertedId из import_client / BuyerOrder.crm_id)
+    # @param email [String] email агента в Topnlab (соответствует TelegramUser#email)
+    # @param stage_id [Integer, nil] числовой id стадии (см. get_stages(-1) для покупателей)
+    # @return [Hash] {"status" => "ok"}
+    # @raise [Topnlab::Client::Error] на любую неуспешную попытку
+    def transfer_client(order_id:, email:, stage_id: nil)
+      body = { appkey: @api_key, client_id: order_id.to_i, user_mail: email.to_s.strip }
+      body[:stage_id] = stage_id.to_i if stage_id
+
+      res = http_post_json('/call/main/transferClient/', body)
+      unless res.is_a?(Hash) && res['status'] == 'ok'
+        raise Error, "transferClient failed: #{res.inspect}"
+      end
+
+      res
+    end
+
     private
+
+    # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
+    # Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
+    def normalize_phone_11d(phone)
+      digits = phone.to_s.gsub(/\D/, '')
+      digits = "7#{digits[1..]}" if digits.start_with?('8') && digits.length == 11
+      unless digits.length == 11
+        raise Error,
+              "invalid phone (#{phone.inspect}) — expected 11 digits, got #{digits.length}"
+      end
+
+      digits
+    end
+
+    # Маппинг Lead::Intake источника → Topnlab action.
+    # 0 = аренда, 1 = продажа. В Фазе 2 все источники — продажа.
+    # Phase 4 (TG-DM с rent-намерением) добавит явный branch.
+    def source_to_action(_source)
+      1
+    end
 
     def batched_get(path, ids, batch_size:, throttle:)
       ids = Array(ids).compact.uniq
@@ -244,7 +318,8 @@ module Topnlab
       when 403
         raise Error, "#{label}: 403 Forbidden — API key rejected"
       when 404
-        Rails.logger.warn("Topnlab #{label}: 404 not found"); nil
+        Rails.logger.warn("Topnlab #{label}: 404 not found")
+        nil
       else
         raise Error, "#{label}: HTTP #{response.code} — #{body.truncate(500)}"
       end
@@ -256,10 +331,10 @@ module Topnlab
       delay = (kind == :slow ? SLOW_DELAY : FAST_DELAY)
       last = @last_request_at[kind]
       if last
-        wait = delay - (Time.now - last)
+        wait = delay - (Time.zone.now - last)
         sleep(wait) if wait.positive?
       end
-      @last_request_at[kind] = Time.now
+      @last_request_at[kind] = Time.zone.now
     end
   end
 end
