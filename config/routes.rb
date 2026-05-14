@@ -43,6 +43,11 @@ Rails.application.routes.draw do
   LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
   scope path: '/kupit', defaults: { intent: 'sale' } do
     get '/:type',                   to: 'landings#show', as: :buy_landing,           constraints: { type: LANDING_TYPE_RX }
+    # Premium modifier — orthogonal axis: price >= Property::PREMIUM_THRESHOLD
+    # OR is_premium=true. Phase A milestone, see strategicVector.md pillar 2.
+    # Placed before more specific /:type/rayon/... to avoid 'premium' being
+    # caught as a district slug.
+    get '/:type/premium',           to: 'landings#show', as: :buy_premium_landing,   constraints: { type: LANDING_TYPE_RX }, defaults: { modifier: 'premium' }
     get '/:type/rayon/:district',   to: 'landings#show', as: :buy_district_landing,  constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
     get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :buy_rooms_landing,     constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
     get '/:type/studiya',           to: 'landings#show', as: :buy_studio_landing,    constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }

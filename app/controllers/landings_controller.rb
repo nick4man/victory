@@ -72,9 +72,11 @@ class LandingsController < ApplicationController
     @type          = params[:type]
     @district_slug = params[:district]
     @rooms_raw     = params[:rooms]
+    @modifier      = params[:modifier] # 'premium' | nil
 
     @type_def = TYPE_DEFINITIONS[@type]
     return render_not_found("Unknown type: #{@type}") unless @type_def
+    return render_not_found("Unknown modifier: #{@modifier}") if @modifier && @modifier != 'premium'
 
     if @district_slug
       @district_aliases = DISTRICT_MAP[@district_slug]
@@ -96,10 +98,13 @@ class LandingsController < ApplicationController
     # DB-backed editorial content (admin-editable). If found and published,
     # the view renders it instead of the file-backed ERB partial. The
     # partial path is preserved as fallback for landings without a DB row
-    # yet (gradual rollout).
+    # yet (gradual rollout). Modifier (premium) routes lookup through the
+    # rooms slot as a convenience — LandingContent doesn't have a dedicated
+    # modifier column yet (added if /premium picks up traction).
+    lookup_rooms = @rooms_raw || @modifier
     @landing_content = LandingContent.for_landing(
       intent: @intent, type: @type,
-      district_slug: @district_slug, rooms: @rooms_raw
+      district_slug: @district_slug, rooms: lookup_rooms
     ).published.first
 
     add_breadcrumb 'Каталог', properties_path
@@ -118,6 +123,7 @@ class LandingsController < ApplicationController
 
     scope = scope.where(district: @district_aliases)         if @district_aliases
     scope = scope.where(rooms: @rooms)                       if @rooms
+    scope = scope.premium                                    if @modifier == 'premium'
     scope
   end
 
@@ -139,6 +145,7 @@ class LandingsController < ApplicationController
 
   def build_h1
     verb = INTENT_VERB[@intent] || 'Купить'
+    qualifier = @modifier == 'premium' ? 'премиум ' : ''
     head = if @rooms_raw == 'studiya' && @type == 'kvartira'
              'студию'
            elsif @rooms && @type == 'kvartira'
@@ -148,13 +155,19 @@ class LandingsController < ApplicationController
              @type_def[:accusative]
            end
     location = @district_aliases ? "в районе #{@district_aliases.first}, Рязань" : 'в Рязани'
-    "#{verb} #{head} #{location}"
+    "#{verb} #{qualifier}#{head} #{location}"
   end
 
   def build_meta_description
     location = @district_aliases ? "в районе #{@district_aliases.first} (Рязань)" : 'в Рязани и Рязанской области'
-    "#{@h1}. Подбор #{@type_def[:plural_genitive]} #{location} от АН «Виктори» — " \
-      "#{@total_count} актуальных предложений, реальные фото, выезд агента, " \
-      'сопровождение сделки. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+    if @modifier == 'premium'
+      "#{@h1}. Премиум-сегмент от АН «Виктори»: #{@total_count} актуальных " \
+        "#{@type_def[:plural_genitive]} #{location}, объекты от 15 млн ₽, " \
+        'банки-партнёры, юридическое сопровождение, конфиденциальность. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+    else
+      "#{@h1}. Подбор #{@type_def[:plural_genitive]} #{location} от АН «Виктори» — " \
+        "#{@total_count} актуальных предложений, реальные фото, выезд агента, " \
+        'сопровождение сделки. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+    end
   end
 end
