@@ -63,7 +63,17 @@
       "@type" => "Offer",
       "price" => @property.price.to_i.to_s,
       "priceCurrency" => "RUB",
-      "availability" => "https://schema.org/InStock",
+      # availability must reflect the actual lifecycle state — Google/Я.
+      # raise Rich Results warnings when JSON-LD says InStock for a sold or
+      # archived listing, and users call about properties already taken.
+      # active → InStock; sold/rented → SoldOut; everything else (archived,
+      # rejected, draft, pending) → Discontinued so search engines drop the
+      # offer block from rich snippets.
+      "availability" => case @property.status
+                        when "active"          then "https://schema.org/InStock"
+                        when "sold", "rented"  then "https://schema.org/SoldOut"
+                        else                         "https://schema.org/Discontinued"
+                        end,
       "url" => property_url(@property),
       "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" }
     },

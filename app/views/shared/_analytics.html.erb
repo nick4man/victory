@@ -29,6 +29,13 @@
     accurateTrackBounce: true,
     trackLinks: true
   });
+
+  // Exposed so Stimulus controllers (mortgage, favorite, app) can fire
+  // ym(window.ymId, 'reachGoal', ...) without re-reading the counter ID.
+  // Without this, every `if (window.ymId)` short-circuits and Yandex
+  // MatrixNet ranks the site with page-view-only behavioral data — no
+  // depth-of-scroll, no form-submit goals, no phone-click goals.
+  window.ymId = <%= yandex_id %>;
 </script>
 <noscript>
   <div>

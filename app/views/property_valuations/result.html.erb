@@ -1,3 +1,14 @@
+<%# Privacy + thin-content guard. The result page is keyed by an opaque
+    token but contains the user's address + price estimate — indexing
+    these in Yandex/Google would (a) expose third-party valuation data
+    in SERP, with 152-ФЗ implications, and (b) flood the catalog with
+    thousands of near-duplicate "оценка квартиры X за Y ₽" pages that
+    drag thin-content penalties onto the whole domain. nofollow keeps
+    PageRank from leaking out to the CTA links too. %>
+<% content_for :head do %>
+  <meta name="robots" content="noindex,nofollow">
+<% end %>
+
 <%
   # Result page in v0 dark theme. Pulls everything off @valuation and @evaluation_result.
   property_type_names = {
