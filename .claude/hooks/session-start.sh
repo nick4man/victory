@@ -41,4 +41,23 @@ if [ -n "$LOCKS" ]; then
   echo "$LOCKS"
 fi
 
+cat <<'ROUTING'
+
+=== ROUTING (full map: .claude/docs/delegation-map.md) ===
+  topnlab / МЛС sync / миграция CRM   → topnlab-api-expert
+  TG staff bot / escalation / inbox   → telegram-staff-bot-dev
+  чат-бот сайта / chat_tools / LLM    → site-chatbot-dev
+  SEO / JSON-LD / meta / sitemap      → seo-content-curator (+ victory-seo-checklist)
+  property valuation / CMA            → property-valuation-expert
+  Prawn PDF / audit_pdf / кириллица   → pdf-report-designer
+  markdown → PDF → TG group           → pdf-telegram-dispatcher
+  рефакторинг / fat model / concerns  → rails-architect
+  RSpec / тесты legacy / factory      → test-bootstrapper (+ rspec-bootstrap)
+  parallel session / lock / hand-off  → session-coordinator (+ session-coordination)
+  Figma → ERB+Tailwind                → skill: figma-to-erb-handoff
+  enums/soft-del/dd.MM.yy conventions → skill: victory-rails-conventions
+
+  NO delegation for: trivial fixes, simple code questions, git status, contextual continuations.
+ROUTING
+
 exit 0

@@ -48,3 +48,18 @@ Session-domain split (рекомендуемый):
 - TG dev/owner чат: `TELEGRAM_STAFF_CHAT_ID = -1003937910508` (можно слать тестовые артефакты)
 - Прод: https://victory62.org
 - repo-map.md: `.claude/repo-map.md` — пересборка через `rake repo:map` (см. `lib/tasks/repo_map.rake`)
+
+## Delegation hints — когда делегировать в субагентов/скиллы
+
+Полная routing-таблица: `.claude/docs/delegation-map.md` (single source of truth).
+Быстрые правила для текущей фазы:
+
+1. **TG-related работа** (`app/services/telegram/*`) → агент `telegram-staff-bot-dev`
+2. **PDF design** (Prawn, audit_pdf, кириллица) → агент `pdf-report-designer`
+3. **PDF delivery в TG** (markdown → PDF → group) → агент `pdf-telegram-dispatcher`
+4. **Topnlab integration / migration** → агент `topnlab-api-expert` (читает `.claude/docs/topnlab/*` лениво)
+5. **Любая SEO задача** → агент `seo-content-curator` + skill `victory-seo-checklist`
+
+Когда есть сомнения между двумя агентами — открой `delegation-map.md` § "Domain conflicts".
+
+**НЕ делегировать**: простые `git status`, тривиальные вопросы по коду, typo-фиксы, контекст уже в текущем разговоре.

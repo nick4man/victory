@@ -37,7 +37,36 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 `serena` (LSP-навигация), `postgres` (read-only схема/SELECT), `github` (PR/issues), `rails-guides`.
 Команда `/mcp` в Claude Code показывает статус. Установка: см. `.claude/memory/techContext.md`.
 
-## Проектные субагенты (`.claude/agents/`)
+## Routing & delegation — авто-выбор агента/скилла
 
-- `property-valuation-expert` — CMA-валидация валюаций, защита от hedonic overshoot.
-- `pdf-telegram-dispatcher` — markdown/plan → PDF → TG-группа через сайтового бота.
+Полная routing-таблица: `.claude/docs/delegation-map.md`. **Quick reference:**
+
+| Domain (RU + EN keywords) | → Agent / Skill |
+|---|---|
+| **topnlab**, МЛС sync, listings, телефония Asterisk, миграция CRM, webhooks/topnlab | `topnlab-api-expert` |
+| **TG staff bot**, work_bot, escalation, topic_registry, inbox, lead_announcer | `telegram-staff-bot-dev` |
+| **site chatbot**, чат-бот сайта, chat_responder, omni_client, chat_tools, free-first chain | `site-chatbot-dev` |
+| **SEO**, JSON-LD, sitemap, robots, canonical, hreflang, OG, friendly_id, Schema.org | `seo-content-curator` + skill `victory-seo-checklist` |
+| **property valuation**, оценка, CMA, hedonic, аналоги Avito/Cian | `property-valuation-expert` |
+| **Prawn PDF**, audit_pdf, кириллица, theme, layout PDF | `pdf-report-designer` |
+| **markdown → PDF → TG**, отправь в TG, оформить как PDF | `pdf-telegram-dispatcher` |
+| **рефакторинг** 500+ LOC, fat model/controller, concerns, extract service, AASM | `rails-architect` |
+| **RSpec**, добавить тесты, factory нет, spec for, тесты legacy | `test-bootstrapper` + skill `rspec-bootstrap` |
+| **parallel session**, lock, conflict в правках, hand-off victory↔chat↔seo | `session-coordinator` + skill `session-coordination` |
+| Новый Ruby-код | skill `victory-rails-conventions` |
+| Figma frame → ERB+Tailwind | skill `figma-to-erb-handoff` |
+
+### Когда НЕ делегировать
+
+- Простой вопрос по коду («что такое X?») → direct через serena/repo-index
+- Trivial fix (typo, переименование) → direct
+- Ambiguous без domain-signal → попросить уточнение, не делегировать наугад
+- Контекст уже в conversation → продолжай напрямую
+- Read-only diagnostics (git status, ls) → direct
+
+### Domain conflicts
+
+- Topnlab API + TG staff bot → `topnlab-api-expert` (источник правды по API)
+- chat_responder + parallel session → `session-coordinator` first (locks), потом `site-chatbot-dev`
+- PDF design vs delivery → дизайн = `pdf-report-designer`; готовый PDF в TG = `pdf-telegram-dispatcher`
+- Refactor + tests missing → `test-bootstrapper` сначала (safety net), потом `rails-architect`
