@@ -420,6 +420,15 @@ Rails.application.routes.draw do
   get 'news/:id', to: 'news#show', as: :news_item
 
   # ============================================
+  # CASE STUDIES (Pillar 2 — закрытые сделки)
+  # ============================================
+  # URL остаётся /cases/:slug для пользователя, внутри модель CaseStudy
+  # (не Case — overlap с Ruby keyword). resources помечен path: 'cases',
+  # as: :cases — helpers cases_path / case_path(@case_study) выглядят
+  # естественно.
+  resources :case_studies, only: %i[index show], path: 'cases', as: :cases, param: :slug
+
+  # ============================================
   # REVIEWS
   # ============================================
   resources :reviews, only: [:index, :new, :create] do
@@ -457,6 +466,17 @@ Rails.application.routes.draw do
         post :unhide
         post :publish
         post :publish_to_telegram
+      end
+    end
+
+    # Case studies — анонимизированные кейсы по закрытым сделкам (Pillar 2).
+    # Token-guarded через AdminTokenAuth. Public mapping ниже (resources
+    # :case_studies path: 'cases') — публичный URL /cases/:slug.
+    resources :case_studies, except: :show do
+      member do
+        post :publish
+        post :archive
+        post :soft_delete
       end
     end
 

@@ -1,0 +1,33 @@
+<%# JSON-LD для CaseStudy. Schema.org не имеет официального CaseStudy
+    @type — используем Article (поддерживает оба Google и Yandex, и
+    позволяет datePublished/author/publisher chain). %>
+<script type="application/ld+json">
+<%= raw({
+  '@context' => 'https://schema.org',
+  '@type' => 'Article',
+  'headline' => case_study.title,
+  'description' => case_study.excerpt.presence || case_study.meta_description.presence,
+  'datePublished' => case_study.published_at&.iso8601,
+  'dateModified' => case_study.updated_at.iso8601,
+  'author' => {
+    '@type' => 'Organization',
+    'name' => AgencyInfo::NAME,
+    'url' => AgencyInfo::WEBSITE_URL
+  },
+  'publisher' => {
+    '@type' => 'RealEstateAgent',
+    'name' => AgencyInfo::NAME,
+    'url' => AgencyInfo::WEBSITE_URL,
+    'logo' => {
+      '@type' => 'ImageObject',
+      'url' => "#{AgencyInfo::WEBSITE_URL}/og-default.jpg"
+    }
+  },
+  'mainEntityOfPage' => {
+    '@type' => 'WebPage',
+    '@id' => url_for(only_path: false, host: request.host_with_port)
+  },
+  'image' => case_study.og_image_url.presence || "#{AgencyInfo::WEBSITE_URL}/og-default.jpg",
+  'inLanguage' => 'ru-RU'
+}.compact.to_json) %>
+</script>
