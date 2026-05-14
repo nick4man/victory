@@ -9,6 +9,10 @@ class SitemapController < ApplicationController
     # Public agent profiles — reuses AgentProfile.publicly_listable_agents
     # so /sitemap.xml and /agents/:slug agree on which agents are public.
     @agents = User.publicly_listable_agents.limit(200)
+    # Closed-deal case studies (Pillar 2 of strategicVector — deep expertise
+    # proof). Public_facing scope mirrors what /cases renders, so sitemap
+    # never lists a URL that returns 404 / unpublished.
+    @case_studies = CaseStudy.public_facing.limit(500)
     respond_to do |format|
       format.xml
     end

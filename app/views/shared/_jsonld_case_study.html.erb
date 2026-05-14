@@ -1,6 +1,33 @@
 <%# JSON-LD для CaseStudy. Schema.org не имеет официального CaseStudy
     @type — используем Article (поддерживает оба Google и Yandex, и
-    позволяет datePublished/author/publisher chain). %>
+    позволяет datePublished/author/publisher chain).
+
+    Если у кейса есть author (User-агент), эмиттим Person с link на
+    профиль агента + worksFor → #agent. Иначе fallback на Organization.
+    publisher всегда Organization (требование Google Article Rich
+    Results — RealEstateAgent → LocalBusiness → Organization формально
+    валидно, но validator warning'ит на narrow subtype). %>
+<%
+  author_obj = if case_study.respond_to?(:author) && case_study.author.present?
+                 a = case_study.author
+                 base = {
+                   '@type' => 'Person',
+                   'name' => (a.try(:display_name) || a.try(:full_name) || AgencyInfo::NAME),
+                   'worksFor' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent" }
+                 }
+                 if a.respond_to?(:agent_slug) && a.agent_slug.present?
+                   base['url'] = agent_url(a.agent_slug)
+                 end
+                 base
+               else
+                 {
+                   '@type' => 'Organization',
+                   '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent",
+                   'name' => AgencyInfo::NAME,
+                   'url' => AgencyInfo::WEBSITE_URL
+                 }
+               end
+%>
 <script type="application/ld+json">
 <%= raw({
   '@context' => 'https://schema.org',
@@ -9,13 +36,10 @@
   'description' => case_study.excerpt.presence || case_study.meta_description.presence,
   'datePublished' => case_study.published_at&.iso8601,
   'dateModified' => case_study.updated_at.iso8601,
-  'author' => {
-    '@type' => 'Organization',
-    'name' => AgencyInfo::NAME,
-    'url' => AgencyInfo::WEBSITE_URL
-  },
+  'author' => author_obj,
   'publisher' => {
-    '@type' => 'RealEstateAgent',
+    '@type' => 'Organization',
+    '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent",
     'name' => AgencyInfo::NAME,
     'url' => AgencyInfo::WEBSITE_URL,
     'logo' => {
@@ -23,6 +47,7 @@
       'url' => "#{AgencyInfo::WEBSITE_URL}/og-default.jpg"
     }
   },
+  'isPartOf' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#website" },
   'mainEntityOfPage' => {
     '@type' => 'WebPage',
     '@id' => url_for(only_path: false, host: request.host_with_port)

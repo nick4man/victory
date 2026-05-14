@@ -121,3 +121,32 @@
     </div>
   </section>
 <% end %>
+
+<%# Closed-deal case studies authored by this agent — direct E-E-A-T
+    proof of past performance. Closes the Pillar 2 cross-link gap.
+    Hidden when this agent has no published cases yet — inert не значит
+    broken: появятся кейсы → блок появится автоматически. %>
+<% agent_cases = CaseStudy.where(author_id: @agent.id).public_facing.recent.limit(6) rescue [] %>
+<% if agent_cases.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ЗАКРЫТЫЕ СДЕЛКИ</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-12">
+        <%= pluralize(agent_cases.size, 'кейс', plural: 'кейсов') %> от <%= @agent.display_name.split(' ').first %>
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% agent_cases.each do |c| %>
+          <%= link_to case_path(c), class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+            <p class="text-xs tracking-[0.25em] text-muted-foreground mb-3 uppercase">
+              <%= [c.district, c.property_type].compact.join(' · ') %>
+            </p>
+            <h3 class="text-base text-foreground mb-2 group-hover:underline"><%= c.title %></h3>
+            <% if c.excerpt.present? %>
+              <p class="text-sm text-muted-foreground line-clamp-3"><%= c.excerpt %></p>
+            <% end %>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
