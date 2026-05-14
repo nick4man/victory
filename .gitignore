@@ -252,6 +252,11 @@ ehthumbs.db
 # Per-user/per-machine, не делится между разработчиками.
 .serena/
 
+# Claude Code agent memory — per-session research notes каждого агента
+# (topnlab-api-expert, seo-content-curator и т.д.). Per-user/per-machine,
+# не делится между разработчиками.
+.claude/agent-memory/
+
 *.pdf
 *.png
 .playwright-mcp/
