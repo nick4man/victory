@@ -384,12 +384,12 @@ class Property < ApplicationRecord
   end
 
   # ============================================
-  # SEO META (cached LLM-generated, with safe fallbacks)
+  # SEO META (cached LLM-generated, with rule-based fallbacks)
   # ============================================
   # See Seo::PropertyMetaGenerator (Phase 2C). Views call effective_*
-  # to always get a non-empty string — LLM-generated copy when available,
-  # rule-based fallback otherwise, so a property without generated meta
-  # still ranks reasonably.
+  # to always get a non-empty string — LLM-generated copy when available
+  # (Seo::GeneratePropertyMetaJob populates seo_*), rule-based fallback
+  # via the existing generate_meta_{title,description} helpers otherwise.
 
   def seo_generated?
     seo_generated_at.present?
@@ -397,32 +397,17 @@ class Property < ApplicationRecord
 
   def effective_seo_title
     return seo_title if seo_title.present?
-
-    parts = []
-    parts << deal_type_i18n.to_s.capitalize
-    parts << "#{rooms}-комн" if rooms.to_i.positive?
-    parts << "квартиру" if property_type&.name.to_s.include?('квартира')
-    parts << "#{area.to_i} м²" if area.to_f.positive?
-    parts << "в #{district}" if district.present?
-    parts << '— АН «Виктори»'
-    parts.join(' ').truncate(70, omission: '')
+    "#{generate_meta_title} — АН «Виктори»".truncate(90, omission: '')
   end
 
   def effective_seo_description
     return seo_description if seo_description.present?
-
-    summary = []
-    summary << "#{deal_type_i18n.capitalize} — #{title}." if title.present?
-    summary << "Цена #{price_formatted}." if price.to_f.positive?
-    summary << "Площадь #{area.to_i} м², #{condition_i18n}." if area.to_f.positive?
-    summary << "Адрес: #{address}." if address.present?
-    summary << 'Звоните в АН «Виктори» — Рязань.'
-    summary.join(' ').truncate(200)
+    generate_meta_description
   end
 
   def effective_seo_h1
     return seo_h1 if seo_h1.present?
-    title.presence || effective_seo_title
+    title.presence || generate_meta_title
   end
 
   # Stats

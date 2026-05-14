@@ -1,10 +1,11 @@
-<% content_for :title, "#{@property.title} — АН Виктори" %>
-<%# Per-property meta description — Property#generate_meta_description
-    builds "2-комн., 54 м² за 4.5 млн ₽. <first 100 chars of описание>".
-    Without this, all 100+ listings fell back to the agency tagline and
-    Yandex/Google rendered identical snippets across the catalog — direct
-    CTR hit on SERP. %>
-<% content_for :seo_description, @property.generate_meta_description %>
+<%# Title + meta description — Seo::PropertyMetaGenerator (Phase 2C) writes
+    LLM-generated copy into property.seo_title / .seo_description via
+    rake seo_generation:property_meta:backfill. effective_seo_* helpers
+    fall back to rule-based generate_meta_* until the backfill runs, so
+    the page never renders blank meta. Without per-property meta all 100+
+    listings used the agency tagline → identical SERP snippets → CTR hit. %>
+<% content_for :title, @property.effective_seo_title %>
+<% content_for :seo_description, @property.effective_seo_description %>
 <%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
     Telegram, Дзен all generate richer preview cards when they get a
     landscape image ≥1200px on the long side. %>
