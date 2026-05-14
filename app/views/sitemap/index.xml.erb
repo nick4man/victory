@@ -53,6 +53,18 @@
       <priority>0.8</priority>
     </url>
   <% end %>
+  <%# Premium modifier — Phase A focus, high priority for crawl quota
+      since these are the conversion-priority pages for the elite segment.
+      Only the two types with curated content live in sitemap for now;
+      premium uchastok/komnata/kommercheskaya — добавим когда content
+      under app/views/landings/content/_sale_<type>_premium.html.erb лежит. %>
+  <% %w[kvartira dom].each do |t| %>
+    <url>
+      <loc><%= buy_premium_landing_url(type: t) %></loc>
+      <changefreq>daily</changefreq>
+      <priority>0.9</priority>
+    </url>
+  <% end %>
   <%# Rent (snyat) variant of the URL pyramid — mirrors the buy side because
       every landing route has a sale/rent twin. Rent has thinner inventory
       today, but the URLs still pass the noindex,follow guard in landings/show
