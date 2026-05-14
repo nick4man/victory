@@ -6,7 +6,7 @@
 
 Стратегия — **Balanced**: явные match'ы → делегация; неопределённые → handle directly с упоминанием опции.
 
-## 13 проектных агентов
+## 14 проектных агентов
 
 | Trigger keywords / domain | Primary agent | Cross-refs / related |
 |---|---|---|
@@ -23,8 +23,9 @@
 | **client document intake** — паспорт/ИНН/выписка/ЕГРН через TG client-bot, OCR (Yandex Vision), DLP, валидация checksums | `client-onboarding-bot` | `telegram-staff-bot-dev` (НЕ путать — там staff inbox), `rails-architect` (Document model design) |
 | **рыночная аналитика контент**, weekly market digest, district analytics block, разбор ЖК, market intel | `market-analytics-publisher` | skill `russian-real-estate-copywriting` (для финального tone), `property-valuation-expert` (для CMA single objects) |
 | **post-deal кейс**, case study, /cases landing, видео-сценарий, success story, анонимизированный кейс | `case-study-writer` | `pdf-report-designer` (PDF dossier вёрстка), `seo-content-curator` (landing publish), skill `russian-real-estate-copywriting` (tone), `market-analytics-publisher` (market context within case) |
+| **VDS Traefik/CrowdSec ops** — роутеры, middlewares, services, TLS, bouncer, AppSec, cscli decisions, через `ssh vds` (sodix.org) | `traefik-vds-ops` | skill `traefik-config-authoring` (router/middleware/service patterns + safety workflow), skill `crowdsec-policy-management` (bouncer + cscli + AppSec), doc `.claude/docs/vds-infra-cheatsheet.md` (paths + inventory) |
 
-## 7 проектных скиллов
+## 9 проектных скиллов
 
 | Trigger | Skill | Notes |
 |---|---|---|
@@ -35,6 +36,8 @@
 | Figma frame → ERB+Tailwind | `figma-to-erb-handoff` | workflow с figma:figma-implement-design; mapping на partials |
 | Любой user-facing русский копирайт (landing/meta/TG/email/PDF/video) | `russian-real-estate-copywriting` | tone-of-voice (экспертный + тёплый + действие-ориентированный), anti-patterns, segment-specific (premium/foreign/средний), CTA library |
 | Hand-off контекста между сессиями (inbox/structured) | `session-handoff-protocol` | replaces informal `.remember/now.md`; uses `bin/claude-inbox` + frontmatter format + priority levels |
+| Traefik dynamic config edit на VDS — routers/middlewares/services/TLS + safety workflow | `traefik-config-authoring` | obligatory 7-step backup→edit→verify→rollback; cert resolver matrix (cloudflare DNS-01 vs letsencrypt HTTP-01); existing middleware library |
+| CrowdSec policy на VDS — bouncer params, cscli decisions, AppSec, scenarios, profiles | `crowdsec-policy-management` | sidecar engine + Traefik plugin (v1.3.3); whitelist patterns (immediate vs persistent); AppSec test→block workflow |
 
 ## Когда НЕ делегировать (anti-patterns)
 

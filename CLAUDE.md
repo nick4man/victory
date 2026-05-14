@@ -60,6 +60,7 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 | **client document intake** — паспорт/ИНН/выписка через TG → OCR + DLP | `client-onboarding-bot` |
 | **еженедельный обзор рынка**, market analytics для TG/blog/landing | `market-analytics-publisher` |
 | **post-deal кейс**, case study PDF/landing/видео-сценарий | `case-study-writer` |
+| **VDS Traefik/CrowdSec** — роутеры, middlewares, bouncer, cscli (`ssh vds`) | `traefik-vds-ops` + skills `traefik-config-authoring` / `crowdsec-policy-management` |
 | Новый Ruby-код | skill `victory-rails-conventions` |
 | Figma frame → ERB+Tailwind | skill `figma-to-erb-handoff` |
 | Любой user-facing русский копирайт (landing/meta/TG/email/PDF) | skill `russian-real-estate-copywriting` |
