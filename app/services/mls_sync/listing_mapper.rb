@@ -46,7 +46,7 @@ module MlsSync
         district:        @p['folk_district_name'].presence || @p['district_name'].presence,
         latitude:        @p['latitude'],
         longitude:       @p['longitude'],
-        metro_station:   @p['metro'].presence,
+        metro_station:   extract_metro_name(@p['metro']),
         metro_distance:  positive_int(@p['metro_distance']),
         has_balcony:     bool(@p['balcony'] || @p['has_balcony']),
         has_loggia:      to_int(@p['loggia_amount']).to_i.positive?,
@@ -59,6 +59,17 @@ module MlsSync
     end
 
     private
+
+    # Topnlab/MLS API `metro` иногда String, иногда Array<Hash>. См.
+    # детальный коммент в Topnlab::PropertyMapper#extract_metro_name.
+    def extract_metro_name(raw)
+      return nil if raw.blank?
+      return raw if raw.is_a?(String) && !raw.start_with?('[', '{')
+      return nil unless raw.is_a?(Array) && raw.any?
+
+      main = raw.find { |h| (h['is_main'] == 1) || (h[:is_main] == 1) } || raw.first
+      (main['station_name'] || main[:station_name]).presence
+    end
 
     def usable?
       return false unless @p['id']

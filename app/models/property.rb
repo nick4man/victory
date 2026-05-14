@@ -456,6 +456,24 @@ class Property < ApplicationRecord
     metro_distance.present? && metro_distance <= 1000
   end
 
+  # Topnlab/MLS sync ингестит `metro` иногда как Array of Hash (структурно:
+  # [{id:, station_name:, distance:, color:, is_main:}]). При assign в
+  # :string column ActiveRecord cast'ит через .to_s → leak Ruby hash
+  # syntax (`[{"station_name"=>"..."}]`) в UI.
+  #
+  # Этот reader extract'ит human-readable station name из corrupted-string
+  # ИЛИ возвращает чистую строку как-есть. Backward-compat для legacy data
+  # пока не отработает one-time backfill. View использует этот helper
+  # вместо raw #metro_station.
+  def metro_station_display
+    raw = metro_station.to_s.strip
+    return nil if raw.empty?
+    return raw unless raw.start_with?('[') || raw.start_with?('{')
+
+    names = raw.scan(/"station_name"\s*=>\s*"([^"]+)"/i).flatten.uniq
+    names.first.presence
+  end
+
   # Publishing
   def publish!
     update(

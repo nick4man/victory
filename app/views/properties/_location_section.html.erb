@@ -8,7 +8,9 @@
   is_land   = @property.property_type&.slug == 'land'
   zoom      = is_land ? 14 : 16
   district  = @property.district.presence
-  metro     = @property.metro_station.presence
+  # metro_station_display — handles legacy corrupted Array.to_s strings.
+  # См. Property#metro_station_display.
+  metro     = @property.metro_station_display
   walk_min  = @property.metro_distance.present? ? (@property.metro_distance.to_f / 80).ceil : nil
   ymaps_url = "https://yandex.ru/maps/?ll=#{@property.longitude},#{@property.latitude}&z=17&pt=#{@property.longitude},#{@property.latitude}"
   route_url = "https://yandex.ru/maps/?rtext=~#{@property.latitude},#{@property.longitude}&rtt=auto"

@@ -45,7 +45,7 @@ module Topnlab
         description:     build_description,
         address:         build_address,
         district:        @p['folk_district_name'].presence || @p['district_name'],
-        metro_station:   @p['metro'],
+        metro_station:   extract_metro_name(@p['metro']),
         latitude:        @p['latitude'],
         longitude:       @p['longitude'],
         price:           @p['price'].to_f.positive? ? @p['price'].to_f : 0,
@@ -110,6 +110,22 @@ module Topnlab
     end
 
     private
+
+    # Topnlab API возвращает `metro` иногда как String (одна станция), а
+    # иногда как Array of Hash:
+    # [{id:, station_name:, distance:, color:, is_main:1}, ...].
+    # Property.metro_station — :string column. Assign Array → AR cast'ит в
+    # .to_s → leak hash syntax в UI. Extract station_name из main station
+    # (is_main:1) или первой в массиве. Если уже String — отдаём как есть.
+    def extract_metro_name(raw)
+      return nil if raw.blank?
+      return raw if raw.is_a?(String) && !raw.start_with?('[', '{')
+      return nil unless raw.is_a?(Array) && raw.any?
+
+      main = raw.find { |h| (h['is_main'] == 1) || (h[:is_main] == 1) } || raw.first
+      name = main['station_name'] || main[:station_name]
+      name.presence
+    end
 
     # Returns area in м². For land we use area_land + area_land_type unit code;
     # other types use area_common (with fallback to legacy `area` key).
