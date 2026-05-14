@@ -8,7 +8,13 @@
   <%= render 'jsonld_agent_person' %>
 <% end %>
 
-<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Команда', team_path],
+  [@agent.display_name, nil]
+] %>
+
+<section class="px-6 lg:px-12 pt-8 pb-12 bg-background">
   <div class="max-w-6xl mx-auto">
     <%= link_to '← К команде', team_path,
           class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-8' %>

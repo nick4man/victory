@@ -1,4 +1,10 @@
 <% content_for :title, "Контакты — АН Виктори" %>
+<% content_for :seo_description, "Контакты АН «Виктори» в Рязани: #{AgencyInfo::PHONE_PRIMARY}, #{AgencyInfo::ADDRESS_STREET}. Режим работы: #{AgencyInfo::HOURS_HUMAN}. Email: #{AgencyInfo::EMAIL}." %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Контакты', nil]
+] %>
 
 <%# Schema.org LocalBusiness with parking, accessibility, and payment hints
     — extends the global RealEstateAgent JSON-LD with /contacts-specific

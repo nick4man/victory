@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<%# /sitemap-blog.xml — medium-change bucket: blog articles + agent profile
+    pages + case studies. Editorial content + entity entries. %>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <%# Blog articles — substantive editorial content. %>
+  <% (@articles || []).each do |article| %>
+    <url>
+      <loc><%= blog_post_url(slug: article.slug) %></loc>
+      <lastmod><%= article.updated_at.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+  <%# Agent profile pages — Person Schema + E-E-A-T entry points. %>
+  <% (@agents || []).each do |agent| %>
+    <url>
+      <loc><%= agent_url(agent.agent_slug) %></loc>
+      <lastmod><%= agent.updated_at.iso8601 %></lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.5</priority>
+    </url>
+  <% end %>
+  <%# Case studies — anonymised post-deal narratives. Pillar 2 (deep
+      expertise). Schema.org Article + publisher @id closes the entity
+      graph back to RealEstateAgent. %>
+  <% (@case_studies || []).each do |case_study| %>
+    <url>
+      <loc><%= case_url(case_study) %></loc>
+      <lastmod><%= case_study.updated_at.iso8601 %></lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+</urlset>

@@ -600,7 +600,15 @@ Rails.application.routes.draw do
   # ============================================
   # SITEMAP & SEO
   # ============================================
-  get 'sitemap.xml', to: 'sitemap#index', defaults: { format: 'xml' }
+  # Sitemap-index pattern: /sitemap.xml — корневой index, ссылается на 3
+  # sub-sitemap'a по crawl-частоте (pages/listings/blog) + news. Я.Вебмастер
+  # лучше работает с index-схемой: один URL в Webmaster settings, sub-sitemaps
+  # независимо tracked и обновляются. Готовит почву для Phase 1.6 multi-city,
+  # где sub-sitemaps можно будет per-city разрезать.
+  get 'sitemap.xml',          to: 'sitemap#index',    defaults: { format: 'xml' }
+  get 'sitemap-pages.xml',    to: 'sitemap#pages',    defaults: { format: 'xml' }
+  get 'sitemap-listings.xml', to: 'sitemap#listings', defaults: { format: 'xml' }
+  get 'sitemap-blog.xml',     to: 'sitemap#blog',     defaults: { format: 'xml' }
   # Google News sitemap (separate from main sitemap.xml — different schema,
   # different lastmod expectations, only articles ≤ 2 days old are eligible).
   get 'sitemap-news.xml', to: 'sitemap#news', defaults: { format: 'xml' }

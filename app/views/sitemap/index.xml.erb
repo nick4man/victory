@@ -1,148 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
-  <%# Static pages — order is purely cosmetic; priority tells crawlers what we value %>
-  <% [
-    [root_url,                       'daily',   1.0],
-    [properties_url,                 'hourly',  0.9],
-    [map_properties_url,             'weekly',  0.7],
-    [services_page_url,              'monthly', 0.7],
-    [new_property_valuation_url,     'weekly',  0.7],
-    [about_url,                      'monthly', 0.5],
-    [team_url,                       'monthly', 0.6],
-    [history_url,                    'monthly', 0.4],
-    [contacts_url,                   'monthly', 0.5],
-    [faq_url,                        'monthly', 0.5],
-    [privacy_url,                    'yearly',  0.2],
-    [terms_url,                      'yearly',  0.2],
-    [blog_url,                       'daily',   0.7],
-    [news_url,                       'daily',   0.7],
-    [cases_url,                      'weekly',  0.7]
-  ].each do |loc, freq, prio| %>
-    <url>
-      <loc><%= loc %></loc>
-      <changefreq><%= freq %></changefreq>
-      <priority><%= prio %></priority>
-    </url>
-  <% end %>
-  <%#
-    SEO district landings — each has a 300-500 word editorial partial in
-    landings/content/sale_kvartira_<slug>.html.erb. All 20 micro-districts
-    plus 4 admin districts. Type/rooms variants without per-page content
-    are NOT listed to avoid soft-404 demotion.
-  %>
-  <% RyazanDistricts::MICRO.each_key do |slug| %>
-    <url>
-      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <changefreq>weekly</changefreq>
-      <priority>0.7</priority>
-    </url>
-  <% end %>
-  <% RyazanDistricts::ADMIN.each_key do |slug| %>
-    <url>
-      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <changefreq>weekly</changefreq>
-      <priority>0.6</priority>
-    </url>
-  <% end %>
-  <%# Type-only landings (no district filter) — also have editorial weight via
-      the landing's H1, intro, and downstream catalog grid. %>
-  <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
-    <url>
-      <loc><%= buy_landing_url(type: t) %></loc>
-      <changefreq>daily</changefreq>
-      <priority>0.8</priority>
-    </url>
-  <% end %>
-  <%# Premium modifier — Phase A focus, high priority for crawl quota
-      since these are the conversion-priority pages for the elite segment.
-      Only the two types with curated content live in sitemap for now;
-      premium uchastok/komnata/kommercheskaya — добавим когда content
-      under app/views/landings/content/_sale_<type>_premium.html.erb лежит. %>
-  <% %w[kvartira dom].each do |t| %>
-    <url>
-      <loc><%= buy_premium_landing_url(type: t) %></loc>
-      <changefreq>daily</changefreq>
-      <priority>0.9</priority>
-    </url>
-  <% end %>
-  <%# Rent (snyat) variant of the URL pyramid — mirrors the buy side because
-      every landing route has a sale/rent twin. Rent has thinner inventory
-      today, but the URLs still pass the noindex,follow guard in landings/show
-      when zero-inventory and rank as soon as a listing appears. Adding them
-      now doubles the discoverable URL set in Yandex without any new content. %>
-  <% RyazanDistricts::MICRO.each_key do |slug| %>
-    <url>
-      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <changefreq>weekly</changefreq>
-      <priority>0.6</priority>
-    </url>
-  <% end %>
-  <% RyazanDistricts::ADMIN.each_key do |slug| %>
-    <url>
-      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <changefreq>weekly</changefreq>
-      <priority>0.5</priority>
-    </url>
-  <% end %>
-  <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
-    <url>
-      <loc><%= rent_landing_url(type: t) %></loc>
-      <changefreq>daily</changefreq>
-      <priority>0.7</priority>
-    </url>
-  <% end %>
-  <% base_host = "#{request.protocol}#{request.host_with_port}" %>
-  <% @properties.each do |property| %>
-    <url>
-      <loc><%= property_url(property) %></loc>
-      <lastmod><%= property.updated_at.iso8601 %></lastmod>
-      <changefreq>weekly</changefreq>
-      <priority>0.7</priority>
-      <%# Image sitemap entries — Google Image SEO + Yandex картинки. Hero
-          variant gives 1920×1440 jpg which clears Google's 1200px threshold
-          for rich-image eligibility. Capped at 6 images per property — well
-          under Google's 1000-images-per-URL ceiling, keeps sitemap small. %>
-      <% if property.images.attached? %>
-        <% property.images.first(6).each do |img| %>
-          <% img_path = (url_for(img.variant(:hero)) rescue nil) %>
-          <% next unless img_path %>
-          <image:image>
-            <image:loc><%= img_path.start_with?('http') ? img_path : "#{base_host}#{img_path}" %></image:loc>
-            <image:title><%= property.title.to_s.encode(xml: :text) %></image:title>
-            <image:caption><%= property_image_alt(property).to_s.encode(xml: :text) %></image:caption>
-          </image:image>
-        <% end %>
-      <% end %>
-    </url>
-  <% end %>
-  <%# Blog articles — substantive editorial content, safe to include. %>
-  <% (@articles || []).each do |article| %>
-    <url>
-      <loc><%= blog_post_url(slug: article.slug) %></loc>
-      <lastmod><%= article.updated_at.iso8601 %></lastmod>
-      <changefreq>weekly</changefreq>
-      <priority>0.6</priority>
-    </url>
-  <% end %>
-  <%# Agent profile pages — Person Schema + E-E-A-T entry points. %>
-  <% (@agents || []).each do |agent| %>
-    <url>
-      <loc><%= agent_url(agent.agent_slug) %></loc>
-      <lastmod><%= agent.updated_at.iso8601 %></lastmod>
-      <changefreq>monthly</changefreq>
-      <priority>0.5</priority>
-    </url>
-  <% end %>
-  <%# Case studies — anonymised post-deal narratives. Pillar 2 (deep
-      expertise). Schema.org Article + publisher @id closes the entity
-      graph back to RealEstateAgent. %>
-  <% (@case_studies || []).each do |case_study| %>
-    <url>
-      <loc><%= case_url(case_study) %></loc>
-      <lastmod><%= case_study.updated_at.iso8601 %></lastmod>
-      <changefreq>monthly</changefreq>
-      <priority>0.6</priority>
-    </url>
-  <% end %>
-</urlset>
+<%# /sitemap.xml — sitemap-index. Перечисляет sub-sitemaps; Я./Google
+    подтягивают каждый отдельно. Готовится почва для Phase 1.6 multi-city. %>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'pages', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @pages_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'listings', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @listings_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'blog', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @blog_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'news', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= Date.current.iso8601 %></lastmod>
+  </sitemap>
+</sitemapindex>

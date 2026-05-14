@@ -1,6 +1,12 @@
 <% content_for :title, "О компании — АН Виктори" %>
+<% content_for :seo_description, 'АН «Виктори» — агентство недвижимости в Рязани с 2008 года. Покупка, продажа, аренда квартир, домов, коммерческой недвижимости. Юридическое сопровождение, ипотечный консалтинг, опыт 18 лет на рынке.' %>
 
-<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background">
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['О компании', nil]
+] %>
+
+<section class="px-6 lg:px-12 py-12 lg:py-16 bg-background">
   <div class="max-w-5xl mx-auto">
     <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">О КОМПАНИИ</p>
     <h1 class="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-12 leading-tight">

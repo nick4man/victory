@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<%# /sitemap-listings.xml — fast-change bucket (property pages with image
+    entries). Самая динамичная часть каталога — Topnlab sync ежечасно может
+    добавить/убрать listings. Image entries — Google Image SEO + Я.Картинки. %>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <% base_host = "#{request.protocol}#{request.host_with_port}" %>
+  <% @properties.each do |property| %>
+    <url>
+      <loc><%= property_url(property) %></loc>
+      <lastmod><%= property.updated_at.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.7</priority>
+      <%# Image sitemap entries — Google Image SEO + Yandex картинки. Hero
+          variant gives 1920×1440 jpg which clears Google's 1200px threshold
+          for rich-image eligibility. Capped at 6 images per property — well
+          under Google's 1000-images-per-URL ceiling, keeps sitemap small. %>
+      <% if property.images.attached? %>
+        <% property.images.first(6).each do |img| %>
+          <% img_path = (url_for(img.variant(:hero)) rescue nil) %>
+          <% next unless img_path %>
+          <image:image>
+            <image:loc><%= img_path.start_with?('http') ? img_path : "#{base_host}#{img_path}" %></image:loc>
+            <image:title><%= property.title.to_s.encode(xml: :text) %></image:title>
+            <image:caption><%= property_image_alt(property).to_s.encode(xml: :text) %></image:caption>
+          </image:image>
+        <% end %>
+      <% end %>
+    </url>
+  <% end %>
+</urlset>

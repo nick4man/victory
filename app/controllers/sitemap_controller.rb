@@ -1,21 +1,43 @@
 # frozen_string_literal: true
 
 class SitemapController < ApplicationController
+  # /sitemap.xml — sitemap-index format. Перечисляет sub-sitemaps по
+  # частоте изменения, чтобы Я./Google могли независимо crawl-ить
+  # high-traffic listings vs slow-change pages. lastmod на каждый
+  # sub-sitemap = max(updated_at) его entities + 1 day fallback.
   def index
+    @pages_mod    = Date.current.iso8601
+    @listings_mod = (Property.published.maximum(:updated_at) || Time.current).iso8601
+    @blog_mod     = [
+      Article.respond_to?(:published) ? Article.published.maximum(:updated_at) : nil,
+      CaseStudy.respond_to?(:public_facing) ? CaseStudy.public_facing.maximum(:updated_at) : nil,
+      User.respond_to?(:publicly_listable_agents) ? User.publicly_listable_agents.maximum(:updated_at) : nil
+    ].compact.max&.iso8601 || @pages_mod
+    respond_to(&:xml)
+  end
+
+  # /sitemap-pages.xml — static + SEO district landings + premium variants.
+  # Slow-change bucket (monthly/yearly priority). Я. может crawl-ить раз в
+  # неделю — содержимое RyazanDistricts constant + page copy.
+  def pages
+    respond_to(&:xml)
+  end
+
+  # /sitemap-listings.xml — property pages with image:image entries. Highest
+  # crawl frequency (hourly) — самая динамичная часть каталога.
+  def listings
     @properties = Property.published.order(updated_at: :desc).limit(1000)
-    # Articles join the property listings — blog posts are crawlable URLs
-    # with substantive content (≥600 words) so they don't risk soft-404.
-    @articles   = Article.published.recent.limit(500)
-    # Public agent profiles — reuses AgentProfile.publicly_listable_agents
-    # so /sitemap.xml and /agents/:slug agree on which agents are public.
-    @agents = User.publicly_listable_agents.limit(200)
-    # Closed-deal case studies (Pillar 2 of strategicVector — deep expertise
-    # proof). Public_facing scope mirrors what /cases renders, so sitemap
-    # never lists a URL that returns 404 / unpublished.
+    respond_to(&:xml)
+  end
+
+  # /sitemap-blog.xml — articles + case studies + agent profiles. Medium-
+  # change bucket. Articles add content weekly, agents change rarely,
+  # case-studies — when закрытая сделка публикуется.
+  def blog
+    @articles     = Article.published.recent.limit(500)
+    @agents       = User.publicly_listable_agents.limit(200)
     @case_studies = CaseStudy.public_facing.limit(500)
-    respond_to do |format|
-      format.xml
-    end
+    respond_to(&:xml)
   end
 
   # Google News sitemap — only articles published in the last 48 hours are
