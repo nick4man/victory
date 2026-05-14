@@ -59,6 +59,7 @@ module AgencyInfo
   OPERATOR_LEGAL_ADDRESS  = ENV.fetch('OPERATOR_LEGAL_ADDRESS', 'TODO_FILL_LEGAL_ADDR')
   OPERATOR_RKN_NUMBER     = ENV.fetch('OPERATOR_RKN_NUMBER',    nil)
   OPERATOR_PRIVACY_UPDATED = Date.new(2026, 5, 14)
+  OPERATOR_TERMS_UPDATED   = Date.new(2026, 5, 14)
 
   if defined?(Rails) && OPERATOR_INN.to_s.start_with?('TODO_')
     Rails.logger.warn '[AgencyInfo] OPERATOR_* placeholders not filled — /privacy will display TODO markers. ' \
