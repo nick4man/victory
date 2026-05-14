@@ -109,11 +109,22 @@
       </div>
 
       <% current_deal_type = params.dig(:q, :deal_type_eq).to_s %>
-      <div class="flex flex-wrap gap-2">
+      <div class="flex flex-wrap gap-2 items-center">
         <% [["Все", {}], ["Купить", { deal_type_eq: 'sale' }], ["Снять", { deal_type_eq: 'rent' }]].each do |label, q| %>
           <% active = (current_deal_type == q[:deal_type_eq].to_s) %>
           <%= link_to label, properties_path(q.any? ? { q: q } : {}), class: "px-5 py-2 text-sm tracking-wider border #{active ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground'} transition-colors" %>
         <% end %>
+
+        <%# Premium-segment toggle (Phase A1). URL param ?premium=1
+            работает независимо от ransack q[] params — controller (line 35-37)
+            обрабатывает оба. Сохраняем все остальные filter params при toggle. %>
+        <% premium_on = ActiveModel::Type::Boolean.new.cast(params[:premium]) %>
+        <% next_premium = premium_on ? {} : { premium: '1' } %>
+        <% preserved = params.permit(q: {}, sort: [], filter: []).to_h %>
+        <% preserved = preserved.merge(next_premium) %>
+        <%= link_to (premium_on ? '✕ Только премиум' : 'Только премиум'),
+                    properties_path(preserved),
+                    class: "px-5 py-2 text-sm tracking-wider border #{premium_on ? 'bg-amber-900/30 text-amber-200 border-amber-700/60' : 'bg-transparent text-muted-foreground border-border hover:border-amber-700/60 hover:text-amber-200'} transition-colors" %>
       </div>
     </div>
 

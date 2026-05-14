@@ -399,6 +399,13 @@ Rails.application.routes.draw do
   # Contacts
   get 'contacts', to: 'pages#contacts', as: :contacts
   post 'contacts', to: 'pages#send_contact_form', as: :send_contact_form
+
+  # ============================================
+  # PREMIUM SEGMENT (Phase A1)
+  # ============================================
+  # Standalone brand-statement landing. Отличается от SEO district
+  # pyramid /buy/:type/premium — там per-type, здесь общий обзор.
+  get 'premium', to: 'premium#index', as: :premium
   
   # Services
   get 'services', to: 'pages#services', as: :services_page
