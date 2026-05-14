@@ -104,12 +104,8 @@ every 5.minutes do
   runner 'Telegram::WorkBot::Sla::TasksWatchdogJob.perform_later'
 end
 
-# Phase 2 Hotfix — TG polling fallback. Активируется ENV TELEGRAM_POLLING_MODE=true
-# когда webhook'и от Telegram не доходят (network issue не зависящий от Rails/Traefik).
-# Long-polls 25s, latency 5-60s. Подробнее: app/jobs/telegram/work_bot/polling_job.rb.
-every 1.minute do
-  runner 'Telegram::WorkBot::PollingJob.perform_later'
-end
+# Phase 2 Hotfix — TG polling fallback зарегистрирован в config/sidekiq_cron.yml
+# (this project uses sidekiq-cron, not whenever). См. там job `tg_polling`.
 
 # Phase 3 — еженедельный refresh Topnlab stages mapping (на случай если admin
 # переименовал стадии в CRM). Воскресенье 03:00 MSK.

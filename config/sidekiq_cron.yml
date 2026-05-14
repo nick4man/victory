@@ -31,3 +31,9 @@ bank_rates_refresh:
   class: BankRatesRefreshJob
   queue: scheduled
   description: "Refresh deposit/mortgage program rates from banki.ru aggregator"
+
+tg_polling:
+  cron: "* * * * *"        # every minute
+  class: "Telegram::WorkBot::PollingJob"
+  queue: scheduled
+  description: "Fallback polling getUpdates когда TG → webhook не доходит (TELEGRAM_POLLING_MODE=true)"

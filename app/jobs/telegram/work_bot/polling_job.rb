@@ -5,10 +5,10 @@ module Telegram
     # Polling-fallback для случаев когда TG → webhook не доходит из-за
     # network issue (host firewall / AS-фильтр у hosting provider).
     #
-    # Запускается каждую минуту из cron (см. config/schedule.rb). Long-polls
-    # 25 секунд через `Telegram::Client#get_updates(timeout: 25)`. Если updates
-    # есть — обрабатывает их через тот же `Telegram::InboundProcessor` что и
-    # webhook (общая точка входа: callback_query, message, message_reaction).
+    # Запускается каждую минуту из sidekiq-cron (config/sidekiq_cron.yml,
+    # job `tg_polling`). Long-polls 25s через `Telegram::Client#get_updates`.
+    # Если updates есть — обрабатывает через тот же `Telegram::InboundProcessor`
+    # что и webhook (общая точка входа: callback_query, message, message_reaction).
     # Offset (last_update_id) хранится в Rails.cache между запусками.
     #
     # Активация через ENV `TELEGRAM_POLLING_MODE=true`. Если переменная не
@@ -17,13 +17,19 @@ module Telegram
     #
     # Mutual exclusion с webhook: getUpdates возвращает 409 conflict если
     # webhook установлен. Перед активацией polling — `bin/rails telegram:webhook:delete`.
-    class PollingJob < ApplicationJob
-      queue_as :scheduled
+    #
+    # Не ActiveJob а plain Sidekiq Worker (`include Sidekiq::Job`) потому что
+    # sidekiq-cron 1.12 не поддерживает ConfiguredJob.perform_async (см.
+    # https://github.com/sidekiq-cron/sidekiq-cron/issues/...).
+    class PollingJob
+      include Sidekiq::Job
+
+      sidekiq_options queue: :scheduled, retry: 2
 
       LOCK_KEY          = 'telegram:polling:lock'
       OFFSET_KEY        = 'telegram:polling:offset'
-      LOCK_TTL          = 90.seconds   # cron interval + buffer
-      LONG_POLL_TIMEOUT = 25           # секунды; TG max=50, мы берём 25
+      LOCK_TTL          = 90.seconds
+      LONG_POLL_TIMEOUT = 25
       BATCH_LIMIT       = 100
 
       def perform
