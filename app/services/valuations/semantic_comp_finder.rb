@@ -30,6 +30,12 @@ module Valuations
       @v = valuation
     end
 
+    # Hard size pre-filter ±30% от subject area, mirror'имо из
+    # PropertyEvaluation::ComparableFinder::SIZE_BAND_PCT. Без этого
+    # cosine search возвращает мелкие студии для премиум-3-комн subject
+    # → portion 30-50 м² @ low ₽/м² искажает median estimate.
+    SIZE_BAND_PCT = 0.30
+
     def call
       text = build_subject_text
       return [] if text.blank?
@@ -43,10 +49,27 @@ module Valuations
                      .limit(LIMIT)
                      .to_a
 
-      embeddings.filter_map { |emb| build_comp(emb) }
+      embeddings.filter_map { |emb| build_comp(emb) }.then { |list| filter_by_size(list) }
     rescue StandardError => e
       Rails.logger.warn("[Valuations::SemanticCompFinder] #{e.class}: #{e.message.truncate(180)}")
       []
+    end
+
+    def filter_by_size(comps)
+      target = subject_area_for_filter
+      return comps unless target.positive? && @v.property_type.to_s != 'land'
+
+      band_min = target * (1 - SIZE_BAND_PCT)
+      band_max = target * (1 + SIZE_BAND_PCT)
+      comps.filter { |c| c[:area].to_f.between?(band_min, band_max) }
+    end
+
+    def subject_area_for_filter
+      if @v.property_type.to_s == 'land'
+        @v.try(:land_area).to_f * 100
+      else
+        @v.total_area.to_f
+      end
     end
 
     private

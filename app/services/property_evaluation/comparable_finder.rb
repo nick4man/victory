@@ -133,15 +133,58 @@ module PropertyEvaluation
       PropertyType.find_by(slug: slug)&.id
     end
 
+    # ±30% площади subject — hard size pre-filter ДО любого AI judgement.
+    # Subject 100 м² → captures 70-130 м² comps. Студии 30 м² и
+    # 5-комн 250 м² отсеиваются. Это responsibility split: objective
+    # size sanity here, subjective fit (район, segment, condition) —
+    # in AiCompFilter.
+    #
+    # Не применяется к land (площадь в сотках, broader range OK для
+    # участков с разной целевой застройкой).
+    SIZE_BAND_PCT = 0.30
+
     def enrich(records)
+      target_area = subject_area_for_filter
+      band_min = target_area.positive? ? target_area * (1 - SIZE_BAND_PCT) : 0
+      band_max = target_area.positive? ? target_area * (1 + SIZE_BAND_PCT) : Float::INFINITY
+      apply_size_filter = target_area.positive? && @v.property_type.to_s != 'land'
+
       records.filter_map do |r|
         pps = compute_pps(r)
         next nil if pps <= 0
 
+        if apply_size_filter
+          area = r.try(:area).to_f
+          area = r.try(:total_area).to_f if area.zero? && r.respond_to?(:total_area)
+          next nil unless area.between?(band_min, band_max)
+        end
+
         dist = distance_km_to(r)
         { record: r, price_per_sqm: pps, distance_km: dist,
-          weight: dist ? 1.0 / (1.0 + dist) : 0.5 }
+          weight: dist ? 1.0 / (1.0 + dist) : 0.5,
+          source: source_label(r) }
       end.sort_by { |c| c[:distance_km] || Float::INFINITY }
+    end
+
+    # Label источника по record class. Используется downstream'ом
+    # для (1) sources_breakdown analytics, (2) auto_kept logic в
+    # PropertyEvaluationService — ExternalListing comps уже vetted
+    # через Tavily whitelist + Sonnet sanity checks → bypass AiCompFilter.
+    def source_label(record)
+      case record
+      when ExternalListing then 'external_listing'
+      when MlsListing      then 'mls'
+      when Property        then 'agency'
+      else                      record.class.name.underscore
+      end
+    end
+
+    def subject_area_for_filter
+      if @v.property_type.to_s == 'land'
+        @v.try(:land_area).to_f * 100  # сотки → м²
+      else
+        @v.total_area.to_f
+      end
     end
 
     def compute_pps(record)

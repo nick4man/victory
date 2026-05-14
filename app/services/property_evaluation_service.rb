@@ -33,6 +33,15 @@ class PropertyEvaluationService
     'commercial' => 150_000, 'garage' => 60_000, 'room' => 100_000
   }.freeze
 
+  # Comps which bypass AiCompFilter (already curated upstream):
+  #   - ai_synthesized: city-anchor LLM generator валидирует
+  #   - cross_city_adapted: median-ratio adapter sanity-checks
+  #   - external_listing: Tavily whitelist + Firecrawl + Sonnet parse уже
+  #     валидируют (price/area sanity bounds, listing-not-archive). Эти
+  #     comps приходят из открытого рынка (Avito/Cian/Yandex.Realty), мы
+  #     доверяем им как high-quality signal.
+  AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+
   def initialize(valuation)
     @v = valuation
   end
@@ -70,11 +79,10 @@ class PropertyEvaluationService
       return success(fallback_estimate)
     end
 
-    # AI pre-filter — each comp passed through Llm::OmniClient (free-first
-    # chain) to drop poor matches. Skips synthetic/adapted comps (they're
-    # already curated by their generator). AI guardrail prevents shrinking
-    # below MIN_KEPT.
-    auto_kept = combined.select { |c| %w[ai_synthesized cross_city_adapted].include?(c[:source].to_s) }
+    # AI pre-filter — each comp passed through Llm::OmniClient to drop
+    # poor matches. Skips comps which are ALREADY curated upstream
+    # (see AUTO_KEPT_SOURCES constant at top of class).
+    auto_kept = combined.select { |c| AUTO_KEPT_SOURCES.include?(c[:source].to_s) }
     candidates_for_filter = combined - auto_kept
     filtered_real = candidates_for_filter.any? ?
                       Valuations::AiCompFilter.new(@v, candidates_for_filter).call : []
