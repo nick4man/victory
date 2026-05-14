@@ -261,9 +261,11 @@ ehthumbs.db
 *.png
 .playwright-mcp/
 
-# Playwright (Phase 2E) — но baselines committed
+# Playwright (Phase 2E) — но baselines committed.
+# Layout: playwright defaults snapshots to `tests/visual/<spec>.spec.ts-snapshots/`.
+# Negation rule un-ignores them despite the `*.png` line above.
 /test-results/
 /playwright-report/
 /playwright/.cache/
-!tests/visual/__screenshots__/**/*.png
+!tests/visual/**/*-snapshots/**/*.png
 
