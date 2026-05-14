@@ -63,7 +63,11 @@
         by any Tailwind class in the project, saves ~8KB transfer. %>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    <%# crossorigin on preload must match the real fetch (Google Fonts CSS
+        is anonymous-CORS); without it the browser treats preload and the
+        actual stylesheet load as different requests, the font transfers
+        twice, and the preload becomes a wasted round-trip. %>
+    <link rel="preload" as="style" crossorigin href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
 

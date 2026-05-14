@@ -164,8 +164,11 @@
     "this is the main content" signal — helps with content area detection
     for Core Web Vitals scoring and with rich-snippet generation. The
     "Похожие"/"В районе" blocks below stay outside since they're related
-    listings, not part of this property's article. %>
-<article itemscope itemtype="https://schema.org/Apartment">
+    listings, not part of this property's article. itemtype matches the
+    JSON-LD @type via Property#schema_org_type — without that, /properties/dom-*
+    pages emitted Apartment microdata + House JSON-LD, which Google Rich
+    Results flags as "conflicting entity types". %>
+<article itemscope itemtype="https://schema.org/<%= @property.schema_org_type %>">
 <!-- Hero — auto-rotating slider, clickable to open lightbox -->
 <section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
   <% if hero_slides.any? %>

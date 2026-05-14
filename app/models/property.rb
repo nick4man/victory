@@ -613,6 +613,20 @@ class Property < ApplicationRecord
     "#{rooms_info} площадью #{area} м² за #{price_formatted}. #{short_description(100)}"
   end
 
+  # Schema.org type for this property — used by both _jsonld_property.html.erb
+  # (JSON-LD @type) and properties/show.html.erb (<article itemtype>) so the
+  # microdata and JSON-LD never disagree about the entity kind. Disagreement
+  # triggers Google Rich Results "conflicting entity types" warnings.
+  def schema_org_type
+    case property_type&.slug
+    when 'house'    then 'House'
+    when 'land'     then 'Place'
+    when 'commerce' then 'CommercialProperty'
+    when 'garage'   then 'Place'
+    else                 'Apartment'
+    end
+  end
+
   # Comparison
   def price_difference_percent(other_property)
     return unless other_property && other_property.price > 0

@@ -4,13 +4,10 @@
   build a connected entity graph.
 %>
 <%
-  schema_type = case @property.property_type&.slug
-                when 'house'    then 'House'
-                when 'land'     then 'Place'
-                when 'commerce' then 'CommercialProperty'
-                when 'garage'   then 'Place'
-                else                 'Apartment'
-                end
+  # Property#schema_org_type is the single source of truth used here AND
+  # by the <article itemtype> wrapper in properties/show.html.erb — keeps
+  # microdata and JSON-LD entity types from drifting apart.
+  schema_type = @property.schema_org_type
 
   description = ChatTools::Format.sanitize_text(@property.description.to_s).to_s.truncate(300)
   # Google rich-result eligibility wants images ≥1200px on the long side — point
