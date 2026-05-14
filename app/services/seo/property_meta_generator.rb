@@ -115,18 +115,40 @@ module Seo
       ]
     end
 
+    # i18n маппинги inline — Property#deal_type_i18n / #condition_i18n
+    # are `private` on the model and not exposed for cross-class use.
+    # Duplicating the two small dictionaries here avoids `.send(:method)`
+    # hacks and keeps the generator independent.
+    DEAL_TYPE_LABELS = {
+      'sale'  => 'продажа',
+      'rent'  => 'аренда',
+      'daily' => 'посуточная аренда'
+    }.freeze
+
+    CONDITION_LABELS = {
+      'needs_repair' => 'требует ремонта',
+      'normal'       => 'обычное состояние',
+      'renovated'    => 'с ремонтом',
+      'euro'         => 'евроремонт',
+      'designer'     => 'дизайнерский ремонт'
+    }.freeze
+
     # Compact, fact-only payload — LLM should not over-invent. We feed only
     # what's actually on the record.
     def property_payload
       lines = []
-      lines << "Тип сделки: #{@property.deal_type_i18n}"
+      deal_label = DEAL_TYPE_LABELS[@property.deal_type.to_s]
+      lines << "Тип сделки: #{deal_label}" if deal_label
       lines << "Тип объекта: #{@property.property_type&.name}" if @property.property_type
       lines << "Площадь: #{@property.area.to_f.round(1)} м²" if @property.area.to_f.positive?
       lines << "Комнат: #{@property.rooms}" if @property.rooms.to_i.positive?
       if @property.floor.to_i.positive? && @property.total_floors.to_i.positive?
         lines << "Этаж: #{@property.floor}/#{@property.total_floors}"
       end
-      lines << "Состояние: #{@property.condition_i18n}" if @property.condition.present?
+      if @property.condition.present?
+        cond_label = CONDITION_LABELS[@property.condition.to_s] || @property.condition
+        lines << "Состояние: #{cond_label}"
+      end
       lines << "Цена: #{@property.price_formatted}" if @property.price.to_f.positive?
       lines << "Район: #{@property.district}" if @property.district.present?
       lines << "Адрес: #{@property.address}" if @property.address.present?

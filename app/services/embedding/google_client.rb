@@ -22,7 +22,8 @@ module Embedding
     DEFAULT_DIM   = 768
     MODEL         = 'gemini-embedding-001'
     BASE_URL      = 'https://generativelanguage.googleapis.com/v1beta'
-    OPEN_TIMEOUT  = 5
+    OPEN_TIMEOUT  = 15  # was 5 — cold TCP handshake from РФ to Google APIs
+                       # routinely needs >5s; covered by 3-attempt retry now
     READ_TIMEOUT  = 30
     MAX_ATTEMPTS  = 3
 
@@ -64,8 +65,14 @@ module Embedding
       begin
         attempt += 1
         post(payload)
-      rescue Error
-        raise if attempt >= MAX_ATTEMPTS
+      rescue Error, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, SocketError => e
+        # OpenTimeout/ReadTimeout/ECONNRESET were not in the rescue list,
+        # so a single cold TCP handshake stall (5s OPEN_TIMEOUT) used to
+        # bubble up immediately. Now they participate in the retry chain
+        # with exponential backoff (2 / 4 / 8s).
+        if attempt >= MAX_ATTEMPTS
+          raise e.is_a?(Error) ? e : Error.new("#{e.class}: #{e.message}")
+        end
         sleep(2**attempt)
         retry
       end
