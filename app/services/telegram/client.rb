@@ -12,8 +12,9 @@ module Telegram
 
     BASE = 'https://api.telegram.org'
 
-    def initialize(token: ENV['TELEGRAM_BOT_TOKEN'])
+    def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
       raise Error, 'TELEGRAM_BOT_TOKEN not set' if token.blank?
+
       @token = token
     end
 
@@ -23,9 +24,9 @@ module Telegram
     def send_message(text, chat_id:, reply_to_message_id: nil, message_thread_id: nil,
                      reply_markup: nil, parse_mode: 'HTML', disable_web_page_preview: true)
       body = {
-        chat_id:                  chat_id,
-        text:                     text,
-        parse_mode:               parse_mode,
+        chat_id: chat_id,
+        text: text,
+        parse_mode: parse_mode,
         disable_web_page_preview: disable_web_page_preview
       }
       body[:reply_to_message_id] = reply_to_message_id if reply_to_message_id
@@ -39,10 +40,10 @@ module Telegram
     def edit_message_text(text, chat_id:, message_id:, reply_markup: nil,
                           parse_mode: 'HTML', disable_web_page_preview: true)
       body = {
-        chat_id:                  chat_id,
-        message_id:               message_id,
-        text:                     text,
-        parse_mode:               parse_mode,
+        chat_id: chat_id,
+        message_id: message_id,
+        text: text,
+        parse_mode: parse_mode,
         disable_web_page_preview: disable_web_page_preview
       }
       body[:reply_markup] = reply_markup if reply_markup
@@ -70,9 +71,9 @@ module Telegram
     # Закрепление сообщения в чате/топике. Нужен can_pin_messages.
     def pin_chat_message(chat_id:, message_id:, disable_notification: true)
       api_call('pinChatMessage',
-               chat_id:               chat_id,
-               message_id:            message_id,
-               disable_notification:  disable_notification)
+               chat_id: chat_id,
+               message_id: message_id,
+               disable_notification: disable_notification)
     end
 
     # Upload a binary document (PDF/etc) with optional caption via the
@@ -99,9 +100,14 @@ module Telegram
       req = Net::HTTP::Post.new(uri, 'Content-Type' => "multipart/form-data; boundary=#{boundary}")
       req.body = parts
       res = Net::HTTP.start(uri.host, uri.port, use_ssl: true,
-                            open_timeout: 5, read_timeout: 60) { |h| h.request(req) }
-      data = JSON.parse(res.body) rescue {}
+                                                open_timeout: 5, read_timeout: 60) { |h| h.request(req) }
+      data = begin
+        JSON.parse(res.body)
+      rescue StandardError
+        {}
+      end
       raise Error, "Telegram sendDocument: #{data['description'] || res.code}" unless data['ok']
+
       data['result']
     end
 
@@ -121,9 +127,11 @@ module Telegram
       api_call('getMe')
     end
 
-    def set_webhook(url, secret_token: nil)
+    def set_webhook(url, secret_token: nil, allowed_updates: nil, drop_pending_updates: nil)
       body = { url: url }
-      body[:secret_token] = secret_token if secret_token
+      body[:secret_token]        = secret_token        if secret_token
+      body[:allowed_updates]     = allowed_updates     if allowed_updates
+      body[:drop_pending_updates] = drop_pending_updates unless drop_pending_updates.nil?
       api_call('setWebhook', body)
     end
 
@@ -165,9 +173,14 @@ module Telegram
       req.body = JSON.generate(body) unless body.empty?
 
       res = Net::HTTP.start(uri.host, uri.port, use_ssl: true,
-                            open_timeout: 5, read_timeout: 30) { |h| h.request(req) }
-      data = JSON.parse(res.body) rescue {}
+                                                open_timeout: 5, read_timeout: 30) { |h| h.request(req) }
+      data = begin
+        JSON.parse(res.body)
+      rescue StandardError
+        {}
+      end
       raise Error, "Telegram #{method}: #{data['description'] || res.code}" unless data['ok']
+
       data['result']
     end
   end

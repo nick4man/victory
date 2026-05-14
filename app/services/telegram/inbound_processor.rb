@@ -32,6 +32,13 @@ module Telegram
         return Telegram::WorkBot::CallbacksRouter.new(cb).call
       end
 
+      # Phase 3 — реакции 👍/🔥/✅ на якорь = «принято в работу» (комплементарный
+      # сигнал для SLA-watchdog наравне с note в CRM). Требует расширенного
+      # allowed_updates через `bin/rails telegram:webhook:setup`.
+      if (rx = @update['message_reaction'])
+        return Telegram::ReactionHandler.new(rx).call
+      end
+
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 

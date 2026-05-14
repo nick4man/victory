@@ -31,8 +31,14 @@ module Telegram
           lead = find_lead_via_reply
           return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
 
-          apply_close!(lead, new_stage, reason)
-          update_anchor_card!(lead)
+          # Записать причину в metadata до перехода (чтобы карточка перерисовалась с этой инфой)
+          persist_reason_to_metadata!(lead, reason) if reason.present?
+
+          result = Telegram::WorkBot::LeadStageTransition.new(lead, new_stage, actor: tg_user, client: client).call
+          unless result.success?
+            return reply("⚠️ #{result.message}")
+          end
+
           push_close_note(lead, new_stage, reason)
 
           icon = new_stage == 'closed_won' ? '✅' : '❌'
@@ -55,23 +61,8 @@ module Telegram
           LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
 
-        def apply_close!(lead, new_stage, reason)
-          meta = lead.metadata.merge('close_reason' => reason).compact
-          lead.update!(current_stage: new_stage, closed_at: Time.current, metadata: meta)
-        end
-
-        def update_anchor_card!(lead)
-          return if lead.anchor_message_id.blank?
-
-          text = Telegram::WorkBot::LeadAnnouncer.new(lead, client: client).format_card_text
-          client.edit_message_text(
-            text,
-            chat_id: lead.tg_chat_id,
-            message_id: lead.anchor_message_id,
-            parse_mode: 'HTML'
-          )
-        rescue StandardError => e
-          Rails.logger.warn("[Commands::Close] edit_message_text failed: #{e.message}")
+        def persist_reason_to_metadata!(lead, reason)
+          lead.update!(metadata: lead.metadata.merge('close_reason' => reason))
         end
 
         def push_close_note(lead, new_stage, reason)

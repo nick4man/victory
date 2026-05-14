@@ -75,17 +75,28 @@ module Telegram
         crm_id = @lead.lead_ref.try(:crm_id)
         return if crm_id.blank?
 
-        title  = Telegram::TopicRegistry.title(@target_key)
-        text   = "Маршрутизирован в ##{title} руководителем @#{@actor.tg_username} (#{Formatters::DateFormat.fmt_dt(Time.current)})"
-        Topnlab::Client.new.set_note(
-          id: crm_id.to_i,
-          type: 'order',
-          note: text,
-          user_id: @actor.topnlab_user_id || ENV.fetch('TOPNLAB_FALLBACK_USER_ID', nil)
-        )
-      rescue StandardError => e
-        # CRM-нота — best-effort; миграция в TG уже произошла.
-        Rails.logger.warn("[AnchorMigrator] CRM note push failed: #{e.class}: #{e.message}")
+        topnlab = Topnlab::Client.new
+        title   = Telegram::TopicRegistry.title(@target_key)
+        text    = "Маршрутизирован в ##{title} руководителем @#{@actor.tg_username} (#{Formatters::DateFormat.fmt_dt(Time.current)})"
+
+        begin
+          topnlab.set_note(
+            id: crm_id.to_i,
+            type: 'order',
+            note: text,
+            user_id: @actor.topnlab_user_id || ENV.fetch('TOPNLAB_FALLBACK_USER_ID', nil)
+          )
+        rescue StandardError => e
+          # CRM-нота — best-effort; миграция в TG уже произошла.
+          Rails.logger.warn("[AnchorMigrator] CRM note push failed: #{e.class}: #{e.message}")
+        end
+
+        # Phase 3 — обновляем fc_tg_topic_key чтобы в CRM было видно текущий якорь.
+        begin
+          topnlab.patch_entity(id: crm_id.to_i, type: 'order', fields: { fc_tg_topic_key: @target_key })
+        rescue StandardError => e
+          Rails.logger.warn("[AnchorMigrator] patch_entity fc_tg_topic_key failed: #{e.class}: #{e.message}")
+        end
       end
 
       def log_skip(reason)

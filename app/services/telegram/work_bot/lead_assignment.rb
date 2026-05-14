@@ -34,8 +34,8 @@ module Telegram
           return Result.new(false, msg)
         end
 
-        push_to_crm
         @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
+        push_to_crm # transfer_client + fc_* в одной транзакции CRM
         update_anchor_card!
         notify_assignee
 
@@ -48,10 +48,31 @@ module Telegram
         crm_id = @lead.lead_ref.try(:crm_id)
         return if crm_id.blank?
 
-        Topnlab::Client.new.transfer_client(order_id: crm_id.to_i, email: @assignee.email)
-      rescue Topnlab::Client::Error => e
-        # Best-effort: CRM может временно недоступен. В TG-чате назначение уже произошло.
-        Rails.logger.warn("[LeadAssignment] transfer_client failed: #{e.class}: #{e.message}")
+        topnlab = Topnlab::Client.new
+        begin
+          topnlab.transfer_client(order_id: crm_id.to_i, email: @assignee.email)
+        rescue Topnlab::Client::Error => e
+          Rails.logger.warn("[LeadAssignment] transfer_client failed: #{e.class}: #{e.message}")
+        end
+
+        push_fc_fields!(topnlab, crm_id.to_i)
+      end
+
+      # Phase 3 — заполняем fc_* кастомные поля Topnlab при назначении.
+      # Эти поля должны быть заранее созданы в Topnlab UI руководителем АН
+      # (см. .claude/docs/topnlab/fc_fields_setup.md). Если поля нет — patch_entity
+      # просто молча игнорирует unknown ключ, лид этим не страдает.
+      def push_fc_fields!(topnlab, crm_id)
+        fields = {
+          fc_tg_assigned_user: @assignee.topnlab_user_id,
+          fc_first_contact_due: 30.minutes.from_now.iso8601,
+          fc_lead_source_tg: true,
+          fc_tg_topic_key: @lead.anchor_topic_key,
+          fc_tg_lead_event_id: @lead.id
+        }.compact
+        topnlab.patch_entity(id: crm_id, type: 'order', fields: fields)
+      rescue StandardError => e
+        Rails.logger.warn("[LeadAssignment] patch_entity fc_* failed: #{e.class}: #{e.message}")
       end
 
       def update_anchor_card!

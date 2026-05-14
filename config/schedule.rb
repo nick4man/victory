@@ -92,3 +92,21 @@ every 1.day, at: '5:00 am' do
   runner 'MarketAnalyticsUpdateJob.perform_later'
 end
 
+# Phase 3 — TG SLA watchdog: лиды без first_contact > 30 мин с момента assign.
+# Каждые 5 мин. Пинг в #ДИСПЕТЧЕРСКОЙ + DM назначенному (с учётом quiet hours).
+every 5.minutes do
+  runner 'Telegram::WorkBot::Sla::WatchdogJob.perform_later'
+end
+
+# Phase 3 — TG SLA tasks watchdog: задачи с due_at < now. Каждые 5 мин.
+# Дедуп per-task через last_pinged_at (max раз в 6 часов на одну задачу).
+every 5.minutes do
+  runner 'Telegram::WorkBot::Sla::TasksWatchdogJob.perform_later'
+end
+
+# Phase 3 — еженедельный refresh Topnlab stages mapping (на случай если admin
+# переименовал стадии в CRM). Воскресенье 03:00 MSK.
+every :sunday, at: '3:00 am' do
+  rake 'topnlab:stages:refresh'
+end
+
