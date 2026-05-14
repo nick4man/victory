@@ -1,5 +1,10 @@
 <%
   property = local_assigns[:property]
+  # priority_image: true for the cards above the fold (LCP candidates).
+  # property_picture maps it to loading="eager" + fetchpriority="high".
+  # Default false so the same partial stays safe for grids below the fold
+  # (landings, related listings, search results past page 1).
+  priority_image = local_assigns.fetch(:priority_image, false)
   hero_img = property.respond_to?(:images) && property.images.attached? ? property.images.first : nil
 %>
 <div class="group relative bg-card border border-border overflow-hidden">
@@ -8,6 +13,7 @@
       <%= property_picture hero_img,
             alt: property_image_alt(property),
             sizes: '(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw',
+            priority: priority_image,
             html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700',
             fallback: :card %>
       <div class="absolute inset-0 bg-background/20 group-hover:bg-transparent transition-colors duration-500"></div>

@@ -22,6 +22,21 @@ class RobotsController < ApplicationController
       Disallow: /feeds/
       Disallow: /*?utm_*
       Disallow: /*?ref=*
+      # Ransack-filtered catalog URLs collapse to /properties via
+      # rel=canonical, but YandexBot still spends crawl budget on every
+      # /properties?q[price_gteq]=X&q[district]=Y combination. URL-encoded
+      # bracket `q%5B` matches both raw and encoded forms.
+      Disallow: /*?q%5B
+      Disallow: /*?q[
+      # /news?article=slug is a modal-open variant of the news index —
+      # same DOM, different URL. Without this, Yandex/Google treat each
+      # opened article as a duplicate of /news.
+      Disallow: /news?article=
+      Disallow: /news?category=
+      Disallow: /news?tag=
+      # Paginated lists (/properties?page=2, /blog?page=2) — canonicals
+      # point to page 1, but explicit Disallow saves crawl budget.
+      Disallow: /*?page=
 
       # Yandex's main bot — Crawl-delay tells it to pace requests, which
       # MatrixNet uses as a quality signal for server responsiveness.

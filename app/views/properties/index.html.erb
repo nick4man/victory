@@ -127,8 +127,13 @@
 
     <% if @properties.any? %>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <% @properties.each do |property| %>
-          <%= render "property_card", property: property %>
+        <%# Mark the first two cards as priority — they are the LCP slot on
+            mobile (single column) and tablet (two columns). property_picture
+            translates priority_image: true into loading="eager" +
+            fetchpriority="high", which Yandex MatrixNet weights heavily for
+            mobile ranking. %>
+        <% @properties.each_with_index do |property, i| %>
+          <%= render "property_card", property: property, priority_image: i < 2 %>
         <% end %>
       </div>
 
