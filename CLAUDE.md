@@ -24,6 +24,10 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 
 **Devise отключен**. `current_user` → `nil`, `user_signed_in?` → `false`. Admin-доступ — query-param `?token=$ADMIN_TOKEN`. Не предполагай, что юзер залогинен.
 
+## Стратегический вектор (24 мес)
+
+`.claude/memory/strategicVector.md` (короткое propagating-резюме) + `.claude/plans/splendid-imagining-lerdorf.md` (мастер-документ). Все решения прогоняй через 3 пиллара: **frictionless concierge / deep expertise / AI×human**. Усиливает 2+ — делаем; ослабляет хотя бы один — переформулируем.
+
 ## Параллельные сессии Claude Code
 
 Над этим репо работают две сессии:
@@ -53,8 +57,12 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 | **рефакторинг** 500+ LOC, fat model/controller, concerns, extract service, AASM | `rails-architect` |
 | **RSpec**, добавить тесты, factory нет, spec for, тесты legacy | `test-bootstrapper` + skill `rspec-bootstrap` |
 | **parallel session**, lock, conflict в правках, hand-off victory↔chat↔seo | `session-coordinator` + skill `session-coordination` |
+| **client document intake** — паспорт/ИНН/выписка через TG → OCR + DLP | `client-onboarding-bot` |
+| **еженедельный обзор рынка**, market analytics для TG/blog/landing | `market-analytics-publisher` |
+| **post-deal кейс**, case study PDF/landing/видео-сценарий | `case-study-writer` |
 | Новый Ruby-код | skill `victory-rails-conventions` |
 | Figma frame → ERB+Tailwind | skill `figma-to-erb-handoff` |
+| Любой user-facing русский копирайт (landing/meta/TG/email/PDF) | skill `russian-real-estate-copywriting` |
 
 ### Когда НЕ делегировать
 

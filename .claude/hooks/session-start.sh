@@ -54,8 +54,15 @@ cat <<'ROUTING'
   рефакторинг / fat model / concerns  → rails-architect
   RSpec / тесты legacy / factory      → test-bootstrapper (+ rspec-bootstrap)
   parallel session / lock / hand-off  → session-coordinator (+ session-coordination)
+  client docs (паспорт/ИНН) через TG  → client-onboarding-bot
+  weekly market digest / district     → market-analytics-publisher
+  post-deal кейс / /cases / видео     → case-study-writer
   Figma → ERB+Tailwind                → skill: figma-to-erb-handoff
   enums/soft-del/dd.MM.yy conventions → skill: victory-rails-conventions
+  user-facing русский копирайт        → skill: russian-real-estate-copywriting
+
+  Strategic vector (24mo): .claude/memory/strategicVector.md
+  Master plan: .claude/plans/splendid-imagining-lerdorf.md
 
   NO delegation for: trivial fixes, simple code questions, git status, contextual continuations.
 ROUTING

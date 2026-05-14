@@ -6,22 +6,25 @@
 
 Стратегия — **Balanced**: явные match'ы → делегация; неопределённые → handle directly с упоминанием опции.
 
-## 10 проектных агентов
+## 13 проектных агентов
 
 | Trigger keywords / domain | Primary agent | Cross-refs / related |
 |---|---|---|
 | **Topnlab**, **МЛС sync**, листинги, телефония Asterisk, миграция CRM, своя CRM, webhooks/topnlab, mls_sync, `topnlab_*_job` | `topnlab-api-expert` | `telegram-staff-bot-dev` (CRM-канал TG), `rails-architect` (new domain model) |
 | **TG staff bot**, work_bot, escalation, topic_registry, inbox saver, inbound_processor, lead_announcer, TELEGRAM_STAFF_CHAT_ID | `telegram-staff-bot-dev` | `pdf-telegram-dispatcher` (delivery), `session-coordinator` (chat-сессия) |
 | **site chatbot**, чат-бот сайта, chat_responder, omni_client, chat_tools, free-first chain, tool_runner, scope_guard, page_greeting | `site-chatbot-dev` | `session-coordinator` (work in chat-сессии) |
-| **SEO**, JSON-LD, meta-теги, sitemap, robots.txt, canonical, hreflang, OG/Twitter, Schema.org, Yandex Webmaster, Google Search Console, friendly_id | `seo-content-curator` | skill `victory-seo-checklist` (для нового view) |
-| **property valuation**, оценка, экспресс-оценка, CMA, hedonic overshoot, аналоги Avito/Cian, /valuations submit | `property-valuation-expert` | `site-chatbot-dev` (если через chat_tool estimate_property_valuation) |
+| **SEO**, JSON-LD, meta-теги, sitemap, robots.txt, canonical, hreflang, OG/Twitter, Schema.org, Yandex Webmaster, Google Search Console, friendly_id | `seo-content-curator` | skill `victory-seo-checklist` (для нового view), skill `russian-real-estate-copywriting` (для финального текста) |
+| **property valuation**, оценка, экспресс-оценка, CMA, hedonic overshoot, аналоги Avito/Cian, /valuations submit | `property-valuation-expert` | `site-chatbot-dev` (если через chat_tool estimate_property_valuation), `market-analytics-publisher` (если нужен market context) |
 | **Prawn PDF**, audit_pdf, кириллица в PDF, theme.rb, layout PDF, графики в PDF, broken glyphs | `pdf-report-designer` | `pdf-telegram-dispatcher` (если просят отправить) |
 | **markdown → PDF → TG**, отправь план в ТГ, оформить как PDF, доставить в группу через бота | `pdf-telegram-dispatcher` | `pdf-report-designer` (если просят дизайн отчёта) |
 | **рефакторинг 500+ LOC**, fat model/controller, concerns, extract service, decomposition, AASM states, новый domain | `rails-architect` | `test-bootstrapper` (safety net перед refactor) |
 | **RSpec**, добавить тесты, bootstrap rspec, factory нет, spec for service, тесты на legacy, coverage | `test-bootstrapper` | skill `rspec-bootstrap` |
 | **parallel session**, lock-file, conflict в правках, hand-off victory↔chat↔seo, кто правит файл | `session-coordinator` | skill `session-coordination` |
+| **client document intake** — паспорт/ИНН/выписка/ЕГРН через TG client-bot, OCR (Yandex Vision), DLP, валидация checksums | `client-onboarding-bot` | `telegram-staff-bot-dev` (НЕ путать — там staff inbox), `rails-architect` (Document model design) |
+| **рыночная аналитика контент**, weekly market digest, district analytics block, разбор ЖК, market intel | `market-analytics-publisher` | skill `russian-real-estate-copywriting` (для финального tone), `property-valuation-expert` (для CMA single objects) |
+| **post-deal кейс**, case study, /cases landing, видео-сценарий, success story, анонимизированный кейс | `case-study-writer` | `pdf-report-designer` (PDF dossier вёрстка), `seo-content-curator` (landing publish), skill `russian-real-estate-copywriting` (tone), `market-analytics-publisher` (market context within case) |
 
-## 5 проектных скиллов
+## 6 проектных скиллов
 
 | Trigger | Skill | Notes |
 |---|---|---|
@@ -30,6 +33,7 @@
 | Bootstrap тестов под существующий код | `rspec-bootstrap` | FactoryBot + DatabaseCleaner + Faker(ru); request specs over controller specs |
 | Новый view/route/контроллер | `victory-seo-checklist` | title/meta/OG/JSON-LD/canonical/hreflang/breadcrumb/alt/robots checklist |
 | Figma frame → ERB+Tailwind | `figma-to-erb-handoff` | workflow с figma:figma-implement-design; mapping на partials |
+| Любой user-facing русский копирайт (landing/meta/TG/email/PDF/video) | `russian-real-estate-copywriting` | tone-of-voice (экспертный + тёплый + действие-ориентированный), anti-patterns, segment-specific (premium/foreign/средний), CTA library |
 
 ## Когда НЕ делегировать (anti-patterns)
 
@@ -49,6 +53,10 @@
 | PDF design | TG delivery | если про **дизайн** → `pdf-report-designer`; если про **отправку готового** → `pdf-telegram-dispatcher` |
 | SEO meta | новый view | оба useful: `seo-content-curator` агент + skill `victory-seo-checklist` |
 | refactor | tests missing | сначала `test-bootstrapper` (safety net), потом `rails-architect` |
+| TG inbox для **сотрудников** | TG bot для **клиентов** (паспорт/выписка) | staff = `telegram-staff-bot-dev`; client = `client-onboarding-bot` (НЕ путать — разные модули `work_bot/` vs `client_bot/`) |
+| market analytics | single-object valuation | если **аналитика для контента** (TG/blog/landing) → `market-analytics-publisher`; если **оценка конкретного объекта** → `property-valuation-expert` |
+| post-deal artifact | market data inside | `case-study-writer` primary, может звать `market-analytics-publisher` для market context |
+| копирайт user-facing | SEO checklist | оба useful: skill `russian-real-estate-copywriting` (tone) + `seo-content-curator` агент (мета/JSON-LD) |
 
 ## Skill vs Agent — когда что
 
