@@ -6,7 +6,10 @@ namespace :telegram do
   namespace :webhook do
     desc 'Set webhook URL + allowed_updates (включая Phase 3 message_reaction).'
     task setup: :environment do
-      url   = ENV.fetch('TELEGRAM_WEBHOOK_URL') { "#{ENV.fetch('APP_HOST', 'https://victory62.org')}/webhooks/telegram" }
+      raw_host = ENV.fetch('APP_HOST', 'https://victory62.org')
+      # Защищаемся от APP_HOST без схемы — иначе Telegram примет невалидный URL.
+      host = raw_host.start_with?('http://', 'https://') ? raw_host : "https://#{raw_host}"
+      url  = ENV.fetch('TELEGRAM_WEBHOOK_URL', "#{host}/webhooks/telegram")
       token = ENV.fetch('TELEGRAM_WEBHOOK_SECRET', nil)
 
       allowed = [
