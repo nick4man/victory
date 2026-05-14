@@ -313,18 +313,21 @@
       <div class="space-y-2">
         <label class="text-sm text-muted-foreground">Ваше имя <span class="text-foreground">*</span></label>
         <%= f.text_field :name, placeholder: "Иван Иванов",
+              autocomplete: "name",
               class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
       </div>
 
       <div class="space-y-2">
         <label class="text-sm text-muted-foreground">Телефон <span class="text-foreground">*</span></label>
         <%= f.telephone_field :phone, placeholder: "+7 (___) ___-__-__",
+              autocomplete: "tel",
               class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
       </div>
 
       <div class="space-y-2">
         <label class="text-sm text-muted-foreground">Email</label>
         <%= f.email_field :email, placeholder: "email@example.com",
+              autocomplete: "email",
               class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
       </div>
 

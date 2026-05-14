@@ -132,3 +132,29 @@
     </div>
   </section>
 <% end %>
+
+<%# Internal-link CTA block. Landings are entry points from Я./Google SERP
+    for «купить квартиру в районе X» queries, but until now they led only
+    to property cards and the next district. PageRank therefore concentrated
+    on /properties/* and didn't flow into mortgage/services/blog/team — the
+    sections that convert browsing into leads. Three links cover the three
+    main intents (financing, expertise, market reading). %>
+<section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-8 uppercase">Полезные сервисы</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <%= link_to services_mortgage_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Рассчитать платёж и подобрать программу →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Наша команда риелторов в Рязани →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АНАЛИТИКА РЫНКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и market reports →</p>
+      <% end %>
+    </div>
+  </div>
+</section>
