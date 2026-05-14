@@ -613,6 +613,38 @@ class Property < ApplicationRecord
     "#{rooms_info} площадью #{area} м² за #{price_formatted}. #{short_description(100)}"
   end
 
+  # City extracted from the address string — used by JSON-LD addressLocality.
+  # The address column stores prefixes like "Москва г.", "Санкт-Петербург г.",
+  # "Московская обл., г. Красногорск", "Рязанская обл., г. Рязань, ...".
+  # Without this, every property emitted "addressLocality": "Рязань" in
+  # Schema.org, which contradicts the address shown on the page for MSK/SPB
+  # listings and triggers Google's "conflicting entity data" suppression.
+  # Falls back to AgencyInfo::ADDRESS_CITY only when the address is empty.
+  def address_locality
+    a = address.to_s
+    return 'Москва'         if a.include?('Москва г.') || a.match?(/\bг\.\s*Москва\b/)
+    return 'Санкт-Петербург' if a.include?('Санкт-Петербург г.') || a.include?('СПб')
+    if (m = a.match(/(?:Московская обл\.[^,]*,\s*)?г\.\s*([А-ЯЁ][а-яё-]+)/))
+      return m[1]
+    end
+    return 'Москва'         if a.include?('Московская обл.')
+    return 'Рязань'         if a.include?('Рязанская обл.') || a.include?('Рязань')
+
+    AgencyInfo::ADDRESS_CITY
+  end
+
+  # Region (addressRegion) follows the same logic — paired with locality so
+  # Schema doesn't say "Рязанская область" for a property in Moscow.
+  def address_region
+    a = address.to_s
+    return 'Москва'              if a.include?('Москва г.') || a.match?(/\bг\.\s*Москва\b/)
+    return 'Санкт-Петербург'      if a.include?('Санкт-Петербург г.') || a.include?('СПб')
+    return 'Московская область'   if a.include?('Московская обл.')
+    return 'Рязанская область'    if a.include?('Рязанская обл.') || a.include?('Рязань')
+
+    AgencyInfo::ADDRESS_REGION
+  end
+
   # Schema.org type for this property — used by both _jsonld_property.html.erb
   # (JSON-LD @type) and properties/show.html.erb (<article itemtype>) so the
   # microdata and JSON-LD never disagree about the entity kind. Disagreement

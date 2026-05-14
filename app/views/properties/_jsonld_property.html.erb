@@ -38,11 +38,19 @@
     "name" => @property.title,
     "description" => description.presence,
     "image" => images.presence,
+    # isPartOf closes the entity graph: Property → WebSite → RealEstateAgent.
+    # WebSite @id is emitted by shared/_jsonld_website_search.html.erb on
+    # the homepage; #agent is on every page via shared/_jsonld_agent.
+    "isPartOf" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#website" },
     "address" => {
       "@type" => "PostalAddress",
       "streetAddress" => @property.address,
-      "addressLocality" => AgencyInfo::ADDRESS_CITY,
-      "addressRegion" => AgencyInfo::ADDRESS_REGION,
+      # addressLocality + addressRegion derived from the property's own
+      # address string (Москва / Санкт-Петербург / Красногорск / Рязань).
+      # Hardcoded "Рязань" previously contradicted MSK/SPB listings and
+      # triggered Google's structured-data quality suppression.
+      "addressLocality" => @property.address_locality,
+      "addressRegion" => @property.address_region,
       "addressCountry" => "RU"
     }.compact,
     "geo" => (@property.latitude.present? && @property.longitude.present? ? {

@@ -30,6 +30,12 @@
   "name" => AgencyInfo::NAME,
   "alternateName" => "Агентство недвижимости Виктори",
   "url" => AgencyInfo::WEBSITE_URL,
+  # E-E-A-T "Experience" — Я.Бизнес uses foundingDate to weight ranking
+  # against newer competitors. 18-year track record is a brand asset.
+  "foundingDate" => AgencyInfo::FOUNDING_DATE,
+  # hasMap links the entity to its 2GIS card — Я.Карты cross-references
+  # this when resolving the org for the rich result sidebar.
+  "hasMap" => AgencyInfo::MAP_URL,
   "telephone" => [AgencyInfo::PHONE_PRIMARY, AgencyInfo::PHONE_BACKUP],
   "email" => AgencyInfo::EMAIL,
   "priceRange" => "₽₽",

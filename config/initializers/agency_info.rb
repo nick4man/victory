@@ -29,6 +29,15 @@ module AgencyInfo
 
   WEBSITE_URL    = 'https://victory62.org'
 
+  # E-E-A-T "Experience" signal — Я.Бизнес and Google use foundingDate to
+  # weight LocalBusiness rankings against newer competitors. Derived from
+  # "18 лет на рынке" wording on the site.
+  FOUNDING_DATE  = '2008'
+
+  # 2GIS organisation card URL — exposed as hasMap on the RealEstateAgent
+  # JSON-LD so search engines connect the entity to its mapped location.
+  MAP_URL        = 'https://2gis.ru/ryazan/firm/6192977768694394'
+
   SAMEAS_PROFILES = [
     'https://2gis.ru/ryazan/firm/6192977768694394'
     # add VK / Telegram / YouTube / Я.Бизнес as they're created

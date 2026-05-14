@@ -105,6 +105,18 @@ class Article < ApplicationRecord
     [(word_count / 200.0).ceil, 1].max
   end
 
+  # First <img> src from the rendered body, if any. Used as the cover image
+  # for og:image and Schema.org NewsArticle/BlogPosting `image` when there's
+  # no dedicated Active Storage attachment. Returns nil if the body has no
+  # image — caller falls back to the global default. Regex parse (vs full
+  # Nokogiri) keeps this cheap at view-render time.
+  def hero_image_url
+    return nil if body_html.blank?
+
+    m = body_html.to_s.match(/<img[^>]+src=["']([^"']+)["']/i)
+    m && m[1]
+  end
+
   private
 
   # metadata is a jsonb column — keys may come back as strings (chat-host

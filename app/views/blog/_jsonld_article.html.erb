@@ -11,7 +11,13 @@
   author_url = if @article.author&.respond_to?(:agent_slug) && @article.author.agent_slug.present?
                  agent_url(@article.author.agent_slug)
                end
-  hero_image = ENV['OG_DEFAULT_IMAGE_URL'].presence || "#{request.protocol}#{request.host_with_port}/og-default.jpg"
+  # Prefer the first image extracted from body_html — gives Google a
+  # per-article cover for the NewsArticle image carousel in Top Stories.
+  # Falls back to the global OG default for articles without inline images.
+  default_og  = ENV['OG_DEFAULT_IMAGE_URL'].presence || "#{request.protocol}#{request.host_with_port}/og-default.jpg"
+  body_cover  = @article.hero_image_url
+  body_cover  = "#{request.protocol}#{request.host_with_port}#{body_cover}" if body_cover.present? && body_cover.start_with?('/')
+  hero_image  = body_cover.presence || default_og
 
   # articleBody is required by Google Rich Results for NewsArticle and
   # increases trust for BlogPosting. Strip HTML and truncate to 5k chars

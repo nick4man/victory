@@ -17,6 +17,11 @@
     semantic, and the Apartment/House JSON-LD already carries the
     correct entity type for crawlers. %>
 <% content_for :head do %>
+  <%# PhotoSwipe (gallery on tap) is fetched from unpkg.com — preconnect
+      runs DNS+TLS handshake during initial HTML parse so the open-gallery
+      tap doesn't pay 200-400ms cold connection cost on mobile 4G. %>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+
   <%# LCP preload — kicks off the hero image fetch as soon as <head> parses,
       not when the picture tag in body is reached. Cuts ~300ms off Largest
       Contentful Paint on cold visits, which Yandex MatrixNet weights
