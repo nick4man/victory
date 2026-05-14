@@ -19,11 +19,26 @@ module AdminTokenAuth
   extend ActiveSupport::Concern
 
   included do
+    # X-Robots-Tag MUST fire before require_admin_access — when the
+    # latter redirects to /users/sign_in (302) it halts the before-action
+    # chain, so a header set after wouldn't apply to the redirect itself.
+    # External crawlers following a stale link to /admin/anything still
+    # get the noindex,nofollow signal in the 302 response.
+    before_action :set_no_index_headers
     before_action :require_admin_access
     helper_method :admin_authenticated?
   end
 
   private
+
+  # robots.txt Disallow already keeps obedient crawlers off /admin, but
+  # Googlebot may still index URLs it learns about via external links if
+  # no in-response noindex signal is present. X-Robots-Tag works even
+  # for non-HTML responses (admin JSON endpoints, csv exports) where a
+  # <meta name="robots"> tag is impossible.
+  def set_no_index_headers
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+  end
 
   def require_admin_access
     return if admin_authenticated?

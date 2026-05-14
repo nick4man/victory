@@ -187,6 +187,10 @@
     pages emitted Apartment microdata + House JSON-LD, which Google Rich
     Results flags as "conflicting entity types". %>
 <article itemscope itemtype="https://schema.org/<%= @property.schema_org_type %>">
+<%= render 'shared/breadcrumb', items: [
+  ['Каталог', properties_path],
+  [@property.title, nil]
+] %>
 <!-- Hero — auto-rotating slider, clickable to open lightbox -->
 <section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
   <% if hero_slides.any? %>

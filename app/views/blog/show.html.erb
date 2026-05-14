@@ -5,7 +5,13 @@
   <%= render 'jsonld_article' %>
 <% end %>
 
-<article class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Блог', blog_path],
+  [@article.title, nil]
+] %>
+
+<article class="px-6 lg:px-12 pt-8 pb-12 bg-background">
   <div class="max-w-3xl mx-auto">
     <%= link_to '← В блог', blog_path,
           class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-8' %>

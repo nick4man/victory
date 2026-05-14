@@ -89,13 +89,14 @@ class Article < ApplicationRecord
     Property.transliterate_to_latin(value).parameterize
   end
 
-  # Truncated body for cards / OG description. Plain text from rendered HTML
-  # so cards don't carry inline markup.
+  # Truncated body for cards / OG description. Plain text — every code
+  # path runs through full_sanitizer so admin-pasted HTML in the excerpt
+  # field never leaks into <meta name="description">, og:description,
+  # twitter:description or JSON-LD `description`. Yandex/Google treat
+  # raw markup in meta as spam-quality signal.
   def short_excerpt(length: 220)
-    return excerpt.to_s.strip if excerpt.present?
-
-    text = ActionView::Base.full_sanitizer.sanitize(body_html.to_s)
-    text = body if text.blank?
+    raw = excerpt.presence || body_html.presence || body.to_s
+    text = ActionView::Base.full_sanitizer.sanitize(raw.to_s)
     text.to_s.strip.gsub(/\s+/, ' ').truncate(length)
   end
 
