@@ -115,8 +115,15 @@ module AuditEngine
       [prefix, @v.address.presence].compact.join(', ')[0, 200]
     end
 
+    # Engine v2.0.0 marks apartment_type as required (Pydantic field) — нельзя
+    # вернуть nil даже если @v.rooms blank, иначе .compact strip'нет field и
+    # engine отвечает 422 «apartment_type: Field required».
+    # Default '1BR' для unknown (наиболее частый case в РФ premium-сегменте),
+    # Studio только когда user explicitly указал rooms=0.
     def apartment_type
-      ROOMS_TO_APARTMENT_TYPE.fetch(@v.rooms.to_i, '2BR') if @v.rooms.present?
+      return '1BR' if @v.rooms.blank?
+
+      ROOMS_TO_APARTMENT_TYPE.fetch(@v.rooms.to_i, '2BR')
     end
 
     # User submits an asking price OR we use the locally-estimated price as
