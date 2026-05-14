@@ -1,4 +1,9 @@
 <% content_for :title, 'Оставить отзыв — АН «Виктори»' %>
+<%# Form-only page без полезного контента для индексации. noindex,follow:
+    not indexable (thin-content), но crawler пройдёт по ссылкам в footer/header. %>
+<% content_for :head do %>
+  <meta name="robots" content="noindex,follow">
+<% end %>
 
 <section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
   <div class="max-w-2xl mx-auto">

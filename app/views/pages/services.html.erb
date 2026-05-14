@@ -12,6 +12,12 @@
 %>
 
 <% content_for :title, "Услуги — АН Виктори" %>
+<% content_for :seo_description, 'Услуги АН «Виктори» в Рязани: ипотечный консалтинг, юридическое сопровождение сделки, оценка недвижимости, срочный выкуп, помощь иностранным инвесторам. Опыт 18 лет с 2008 года.' %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Услуги', nil]
+] %>
 
 <%# Service ItemList — declares each line of business as a Schema.org
     Service entity linked to the agency via provider.@id. Drives the

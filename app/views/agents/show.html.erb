@@ -17,8 +17,11 @@
       <%# Avatar — 240px square, aspect-preserved %>
       <div class="shrink-0">
         <% if @agent.avatar.attached? %>
+          <%# Agent avatar is the LCP candidate on this page — eager + fetchpriority high.
+              decoding=async keeps it off the main thread without delaying paint. %>
           <%= image_tag @agent.avatar.variant(resize_to_fill: [240, 240]),
                 class: 'w-48 h-48 md:w-60 md:h-60 object-cover',
+                loading: 'eager', decoding: 'async', fetchpriority: 'high',
                 alt: "#{@agent.display_name}, агент АН Виктори" %>
         <% else %>
           <div class="w-48 h-48 md:w-60 md:h-60 flex items-center justify-center border border-border text-foreground text-4xl tracking-widest">

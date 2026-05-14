@@ -3,6 +3,14 @@
    "Статьи и обзоры в категории «#{@category.humanize}» от АН «Виктори»." :
    'Аналитика рынка недвижимости Рязани, инструкции для покупателей и продавцов, обзоры районов и инвест-разборы.') %>
 
+<%= render 'shared/breadcrumb', items: (
+  if @category.present?
+    [['Главная', root_path], ['Блог', blog_path], [@category.humanize, nil]]
+  else
+    [['Главная', root_path], ['Блог', nil]]
+  end
+) %>
+
 <% content_for :head do %>
   <%# Pagination rel hints — Google deprecated rel=prev/next as a ranking
       signal in 2019, but Yandex still uses them to recognise a multi-page

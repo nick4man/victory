@@ -3,6 +3,16 @@
 <% content_for :og_type, 'article' %>
 <% content_for :head do %>
   <%= render 'jsonld_article' %>
+
+  <%# FAQPage extracted from <details>/<summary>/<p> blocks in the article body.
+      Same helper that powers landings/show — if the article carries Q&A pairs
+      we expose them as structured data so Yandex/Google render the SERP FAQ
+      accordion. Pairs come from the rendered HTML so they cannot drift out of
+      sync with what the reader sees. %>
+  <% faq_pairs = faq_pairs_from_html(@article.body_html.to_s) %>
+  <% if faq_pairs.any? %>
+    <%= faq_jsonld(faq_pairs) %>
+  <% end %>
 <% end %>
 
 <%= render 'shared/breadcrumb', items: [
@@ -38,7 +48,9 @@
     <% if @article.author %>
       <div class="mt-16 pt-8 border-t border-border flex items-center gap-4">
         <% if @article.author.respond_to?(:avatar) && @article.author.avatar.attached? %>
-          <%= image_tag @article.author.avatar.variant(resize_to_fill: [80, 80]), class: 'w-16 h-16 object-cover' %>
+          <%= image_tag @article.author.avatar.variant(resize_to_fill: [80, 80]),
+                class: 'w-16 h-16 object-cover', loading: 'lazy', decoding: 'async',
+                alt: "Фото автора: #{@article.author.try(:display_name) || @article.author.try(:full_name)}" %>
         <% else %>
           <div class="w-16 h-16 flex items-center justify-center border border-border text-foreground text-lg tracking-widest">
             <%= (@article.author.try(:avatar_initials) || @article.author.try(:full_name).to_s[0, 2].upcase) %>

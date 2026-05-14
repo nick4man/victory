@@ -1,7 +1,9 @@
 <div class="bg-background p-6 hover:bg-foreground/[0.02] transition-colors">
   <div class="flex items-start gap-4">
     <% if user.avatar.attached? %>
-      <%= image_tag user.avatar.variant(resize_to_fill: [80, 80]), class: "w-16 h-16 object-cover" %>
+      <%= image_tag user.avatar.variant(resize_to_fill: [80, 80]),
+            class: "w-16 h-16 object-cover", loading: 'lazy', decoding: 'async',
+            alt: "#{user.display_name} — #{user.crm_role_name.presence || 'агент'} АН Виктори" %>
     <% else %>
       <div class="w-16 h-16 flex items-center justify-center border border-border text-foreground text-lg tracking-widest flex-shrink-0">
         <%= user.avatar_initials %>

@@ -1,4 +1,16 @@
 <% content_for :title, 'Отзывы клиентов — АН «Виктори»' %>
+<% content_for :seo_description, (
+  if @aggregate[:reviews_count].to_i.positive?
+    "Отзывы клиентов АН «Виктори» — реальные истории покупки, продажи и аренды недвижимости в Рязани. Средняя оценка #{@aggregate[:average_rating]}/5 на основе #{@aggregate[:reviews_count]} отзывов."
+  else
+    'Отзывы клиентов АН «Виктори» — реальные истории покупки, продажи и аренды недвижимости в Рязани с 2008 года.'
+  end
+) %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Отзывы', nil]
+] %>
 
 <section class="px-6 lg:px-12 pt-16 pb-12 bg-background border-b border-border">
   <div class="max-w-7xl mx-auto">
