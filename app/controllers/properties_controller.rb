@@ -23,11 +23,19 @@ class PropertiesController < ApplicationController
   def index
     # Build ransack search
     @q = Property.in_advertising.ransack(params[:q])
-    
+
     # Apply filters
     @properties = @q.result(distinct: true)
                     .includes(:property_type, :user)
                     .order(sort_order)
+
+    # Premium-сегмент фильтр (Phase A). Convention-простой `?premium=1` —
+    # независим от ransack `q[...]` params чтобы work с `link_to '/properties?premium=1'`.
+    # Logic пересекается с scope Property.premium.
+    if ActiveModel::Type::Boolean.new.cast(params[:premium])
+      @properties = @properties.premium
+      @premium_filter_active = true
+    end
     
     # Store search in session for "back to results" functionality
     session[:property_search] = request.fullpath
@@ -40,9 +48,11 @@ class PropertiesController < ApplicationController
       @recommended_properties = Property.recommended_for_user(current_user, 6)
     end
     
-    # Statistics
-    @total_count = @q.result.count
-    @avg_price = @q.result.average(:price)
+    # Statistics — recount on the same scope that pagination renders so
+    # the «Found N» pill stays consistent when premium filter is on.
+    stats_scope = @premium_filter_active ? @q.result.premium : @q.result
+    @total_count = stats_scope.count
+    @avg_price = stats_scope.average(:price)
     
     # Track search event
     track_event('properties_searched', {

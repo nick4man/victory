@@ -22,6 +22,9 @@
         <% if property.respond_to?(:is_featured) && property.is_featured %>
           <span class="px-3 py-1 text-xs tracking-widest bg-foreground text-background">ТОП</span>
         <% end %>
+        <% if property.respond_to?(:premium?) && property.premium? %>
+          <%= render 'properties/premium_badge' %>
+        <% end %>
         <% if property.respond_to?(:external_source) && property.external_source.present? %>
           <span class="px-3 py-1 text-xs tracking-widest bg-background/80 backdrop-blur-sm text-foreground border border-border">БАЗА&nbsp;АГЕНТСТВ</span>
         <% end %>
