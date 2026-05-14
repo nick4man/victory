@@ -1,6 +1,6 @@
 ---
 name: victory-seo-checklist
-description: Use when creating or modifying a public-facing page on victory62.org (view, route, controller, landing, article). Walks through the SEO checklist (meta, JSON-LD, OG, canonical, breadcrumb, alt-tags, robots, Yandex specifics) so the page ranks well in both Google and Yandex.
+description: Use when creating or modifying a public-facing page on victory62.org (view, route, controller, landing, article). Walks through the SEO checklist (meta, JSON-LD, OG, canonical, breadcrumb, alt-tags, robots, Yandex specifics) so the page ranks well in both Google and Yandex. RELATED (.claude/docs/delegation-map.md) — for ACTUAL implementation (write _jsonld_* partial, wire content_for blocks, add helpers) invoke agent `seo-content-curator`; this skill is the spec, the agent executes it. Pair with skill `figma-to-erb-handoff` when the new page comes from a Figma frame.
 ---
 
 # Victory62 SEO Checklist

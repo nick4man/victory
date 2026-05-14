@@ -1,6 +1,6 @@
 ---
 name: victory-rails-conventions
-description: Use when writing or refactoring Ruby/Rails code in the victory62 project. Captures the project's coding conventions (enums, soft-delete, frozen strings, single quotes, RuboCop rules, dd.MM.yy date format, service-object pattern) so generated code passes lint and matches existing style.
+description: Use when writing or refactoring Ruby/Rails code in the victory62 project. Captures the project's coding conventions (enums, soft-delete, frozen strings, single quotes, RuboCop rules, dd.MM.yy date format, service-object pattern) so generated code passes lint and matches existing style. RELATED (.claude/docs/delegation-map.md) — for architectural decisions (decomposing 500+ LOC files, designing new domain models, extracting concerns/services) invoke agent `rails-architect`; pair with skill `rspec-bootstrap` so new code lands with tests.
 ---
 
 # Victory62 Rails Conventions

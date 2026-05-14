@@ -1,6 +1,6 @@
 ---
 name: rspec-bootstrap
-description: Use when bootstrapping RSpec tests for legacy code in victory62 — generating factories, model specs, service specs, request specs. Critical because the project has only 5 spec files for 328 modules. Captures the project's RSpec patterns (FactoryBot, Faker:ru, DatabaseCleaner, request specs over controller specs, admin-token auth setup).
+description: Use when bootstrapping RSpec tests for legacy code in victory62 — generating factories, model specs, service specs, request specs. Critical because the project has only 5 spec files for 328 modules. Captures the project's RSpec patterns (FactoryBot, Faker:ru, DatabaseCleaner, request specs over controller specs, admin-token auth setup). RELATED (.claude/docs/delegation-map.md) — for ACTUAL execution of a bootstrap (write factory + spec + verify) use agent `test-bootstrapper`; pair with agent `rails-architect` when tests are added as a safety net BEFORE a planned refactor.
 ---
 
 # RSpec Bootstrap — victory62

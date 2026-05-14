@@ -1,6 +1,6 @@
 ---
 name: figma-to-erb-handoff
-description: Use when implementing a design from Figma into the victory62 codebase (ERB + Tailwind). Establishes the workflow with figma MCP tools (figma-use, figma-implement-design), maps Figma components to existing shared/partials, ensures Tailwind design tokens stay synchronized, and avoids common Figma→React drift in favor of ERB output.
+description: Use when implementing a design from Figma into the victory62 codebase (ERB + Tailwind). Establishes the workflow with figma MCP tools (figma-use, figma-implement-design), maps Figma components to existing shared/partials, ensures Tailwind design tokens stay synchronized, and avoids common Figma→React drift in favor of ERB output. RELATED (.claude/docs/delegation-map.md) — invoke agent `seo-content-curator` whenever a Figma frame becomes a new public-facing view (run skill `victory-seo-checklist` before publish); for Property images use PropertyImageHelper#property_picture (responsive webp+jpeg) not raw image_tag — for everything else SeoHelper#image_with_lazy.
 ---
 
 # Figma → ERB+Tailwind handoff

@@ -1,6 +1,6 @@
 ---
 name: session-coordination
-description: Use when working in parallel Claude Code sessions on the victory62 repo to avoid edit conflicts. Three known sessions (victory for Rails, chat for site-chatbot dev + planning, seo for SEO work) share the same working tree but have different Ruby setups and domain focus.
+description: Use when working in parallel Claude Code sessions on the victory62 repo to avoid edit conflicts. Three known sessions (victory for Rails, chat for site-chatbot dev + planning, seo for SEO work) share the same working tree but have different Ruby setups and domain focus. RELATED (.claude/docs/delegation-map.md) — for ACTIVE coordination work (creating locks, generating hand-off summaries) invoke agent `session-coordinator`; this skill captures the convention, the agent applies it operationally.
 ---
 
 # Session Coordination (victory ↔ chat ↔ seo)
