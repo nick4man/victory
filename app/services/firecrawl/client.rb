@@ -12,7 +12,9 @@
 # listings, найденных через Tavily search.
 module Firecrawl
   class Client
-    BASE_URL = 'https://api.firecrawl.dev/v1'
+    # Trailing slash + relative path в post() — иначе Faraday treats
+    # leading `/` как absolute path и strips `/v1` префикс.
+    BASE_URL = 'https://api.firecrawl.dev/v1/'
 
     class Error < StandardError; end
 
@@ -38,7 +40,7 @@ module Firecrawl
         onlyMainContent: true
       }
 
-      response = http.post('/scrape', payload)
+      response = http.post('scrape', payload)
       unless response.success?
         Rails.logger.warn("[Firecrawl] HTTP #{response.status} for #{url}: #{response.body.to_s.truncate(200)}")
         return nil

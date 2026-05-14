@@ -27,6 +27,14 @@ module Valuations
     MAX_SEARCH_RESULTS = 8
     MAX_SCRAPES = 5
 
+    # PropertyValuation.property_type → ExternalListing.property_type slug.
+    # Mirror'имо из PropertyEvaluation::ComparableFinder::REALTY_TYPE_TO_SLUG —
+    # external_scope filter by `for_type(slug)` ожидает slug-форму.
+    REALTY_TYPE_TO_SLUG = {
+      'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
+      'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room'
+    }.freeze
+
     def initialize(valuation)
       @v = valuation
     end
@@ -190,8 +198,26 @@ module Valuations
       parsed_list.each do |p|
         next unless sane?(p)
 
-        el = ExternalListing.find_or_initialize_by(source: 'tavily', url: p[:source_url])
+        # ExternalListing::KINDS = %w[yandex_yrl avito cian topnlab_mls].
+        # Map domain → kind. Если домен не в whitelist (например, какой-то
+        # blog/aggregator оказался в Tavily output) → используем 'avito'
+        # как catch-all (модель требует один из KINDS, реальный URL виден
+        # в `url`).
+        source_kind = case p[:source_url].to_s
+                      when /avito\.ru/      then 'avito'
+                      when /cian\.ru/       then 'cian'
+                      when /(realty\.yandex|realty\.ya\.ru)/ then 'yandex_yrl'
+                      when /domclick\.ru/   then 'cian'   # domclick → maps to cian (нет своего kind'а)
+                      else                       'avito'  # fallback
+                      end
+        # source_id — required + unique per source. Извлекаем из URL по
+        # числовому ID listing'а, fallback на SHA1(url) для query-style URLs.
+        source_id = p[:source_url].to_s[/\b\d{6,12}\b/] ||
+                    Digest::SHA1.hexdigest(p[:source_url].to_s)[0, 16]
+
+        el = ExternalListing.find_or_initialize_by(source: source_kind, source_id: source_id)
         el.assign_attributes(
+          url:           p[:source_url],
           title:         p[:title].to_s.first(255),
           price:         p[:price].to_i,
           area:          p[:area].to_f,
@@ -202,7 +228,7 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
-          property_type: @v.property_type,
+          property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,
           fetched_at:    Time.current
