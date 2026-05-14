@@ -20,13 +20,32 @@ Figma MCP по умолчанию ориентирован на **React/Next.js 
 - Component composition в ERB через partials, не через React `<Component />`
 - Interactivity через Stimulus controllers (`data-controller`, `data-action`), не через `onClick`
 
-## Pre-requisites (one-time setup, deferred Phase 2D)
+## Pre-requisites (one-time setup — Phase 2D scaffolded; you активируете)
 
-- Figma Personal Access Token в env (`FIGMA_ACCESS_TOKEN`)
-- `.figma/code-connect.config.json` с `language: erb` (TODO Phase 2D)
-- Mappings Figma components → ERB partials (TODO Phase 2D)
+Scaffolding закоммичен в репозитории (Phase 2D). Активация:
 
-> Без Code Connect Figma MCP отдаёт React. С Code Connect — может отдавать ERB. Phase 2A не делает этот setup — пока работаем без Code Connect, конвертируя вручную.
+```bash
+# 1. npm dev-tools (Figma + Playwright shared package.json)
+npm install
+
+# 2. Auth с вашим Figma аккаунтом
+npx code-connect login
+
+# 3. Persistent token в shell env
+#    Generate: https://www.figma.com/settings → Personal access tokens
+export FIGMA_ACCESS_TOKEN='figd_...'
+
+# 4. Заменить placeholder Figma URLs в templates на реальные
+#    .figma/code-connect/templates/{button,property-card,callback-modal,news-carousel}.figma.js
+#    — поменять <FILE_KEY>/<NODE_ID> на копированный URL из Figma
+
+# 5. Опубликовать mappings
+npm run figma:publish
+```
+
+После step 5: Figma MCP `mcp__figma__*` (если подключён) начнёт возвращать ERB-snippets для mapped node'ов вместо React. Подробности — `.figma/code-connect/README.md`.
+
+**Текущий state**: scaffolding есть, mappings — placeholder. Можно работать без Code Connect: Figma MCP вернёт React, вы конвертируете в ERB по таблице ниже.
 
 ## Available tools (skill-namespace `figma:`)
 
