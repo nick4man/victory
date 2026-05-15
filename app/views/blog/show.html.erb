@@ -1,6 +1,14 @@
 <% content_for :title, "#{@article.title} — АН Виктори" %>
 <% content_for :seo_description, @article.short_excerpt(length: 220) %>
 <% content_for :og_type, 'article' %>
+<%# OG image: prefer attached cover_image OG variant (1200×630 admin upload)
+    over the body-html regex fallback in Article#hero_image_url. Dimensions
+    only set when we know the variant aspect — avoid VK/Дзен parser confusion. %>
+<% if @article.cover_image.attached? %>
+  <% content_for :og_image, url_for(@article.cover_image.variant(:og)) %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% end %>
 <% content_for :head do %>
   <%= render 'jsonld_article' %>
 

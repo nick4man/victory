@@ -21,6 +21,16 @@ class Article < ApplicationRecord
   belongs_to :author, class_name: 'User', optional: true
   has_one :article_embedding, dependent: :destroy
 
+  # Cover image — admin-uploadable hero/preview. Variants cover both the
+  # in-page hero AND the og:image card (Telegram/VK/Дзен expect ~1200×630
+  # aspect for previews). When attached, Article#hero_image_url prefers
+  # this over the body-html regex fallback.
+  has_one_attached :cover_image do |attachable|
+    attachable.variant :hero, resize_to_limit: [1920, 1080], saver: { quality: 85, strip: true }
+    attachable.variant :og,   resize_to_fill:  [1200, 630],  saver: { quality: 82, strip: true }
+    attachable.variant :card, resize_to_limit: [800, 600],   saver: { quality: 80, strip: true }
+  end
+
   CATEGORIES = %w[market guides news investment mortgage].freeze
   SCHEMA_TYPES = %w[NewsArticle BlogPosting].freeze
   # External-source tag stored in `external_source` — provenance for
@@ -106,16 +116,23 @@ class Article < ApplicationRecord
     [(word_count / 200.0).ceil, 1].max
   end
 
-  # First <img> src from the rendered body, if any. Used as the cover image
-  # for og:image and Schema.org NewsArticle/BlogPosting `image` when there's
-  # no dedicated Active Storage attachment. Returns nil if the body has no
-  # image — caller falls back to the global default. Regex parse (vs full
-  # Nokogiri) keeps this cheap at view-render time.
+  # Cover image URL with explicit precedence:
+  #   1. attached cover_image OG variant (1200×630, admin-managed)
+  #   2. first <img> from body_html (regex parse, cheap inline)
+  #   3. nil → caller falls back to og-default.jpg from layout
+  # Variant strategy keeps the model agnostic to host_with_port: caller
+  # composes absolute URL when needed (see blog/_jsonld_article.html.erb).
   def hero_image_url
-    return nil if body_html.blank?
-
-    m = body_html.to_s.match(/<img[^>]+src=["']([^"']+)["']/i)
-    m && m[1]
+    if cover_image.attached?
+      begin
+        Rails.application.routes.url_helpers.url_for(cover_image.variant(:og))
+      rescue StandardError
+        nil
+      end
+    elsif body_html.present?
+      m = body_html.to_s.match(/<img[^>]+src=["']([^"']+)["']/i)
+      m && m[1]
+    end
   end
 
   private

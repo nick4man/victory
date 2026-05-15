@@ -80,8 +80,29 @@
                         else                         "https://schema.org/Discontinued"
                         end,
       "url" => property_url(@property),
-      "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" }
-    },
+      "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" },
+      # priceSpecification with priceHistory — Schema.org extension (Yandex
+      # рекомендует, Google parses without warning). Surfaces past prices
+      # как trust-signal: «продавец снизил X% месяц назад» — buyer-friendly.
+      # Inert когда @price_history empty (most properties до first change).
+      "priceSpecification" => (
+        if @price_history.respond_to?(:any?) && @price_history.any?
+          {
+            "@type" => "PriceSpecification",
+            "price" => @property.price.to_i,
+            "priceCurrency" => "RUB",
+            "priceHistory" => @price_history.first(10).map do |ph|
+              {
+                "@type" => "PriceSpecification",
+                "price" => ph.new_price.to_i,
+                "priceCurrency" => "RUB",
+                "validFrom" => ph.effective_date&.iso8601
+              }.compact
+            end
+          }
+        end
+      )
+    }.compact,
     "aggregateRating" => aggregate_rating
   }.compact
 %>

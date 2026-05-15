@@ -55,6 +55,15 @@ class CaseStudy < ApplicationRecord
   belongs_to :inquiry,  optional: true
   belongs_to :property, optional: true
 
+  # Cover image — admin-uploadable hero/preview. Когда attached, прерывает
+  # fallback chain в #og_image_url (которая иначе тянет default). OG-вариант
+  # crops к 1200×630 ровно под Telegram/VK/Дзен preview-card aspect.
+  has_one_attached :cover_image do |attachable|
+    attachable.variant :hero, resize_to_limit: [1920, 1080], saver: { quality: 85, strip: true }
+    attachable.variant :og,   resize_to_fill:  [1200, 630],  saver: { quality: 82, strip: true }
+    attachable.variant :card, resize_to_limit: [800, 600],   saver: { quality: 80, strip: true }
+  end
+
   # property_type значения 1:1 совпадают с Property enum чтобы кейс с
   # привязанным property_id мог корректно унаследовать или переопределить
   # тип в JSON-LD/breadcrumb. _prefix per CLAUDE.md convention.

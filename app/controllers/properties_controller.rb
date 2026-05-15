@@ -114,8 +114,10 @@ class PropertiesController < ApplicationController
     # used directly in the view (see properties/show.html.erb).
     @property_images = []
     
-    # Price history
-    @price_history = @property.price_histories.order(changed_at: :desc).limit(10)
+    # Price history — order by effective_date (PriceHistory schema uses
+    # effective_date not "changed_at"; latent bug pre-existing since at
+    # the time of writing 0 rows existed, so the typo never surfaced).
+    @price_history = @property.price_histories.order(effective_date: :desc).limit(10)
     
     # Reviews — Property has no has_many :reviews association at the moment.
     @reviews = @property.respond_to?(:reviews) ? @property.reviews.approved.order(created_at: :desc).limit(5) : []

@@ -5,7 +5,15 @@
 <% content_for :seo_description, (@case_study.meta_description.presence ||
    @case_study.excerpt.presence ||
    "Закрытая сделка АН «Виктори»: #{[@case_study.district, @case_study.property_type, @case_study.area].compact.join(', ')}. Реальная история без раскрытия личных данных.") %>
-<% if @case_study.og_image_url.present? %>
+<%# OG image — priority chain:
+    1. attached cover_image (admin upload, 1200×630 OG variant)
+    2. og_image_url column (admin-set URL string)
+    3. fall back to layout default (og-default.jpg, also 1200×630). %>
+<% if @case_study.cover_image.attached? %>
+  <% content_for :og_image, url_for(@case_study.cover_image.variant(:og)) %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% elsif @case_study.og_image_url.present? %>
   <% content_for :og_image, @case_study.og_image_url %>
 <% end %>
 <% content_for :og_type, 'article' %>
