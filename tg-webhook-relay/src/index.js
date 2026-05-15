@@ -17,10 +17,9 @@ const UPSTREAM_URL = 'https://victory62.org/webhooks/telegram';
 
 // Защита от случайных POST'ов кем-то снаружи: TG отправляет
 // заголовок X-Telegram-Bot-Api-Secret-Token если в setWebhook
-// передан secret_token. Если у вас этот ENV выставлен на Rails-стороне
-// в `TELEGRAM_WEBHOOK_SECRET` — впишите сюда то же значение или
-// используйте Cloudflare secret (`wrangler secret put TELEGRAM_SECRET`).
-const EXPECTED_SECRET = '';  // пусто = проверка отключена
+// передан secret_token. Worker сверяет с CF Secret TELEGRAM_WEBHOOK_SECRET
+// (устанавливается через `wrangler secret put TELEGRAM_WEBHOOK_SECRET`).
+// Если secret не выставлен в CF — проверка пропускается (open mode).
 
 export default {
   async fetch(request, env) {
@@ -32,10 +31,10 @@ export default {
       });
     }
 
-    // Опциональная проверка secret token от Telegram
-    if (EXPECTED_SECRET) {
+    // Опциональная проверка secret token от Telegram (если CF secret выставлен)
+    if (env.TELEGRAM_WEBHOOK_SECRET) {
       const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
-      if (got !== EXPECTED_SECRET) {
+      if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
         return new Response('forbidden', { status: 403 });
       }
     }
