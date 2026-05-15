@@ -1,4 +1,11 @@
 <% content_for :title, "Карта объектов — АН Виктори" %>
+<% content_for :seo_description, 'Интерактивная карта актуальных объектов АН «Виктори» в Рязани, Москве и Санкт-Петербурге. Фильтр по типу недвижимости, цене и району.' %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Каталог', properties_path],
+  ['Карта', nil]
+] %>
 
 <%
   has_key = ENV['YANDEX_MAPS_API_KEY'].present?

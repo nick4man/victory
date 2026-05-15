@@ -18,12 +18,24 @@
 <% if @property.latitude.to_f != 0 && @property.longitude.to_f != 0 %>
   <% content_for :geo_position, "#{@property.latitude};#{@property.longitude}" %>
   <% content_for :icbm, "#{@property.latitude}, #{@property.longitude}" %>
+  <%# OG geo extension — VK/Дзен parsers recognise place:location to
+      render а маленькую карту-чип в preview-карточке шаринга. Extra
+      signal сверх geo.* (which is for crawlers, не для соц-сетей). %>
+  <% content_for :head do %>
+    <meta property="place:location:latitude" content="<%= @property.latitude %>">
+    <meta property="place:location:longitude" content="<%= @property.longitude %>">
+  <% end %>
 <% end %>
 <%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
     Telegram, Дзен all generate richer preview cards when they get a
     landscape image ≥1200px on the long side. %>
 <% if @property.images.attached? %>
   <% content_for :og_image, property_image_url(@property.images.first, variant: :hero) %>
+  <%# Hero variant uses resize_to_limit [1920, 1440] — actual dims may
+      be smaller if source is portrait, but VK/Дзен parsers accept max
+      bounds. Without explicit dimensions VK often skips preview entirely. %>
+  <% content_for :og_image_width, 1920 %>
+  <% content_for :og_image_height, 1440 %>
 <% end %>
 <%# og:type left to layout default ('website'). The previous 'article'
     value made VK/Telegram render this listing as a news post — wrong
@@ -442,8 +454,12 @@
         <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ЦЕНА</p>
         <p class="text-3xl tracking-wider text-foreground mb-2"><%= @property.price_formatted %></p>
         <% if (ppu = display_price_per_unit(@property)).present? %>
-          <p class="text-xs tracking-wider text-muted-foreground mb-8"><%= ppu %></p>
+          <p class="text-xs tracking-wider text-muted-foreground mb-2"><%= ppu %></p>
         <% end %>
+        <%# Price-change timeline — silent until first PriceHistory row exists.
+            Tracker hook in Property#after_update fires automatically when
+            price changes; renders nothing while count==0. %>
+        <%= render 'price_history', history: @price_history %>
 
         <div class="flex flex-col gap-3 mt-8">
           <% if user_signed_in? %>

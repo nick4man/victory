@@ -36,8 +36,14 @@
     <meta property="og:description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'АН «Виктори» — покупка, продажа и аренда квартир, домов, коммерческой недвижимости в Рязани. Онлайн-оценка, ипотека, юридическое сопровождение.' %>">
     <meta property="og:url" content="<%= canonical_url %>">
     <meta property="og:image" content="<%= og_image_url %>">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
+    <%# og:image dimensions — VK/Telegram/Дзен/Facebook use these to allocate
+        preview-card real estate before the image even loads. Without correct
+        size hint, some parsers (VK особенно) skip the preview entirely.
+        Per-page can override via content_for :og_image_width/_height when
+        a non-default image is emitted. Layout defaults match og-default.jpg
+        (1200×630, standard OG aspect 1.91:1). %>
+    <meta property="og:image:width" content="<%= content_for?(:og_image_width) ? yield(:og_image_width) : 1200 %>">
+    <meta property="og:image:height" content="<%= content_for?(:og_image_height) ? yield(:og_image_height) : 630 %>">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= content_for?(:title) ? yield(:title) : 'АН «Виктори» — агентство недвижимости в Рязани' %>">
     <meta name="twitter:description" content="<%= content_for?(:seo_description) ? yield(:seo_description) : 'Покупка, продажа и аренда недвижимости в Рязани.' %>">

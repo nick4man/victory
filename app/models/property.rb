@@ -682,12 +682,17 @@ class Property < ApplicationRecord
   # (JSON-LD @type) and properties/show.html.erb (<article itemtype>) so the
   # microdata and JSON-LD never disagree about the entity kind. Disagreement
   # triggers Google Rich Results "conflicting entity types" warnings.
+  #
+  # `Place` for land/garage was too generic (covers airports, parks etc.) —
+  # Schema.org 7.0+ recognises `RealEstateListing` as the proper parent for
+  # any listing being sold/rented, including land plots and parking. Google
+  # Rich Results understands it; Yandex falls back to base `Place` semantics.
   def schema_org_type
     case property_type&.slug
     when 'house'    then 'House'
-    when 'land'     then 'Place'
+    when 'land'     then 'RealEstateListing'
     when 'commerce' then 'CommercialProperty'
-    when 'garage'   then 'Place'
+    when 'garage'   then 'RealEstateListing'
     else                 'Apartment'
     end
   end

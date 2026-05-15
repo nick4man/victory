@@ -21,6 +21,11 @@ class ApplicationController < ActionController::Base
   before_action :set_locale
   before_action :setup_meta_tags
   before_action :set_active_storage_url_options
+  # noindex,nofollow header на /users/* (Devise sign-in/sign-up/password
+  # routes). robots.txt уже Disallow'ит /users/, но Googlebot может
+  # доиндексировать URL через external links — X-Robots дублирует signal
+  # на стороне response. Pure auth pages не несут полезного контента.
+  before_action :set_noindex_on_devise_controllers, if: :devise_controller?
   # before_action :track_user_activity
   # Временно отключено: требуется gem browser
   # before_action :detect_device_type
@@ -61,11 +66,18 @@ class ApplicationController < ActionController::Base
   # ============================================
   # DEVISE CONFIGURATION
   # ============================================
+  # Devise auth pages (/users/sign_in, /users/sign_up, /users/password/new,
+  # etc.) shouldn't appear в SERP — pure auth forms, no editorial value.
+  # Sent via header так что non-HTML response paths тоже защищены.
+  def set_noindex_on_devise_controllers
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+  end
+
   def configure_permitted_parameters
     devise_parameter_sanitizer.permit(:sign_up, keys: [
-      :first_name, 
-      :last_name, 
-      :phone, 
+      :first_name,
+      :last_name,
+      :phone,
       :avatar
     ])
     
