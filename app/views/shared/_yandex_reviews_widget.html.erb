@@ -18,15 +18,15 @@
       <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Отзывы на Яндекс.Картах</p>
     </div>
     <div class="yandex-reviews-viewport relative overflow-hidden bg-white"
-         style="height: 180px"
+         style="height: 320px"
          data-interval="5000"
          data-total-steps="5"
-         data-iframe-height="600"
-         data-viewport-height="180">
+         data-iframe-height="1200"
+         data-viewport-height="320">
       <iframe
         src="https://yandex.ru/maps-reviews-widget/<%= org_id %>?comments"
         width="100%"
-        style="height: 600px; transform: translateY(0); transition: transform 700ms cubic-bezier(0.4, 0, 0.2, 1); will-change: transform;"
+        style="height: 1200px; transform: translateY(0); transition: transform 700ms cubic-bezier(0.4, 0, 0.2, 1); will-change: transform;"
         frameborder="0"
         loading="lazy"
         title="Отзывы на Яндекс.Картах"></iframe>
