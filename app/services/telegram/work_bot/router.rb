@@ -22,6 +22,7 @@ module Telegram
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
         '/promote' => Commands::Promote,
+        '/link' => Commands::Link,
         '/learn_topic' => :handle_learn_topic,
         '/lead' => Commands::Lead,
         '/route' => Commands::Route,
@@ -121,8 +122,8 @@ module Telegram
         )
       end
 
-      def escape(s)
-        s.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+      def escape(text)
+        text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
       end
     end
   end
