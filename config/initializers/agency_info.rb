@@ -44,12 +44,15 @@ module AgencyInfo
   # platform for RU SEO). 2GIS остаётся в SAMEAS как secondary entity link.
   MAP_URL        = "https://yandex.ru/maps/org/#{YANDEX_ORG_ID}/"
 
-  # Entity-graph anchors. Я.Бизнес + 2GIS уже есть. Добавлять VK / Telegram /
-  # YouTube / Дзен по мере создания каналов.
+  # Entity-graph anchors. Каждый URL = node в Schema.org sameAs графе,
+  # Я.Поиск использует это для Knowledge Panel + disambiguation entity.
+  # Telegram-канал — primary channel для market reports, news digests
+  # (см. Article::TELEGRAM_FALLBACK_URL).
   SAMEAS_PROFILES = [
     "https://yandex.ru/maps/org/#{YANDEX_ORG_ID}/",
-    'https://2gis.ru/ryazan/firm/6192977768694394'
-    # add VK / Telegram / YouTube / Дзен as they're created
+    'https://2gis.ru/ryazan/firm/6192977768694394',
+    'https://t.me/rznvictory'
+    # add VK / YouTube / Дзен as they're created
   ].freeze
 
   # Оператор персональных данных по 152-ФЗ §18.1. Reads из ENV для гибкости
