@@ -17,6 +17,20 @@ module Lead
       end
 
       def call(payload)
+        # === A7 Phase 1 gate: skip / mark known identities ===
+        # Если submitter — staff (agent/admin), skip lead generation полностью:
+        # это test/internal submission, не должен попасть в TG-группу как лид.
+        # Если submitter — known client (вернувшийся), отметим в meta и
+        # повысим priority (warm baseline) — agent видит что не cold contact.
+        known_user = find_known_user(payload)
+        if known_user&.role_agent? || known_user&.role_admin?
+          Rails.logger.info(
+            "[Lead::Intake::SiteSource] skipping internal staff submission " \
+            "user=#{known_user.id} role=#{known_user.role}"
+          )
+          return nil  # Intake.call видит nil → не создаёт LeadEvent
+        end
+
         lead_ref = lead_ref_for(payload)
         meta = {
           'name'     => payload[:name].presence || payload[:client_name].presence || 'Без имени',
@@ -29,10 +43,44 @@ module Lead
           'utm'      => payload[:utm].presence,
           'raw'      => payload.to_h.except(:name, :phone, :email)
         }.compact
+
+        if known_user&.role_client?
+          meta['returning_client'] = true
+          meta['returning_client_user_id'] = known_user.id
+          # Don't override priority если qualify_lead уже выставил 'urgent'
+          meta['priority'] ||= 'high'
+          Rails.logger.info(
+            "[Lead::Intake::SiteSource] returning client user=#{known_user.id} marked warm"
+          )
+        end
+
         [lead_ref, meta]
       end
 
       private
+
+      # Lookup User по normalized email и phone (last 10 digits).
+      # Matched на active=true + deleted_at=nil (excludes soft-deleted accounts).
+      def find_known_user(payload)
+        scope = User.where(active: true, deleted_at: nil)
+
+        email = payload[:email].to_s.strip.downcase
+        if email.present?
+          user = scope.find_by('LOWER(email) = ?', email)
+          return user if user
+        end
+
+        phone_digits = payload[:phone].to_s.gsub(/\D/, '').last(10)
+        if phone_digits.length == 10
+          user = scope.where('phone LIKE ?', "%#{phone_digits}").first
+          return user if user
+        end
+
+        nil
+      rescue StandardError => e
+        Rails.logger.warn("[Lead::Intake::SiteSource] find_known_user error: #{e.class}: #{e.message}")
+        nil
+      end
 
       # Привязка к существующей сайтовой сущности:
       #   * site_valuation — PropertyValuation (валюация на сайте)

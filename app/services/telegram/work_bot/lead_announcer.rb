@@ -113,10 +113,15 @@ module Telegram
         lines = []
         # Priority badge — high → ⚡, urgent → 🔥 (горячий лид). Inquiry.priority
         # enum normal/high/urgent проводится через Lead::Intake::SiteSource → meta.
-        case meta['priority'].to_s
-        when 'urgent' then lines << '🔥 <b>URGENT — горячий лид</b>'
-        when 'high'   then lines << '⚡ <b>HIGH PRIORITY</b>'
-        end
+        # Returning client (A7 Phase 1) — отдельный badge, показывается параллельно
+        # с priority (urgent + returning = два бэджа на одной строке).
+        priority_badge = case meta['priority'].to_s
+                         when 'urgent' then '🔥 <b>URGENT — горячий лид</b>'
+                         when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
+                         end
+        returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
+        badge_line = [priority_badge, returning_badge].compact.join(' · ')
+        lines << badge_line if badge_line.present?
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"

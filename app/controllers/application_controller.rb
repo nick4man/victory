@@ -51,6 +51,21 @@ class ApplicationController < ActionController::Base
   helper_method :mobile_device?
   helper_method :tablet_device?
   helper_method :desktop_device?
+  helper_method :current_cabinet_user
+  helper_method :cabinet_user_signed_in?
+
+  # A7 Phase 1: cabinet identity (non-Devise, magic-link session).
+  # Returns User or nil. Не путать с current_user (Devise off, всегда nil).
+  def current_cabinet_user
+    return @current_cabinet_user if defined?(@current_cabinet_user)
+
+    id = session[:cabinet_user_id]
+    @current_cabinet_user = id ? User.find_by(id: id, active: true, deleted_at: nil) : nil
+  end
+
+  def cabinet_user_signed_in?
+    current_cabinet_user.present?
+  end
 
   protected
 

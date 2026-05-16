@@ -40,7 +40,16 @@ module Lead
       return Result.new(success: false, error: "unsupported source: #{@source}") unless valid_source?
 
       adapter = adapter_for(@source)
-      ref, metadata = adapter.call(@payload)
+      result = adapter.call(@payload)
+
+      # A7 Phase 1 gate: adapter returns nil → skip lead generation entirely
+      # (internal staff submission или другая reason'а из адаптера).
+      if result.nil?
+        Rails.logger.info("[Lead::Intake] #{@source} adapter returned nil — skipping LeadEvent creation")
+        return Result.new(success: true, lead_event: nil, error: nil)
+      end
+
+      ref, metadata = result
 
       lead = LeadEvent.create!(
         lead_ref:         ref,

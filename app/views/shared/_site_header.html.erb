@@ -180,14 +180,14 @@
         RIGHT SIDE — auth + CTA
         ============================================================ %>
     <div class="flex items-center gap-3 lg:gap-5 flex-shrink-0">
-      <% if user_signed_in? %>
+      <% if cabinet_user_signed_in? %>
         <%= link_to "КАБИНЕТ", cabinet_path,
               class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% elsif session[:admin_token_digest].present? %>
         <%= link_to "АДМИН", admin_root_path,
               class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% else %>
-        <%= link_to "ВОЙТИ", new_user_session_path,
+        <%= link_to "ВОЙТИ", cabinet_login_path,
               class: "hidden lg:inline-block text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap" %>
       <% end %>
       <button type="button" data-chat-trigger
@@ -248,14 +248,13 @@
     </div>
 
     <div class="px-6 py-5 border-t border-border space-y-3">
-      <% if user_signed_in? %>
+      <% if cabinet_user_signed_in? %>
         <%= link_to "Личный кабинет",  cabinet_path,             class: 'block py-2 text-sm text-foreground' %>
-        <%= button_to "Выйти",         destroy_user_session_path, method: :delete,
+        <%= button_to "Выйти",         cabinet_logout_path, method: :delete,
               class: 'block py-2 text-sm text-muted-foreground hover:text-foreground bg-transparent border-0 p-0 cursor-pointer text-left',
-              form: { class: 'block' } %>
+              form: { class: 'block', data: { turbo: false } } %>
       <% else %>
-        <%= link_to "Войти",          new_user_session_path,      class: 'block py-2 text-sm text-foreground' %>
-        <%= link_to "Регистрация",    new_user_registration_path, class: 'block py-2 text-sm text-muted-foreground hover:text-foreground' %>
+        <%= link_to "Войти в кабинет", cabinet_login_path,        class: 'block py-2 text-sm text-foreground' %>
       <% end %>
       <a href="<%= agency_phone_tel %>" class="block py-2 text-sm text-foreground">
         <%= agency_phone_primary %>

@@ -34,6 +34,19 @@ Rails.application.routes.draw do
   root 'landing#index'
 
   # ============================================
+  # PERSONAL CABINET (A7 Phase 1 — magic-link auth)
+  # ============================================
+  # /cabinet — dispatch на client/staff view, требует session[:cabinet_user_id]
+  # /cabinet/login — request magic-link form
+  # /cabinet/verify/:token — consume token + set session
+  # /cabinet/logout — delete session
+  get    'cabinet',                to: 'cabinet#index',          as: :cabinet
+  get    'cabinet/login',          to: 'cabinet/auth#new',       as: :cabinet_login
+  post   'cabinet/login',          to: 'cabinet/auth#create',    as: :cabinet_request_link
+  get    'cabinet/verify/:token',  to: 'cabinet/auth#verify',    as: :cabinet_verify
+  delete 'cabinet/logout',         to: 'cabinet/auth#destroy',   as: :cabinet_logout
+
+  # ============================================
   # SEO LANDINGS (M1-M3 — programmatic URL pyramid)
   # ============================================
   # Generates intent × type × {district | rooms} landings with their own
