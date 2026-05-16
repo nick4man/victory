@@ -182,6 +182,11 @@ class Property < ApplicationRecord
   before_validation :normalize_attributes
   before_save :calculate_price_per_sqm
   before_save :sync_geom, if: -> { latitude_changed? || longitude_changed? }
+  # Keep `city` column in sync with address — `address_locality` is the
+  # canonical parser. Triggers on address change (Topnlab import or
+  # admin edit). Avoids re-computing locality at render time and lets
+  # SQL filter by city natively (Phase 1.6.B+ city-namespaced routes).
+  before_save :sync_city_from_address, if: -> { address_changed? || city.blank? }
   after_create :track_creation
   after_update :track_price_change, if: :saved_change_to_price?
   after_touch :update_search_index
@@ -294,6 +299,10 @@ class Property < ApplicationRecord
   # Location
   scope :in_district, ->(district) { where(district: district) if district.present? }
   scope :near_metro, ->(station) { where(metro_station: station) if station.present? }
+  # City scope (Phase 1.6) — accepts canonical city name from address_locality:
+  # 'Рязань' / 'Москва' / 'Санкт-Петербург' / 'Красногорск' / др.
+  # Используется LandingsController когда роут даёт city-param (/moskva/* etc).
+  scope :in_city, ->(city) { where(city: city) if city.present? }
   # PostGIS ST_DWithin against geography(Point, 4326). Distance is in meters
   # natively; falls back to lat/lng comparison only if geom is unset.
   scope :within_radius, ->(lat, lng, radius_km) {
@@ -657,7 +666,10 @@ class Property < ApplicationRecord
     a = address.to_s
     return 'Москва'         if a.include?('Москва г.') || a.match?(/\bг\.\s*Москва\b/)
     return 'Санкт-Петербург' if a.include?('Санкт-Петербург г.') || a.include?('СПб')
-    if (m = a.match(/(?:Московская обл\.[^,]*,\s*)?г\.\s*([А-ЯЁ][а-яё-]+)/))
+    # Match `г. <Name>` — supports hyphenated multi-word names like
+    # "Спас-Клепики" (uppercase letter после дефиса). Previous regex
+    # `[А-ЯЁ][а-яё-]+` обрывал на втором uppercase, давая "Спас-".
+    if (m = a.match(/(?:Московская обл\.[^,]*,\s*)?г\.\s*([А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)*)/))
       return m[1]
     end
     return 'Москва'         if a.include?('Московская обл.')
@@ -710,6 +722,14 @@ class Property < ApplicationRecord
     self.title = title.squish if title.present?
     self.address = address.squish if address.present?
     self.district = district.squish if district.present?
+  end
+
+  # Derives `city` column из address string using same canonical parser
+  # as Property#address_locality (kept inline там for legacy JSON-LD callers).
+  # Idempotent — calling multiple times returns same result. Skips when
+  # address is blank (rare; validations require address present).
+  def sync_city_from_address
+    self.city = address_locality
   end
 
   # Mirror lat/lng into PostGIS geography column via EWKT string literal —
