@@ -1,0 +1,34 @@
+# Per-agency sitemap config для Valuations::SitemapCompFinder.
+#
+# Каждое агентство — top-level ключ (используется как `agency_key`,
+# попадает в ExternalListing.source_id как prefix).
+#
+# - `name`: human-readable для логов/отчётов
+# - `sitemap_index_url`: главный sitemap (sitemap-index или sitemap-set)
+# - `sub_sitemap_pattern`: regex для отбора sub-sitemaps из index'а
+#   (например, sitemap-iblock-*.xml у ЦАН на Bitrix)
+# - `listing_path_patterns`: per-property-type regex для отбора listing URLs.
+#   Ключи матчат PropertyValuation.property_type (apartment/house/commerce/etc.)
+# - `max_listings_per_run`: top-N свежих URL'ов per call
+
+cian_961:
+  name: "ЦАН (Центральное АН Рязань) — 961-961.ru"
+  base_url: "https://961-961.ru"
+  sitemap_index_url: "https://961-961.ru/sitemap.xml"
+  # Все sub-sitemap'ы внутри index имеют формат sitemap-iblock-N.xml
+  sub_sitemap_pattern: 'sitemap-iblock-\d+\.xml'
+  # Discovered manually (B1 шаг плана merry-honking-kay.md):
+  #   iblock-4 → /catalog/N/    (квартиры/основной каталог)
+  #   iblock-7 → /house/N/      (дома)
+  #   iblock-9 → /commercial/N/ (коммерция)
+  listing_path_patterns:
+    apartment:  '/catalog/\d+/'
+    house:      '/house/\d+/'
+    commercial: '/commercial/\d+/'
+  max_listings_per_run: 10
+  # Метод извлечения данных. ЦАН embeds proper Schema.org JSON-LD
+  # с `Apartment` + `Offer.price` — namuch проще и точнее чем LLM
+  # парсинг markdown'а (price в markdown отсутствует, скрыт за JS).
+  # Возможные значения: 'json_ld' (Schema.org) | 'firecrawl_llm'
+  # (fallback для агентств без structured data).
+  scrape_method: json_ld

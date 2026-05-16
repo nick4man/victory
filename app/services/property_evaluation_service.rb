@@ -64,6 +64,12 @@ class PropertyEvaluationService
     #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы.
     Valuations::WebsearchCompFinder.new(@v).call
 
+    # 0b. Sitemap-based seeder — agency-specific sitemaps (см. config/agency_sitemaps.yml).
+    # Сейчас один источник — ЦАН (961-961.ru). Тот же downstream
+    # ExternalListing path что и Websearch'а — picks up через ComparableFinder
+    # автоматически. Не блокирует если падает (внутри rescue per-agency).
+    Valuations::SitemapCompFinder.new(@v).call
+
     # 1. Geo-tier (real comps): Property + MlsListing + ExternalListing
     pool = PropertyEvaluation::ComparableFinder.new(@v).call
     real_comps = pool[:comparables]
