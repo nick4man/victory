@@ -57,6 +57,13 @@ module Telegram
         Telegram::WorkBot::HashtagHandler.new(msg).call
       end
 
+      # Phase 2 hotfix — auto-discovery TG-юзеров в рабочей группе. При первом
+      # сообщении от незарегистрированного создаётся TelegramUser(inactive) +
+      # DM manager'у с просьбой активировать через /promote.
+      if msg.dig('chat', 'type') == 'supergroup'
+        Telegram::WorkBot::AutoDiscovery.new(msg).call
+      end
+
       return workbot_result if [:handled, :verified, :code_failed].include?(workbot_result)
 
       # Inbox saver — enqueued, NOT synchronous. Telegram disconnects the

@@ -24,7 +24,9 @@ module Telegram
 
           result = Telegram::WorkBot::LeadAssignment.new(lead, assignee: assignee, actor: tg_user, client: client).call
           if result.success?
-            reply("✅ Назначен: #{assignee.mention}")
+            msg = "✅ Назначен: #{assignee.mention}"
+            msg += " <i>(#{result.error_message})</i>" if result.error_message
+            reply(msg)
           else
             reply("⚠️ #{result.error_message}")
           end

@@ -21,6 +21,7 @@ module Telegram
       COMMANDS = {
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
+        '/promote' => Commands::Promote,
         '/learn_topic' => :handle_learn_topic,
         '/lead' => Commands::Lead,
         '/route' => Commands::Route,

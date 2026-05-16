@@ -28,23 +28,20 @@ module Telegram
       end
 
       def call
-        unless @assignee.linked_to_crm?
-          msg = "#{@assignee.mention} не привязан к CRM (нет email). " \
-                'Попроси агента написать /whoami email@victory.ru в DM боту.'
-          return Result.new(false, msg)
-        end
-
         @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
-        push_to_crm # transfer_client + fc_* в одной транзакции CRM
+        push_to_crm                    # internally gated by linked_to_crm? + crm_id
         update_anchor_card!
-        notify_assignee
+        notify_assignee                # DM сотруднику всегда, независимо от CRM
 
-        Result.new(true, nil)
+        warn = @assignee.linked_to_crm? ? nil : 'без CRM sync (нет topnlab_user_id)'
+        Result.new(true, warn)
       end
 
       private
 
       def push_to_crm
+        return unless @assignee.linked_to_crm?
+
         crm_id = @lead.lead_ref.try(:crm_id)
         return if crm_id.blank?
 

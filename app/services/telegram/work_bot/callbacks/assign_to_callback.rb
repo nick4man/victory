@@ -21,7 +21,9 @@ module Telegram
           delete_picker(lead)
 
           if result.success?
-            ack("✅ Назначен: #{assignee.display_name}")
+            text = "✅ Назначен: #{assignee.display_name}"
+            text += " (#{result.error_message})" if result.error_message
+            ack(text[0, 200])
           else
             ack("⚠️ #{result.error_message[0, 180]}", alert: true)
           end
