@@ -27,7 +27,8 @@
     [terms_url,                      'yearly',  0.2, today_iso],
     [blog_url,                       'daily',   0.7, articles_mod],
     [news_url,                       'daily',   0.7, articles_mod],
-    [cases_url,                      'weekly',  0.7, cases_mod]
+    [cases_url,                      'weekly',  0.7, cases_mod],
+    [foreign_url,                    'monthly', 0.6, today_iso]
   ].each do |loc, freq, prio, lastmod| %>
     <url>
       <loc><%= loc %></loc>

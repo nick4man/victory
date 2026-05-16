@@ -34,6 +34,13 @@ Rails.application.routes.draw do
   root 'landing#index'
 
   # ============================================
+  # FOREIGN INVESTORS (Phase B-MVP — EN landing)
+  # ============================================
+  # /foreign — EN-language landing для международных инвесторов.
+  # i18n.locale=:en для request lifecycle (set в ForeignController).
+  get 'foreign', to: 'foreign#index', as: :foreign
+
+  # ============================================
   # PERSONAL CABINET (A7 Phase 1 — magic-link auth)
   # ============================================
   # /cabinet — dispatch на client/staff view, требует session[:cabinet_user_id]

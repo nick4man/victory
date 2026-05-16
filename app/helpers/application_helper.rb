@@ -377,8 +377,45 @@ module ApplicationHelper
     }
     
     size_class = sizes[size] || sizes['medium']
-    
+
     content_tag(:div, class: "#{size_class} border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin") {}
+  end
+
+  # Phase B-MVP: multi-currency display для foreign-investor view.
+  # Конвертирует RUB → "20.5M ₽ / $215K / €200K / 750K AED" формат.
+  # Smart unit: значение >=1M → "X.XM", >=1K → "XK", else литералом.
+  # Использует CurrencyRatesService (cached 6h, fallback rates).
+  #
+  # @param rub_amount [Integer, Float, nil] цена в рублях
+  # @param compact [Boolean] true (default) → compact form с разделителем " / "
+  # @return [String] formatted string или "—" если nil/zero
+  def format_price_multi(rub_amount, compact: true)
+    return '—' if rub_amount.nil? || rub_amount.to_f.zero?
+
+    rub = rub_amount.to_f
+    rates = CurrencyRatesService.call
+    parts = ["#{smart_unit_number(rub)} ₽"]
+    parts << "$#{smart_unit_number(rub / rates[:usd].to_f)}" if rates[:usd].to_f.positive?
+    parts << "€#{smart_unit_number(rub / rates[:eur].to_f)}" if rates[:eur].to_f.positive?
+    parts << "#{smart_unit_number(rub / rates[:aed].to_f)} AED" if rates[:aed].to_f.positive?
+
+    parts.join(compact ? ' / ' : ' · ')
+  end
+
+  # Smart unit formatter: B/M/K suffixes для compact display.
+  # 1_500_000 → "1.5M", 800_000 → "800K", 350 → "350".
+  def smart_unit_number(amount)
+    abs = amount.to_f.abs
+    if abs >= 1_000_000_000
+      "#{(amount / 1_000_000_000.0).round(2)}B"
+    elsif abs >= 1_000_000
+      val = amount / 1_000_000.0
+      val.abs >= 10 ? "#{val.round}M" : "#{val.round(1)}M"
+    elsif abs >= 1_000
+      "#{(amount / 1_000.0).round}K"
+    else
+      amount.round.to_s
+    end
   end
 end
 

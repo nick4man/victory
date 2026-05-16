@@ -1,0 +1,191 @@
+<%# Phase B-MVP: foreign-investor landing. EN locale, premium-only inventory,
+    multi-currency display. Tone — B2B/luxury, не consumer-pop. %>
+
+<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <%# HERO %>
+    <header class="mb-24 lg:mb-32 max-w-3xl">
+      <p class="text-xs tracking-[0.4em] uppercase text-muted-foreground mb-8">
+        <%= t('foreign.hero.eyebrow') %>
+      </p>
+      <h1 class="text-4xl lg:text-6xl font-light tracking-tight leading-[1.1] text-foreground mb-8">
+        <%= t('foreign.hero.title') %>
+      </h1>
+      <p class="text-base lg:text-lg text-muted-foreground leading-relaxed mb-12 max-w-2xl">
+        <%= t('foreign.hero.subtitle') %>
+      </p>
+      <div class="flex flex-wrap gap-4">
+        <%= link_to t('foreign.hero.cta_consult'), contacts_path,
+              class: 'inline-block px-8 py-3 bg-foreground text-background text-sm tracking-[0.25em] uppercase hover:bg-foreground/90 transition-colors' %>
+        <a href="#featured"
+           class="inline-block px-8 py-3 border border-foreground text-foreground text-sm tracking-[0.25em] uppercase hover:bg-foreground hover:text-background transition-colors">
+          <%= t('foreign.hero.cta_browse') %>
+        </a>
+      </div>
+    </header>
+
+    <%# VALUE PROPS — 6 pillars в 3-col grid %>
+    <section class="mb-24 lg:mb-32">
+      <h2 class="text-xs tracking-[0.4em] uppercase text-muted-foreground mb-12">
+        <%= t('foreign.value_props.title') %>
+      </h2>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-x-12 gap-y-12">
+        <% %i[confidentiality due_diligence currency fatca visa single_advisor].each do |key| %>
+          <article>
+            <h3 class="text-xl font-light tracking-tight text-foreground mb-3">
+              <%= t("foreign.value_props.#{key}.title") %>
+            </h3>
+            <p class="text-sm text-muted-foreground leading-relaxed">
+              <%= t("foreign.value_props.#{key}.body") %>
+            </p>
+          </article>
+        <% end %>
+      </div>
+    </section>
+
+    <%# FEATURED PREMIUM — top-6 listings %>
+    <section id="featured" class="mb-24 lg:mb-32 scroll-mt-24">
+      <header class="flex items-baseline justify-between mb-10 flex-wrap gap-4">
+        <div>
+          <h2 class="text-xs tracking-[0.4em] uppercase text-muted-foreground mb-3">
+            Premium catalogue
+          </h2>
+          <h3 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground">
+            <%= t('foreign.featured.title') %>
+          </h3>
+        </div>
+        <p class="text-sm text-muted-foreground max-w-md">
+          <%= t('foreign.featured.subtitle') %>
+        </p>
+      </header>
+
+      <% if @premium.empty? %>
+        <div class="border border-border p-8 text-center text-sm text-muted-foreground">
+          Inventory is currently being refreshed. Please request a consultation —
+          we will share the live private catalogue.
+        </div>
+      <% else %>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <% @premium.each do |property| %>
+            <article class="border border-border bg-card overflow-hidden group">
+              <% if property.respond_to?(:images) && property.images.attached? %>
+                <%= link_to property_path(property), class: 'block relative aspect-[4/3] overflow-hidden' do %>
+                  <%= property_picture property.images.first,
+                        alt: property.title,
+                        sizes: '(min-width:1024px) 33vw, (min-width:640px) 50vw, 100vw',
+                        priority: false,
+                        html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700',
+                        fallback: :card %>
+                <% end %>
+              <% else %>
+                <div class="aspect-[4/3] bg-muted"></div>
+              <% end %>
+
+              <div class="p-6">
+                <h4 class="text-base font-light tracking-tight text-foreground mb-2">
+                  <%= property.title %>
+                </h4>
+                <p class="text-xs tracking-wider text-muted-foreground mb-4">
+                  <% if property.district.present? %>
+                    <%= t('foreign.featured.district_label') %>: <%= property.district %>
+                    <% if property.city.present? %> · <%= property.city.gsub(' г.', '').gsub(' г', '') %><% end %>
+                  <% else %>
+                    <%= property.city.to_s.gsub(' г.', '').gsub(' г', '').presence || 'Ryazan' %>
+                  <% end %>
+                </p>
+
+                <div class="grid grid-cols-2 gap-4 py-4 border-t border-border text-xs tracking-wider">
+                  <% area = property.try(:area) || property.try(:total_area) %>
+                  <% if area %>
+                    <div>
+                      <p class="text-muted-foreground uppercase mb-1">
+                        <%= t('foreign.featured.area_label') %>
+                      </p>
+                      <p class="text-foreground"><%= area %> m²</p>
+                    </div>
+                  <% end %>
+                  <% if property.rooms.present? && property.rooms.positive? %>
+                    <div>
+                      <p class="text-muted-foreground uppercase mb-1">Rooms</p>
+                      <p class="text-foreground"><%= property.rooms %></p>
+                    </div>
+                  <% end %>
+                </div>
+
+                <p class="text-sm font-light text-foreground mb-4 leading-relaxed">
+                  <%= format_price_multi(property.price) %>
+                </p>
+
+                <%= link_to t('foreign.featured.details_cta'), property_path(property),
+                      class: 'inline-block text-xs tracking-[0.25em] uppercase border-b border-foreground text-foreground hover:text-muted-foreground hover:border-muted-foreground transition-colors pb-1' %>
+              </div>
+            </article>
+          <% end %>
+        </div>
+      <% end %>
+    </section>
+
+    <%# CATALOG CTA — off-market %>
+    <section class="mb-24 lg:mb-32 border border-border p-12 lg:p-16">
+      <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-6 max-w-2xl">
+        <%= t('foreign.catalog_cta.title') %>
+      </h2>
+      <p class="text-base text-muted-foreground leading-relaxed mb-8 max-w-2xl">
+        <%= t('foreign.catalog_cta.body') %>
+      </p>
+      <%= link_to t('foreign.catalog_cta.button'), contacts_path,
+            class: 'inline-block px-8 py-3 bg-foreground text-background text-sm tracking-[0.25em] uppercase hover:bg-foreground/90 transition-colors' %>
+    </section>
+
+    <%# CONTACT %>
+    <section class="border-t border-border pt-12">
+      <p class="text-xs tracking-[0.4em] uppercase text-muted-foreground mb-6">
+        <%= t('foreign.contact.title') %>
+      </p>
+      <p class="text-sm text-muted-foreground mb-4">
+        <%= t('foreign.contact.english_advisor') %>
+      </p>
+      <div class="flex flex-wrap gap-x-8 gap-y-2 text-sm text-foreground">
+        <% if (phone = (AgencyInfo::PHONE_PRIMARY rescue nil)).present? %>
+          <a href="tel:<%= phone %>" class="hover:text-muted-foreground">
+            <%= t('foreign.contact.phone') %>: <%= phone %>
+          </a>
+        <% end %>
+        <% if (email = (AgencyInfo::EMAIL rescue 'info@victory62.org')).present? %>
+          <a href="mailto:<%= email %>?subject=International%20inquiry" class="hover:text-muted-foreground">
+            <%= t('foreign.contact.email') %>: <%= email %>
+          </a>
+        <% end %>
+      </div>
+      <p class="text-xs tracking-wider text-muted-foreground/70 mt-8">
+        <%= t('foreign.footer_note') %>
+      </p>
+    </section>
+  </div>
+</section>
+
+<%# JSON-LD: RealEstateAgent с inLanguage='en' %>
+<script type="application/ld+json">
+<%= raw({
+  '@context'    => 'https://schema.org',
+  '@type'       => 'RealEstateAgent',
+  'name'        => (AgencyInfo::NAME rescue 'Victory Real Estate Agency'),
+  'url'         => "#{(AgencyInfo::WEBSITE_URL rescue 'https://victory62.org')}/foreign",
+  'inLanguage'  => 'en',
+  'areaServed'  => [
+    { '@type' => 'City', 'name' => 'Ryazan' },
+    { '@type' => 'City', 'name' => 'Moscow' },
+    { '@type' => 'City', 'name' => 'Saint Petersburg' }
+  ],
+  'description' => t('foreign.meta.description'),
+  'priceRange'  => '$150,000 — $5,000,000+',
+  'contactPoint' => {
+    '@type'         => 'ContactPoint',
+    'contactType'   => 'sales',
+    'availableLanguage' => %w[Russian English],
+    'telephone'     => (AgencyInfo::PHONE_PRIMARY rescue nil),
+    'email'         => (AgencyInfo::EMAIL rescue 'info@victory62.org')
+  }.compact
+}.to_json) %>
+</script>

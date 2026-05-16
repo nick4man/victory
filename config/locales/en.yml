@@ -1,0 +1,53 @@
+en:
+  foreign:
+    meta:
+      title: "Russian Real Estate for International Investors — Victory Agency"
+      description: "Premium properties in Russia — Ryazan, Moscow, St. Petersburg. Apartments, houses, and commercial real estate from $150K. Multi-currency pricing, legal due diligence, FATCA/CRS-compliant workflow."
+    hero:
+      eyebrow: "International Desk"
+      title: "Russian real estate for international investors"
+      subtitle: "Premium apartments, country houses, and commercial real estate in Ryazan, Moscow, and St. Petersburg. From boutique flats to high-yield investment portfolios — handled end-to-end by a single English-speaking advisor."
+      cta_consult: "Request consultation"
+      cta_browse: "Browse premium catalogue"
+    value_props:
+      title: "Why work with us"
+      confidentiality:
+        title: "Confidentiality first"
+        body: "NDA-protected transactions. Listings can be private — visible only after the buyer signs a brokerage agreement. Beneficial-ownership structures handled discreetly."
+      due_diligence:
+        title: "Independent legal due diligence"
+        body: "Title chain verification, encumbrance check, RosReestr extract translated to English. We disclose every flag — not just the green ones."
+      currency:
+        title: "Multi-currency transparency"
+        body: "Every price quoted in RUB, USD, EUR, and AED at live CBR rates. Settlement structures (escrow, Russian-licensed bank account opening) explained upfront."
+      fatca:
+        title: "FATCA/CRS-aware"
+        body: "Document intake compatible with US persons (W-9), CRS-reportable residents, and PEP-flagged individuals. We refer to licensed compliance partners where needed."
+      visa:
+        title: "Residency pathway support"
+        body: "Property acquisition above 30M RUB qualifies for fast-track residency under Russian law (FZ-115, 2023). We coordinate with migration lawyers."
+      single_advisor:
+        title: "One advisor, end-to-end"
+        body: "No handoffs. Your assigned advisor speaks English, knows your file from intake to keys-handover, and continues post-deal property management if requested."
+    featured:
+      title: "Featured premium opportunities"
+      subtitle: "A glimpse of the live inventory. Full catalogue available after a brief introduction call."
+      area_label: "Area"
+      district_label: "District"
+      details_cta: "Full details"
+    catalog_cta:
+      title: "Looking for something specific?"
+      body: "Off-market listings, exclusive country estates, commercial yield assets — we maintain a private inventory that is never published online. Tell us what you're after."
+      button: "Start a private search"
+    contact:
+      title: "Get in touch"
+      english_advisor: "English-speaking advisor"
+      whatsapp: "WhatsApp"
+      telegram: "Telegram"
+      email: "Email"
+      phone: "Phone"
+    footer_note: "Victory Real Estate Agency — based in Ryazan, Russia. Member of the Russian Guild of Realtors (РГР). Operating since 2015."
+
+  # Reserved for future B2-B7 expansion
+  cabinet:
+    foreign_welcome: "Welcome to your International Investor Portal"
