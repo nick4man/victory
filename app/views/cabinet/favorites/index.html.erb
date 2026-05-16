@@ -1,0 +1,35 @@
+<% content_for :title, "Избранное — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-8">
+      <%= link_to '← Кабинет', cabinet_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <header class="mb-12">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Личный кабинет</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">
+        Избранное
+      </h1>
+      <p class="text-sm text-muted-foreground mt-2">
+        Сохранённые объекты — следите за изменениями цены и доступности.
+      </p>
+    </header>
+
+    <% if @properties.empty? %>
+      <div class="border border-border p-8 text-center">
+        <p class="text-sm text-muted-foreground mb-4">
+          Вы пока не сохранили ни одного объекта.
+        </p>
+        <%= link_to 'Открыть каталог →', properties_path,
+              class: 'inline-block text-xs tracking-[0.2em] uppercase text-foreground hover:text-muted-foreground' %>
+      </div>
+    <% else %>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <% @properties.each do |property| %>
+          <%= render 'properties/property_card', property: property, priority_image: false %>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</section>

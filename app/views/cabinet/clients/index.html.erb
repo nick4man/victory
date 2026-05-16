@@ -56,10 +56,16 @@
     </header>
 
     <!-- INQUIRIES -->
-    <div class="mb-16">
+    <div class="mb-16" data-cabinet-section="inquiries">
       <div class="flex items-baseline justify-between mb-6">
         <h2 class="text-xl font-light tracking-tight text-foreground">Мои заявки</h2>
-        <span class="text-xs tracking-wider text-muted-foreground"><%= inquiries.length %> всего</span>
+        <div class="flex items-center gap-3">
+          <span class="text-xs tracking-wider text-muted-foreground" id="cabinet-status-indicator">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>
+            обновляется
+          </span>
+          <span class="text-xs tracking-wider text-muted-foreground"><%= inquiries.length %> всего</span>
+        </div>
       </div>
       <% if inquiries.empty? %>
         <div class="border border-border p-6 text-sm text-muted-foreground">
@@ -70,14 +76,20 @@
       <% else %>
         <div class="border border-border divide-y divide-border">
           <% inquiries.each do |i| %>
-            <div class="p-5">
+            <%
+              # Status timeline stages — order matters. Cancelled/spam = closed states (показываем по-другому).
+              stages = %w[new contacted in_progress scheduled completed]
+              current_index = stages.index(i.status.to_s) || -1
+              terminal_closed = %w[cancelled spam].include?(i.status.to_s)
+            %>
+            <div class="p-5" data-inquiry-id="<%= i.id %>">
               <div class="flex flex-wrap items-start justify-between gap-3 mb-2">
                 <div class="flex items-center gap-3">
-                  <span class="text-xs tracking-wider <%= status_color[i.status.to_s] || 'bg-muted text-muted-foreground' %> px-2 py-1">
+                  <span class="text-xs tracking-wider <%= status_color[i.status.to_s] || 'bg-muted text-muted-foreground' %> px-2 py-1" data-inquiry-status>
                     <%= status_label[i.status.to_s] || i.status %>
                   </span>
                   <% if priority_label[i.priority.to_s].present? %>
-                    <span class="text-xs tracking-wider text-foreground">
+                    <span class="text-xs tracking-wider text-foreground" data-inquiry-priority>
                       <%= priority_label[i.priority.to_s] %>
                     </span>
                   <% end %>
@@ -89,8 +101,31 @@
                   <%= i.created_at.strftime('%d.%m.%y') %>
                 </span>
               </div>
+
+              <%# Status timeline visualizer — 5-stage progress bar. Terminal closed states show as muted "Закрыто". %>
+              <% unless terminal_closed %>
+                <div class="flex items-center gap-1 mt-3 mb-2">
+                  <% stages.each_with_index do |stage, idx| %>
+                    <% reached = current_index >= idx %>
+                    <% is_current = current_index == idx %>
+                    <div class="flex items-center gap-1 flex-1">
+                      <span class="<%= reached ? 'bg-foreground' : 'bg-border' %> h-1 flex-1 transition-colors"></span>
+                      <% if is_current %>
+                        <span class="text-[10px] tracking-widest text-foreground uppercase whitespace-nowrap">
+                          <%= status_label[stage] %>
+                        </span>
+                      <% end %>
+                    </div>
+                  <% end %>
+                </div>
+              <% else %>
+                <p class="text-xs text-muted-foreground mt-3">
+                  <%= status_label[i.status.to_s] %>
+                </p>
+              <% end %>
+
               <% if i.message.present? %>
-                <p class="text-sm text-foreground leading-relaxed mt-2"><%= truncate(i.message, length: 200) %></p>
+                <p class="text-sm text-foreground leading-relaxed mt-3"><%= truncate(i.message, length: 200) %></p>
               <% end %>
               <% if i.agent_id.present? %>
                 <% agent = User.find_by(id: i.agent_id) %>
@@ -151,16 +186,46 @@
       <% end %>
     </div>
 
-    <!-- FAVORITES placeholder (Phase 2) -->
+    <!-- FAVORITES (Phase 2) -->
+    <%
+      favorite_properties = cabinet_user.favorites
+                                        .includes(:property)
+                                        .recent
+                                        .limit(12)
+                                        .map(&:property)
+                                        .compact
+                                        .reject { |p| p.try(:deleted?) }
+    %>
     <div class="mb-16">
       <div class="flex items-baseline justify-between mb-6">
         <h2 class="text-xl font-light tracking-tight text-foreground">Избранное</h2>
-        <span class="text-xs tracking-wider text-muted-foreground/70">скоро</span>
+        <span class="text-xs tracking-wider text-muted-foreground">
+          <%= favorite_properties.size %>
+          <% if cabinet_user.favorites.count > favorite_properties.size %>
+            из <%= cabinet_user.favorites.count %>
+          <% end %>
+        </span>
       </div>
-      <div class="border border-border p-6 text-sm text-muted-foreground">
-        Возможность сохранять объекты в избранное — в разработке.
-        Скоро вы сможете отмечать понравившиеся объявления и следить за изменениями цены.
-      </div>
+      <% if favorite_properties.empty? %>
+        <div class="border border-border p-6 text-sm text-muted-foreground">
+          Вы пока не сохранили ни одного объекта. Откройте
+          <%= link_to 'каталог', properties_path, class: 'underline hover:text-foreground' %>
+          и нажмите на сердечко рядом с понравившейся карточкой —
+          сохранённые объекты будут отображаться здесь.
+        </div>
+      <% else %>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <% favorite_properties.each do |property| %>
+            <%= render 'properties/property_card', property: property, priority_image: false %>
+          <% end %>
+        </div>
+        <% if cabinet_user.favorites.count > favorite_properties.size %>
+          <p class="mt-4 text-xs tracking-wider text-muted-foreground">
+            <%= link_to 'Открыть все избранные →', cabinet_favorites_path,
+                  class: 'underline hover:text-foreground' %>
+          </p>
+        <% end %>
+      <% end %>
     </div>
 
     <!-- CONTACT -->
@@ -175,3 +240,58 @@
     </div>
   </div>
 </section>
+
+<%# A7 Phase 2: client-side polling для "real-time-ish" обновлений.
+    ActionCable JS infra отключена в проекте — используем простое
+    fetch-polling на /cabinet/status.json. На сервере CabinetChannel
+    broadcast'ы продолжают fire'иться (ready для WebSocket activation). %>
+<script>
+(function() {
+  var POLL_MS = 10000;
+  var lastSnapshot = null;
+  var indicator = document.getElementById('cabinet-status-indicator');
+
+  function setIndicator(state, label) {
+    if (!indicator) return;
+    while (indicator.firstChild) indicator.removeChild(indicator.firstChild);
+    var dot = document.createElement('span');
+    var colorClass = ({ live: 'bg-emerald-500', updating: 'bg-amber-500', error: 'bg-red-500' })[state] || 'bg-muted';
+    dot.className = 'inline-block w-1.5 h-1.5 rounded-full ' + colorClass + ' mr-1' +
+                    (state === 'updating' ? ' animate-pulse' : '');
+    indicator.appendChild(dot);
+    indicator.appendChild(document.createTextNode(label));
+  }
+
+  function takeSnapshot(data) {
+    return (data.inquiries || []).map(function(i) {
+      return i.id + ':' + i.status + ':' + i.priority + ':' + i.updated_at;
+    }).concat((data.valuations || []).map(function(v) {
+      return 'v' + v.id + ':' + v.status + ':' + v.estimated_price + ':' + v.updated_at;
+    })).join('|');
+  }
+
+  function poll() {
+    setIndicator('updating', 'обновляется');
+    fetch('/cabinet/status.json', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(data) {
+        if (!data) { setIndicator('error', 'ошибка'); return; }
+        var snap = takeSnapshot(data);
+        if (lastSnapshot !== null && snap !== lastSnapshot) {
+          setIndicator('live', 'обновление…');
+          window.location.reload();
+          return;
+        }
+        lastSnapshot = snap;
+        setIndicator('live', 'актуально');
+      })
+      .catch(function(e) {
+        console.warn('[cabinet-poll]', e);
+        setIndicator('error', 'оффлайн');
+      });
+  }
+
+  poll();
+  setInterval(poll, POLL_MS);
+})();
+</script>

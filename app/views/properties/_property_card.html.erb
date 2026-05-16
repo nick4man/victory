@@ -8,6 +8,15 @@
   hero_img = property.respond_to?(:images) && property.images.attached? ? property.images.first : nil
 %>
 <div class="group relative bg-card border border-border overflow-hidden">
+  <%# A7 Phase 2: favorite toggle — outside link_to (form-in-a is invalid HTML).
+      Visible только для logged-in clients. z-10 чтобы поверх hero overlay. %>
+  <% if cabinet_user_signed_in? && current_cabinet_user.role_client? %>
+    <div class="absolute top-4 right-4 z-10">
+      <%= render 'shared/favorite_toggle',
+            property: property,
+            favorited: property.favorited_by?(current_cabinet_user) %>
+    </div>
+  <% end %>
   <%= link_to property, class: "block" do %>
     <div class="relative aspect-[4/3] overflow-hidden">
       <%= property_picture hero_img,

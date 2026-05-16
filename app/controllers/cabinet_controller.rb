@@ -22,6 +22,38 @@ class CabinetController < ApplicationController
     end
   end
 
+  # A7 Phase 2: JSON-эндпоинт для polling в кабинете. ActionCable JS
+  # инфра отключена в проекте (см. valuation_progress_controller.js
+  # комменты), поэтому "real-time" реализован через client-side polling
+  # на этот endpoint (5s cadence). CabinetChannel broadcasts всё равно
+  # запускаются — они активируются когда JS infra будет wire'нута.
+  def status
+    email = @cabinet_user.email.to_s.downcase
+    phone_digits = @cabinet_user.phone.to_s.gsub(/\D/, '').last(10)
+
+    inquiries_scope = Inquiry.where(user_id: @cabinet_user.id)
+                             .or(Inquiry.where('LOWER(email) = ?', email))
+    if phone_digits.length == 10
+      inquiries_scope = inquiries_scope.or(Inquiry.where('phone LIKE ?', "%#{phone_digits}"))
+    end
+
+    valuations_scope = PropertyValuation.where(user_id: @cabinet_user.id)
+                                        .or(PropertyValuation.where('LOWER(email) = ?', email))
+    if phone_digits.length == 10
+      valuations_scope = valuations_scope.or(PropertyValuation.where('phone LIKE ?', "%#{phone_digits}"))
+    end
+
+    render json: {
+      ts:                Time.current.to_i,
+      inquiries: inquiries_scope.order(updated_at: :desc).limit(20).map { |i|
+        { id: i.id, status: i.status, priority: i.priority, updated_at: i.updated_at.iso8601 }
+      },
+      valuations: valuations_scope.order(updated_at: :desc).limit(20).map { |v|
+        { id: v.id, token: v.token, status: v.status, estimated_price: v.estimated_price, updated_at: v.updated_at.iso8601 }
+      }
+    }
+  end
+
   private
 
   def require_cabinet_user

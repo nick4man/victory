@@ -56,6 +56,11 @@ class PropertyValuation < ApplicationRecord
   TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
   TYPES_REQUIRING_LAND_AREA = %w[land].freeze
 
+  # A7 Phase 2: real-time push в /cabinet когда valuation flips
+  # pending → completed/failed. Адресат — linked User (user_id) либо
+  # User matched по email/phone.
+  after_update_commit :broadcast_cabinet_completion, if: :saved_change_to_status?
+
   # Validations
   validates :property_type, presence: true
   validates :deal_type, presence: true
@@ -230,6 +235,25 @@ class PropertyValuation < ApplicationRecord
     )
   rescue StandardError => e
     Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
+  end
+
+  # A7 Phase 2: push completion в /cabinet через CabinetChannel.
+  # Адресат — linked User или matched-by-email. Fail-safe.
+  def broadcast_cabinet_completion
+    target_user = user || User.where(active: true).find_by('LOWER(email) = ?', email.to_s.downcase)
+    return if target_user.nil?
+
+    CabinetChannel.broadcast_to(target_user, {
+      type:             'valuation_status_changed',
+      valuation_id:     id,
+      valuation_token:  token,
+      status:           status,
+      estimated_price:  estimated_price,
+      address:          address,
+      updated_at:       updated_at.iso8601
+    })
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuation##{id}] CabinetChannel broadcast failed: #{e.class} #{e.message}")
   end
 end
 

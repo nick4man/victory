@@ -41,10 +41,15 @@ Rails.application.routes.draw do
   # /cabinet/verify/:token — consume token + set session
   # /cabinet/logout — delete session
   get    'cabinet',                to: 'cabinet#index',          as: :cabinet
+  get    'cabinet/status.json',    to: 'cabinet#status',         as: :cabinet_status, defaults: { format: 'json' }
   get    'cabinet/login',          to: 'cabinet/auth#new',       as: :cabinet_login
   post   'cabinet/login',          to: 'cabinet/auth#create',    as: :cabinet_request_link
   get    'cabinet/verify/:token',  to: 'cabinet/auth#verify',    as: :cabinet_verify
   delete 'cabinet/logout',         to: 'cabinet/auth#destroy',   as: :cabinet_logout
+  # A7 Phase 2: избранное
+  get    'cabinet/favorites',           to: 'cabinet/favorites#index',   as: :cabinet_favorites
+  post   'cabinet/favorites',           to: 'cabinet/favorites#create',  as: :cabinet_create_favorite
+  delete 'cabinet/favorites/:id',       to: 'cabinet/favorites#destroy', as: :cabinet_destroy_favorite
 
   # ============================================
   # SEO LANDINGS (M1-M3 — programmatic URL pyramid)

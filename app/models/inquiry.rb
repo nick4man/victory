@@ -475,6 +475,26 @@ class Inquiry < ApplicationRecord
 
   def notify_status_change
     notify_user_of_status_change! if user.present?
+    broadcast_cabinet_status_change
+  end
+
+  # A7 Phase 2: real-time push в /cabinet через CabinetChannel. Адресат —
+  # либо linked User (user_id), либо matched-by-email/phone (cabinet lookup).
+  # Fail-safe: ошибка broadcast'а не должна ломать main save flow.
+  def broadcast_cabinet_status_change
+    target_user = user || User.where(active: true).find_by('LOWER(email) = ?', email.to_s.downcase)
+    return if target_user.nil?
+
+    CabinetChannel.broadcast_to(target_user, {
+      type:        'inquiry_status_changed',
+      inquiry_id:  id,
+      status:      status,
+      priority:    priority,
+      status_label: status_label,
+      updated_at:  updated_at.iso8601
+    })
+  rescue StandardError => e
+    Rails.logger.warn("[Inquiry##{id}] CabinetChannel broadcast failed: #{e.class} #{e.message}")
   end
 
   # Validations
