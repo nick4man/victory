@@ -3,6 +3,7 @@
 require 'net/http'
 require 'json'
 require 'securerandom'
+require 'tempfile'
 
 module Telegram
   # Minimal Net::HTTP wrapper for Telegram Bot API.
@@ -146,6 +147,45 @@ module Telegram
       api_call('getWebhookInfo')
     end
 
+    # getFile → metadata about a file uploaded to TG (voice/photo/document).
+    # Returns Hash { file_id, file_unique_id, file_size, file_path } или nil.
+    # file_path валиден ~1 час; для долгосрочного хранения файл надо скачать.
+    def get_file(file_id)
+      api_call('getFile', file_id: file_id)
+    rescue Error => e
+      Rails.logger.warn("[Telegram] getFile failed (file_id=#{file_id}): #{e.message}")
+      nil
+    end
+
+    # Скачать file_id в локальный Tempfile. Caller отвечает за #close + #unlink
+    # после использования (или использовать в блоке/begin-ensure).
+    #
+    # @return [Tempfile, nil] open Tempfile (rewound to start) или nil если getFile упал
+    def download_file(file_id, prefix: 'tg-download')
+      meta = get_file(file_id)
+      remote_path = meta&.dig('file_path')
+      return nil if remote_path.blank?
+
+      ext = File.extname(remote_path).presence || '.bin'
+      tmp = Tempfile.new([prefix, ext], binmode: true)
+      stream_to_io(remote_path, tmp)
+      tmp.rewind
+      tmp
+    rescue StandardError => e
+      Rails.logger.warn("[Telegram] download_file failed (file_id=#{file_id}): #{e.class} #{e.message}")
+      nil
+    end
+
+    # Скачать file_id напрямую в указанный path (для InboxSaver).
+    def download_file_to(file_id, local_path)
+      meta = get_file(file_id)
+      remote_path = meta&.dig('file_path')
+      return nil if remote_path.blank?
+
+      File.open(local_path, 'wb') { |f| stream_to_io(remote_path, f) }
+      local_path
+    end
+
     # Pull pending updates. Useful when webhook is blocked / for one-off drain.
     # Telegram REQUIRES webhook deleted before calling getUpdates (409 conflict
     # otherwise) — caller is responsible for orchestrating delete→get→set.
@@ -178,6 +218,20 @@ module Telegram
       head = "--#{boundary}\r\nContent-Disposition: form-data; name=\"#{name}\"; filename=\"#{filename}\"\r\n" \
              "Content-Type: #{content_type}\r\n\r\n".b
       head + content.dup.force_encoding('ASCII-8BIT') + "\r\n".b
+    end
+
+    # Низкоуровневое стримирование файла Telegram → произвольный IO (File / Tempfile).
+    # Не создаёт IO и не закрывает его — caller отвечает за lifecycle.
+    def stream_to_io(remote_path, io)
+      uri = URI("#{BASE}/file/bot#{@token}/#{remote_path}")
+      Net::HTTP.start(uri.host, uri.port, use_ssl: true,
+                                          open_timeout: 5, read_timeout: 60) do |http|
+        http.request(Net::HTTP::Get.new(uri)) do |response|
+          raise Error, "Telegram file download: HTTP #{response.code}" unless response.is_a?(Net::HTTPSuccess)
+          response.read_body { |chunk| io.write(chunk) }
+        end
+      end
+      io
     end
 
     def api_call(method, body = {})

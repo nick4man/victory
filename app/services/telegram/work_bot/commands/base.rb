@@ -6,8 +6,9 @@ module Telegram
       # Базовый класс командного хендлера. Подкласс получает разобранную команду
       # и сырое TG message, отвечает текстом обратно в тот же чат/топик.
       #
-      # Подкласс должен реализовать #handle(args) и опц. указать
-      #   `manager_only true` если команда требует TelegramUser#is_manager.
+      # Подкласс должен реализовать #handle(args) и опц. указать:
+      #   `manager_only true`  — требует TelegramUser#is_manager (legacy boolean)
+      #   `director_only true` — требует role=director|admin (Phase 7.1+ для voice intake)
       class Base
         class << self
           def manager_only(val = true)
@@ -16,6 +17,14 @@ module Telegram
 
           def manager_only?
             @manager_only == true
+          end
+
+          def director_only(val = true)
+            @director_only = val
+          end
+
+          def director_only?
+            @director_only == true
           end
         end
 
@@ -31,6 +40,7 @@ module Telegram
         def call
           return reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.') if tg_user.nil?
           return reply('🚫 Команда доступна только руководителям.') if self.class.manager_only? && !tg_user.is_manager?
+          return reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.') if self.class.director_only? && !tg_user.can_voice_distribute?
 
           handle
         rescue StandardError => e

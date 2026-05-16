@@ -13,7 +13,7 @@ module Telegram
       # иначе кнопка в TG будет крутиться у пользователя.
       class Base
         class << self
-          attr_accessor :_manager_only
+          attr_accessor :_manager_only, :_director_only
 
           def manager_only(val = true)
             self._manager_only = val
@@ -21,6 +21,16 @@ module Telegram
 
           def manager_only?
             _manager_only == true
+          end
+
+          # Phase 7.1 — для voice-distribution callback'ов (TaskBatchConfirm и т.п.).
+          # Проверяет TelegramUser#can_voice_distribute? (role=director|admin).
+          def director_only(val = true)
+            self._director_only = val
+          end
+
+          def director_only?
+            _director_only == true
           end
         end
 
@@ -36,6 +46,9 @@ module Telegram
         def call
           if self.class.manager_only? && !tg_user.is_manager?
             return ack('🚫 Только для руководителей', alert: true)
+          end
+          if self.class.director_only? && !tg_user.can_voice_distribute?
+            return ack('🚫 Только для директора АН', alert: true)
           end
 
           handle

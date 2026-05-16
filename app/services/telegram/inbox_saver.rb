@@ -117,37 +117,16 @@ module Telegram
     end
 
     def download_photo!(base)
-      file_path = telegram_file_path(photo['file_id'])
-      return unless file_path
-      stream_to(INBOX_DIR.join("#{base}.jpg"), file_path)
+      client.download_file_to(photo['file_id'], INBOX_DIR.join("#{base}.jpg"))
     end
 
     def download_document!(base)
-      file_path = telegram_file_path(document['file_id'])
-      return unless file_path
       ext = File.extname(document['file_name'].to_s).presence || '.bin'
-      stream_to(INBOX_DIR.join("#{base}#{ext}"), file_path)
+      client.download_file_to(document['file_id'], INBOX_DIR.join("#{base}#{ext}"))
     end
 
-    def telegram_file_path(file_id)
-      token = ENV['TELEGRAM_BOT_TOKEN'].to_s
-      return nil if token.empty?
-      uri = URI("https://api.telegram.org/bot#{token}/getFile?file_id=#{file_id}")
-      response = Net::HTTP.get_response(uri)
-      return nil unless response.is_a?(Net::HTTPSuccess)
-      JSON.parse(response.body).dig('result', 'file_path')
-    end
-
-    def stream_to(local_path, file_path)
-      token = ENV['TELEGRAM_BOT_TOKEN'].to_s
-      uri = URI("https://api.telegram.org/file/bot#{token}/#{file_path}")
-      File.open(local_path, 'wb') do |f|
-        Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
-          http.request(Net::HTTP::Get.new(uri)) do |response|
-            response.read_body { |chunk| f.write(chunk) }
-          end
-        end
-      end
+    def client
+      @client ||= Telegram::Client.new
     end
   end
 end
