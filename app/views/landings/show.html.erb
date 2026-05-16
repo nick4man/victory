@@ -1,6 +1,17 @@
 <% content_for :title, @meta_title %>
 <% content_for :seo_description, @meta_description %>
 <% content_for :canonical, url_for(only_path: false, host: request.host_with_port) %>
+<%# Phase 1.6.D — geo.* meta dispatch per city. Layout default (RU-RYA +
+    Рязань + agency coords) подходит для Рязани, но Moscow/SPb landings
+    нуждаются в свежем сигнале (geo-mismatch с hardcode'd RU-RYA сильно
+    давит ranking в МСК/СПб SERP). Для Рязани @city[:iso_region]=RU-RYA
+    совпадает с layout default — content_for не вносит изменений. %>
+<% if defined?(@city) && @city %>
+  <% content_for :geo_region, @city[:iso_region] %>
+  <% content_for :geo_placename, @city[:name] %>
+  <% content_for :geo_position, "#{@city[:lat]};#{@city[:lng]}" %>
+  <% content_for :icbm, "#{@city[:lat]}, #{@city[:lng]}" %>
+<% end %>
 <%# OG image — use the hero variant of the first property in the matched
     set so the social-share preview shows actual matching inventory. Falls
     back to the layout's default if the landing is empty. %>

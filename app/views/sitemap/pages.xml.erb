@@ -103,4 +103,77 @@
       <priority>0.7</priority>
     </url>
   <% end %>
+
+  <%#
+    Phase 1.6.D — Moscow + СПб city-prefixed landings. URL helpers
+    derived from routes (Phase 1.6.B):
+      moskva_buy_landing_url      / spb_buy_landing_url
+      moskva_buy_district_landing_url / spb_buy_district_landing_url
+      moskva_buy_premium_landing_url  / spb_buy_premium_landing_url
+      moskva_rent_landing_url     / spb_rent_landing_url
+      moskva_rent_district_landing_url / spb_rent_district_landing_url
+    Priority slightly ниже Ryazan analogues (0.6/0.5 vs 0.7/0.6) — Рязань
+    остаётся canonical для бренда, МСК/СПб — expansion. После того как
+    catalog в этих городах вырастет, можно равнять priority.
+
+    Districts фильтр на Property.district колонке: для Москвы/СПб
+    данные не parsed Topnlab'ом → landings вернут 0 listings + noindex,
+    follow guard (landings/show.html.erb). Когда district появится в
+    catalog — URL автоматически индексируется.
+  %>
+  <% { 'moskva' => MoscowDistricts, 'spb' => SpbDistricts }.each do |city_slug, mod| %>
+    <%# Buy — type-only %>
+    <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.7</priority>
+      </url>
+    <% end %>
+    <%# Buy — premium для kvartira + dom (matches Ryazan premium set) %>
+    <% %w[kvartira dom].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_premium_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.8</priority>
+      </url>
+    <% end %>
+    <%# Buy — districts (12 МСК / 10 СПб per Phase 1.6.C) %>
+    <% mod::MICRO.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.6</priority>
+      </url>
+    <% end %>
+    <% mod::ADMIN.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.5</priority>
+      </url>
+    <% end %>
+    <%# Rent — type-only %>
+    <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_rent_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.6</priority>
+      </url>
+    <% end %>
+    <%# Rent — districts (mirror buy district set) %>
+    <% mod::MICRO.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_rent_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.5</priority>
+      </url>
+    <% end %>
+  <% end %>
 </urlset>
