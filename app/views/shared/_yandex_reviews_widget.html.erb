@@ -1,8 +1,10 @@
 <%# Official Yandex Maps reviews iframe widget. Shows up to 5 reviews from the
     organisation's Yandex card, themed white inside (no dark mode support
     cross-origin). We wrap it in a dark-themed border/header so it visually
-    fits the rest of the page. ENV-gated so it self-degrades. %>
-<% if (org_id = ENV['YANDEX_ORG_ID']).present? %>
+    fits the rest of the page. Reads AgencyInfo::YANDEX_ORG_ID (canonical
+    в коде); ENV override allowed for staging/test if a different org_id
+    нужен. %>
+<% if (org_id = ENV['YANDEX_ORG_ID'].presence || AgencyInfo::YANDEX_ORG_ID).present? %>
   <div class="border border-border bg-card overflow-hidden">
     <div class="px-5 py-4 border-b border-border">
       <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Отзывы на Яндекс.Картах</p>

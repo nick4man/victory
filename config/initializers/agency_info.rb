@@ -34,13 +34,22 @@ module AgencyInfo
   # "18 лет на рынке" wording on the site.
   FOUNDING_DATE  = '2008'
 
-  # 2GIS organisation card URL — exposed as hasMap on the RealEstateAgent
-  # JSON-LD so search engines connect the entity to its mapped location.
-  MAP_URL        = 'https://2gis.ru/ryazan/firm/6192977768694394'
+  # Я.Бизнес organisation ID (numeric, 12 digits). Single source of truth
+  # для всех Я.Карт integrations: reviews widget (`_yandex_reviews_widget`),
+  # SAMEAS_PROFILES (entity graph), hasMap, JSON-LD addresses. Если ID
+  # сменится — поменять здесь, все consumers подхватят автоматически.
+  YANDEX_ORG_ID  = '180201491739'
 
+  # Primary map card — Я.Карты (after 2GIS migration на основной trust-signal
+  # platform for RU SEO). 2GIS остаётся в SAMEAS как secondary entity link.
+  MAP_URL        = "https://yandex.ru/maps/org/#{YANDEX_ORG_ID}/"
+
+  # Entity-graph anchors. Я.Бизнес + 2GIS уже есть. Добавлять VK / Telegram /
+  # YouTube / Дзен по мере создания каналов.
   SAMEAS_PROFILES = [
+    "https://yandex.ru/maps/org/#{YANDEX_ORG_ID}/",
     'https://2gis.ru/ryazan/firm/6192977768694394'
-    # add VK / Telegram / YouTube / Я.Бизнес as they're created
+    # add VK / Telegram / YouTube / Дзен as they're created
   ].freeze
 
   # Оператор персональных данных по 152-ФЗ §18.1. Reads из ENV для гибкости
