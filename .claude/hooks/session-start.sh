@@ -157,6 +157,7 @@ cat <<'ROUTING'
   weekly market digest / district     → market-analytics-publisher
   post-deal кейс / /cases / видео     → case-study-writer
   VDS Traefik / CrowdSec / роутеры    → traefik-vds-ops (+ traefik-config-authoring, crowdsec-policy-management)
+  Nextcloud / rclone / nxt: / Офис    → nextcloud-rclone-ops (+ rclone-nextcloud-patterns)
   Figma → ERB+Tailwind                → skill: figma-to-erb-handoff
   enums/soft-del/dd.MM.yy conventions → skill: victory-rails-conventions
   user-facing русский копирайт        → skill: russian-real-estate-copywriting
@@ -165,6 +166,7 @@ cat <<'ROUTING'
   Master plan: .claude/plans/splendid-imagining-lerdorf.md
   Inter-session: .claude/sessions/README.md
   VDS infra cheatsheet: .claude/docs/vds-infra-cheatsheet.md
+  Nextcloud cheatsheet: .claude/docs/nextcloud-cheatsheet.md
 
   NO delegation for: trivial fixes, simple code questions, git status, contextual continuations.
 ROUTING

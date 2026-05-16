@@ -6,7 +6,7 @@
 
 Стратегия — **Balanced**: явные match'ы → делегация; неопределённые → handle directly с упоминанием опции.
 
-## 14 проектных агентов
+## 15 проектных агентов
 
 | Trigger keywords / domain | Primary agent | Cross-refs / related |
 |---|---|---|
@@ -24,8 +24,9 @@
 | **рыночная аналитика контент**, weekly market digest, district analytics block, разбор ЖК, market intel | `market-analytics-publisher` | skill `russian-real-estate-copywriting` (для финального tone), `property-valuation-expert` (для CMA single objects) |
 | **post-deal кейс**, case study, /cases landing, видео-сценарий, success story, анонимизированный кейс | `case-study-writer` | `pdf-report-designer` (PDF dossier вёрстка), `seo-content-curator` (landing publish), skill `russian-real-estate-copywriting` (tone), `market-analytics-publisher` (market context within case) |
 | **VDS Traefik/CrowdSec ops** — роутеры, middlewares, services, TLS, bouncer, AppSec, cscli decisions, через `ssh vds` (sodix.org) | `traefik-vds-ops` | skill `traefik-config-authoring` (router/middleware/service patterns + safety workflow), skill `crowdsec-policy-management` (bouncer + cscli + AppSec), doc `.claude/docs/vds-infra-cheatsheet.md` (paths + inventory) |
+| **Nextcloud (rclone `nxt:`)** — Офис/НЕДВИЖИМОСТЬ загрузка дозсье, share link клиенту, читать шаблоны договоров + банковские программы, deep-scan структуры | `nextcloud-rclone-ops` | skill `rclone-nextcloud-patterns` (commands + safety + share-link workflow), doc `.claude/docs/nextcloud-cheatsheet.md` (полная taxonomy + save-routing matrix). HARD-EXCLUDE `Офис/Обмен`. |
 
-## 9 проектных скиллов
+## 10 проектных скиллов
 
 | Trigger | Skill | Notes |
 |---|---|---|
@@ -38,6 +39,7 @@
 | Hand-off контекста между сессиями (inbox/structured) | `session-handoff-protocol` | replaces informal `.remember/now.md`; uses `bin/claude-inbox` + frontmatter format + priority levels |
 | Traefik dynamic config edit на VDS — routers/middlewares/services/TLS + safety workflow | `traefik-config-authoring` | obligatory 7-step backup→edit→verify→rollback; cert resolver matrix (cloudflare DNS-01 vs letsencrypt HTTP-01); existing middleware library |
 | CrowdSec policy на VDS — bouncer params, cscli decisions, AppSec, scenarios, profiles | `crowdsec-policy-management` | sidecar engine + Traefik plugin (v1.3.3); whitelist patterns (immediate vs persistent); AppSec test→block workflow |
+| Nextcloud rclone — taxonomy, deal-folder naming, save-routing matrix, share-link OCS workflow, backup-before-overwrite, Cyrillic quoting | `rclone-nextcloud-patterns` | single remote `nxt:`, WebDAV, рабочий каталог `Офис`. EXCLUDED: `Офис/Обмен`. Cheatsheet: `.claude/docs/nextcloud-cheatsheet.md` |
 
 ## Когда НЕ делегировать (anti-patterns)
 

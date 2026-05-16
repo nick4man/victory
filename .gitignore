@@ -276,3 +276,8 @@ ehthumbs.db
 /playwright/.cache/
 !tests/visual/**/*-snapshots/**/*.png
 
+# Favicon set + PWA icons — branded, committed.
+!public/favicon-*.png
+!public/icon-*.png
+!public/apple-touch-icon.png
+
