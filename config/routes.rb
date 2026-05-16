@@ -59,6 +59,29 @@ Rails.application.routes.draw do
     get '/:type/studiya',           to: 'landings#show', as: :rent_studio_landing,   constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
   end
 
+  # Phase 1.6.B — city-namespaced landings для Москвы и СПб. Рязань
+  # остаётся без префикса (canonical brand). Helper format:
+  # moskva_buy_landing_url(type: 'kvartira') → /moskva/kupit/kvartira
+  # spb_buy_district_landing_url(type: 'kvartira', district: 'admiralteyskiy')
+  #   → /spb/kupit/kvartira/rayon/admiralteyskiy
+  %w[moskva spb].each do |city_slug|
+    scope path: "/#{city_slug}", as: city_slug.to_sym, defaults: { city: city_slug } do
+      scope path: '/kupit', defaults: { intent: 'sale' } do
+        get '/:type',                   to: 'landings#show', as: :buy_landing,           constraints: { type: LANDING_TYPE_RX }
+        get '/:type/premium',           to: 'landings#show', as: :buy_premium_landing,   constraints: { type: LANDING_TYPE_RX }, defaults: { modifier: 'premium' }
+        get '/:type/rayon/:district',   to: 'landings#show', as: :buy_district_landing,  constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
+        get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :buy_rooms_landing,     constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
+        get '/:type/studiya',           to: 'landings#show', as: :buy_studio_landing,    constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
+      end
+      scope path: '/snyat', defaults: { intent: 'rent' } do
+        get '/:type',                   to: 'landings#show', as: :rent_landing,          constraints: { type: LANDING_TYPE_RX }
+        get '/:type/rayon/:district',   to: 'landings#show', as: :rent_district_landing, constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
+        get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :rent_rooms_landing,    constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
+        get '/:type/studiya',           to: 'landings#show', as: :rent_studio_landing,   constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
+      end
+    end
+  end
+
   # ============================================
   # PROPERTIES (Каталог недвижимости)
   # ============================================

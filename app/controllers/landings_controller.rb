@@ -53,12 +53,13 @@ class LandingsController < ApplicationController
 
   INTENT_VERB = { 'sale' => 'Купить', 'rent' => 'Снять' }.freeze
 
-  # District aliases now live in `RyazanDistricts` (app/services/) — single
-  # source of truth used by header mega-menu, sitemap, catalog chips, footer.
-  # Kept here for back-compat with consumers that haven't migrated yet.
-  DISTRICT_MAP = (RyazanDistricts::MICRO.merge(RyazanDistricts::ADMIN))
-                 .transform_values { |v| v[:aliases] }
-                 .freeze
+  # Per-city DISTRICT_MAP — district slug → SQL alias values. Built lazily
+  # via `Cities.districts_module(@city_slug)` so MoscowDistricts/SpbDistricts
+  # adding rows в 1.6.C автоматически попадают в lookup без edit'a here.
+  def district_map_for(city_slug)
+    mod = Cities.districts_module(city_slug)
+    (mod::MICRO.merge(mod::ADMIN)).transform_values { |v| v[:aliases] }
+  end
 
   def show
     # 15-minute public cache — landings aggregate Property.in_advertising
@@ -67,6 +68,10 @@ class LandingsController < ApplicationController
     # users and crawl-rate savings for Yandex/Google. Yandex pages with
     # consistent fast TTFB get higher crawl quotas.
     expires_in 15.minutes, public: true
+
+    @city_slug     = params[:city] || Cities::DEFAULT_SLUG  # 'ryazan' default
+    @city          = Cities.find(@city_slug)
+    return render_not_found("Unknown city: #{@city_slug}") unless @city
 
     @intent        = params[:intent] || 'sale'
     @type          = params[:type]
@@ -79,8 +84,8 @@ class LandingsController < ApplicationController
     return render_not_found("Unknown modifier: #{@modifier}") if @modifier && @modifier != 'premium'
 
     if @district_slug
-      @district_aliases = DISTRICT_MAP[@district_slug]
-      return render_not_found("Unknown district: #{@district_slug}") unless @district_aliases
+      @district_aliases = district_map_for(@city_slug)[@district_slug]
+      return render_not_found("Unknown district: #{@district_slug} (city: #{@city_slug})") unless @district_aliases
     end
 
     @rooms = parse_rooms(@rooms_raw)
@@ -121,6 +126,10 @@ class LandingsController < ApplicationController
       scope = scope.where(property_type_id: pt.id)
     end
 
+    # Phase 1.6 — filter by canonical city. For Рязань default (no city
+    # prefix в route) сохраняем строгий filter тоже — иначе landings без
+    # district вернули бы listings из всех cities в каталоге.
+    scope = scope.in_city(@city[:name])                      if @city
     scope = scope.where(district: @district_aliases)         if @district_aliases
     scope = scope.where(rooms: @rooms)                       if @rooms
     scope = scope.premium                                    if @modifier == 'premium'
@@ -154,12 +163,24 @@ class LandingsController < ApplicationController
            else
              @type_def[:accusative]
            end
-    location = @district_aliases ? "в районе #{@district_aliases.first}, Рязань" : 'в Рязани'
+    # @city always set по show action; canonical name used in H1.
+    city_name = @city[:name]
+    location = @district_aliases ? "в районе #{@district_aliases.first}, #{city_name}" : "в #{declination_in(city_name)}"
     "#{verb} #{qualifier}#{head} #{location}"
   end
 
   def build_meta_description
-    location = @district_aliases ? "в районе #{@district_aliases.first} (Рязань)" : 'в Рязани и Рязанской области'
+    city_name = @city[:name]
+    region    = @city[:region]
+    location = if @district_aliases
+                 "в районе #{@district_aliases.first} (#{city_name})"
+               elsif city_name == region
+                 # Города федерального значения (Москва, СПб) — нет смысла
+                 # повторять «в Москве и Москва»; используем только город.
+                 "в #{declination_in(city_name)}"
+               else
+                 "в #{declination_in(city_name)} и #{declination_region_prep(region)}"
+               end
     if @modifier == 'premium'
       "#{@h1}. Премиум-сегмент от АН «Виктори»: #{@total_count} актуальных " \
         "#{@type_def[:plural_genitive]} #{location}, объекты от 15 млн ₽, " \
@@ -168,6 +189,29 @@ class LandingsController < ApplicationController
       "#{@h1}. Подбор #{@type_def[:plural_genitive]} #{location} от АН «Виктори» — " \
         "#{@total_count} актуальных предложений, реальные фото, выезд агента, " \
         'сопровождение сделки. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+    end
+  end
+
+  # «Рязань» → «Рязани», «Москва» → «Москве», «Санкт-Петербург» →
+  # «Санкт-Петербурге» (prepositional case). Manual map — Russian has
+  # no clean rule applicable across all toponyms.
+  def declination_in(city_name)
+    case city_name
+    when 'Москва'          then 'Москве'
+    when 'Санкт-Петербург' then 'Санкт-Петербурге'
+    when 'Рязань'          then 'Рязани'
+    else                        city_name # неизвестный город — fallback nominative
+    end
+  end
+
+  # Region in prepositional case (where? в Рязанской области, в Московской
+  # области). Russian feminine adjective + noun pair — нет clean rule,
+  # hardcode 4 нужных регионов. Federal cities don't pass через эту функцию.
+  def declination_region_prep(region)
+    case region
+    when 'Рязанская область'   then 'Рязанской области'
+    when 'Московская область'  then 'Московской области'
+    else                            region # fallback nominative
     end
   end
 end
