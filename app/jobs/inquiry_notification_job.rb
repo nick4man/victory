@@ -19,8 +19,13 @@ class InquiryNotificationJob < ApplicationJob
       InquiryMailer.callback_requested(inquiry).deliver_now
     end
     
-    # Update inquiry
-    inquiry.update(confirmation_email_sent: true, confirmation_email_sent_at: Time.current)
+    # Update inquiry — mark notifications as sent + timestamp.
+    # Reason: previous schema had confirmation_email_sent boolean +
+    # confirmation_email_sent_at datetime, обе columns удалены при
+    # consolidation; current schema использует notifications_sent (boolean,
+    # «было ли отправлено») + last_notification_at для observability.
+    # Retries безопасны — boolean set'ится idempotently.
+    inquiry.update(notifications_sent: true, last_notification_at: Time.current)
     
     Rails.logger.info "Inquiry notifications sent for inquiry ##{inquiry_id}"
   rescue ActiveRecord::RecordNotFound => e

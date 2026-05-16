@@ -10,7 +10,7 @@
 Рыночная стоимость: <%= number_to_currency(@valuation.estimated_price, precision: 0) %>
 
 Тип недвижимости: <%= I18n.t("property_types.#{@valuation.property_type}") %>
-Площадь: <%= @valuation.area %> м²
+Площадь: <%= @valuation.total_area %> м²
 Количество комнат: <%= @valuation.rooms %>
 Этаж: <%= @valuation.floor %> из <%= @valuation.total_floors %>
 Состояние: <%= I18n.t("property_conditions.#{@valuation.condition}") %>
@@ -35,7 +35,7 @@
 - Помощь с ипотекой
 
 Заказать звонок специалиста:
-<%= property_valuation_request_call_url(@valuation.token) %>
+<%= request_call_property_valuations_url(token: @valuation.token) %>
 
 ---
 Оценка действительна в течение 30 дней с момента составления.

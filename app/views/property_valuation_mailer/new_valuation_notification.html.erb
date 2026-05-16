@@ -39,7 +39,7 @@
     </tr>
     <tr>
       <td>Площадь:</td>
-      <td><%= @valuation.area %> м²</td>
+      <td><%= @valuation.total_area %> м²</td>
     </tr>
     <tr>
       <td>Комнат:</td>
@@ -62,11 +62,11 @@
   <% end %>
 </div>
 
-<% if @valuation.notes.present? %>
+<% if @valuation.description.present? %>
 <div class="info-box">
   <p style="margin: 0;">
     <strong>Комментарий клиента:</strong><br>
-    <%= simple_format(@valuation.notes) %>
+    <%= simple_format(@valuation.description) %>
   </p>
 </div>
 <% end %>

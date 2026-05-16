@@ -30,25 +30,28 @@ class ViewingNotificationJob < ApplicationJob
   
   private
   
+  # ViewingSchedule schema больше не tracks per-type email_sent flags
+  # (confirmation/confirmed/cancellation/reminder_email_sent columns
+  # удалены). State transitions (confirmed_at, cancelled_at) пишутся
+  # при actual state change в ViewingsController, не в notification job.
+  # Reminder остался — schema имеет reminder_sent + reminder_sent_at.
+
   def send_viewing_requested(viewing)
     ViewingMailer.viewing_requested(viewing).deliver_now
     ViewingMailer.viewing_confirmation(viewing).deliver_now
-    viewing.update(confirmation_email_sent: true, confirmation_email_sent_at: Time.current)
   end
-  
+
   def send_viewing_confirmed(viewing)
     ViewingMailer.viewing_confirmed(viewing).deliver_now
-    viewing.update(confirmed_email_sent: true, confirmed_email_sent_at: Time.current)
   end
-  
+
   def send_viewing_cancelled(viewing)
     ViewingMailer.viewing_cancelled(viewing).deliver_now
-    viewing.update(cancellation_email_sent: true, cancellation_email_sent_at: Time.current)
   end
-  
+
   def send_viewing_reminder(viewing)
     ViewingMailer.viewing_reminder(viewing).deliver_now
-    viewing.update(reminder_email_sent: true, reminder_email_sent_at: Time.current)
+    viewing.update(reminder_sent: true, reminder_sent_at: Time.current)
   end
   
   def send_viewing_completed(viewing)

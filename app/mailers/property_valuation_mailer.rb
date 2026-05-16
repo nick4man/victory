@@ -7,7 +7,15 @@ class PropertyValuationMailer < ApplicationMailer
   # @param valuation [PropertyValuation]
   def valuation_completed(valuation)
     @valuation = valuation
-    @evaluation_result = JSON.parse(valuation.evaluation_data, symbolize_names: true)
+    # evaluation_data — jsonb column → ActiveRecord deserialize'ит в Hash.
+    # Legacy rows могли быть stored как JSON string. Mirror'им pattern из
+    # PropertyValuationsController#result.
+    raw = valuation.evaluation_data
+    @evaluation_result = case raw
+                         when Hash   then raw.deep_symbolize_keys
+                         when String then (JSON.parse(raw, symbolize_names: true) rescue {})
+                         else {}
+                         end
     @result_url = property_valuation_result_url(valuation.token)
     @pdf_url = property_valuation_download_pdf_url(valuation.token, format: :pdf)
 
