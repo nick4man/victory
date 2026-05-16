@@ -14,7 +14,8 @@ module ChatTools
       'run_investment_audit'     => ChatTools::RunInvestmentAudit,
       'calculate_mortgage'       => ChatTools::CalculateMortgage,
       'get_landing_content'      => ChatTools::GetLandingContent,
-      'estimate_property_valuation' => ChatTools::EstimatePropertyValuation
+      'estimate_property_valuation' => ChatTools::EstimatePropertyValuation,
+      'qualify_lead'                => ChatTools::QualifyLead
     }.freeze
 
     module_function

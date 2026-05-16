@@ -462,6 +462,7 @@ class Inquiry < ApplicationRecord
         email:       email,
         message:     message,
         summary:     message.presence || comment,
+        priority:    priority,             # для LeadAnnouncer badge (high/urgent)
         property_id: property_id,
         inquiry_id:  id,
         origin:      referrer_url,

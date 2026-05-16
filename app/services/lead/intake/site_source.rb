@@ -19,14 +19,15 @@ module Lead
       def call(payload)
         lead_ref = lead_ref_for(payload)
         meta = {
-          'name'    => payload[:name].presence || payload[:client_name].presence || 'Без имени',
-          'phone'   => normalize_phone(payload[:phone]),
-          'email'   => payload[:email].to_s.strip.presence,
-          'summary' => build_summary(payload),
-          'budget'  => payload[:budget].presence,
-          'origin'  => payload[:origin].presence,
-          'utm'     => payload[:utm].presence,
-          'raw'     => payload.to_h.except(:name, :phone, :email)
+          'name'     => payload[:name].presence || payload[:client_name].presence || 'Без имени',
+          'phone'    => normalize_phone(payload[:phone]),
+          'email'    => payload[:email].to_s.strip.presence,
+          'summary'  => build_summary(payload),
+          'budget'   => payload[:budget].presence,
+          'priority' => payload[:priority].to_s.presence,  # high/urgent → LeadAnnouncer badge
+          'origin'   => payload[:origin].presence,
+          'utm'      => payload[:utm].presence,
+          'raw'      => payload.to_h.except(:name, :phone, :email)
         }.compact
         [lead_ref, meta]
       end

@@ -111,7 +111,12 @@ module Telegram
       def format_card
         meta = @lead.metadata || {}
         lines = []
-        lines << '⚡ <b>HIGH PRIORITY</b>' if meta['priority'].to_s == 'high'
+        # Priority badge — high → ⚡, urgent → 🔥 (горячий лид). Inquiry.priority
+        # enum normal/high/urgent проводится через Lead::Intake::SiteSource → meta.
+        case meta['priority'].to_s
+        when 'urgent' then lines << '🔥 <b>URGENT — горячий лид</b>'
+        when 'high'   then lines << '⚡ <b>HIGH PRIORITY</b>'
+        end
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"
