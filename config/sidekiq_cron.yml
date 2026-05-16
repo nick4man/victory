@@ -26,6 +26,12 @@ external_yrl_sync:
   queue: scheduled
   description: "Refresh public Yandex Realty YRL feeds from other Ryazan agencies (comp data)"
 
+refresh_topnlab_stats:
+  cron: "15 * * * *"       # hourly at :15 (offset from other Topnlab jobs)
+  class: RefreshTopnlabStatsJob
+  queue: low_priority
+  description: "Refresh Topnlab counts cache (processed_requests metric on /landing + /about). Throttled API: full sweep ≈ 8 min."
+
 bank_rates_refresh:
   cron: "0 4 * * SUN"      # weekly Sunday 04:00 MSK
   class: BankRatesRefreshJob

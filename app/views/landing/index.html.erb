@@ -253,10 +253,21 @@
         <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= @metrics[:years_on_market] %></p>
         <p class="text-sm tracking-widest text-muted-foreground uppercase">лет на рынке</p>
       </div>
-      <div class="text-center">
-        <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:processed_requests].to_i.positive? ? @metrics[:processed_requests] : @metrics[:completed_deals]) %></p>
-        <p class="text-sm tracking-widest text-muted-foreground uppercase">обработано клиентских запросов</p>
-      </div>
+      <%# Tile shows real Topnlab processed_total when API cache populated;
+          falls back to local completed_deals WITH CORRECT LABEL when API stale.
+          Старая логика показывала completed_deals (28) с lying-label
+          "обработано клиентских запросов" — теперь label соответствует значению. %>
+      <% if @metrics[:processed_requests].to_i.positive? %>
+        <div class="text-center">
+          <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:processed_requests]) %></p>
+          <p class="text-sm tracking-widest text-muted-foreground uppercase">обработано клиентских запросов</p>
+        </div>
+      <% else %>
+        <div class="text-center">
+          <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:completed_deals]) %></p>
+          <p class="text-sm tracking-widest text-muted-foreground uppercase">закрытых сделок</p>
+        </div>
+      <% end %>
       <div class="text-center">
         <p class="text-4xl lg:text-6xl font-light tracking-wider text-foreground mb-2"><%= number_with_delimiter(@metrics[:happy_clients]) %></p>
         <p class="text-sm tracking-widest text-muted-foreground uppercase">довольных клиентов</p>
