@@ -19,9 +19,16 @@ class PropertyEvaluationService
   # the sample is small, so optimistic tier numbers don't translate to
   # false-precision price ranges — they translate to wider intervals,
   # which is the honest answer.
-  MIN_TIER1 = 5
-  MIN_TIER2 = 3
-  MIN_TIER3 = 2
+  # Re-calibrated 15.05.26 для тонкого Ryazan catalog (19 active, 8 premium).
+  # При 5/3/2 thresholds почти все оценки выходили в tier 4 (fallback)
+  # потому что property_scope+mls_scope+external_scope в tier 1 (radius 3km,
+  # area ±15%, exact rooms match) почти всегда < 5 records. Снижение до
+  # 3/2/1 даёт большинству valuations попадать в tier 1-2 — это honest
+  # signal про качество выборки. Tier 4 теперь reserved для truly empty
+  # samples (новые регионы, экзотические сегменты).
+  MIN_TIER1 = 3
+  MIN_TIER2 = 2
+  MIN_TIER3 = 1
 
   # Fallback ₽/м² when no comparables exist. Calibrated to the Ryazan
   # market (kept under 130k for apartments — federal-level defaults would

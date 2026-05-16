@@ -17,7 +17,13 @@ module PropertyEvaluation
   #     but is fragile on small samples / homogeneous comparables.
   #   - Blending leverages both — neither dominates.
   class CompositeEstimator
-    MIN_HEDONIC    = 8
+    # Re-calibrated 15.05.26 — 8 был слишком высокий для тонкого Ryazan
+    # catalog. Sample обычно 5-7 (3 semantic + 2 external + 0-2 synth),
+    # с 8-threshold hedonic skip'ался и estimate = pure median (без
+    # area/rooms adjustment). На 5 hedonic менее robust, но даже грубая
+    # regression лучше pure median для смещения по area. Hedonic возвращает
+    # nil если matrix singular — composite_estimator safely fallback.
+    MIN_HEDONIC    = 5
     HEDONIC_WEIGHT = 0.4
     MEDIAN_WEIGHT  = 0.6
 
