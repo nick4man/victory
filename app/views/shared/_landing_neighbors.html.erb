@@ -11,16 +11,26 @@
   Preserves the current intent ('sale'/'rent') and type ('kvartira', etc.)
   so the cross-link keeps the user inside the same landing facet.
 %>
-<% neighbors = RyazanDistricts.neighbors_of(@district_slug) %>
+<%# City-aware district module — Phase 1.6.C. For Рязань (default city)
+    падает на RyazanDistricts; для Москвы → MoscowDistricts; для СПб →
+    SpbDistricts. Same shape (MICRO/neighbors_of), nothing else to change. %>
+<% city_slug = @city_slug || Cities::DEFAULT_SLUG %>
+<% districts_mod = Cities.districts_module(city_slug) %>
+<% neighbors = districts_mod.neighbors_of(@district_slug) %>
 <% if neighbors.any? %>
   <section class="px-6 lg:px-12 py-8 bg-background border-t border-border">
     <div class="max-w-4xl mx-auto">
       <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4 uppercase">Соседние районы</p>
       <div class="flex flex-wrap gap-3">
         <% neighbors.each do |n_slug| %>
-          <% n_name = RyazanDistricts::MICRO.dig(n_slug, :name) %>
+          <% n_name = districts_mod::MICRO.dig(n_slug, :name) %>
           <% next unless n_name %>
-          <% url = @intent == 'rent' ? rent_district_landing_path(type: @type, district: n_slug) : buy_district_landing_path(type: @type, district: n_slug) %>
+          <%# City-aware route helper: для Рязани используем bare
+              buy/rent_district_landing_path; для Москвы/СПб — prefixed
+              <city>_buy/rent_district_landing_path (Phase 1.6.B routes). %>
+          <% helper_prefix = (city_slug == Cities::DEFAULT_SLUG ? nil : city_slug) %>
+          <% helper_name = [helper_prefix, @intent == 'rent' ? 'rent' : 'buy', 'district_landing_path'].compact.join('_') %>
+          <% url = send(helper_name, type: @type, district: n_slug) %>
           <%= link_to n_name, url,
                       class: 'px-4 py-2 text-xs tracking-wider border border-border hover:border-foreground transition-colors' %>
         <% end %>
