@@ -71,22 +71,19 @@ class PropertyValuationJob < ApplicationJob
     # CRM (пока stub — replaced когда подключим AmoCRM/Bitrix).
     create_crm_lead(valuation) if valuation.email.present?
 
-    # Staff Telegram dispatch — HTML summary + PDF document. Inside the
-    # job, не в controller'е, чтобы user requirement выполнить: TG приходит
-    # только после готового отчёта со всеми числами.
-    ExpressReportNotifier.notify(valuation)
-
-    # Enrich existing LeadEvent anchor card (см. LeadAnnouncer.refresh!)
-    # + send PDF as reply в тот же топик группы -1003779115845.
-    # LeadEvent был создан Lead::Intake.call'ом из PropertyValuation
-    # #push_to_work_bot при first save; anchor_message_id хранится там.
+    # Staff Telegram dispatch — ONE rich notification в группу
+    # `-1003779115845` через LeadAnnouncer card refresh + PDF reply.
+    # ExpressReportNotifier остаётся как FALLBACK когда LeadEvent отсутствует
+    # (если push_to_work_bot фейлил или TG_WORK_BOT_DISABLED=true) —
+    # см. внутри push_to_lead_card.
     push_to_lead_card(valuation)
   end
 
   def push_to_lead_card(valuation)
     lead = LeadEvent.find_by(lead_ref: valuation)
     if lead.nil? || lead.anchor_message_id.blank?
-      Rails.logger.info("[PropertyValuationJob] no LeadEvent anchor для valuation=#{valuation.id} — skip card refresh")
+      Rails.logger.info("[PropertyValuationJob] no LeadEvent anchor для valuation=#{valuation.id} — fallback to ExpressReportNotifier")
+      ExpressReportNotifier.notify(valuation)
       return
     end
 

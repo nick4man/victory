@@ -196,7 +196,34 @@ class PropertyEvaluationService
     base += 0.05 if comps.size >= 5
     base += 0.15 if estimators_agree?(comps)
 
-    [base, 0.95].min.round(2)
+    # Cap positive contributions ДО penalty — иначе сумма additions может
+    # перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+    # bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+    # confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+    # min(1.25, 0.95) = 0.95 — penalty не виден).
+    base = [base, 0.95].min
+
+    # PENALTY for high sample variance — coefficient of variation
+    # (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+    # spans wide range, confidence shouldn't быть 0.95. Это решает
+    # «honest math» проблему: 0.95 при spread 3x = nonsense.
+    #
+    # CV thresholds calibrated empirically:
+    #  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+    #  - CV > 0.30 → notable heterogeneity — medium penalty
+    #  - CV > 0.18 → some spread — small penalty
+    cv = pps_coefficient_of_variation(comps)
+    if cv > 0.50
+      base -= 0.25
+    elsif cv > 0.30
+      base -= 0.15
+    elsif cv > 0.18
+      base -= 0.08
+    end
+
+    # Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+    # совсем", потому что какой-то signal всё-таки есть (median + estimate).
+    [base, 0.30].max.round(2)
   end
 
   # Согласие эстиматоров: группируем comps по source, считаем медиану
@@ -210,6 +237,19 @@ class PropertyEvaluationService
     return false if medians.size < 2
 
     medians.max / medians.min <= 1.20
+  end
+
+  # Coefficient of variation для ₽/м² по всем comps. Возвращает 0 если
+  # sample < 3 (статистически бессмысленно для < 3 точек).
+  def pps_coefficient_of_variation(comps)
+    pps_list = comps.filter_map { |c| c[:price_per_sqm].to_f.nonzero? }
+    return 0.0 if pps_list.size < 3
+
+    mean = pps_list.sum / pps_list.size.to_f
+    return 0.0 if mean.zero?
+
+    variance = pps_list.sum { |p| (p - mean)**2 } / pps_list.size
+    Math.sqrt(variance) / mean
   end
 
   def fallback_estimate
