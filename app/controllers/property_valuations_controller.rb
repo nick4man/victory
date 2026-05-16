@@ -3,8 +3,15 @@
 # Property Valuations Controller
 # Handles property valuation requests and provides instant estimates
 class PropertyValuationsController < ApplicationController
+  # Cost cap для paid LLM chain (LLM_CHAIN_ANALYSIS=Sonnet 4.6+Haiku).
+  # Каждая оценка стоит ~$0.25-0.40 (Tavily + Firecrawl + Sonnet parse +
+  # AiCompFilter + AiExplainer). Без лимита бот мог бы drain account за
+  # час. Mirror'им pattern из Valuations::InvestmentController:17,243-253.
+  RATE_LIMIT = { count: 5, window: 1.hour }.freeze
+
   before_action :set_breadcrumbs
-  
+  before_action :enforce_rate_limit, only: :create
+
   # GET /sell/valuation/new
   def new
     @valuation = PropertyValuation.new
@@ -236,6 +243,30 @@ class PropertyValuationsController < ApplicationController
     # )
   rescue StandardError => e
     Rails.logger.error "Failed to create CRM lead: #{e.message}"
+  end
+
+  # Cost cap: 5 valuations per hour per IP. Soft-fail если Redis недоступен
+  # (rescue ниже возвращает false → no rate-limit). Используем DB 1 как
+  # investment_controller, отдельный namespace `valuation_express:submit:*`.
+  def enforce_rate_limit
+    return unless rate_limited?
+
+    flash[:alert] = 'Слишком много запросов на оценку с этого устройства. ' \
+                    'Попробуйте через час или напишите нам напрямую.'
+    redirect_to new_property_valuation_path
+  end
+
+  def rate_limited?
+    return false unless defined?(Redis)
+
+    key = "valuation_express:submit:#{request.remote_ip}"
+    redis = Redis.new(url: ENV.fetch('REDIS_URL', 'redis://redis:6379/1'))
+    count = redis.incr(key)
+    redis.expire(key, RATE_LIMIT[:window].to_i) if count == 1
+    count > RATE_LIMIT[:count]
+  rescue Redis::BaseError => e
+    Rails.logger.warn("[PropertyValuationsController] rate-limit Redis error: #{e.message}")
+    false
   end
 end
 
