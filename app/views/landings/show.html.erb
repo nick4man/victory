@@ -1,6 +1,10 @@
 <% content_for :title, @meta_title %>
 <% content_for :seo_description, @meta_description %>
-<% content_for :canonical, url_for(only_path: false, host: request.host_with_port) %>
+<%# canonical: НЕ override — layout default `request.original_url.split('?').first`
+    корректно включает city prefix (`/spb/kupit/kvartira` → canonical
+    `/spb/kupit/kvartira`). Previous `url_for(only_path: false)` без
+    параметров возвращал bare `/kupit/kvartira` для города-prefixed routes
+    т.к. defaults в scope не передавались — canonical SPb→Ryazan = bug. %>
 <%# Phase 1.6.D — geo.* meta dispatch per city. Layout default (RU-RYA +
     Рязань + agency coords) подходит для Рязани, но Moscow/SPb landings
     нуждаются в свежем сигнале (geo-mismatch с hardcode'd RU-RYA сильно
