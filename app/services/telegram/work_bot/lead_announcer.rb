@@ -15,6 +15,29 @@ module Telegram
     # (например, thread_id ещё не известен — топик не discovered).
     class LeadAnnouncer
       ROUTING_BUTTONS_PER_ROW = 3
+
+      # Re-render card после того как async-задача насытила lead_ref
+      # (PropertyValuationJob выдал estimate/range/PDF). Шлёт TG
+      # editMessageText на anchor_message_id с обновлённым text. Кнопки
+      # routing остаются. Возвращает true/false.
+      def self.refresh!(lead_event, client: Telegram::Client.new)
+        return false if lead_event.anchor_message_id.blank?
+
+        announcer = new(lead_event, client: client)
+        topic_key = lead_event.anchor_topic_key
+        client.edit_message_text(
+          announcer.format_card_text,
+          chat_id: Telegram::TopicRegistry.chat_id,
+          message_id: lead_event.anchor_message_id,
+          reply_markup: announcer.send(:routing_keyboard_for, topic_key),
+          parse_mode: 'HTML'
+        )
+        true
+      rescue StandardError => e
+        Rails.logger.warn("[LeadAnnouncer.refresh!] lead=#{lead_event.id} failed: #{e.class} #{e.message.to_s.truncate(160)}")
+        false
+      end
+
       STAGE_EMOJI = {
         'new' => '🆕',
         'first_contact' => '📞',
@@ -101,6 +124,25 @@ module Telegram
           lines << ''
           lines << "💰 #{escape(meta['budget'].to_s)}"
         end
+
+        # Valuation block — when lead_ref is completed PropertyValuation.
+        # Это блок добавляется TG editMessageText'ом после того как
+        # PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
+        # + PropertyValuationJob#push_to_lead_card). До completion блок
+        # отсутствует, card будет sparser.
+        valuation = @lead.lead_ref
+        if valuation.is_a?(PropertyValuation) && valuation.try(:completed?) && valuation.estimated_price.present?
+          lines << ''
+          lines << '📐 <b>Результаты оценки</b>'
+          lines << "  · Рыночная: <b>#{escape(fmt_rub(valuation.estimated_price))}</b>"
+          if valuation.min_price.present? && valuation.max_price.present?
+            lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
+          end
+          lines << "  · Достоверность: #{((valuation.confidence_level || 0).to_f * 100).round}%" if valuation.confidence_level
+          lines << ''
+          lines << %(🔗 <a href="#{report_url(valuation)}">Открыть отчёт</a>)
+        end
+
         lines << ''
         lines << "🕐 #{Formatters::DateFormat.fmt_dt(@lead.created_at)}"
         if @lead.assigned_to
@@ -147,6 +189,20 @@ module Telegram
 
       def escape(text)
         text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+      end
+
+      # Mirror of ExpressReportNotifier#fmt_rub — should ideally extract
+      # to shared formatter helper. Keeping duplicate для simplicity пока
+      # не появится третий call-site (DRY ratio < 3).
+      def fmt_rub(amount)
+        return '—' if amount.blank?
+        "#{amount.to_i.to_s.reverse.gsub(/(\d{3})/, '\1 ').reverse.strip} ₽"
+      end
+
+      def report_url(valuation)
+        base = ENV['APP_URL'].presence ||
+               (defined?(AgencyInfo) ? AgencyInfo::WEBSITE_URL : 'https://victory62.org')
+        "#{base}/valuations/#{valuation.token}/result"
       end
     end
   end

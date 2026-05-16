@@ -75,6 +75,38 @@ class PropertyValuationJob < ApplicationJob
     # job, не в controller'е, чтобы user requirement выполнить: TG приходит
     # только после готового отчёта со всеми числами.
     ExpressReportNotifier.notify(valuation)
+
+    # Enrich existing LeadEvent anchor card (см. LeadAnnouncer.refresh!)
+    # + send PDF as reply в тот же топик группы -1003779115845.
+    # LeadEvent был создан Lead::Intake.call'ом из PropertyValuation
+    # #push_to_work_bot при first save; anchor_message_id хранится там.
+    push_to_lead_card(valuation)
+  end
+
+  def push_to_lead_card(valuation)
+    lead = LeadEvent.find_by(lead_ref: valuation)
+    if lead.nil? || lead.anchor_message_id.blank?
+      Rails.logger.info("[PropertyValuationJob] no LeadEvent anchor для valuation=#{valuation.id} — skip card refresh")
+      return
+    end
+
+    client = Telegram::Client.new
+    Telegram::WorkBot::LeadAnnouncer.refresh!(lead, client: client)
+
+    # PDF как reply к anchor — staff видит link в карточке + сразу PDF.
+    pdf_bytes = PdfGeneratorService.new(valuation).call
+    io = StringIO.new(pdf_bytes)
+    client.send_document(
+      { io: io, filename: "valuation-#{valuation.report_number || valuation.token}.pdf",
+        content_type: 'application/pdf' },
+      chat_id: Telegram::TopicRegistry.chat_id,
+      caption: "📐 Экспресс-оценка #{valuation.report_label}",
+      parse_mode: 'HTML',
+      reply_to_message_id: lead.anchor_message_id,
+      message_thread_id: Telegram::TopicRegistry.thread_id(lead.anchor_topic_key)
+    )
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuationJob] push_to_lead_card failed for #{valuation.id}: #{e.class} #{e.message.to_s.truncate(160)}")
   end
 
   def create_crm_lead(valuation)

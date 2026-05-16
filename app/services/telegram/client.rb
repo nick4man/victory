@@ -82,13 +82,16 @@ module Telegram
     #   - Tempfile / File (uses #path + #read)
     #   - Hash { io: IO, filename: String, content_type: String }
     #   - String (path to file)
-    def send_document(file, chat_id:, caption: nil, parse_mode: 'HTML')
+    def send_document(file, chat_id:, caption: nil, parse_mode: 'HTML',
+                      reply_to_message_id: nil, message_thread_id: nil)
       io, filename, content_type = unpack_file(file)
       content = io.read
       boundary = "----victory-#{SecureRandom.hex(8)}"
 
       parts = String.new(encoding: 'ASCII-8BIT')
       parts << form_field(boundary, 'chat_id', chat_id.to_s)
+      parts << form_field(boundary, 'message_thread_id', message_thread_id.to_s) if message_thread_id
+      parts << form_field(boundary, 'reply_to_message_id', reply_to_message_id.to_s) if reply_to_message_id
       if caption.present?
         parts << form_field(boundary, 'caption', caption.to_s)
         parts << form_field(boundary, 'parse_mode', parse_mode)
