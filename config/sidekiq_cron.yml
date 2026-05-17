@@ -43,3 +43,9 @@ tg_polling:
   class: "Telegram::WorkBot::PollingJob"
   queue: scheduled
   description: "Fallback polling getUpdates когда TG → webhook не доходит (TELEGRAM_POLLING_MODE=true)"
+
+task_batch_expiry:
+  cron: "*/10 * * * *"     # every 10 minutes
+  class: TaskBatchExpiryJob
+  queue: scheduled
+  description: "Phase 7.2 — pending TaskBatch > 1h → status=expired (Оксана не подтвердила)"

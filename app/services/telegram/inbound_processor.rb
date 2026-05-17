@@ -42,6 +42,13 @@ module Telegram
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 
+      # Phase 7.2 — voice от директора АН в DM боту → Voice → LLM extract →
+      # TaskBatch + preview с inline-кнопками подтверждения. Не блокирует
+      # дальнейший flow если не подходит (см. VoiceIntakeProcessor.applies?).
+      if Telegram::WorkBot::VoiceIntakeProcessor.applies?(msg)
+        return Telegram::WorkBot::VoiceIntakeProcessor.new(msg).call
+      end
+
       # Discovery топиков рабочей группы — пассивно: смотрим каждое сообщение,
       # которое прилетает с message_thread_id, и сохраняем маппинг key → thread_id
       # если по имени удалось определить топик. См. TopicDiscovery.
