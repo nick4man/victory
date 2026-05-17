@@ -67,3 +67,9 @@ kpi_agency_digest:
   class: "Kpi::AgencyDigestJob"
   queue: scheduled
   description: "Phase 7.6 — DM директорам с agency-wide сводкой текущего дня"
+
+voice_archive_cleanup:
+  cron: "0 4 * * SUN"      # weekly Sunday 04:00 Moscow
+  class: "Nextcloud::VoiceArchiveCleanupJob"
+  queue: scheduled
+  description: "Phase 7.8b — soft-delete voice-archive DocumentUpload > 90 дней (NC файлы остаются)"

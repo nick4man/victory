@@ -66,7 +66,26 @@ module Telegram
 
         batch = create_batch(tg_user, transcription, extraction)
         Telegram::WorkBot::TaskBatchConfirmer.new(batch: batch, client: @client).call
+
+        # Phase 7.8b — архивация .ogg + redacted transcript в NC AUDIT-LOGS.
+        # Soft-fail: NC down не блокирует основной flow. Запускаем после
+        # confirmer чтобы preview отобразился без задержки на upload.
+        archive_voice_to_nc(tg_user, transcription.text, batch.id)
         :dispatched
+      end
+
+      def archive_voice_to_nc(tg_user, redacted_transcript, task_batch_id)
+        file_id = @msg.dig('voice', 'file_id')
+        return if file_id.blank?
+
+        Nextcloud::VoiceArchiver.call(
+          file_id: file_id,
+          transcript: redacted_transcript,
+          actor: tg_user,
+          task_batch_id: task_batch_id
+        )
+      rescue StandardError => e
+        Rails.logger.warn("[VoiceIntakeProcessor#archive_voice_to_nc] #{e.class}: #{e.message}")
       end
 
       def create_batch(tg_user, transcription, extraction)
