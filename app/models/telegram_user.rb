@@ -30,9 +30,12 @@ class TelegramUser < ApplicationRecord
   validates :tg_user_id, presence: true, uniqueness: true
   validates :status, inclusion: { in: STATUSES }
 
-  scope :active,    -> { where(status: 'active') }
-  scope :managers,  -> { where(is_manager: true) }
-  scope :directors, -> { where(role: 'director') }
+  scope :active,     -> { where(status: 'active') }
+  scope :managers,   -> { where(is_manager: true) }
+  scope :directors,  -> { where(role: 'director') }
+  # assignable=true (default) + active — кандидаты для picker'а [👤 Назначить]
+  # и LLM-extract assignee match. Опт-аут — для admin/dev users (не полевые агенты).
+  scope :assignable, -> { active.where(assignable: true) }
 
   # @param tg_username [String] @username без префикса (как Telegram возвращает в from.username)
   def self.find_by_username(tg_username)
@@ -69,5 +72,33 @@ class TelegramUser < ApplicationRecord
 
   def touch_seen!
     update_column(:last_seen_at, Time.current)
+  end
+
+  # Phase 7.3+ — обновить метаданные из TG-сообщения. Используется в
+  # InboundProcessor когда от known TelegramUser приходит апдейт — TG может
+  # дать новый username (юзер сменил handle), first_name (профиль обновил)
+  # и dm_chat_id (если это первое сообщение в DM боту — после этого TG
+  # позволяет нам инициировать DM).
+  #
+  # @param msg [Hash] TG message payload (msg.from + msg.chat)
+  # @return [Boolean] true если что-то поменялось и было сохранено
+  def touch_from_message!(msg)
+    from = msg['from'] || {}
+    chat = msg['chat'] || {}
+
+    changes = {}
+    changes[:tg_username] = from['username'] if from['username'].present? && from['username'] != tg_username
+    changes[:first_name]  = from['first_name'] if from['first_name'].present? && first_name.blank?
+    changes[:last_name]   = from['last_name']  if from['last_name'].present?  && last_name.blank?
+    if chat['type'] == 'private' && chat['id'].present? && chat['id'] != dm_chat_id
+      changes[:dm_chat_id] =
+        chat['id']
+    end
+    changes[:last_seen_at] = Time.current
+
+    return false if changes.empty?
+
+    update_columns(changes) # update_columns — skip validations/callbacks (heavy use в InboundProcessor)
+    true
   end
 end

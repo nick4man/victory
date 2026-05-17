@@ -42,6 +42,13 @@ module Telegram
       msg = @update['message'] || @update['edited_message']
       return :ignored unless msg
 
+      # Phase 7.3+ — touch TG meta (tg_username/dm_chat_id/last_seen_at) для
+      # known TelegramUser. Особенно важно: dm_chat_id записывается при первом
+      # DM от уже-зарегистрированного юзера (например, Надежда заведена через
+      # /link до того как написала боту). Без этого TaskDispatcher не сможет
+      # инициировать DM (TG требует «user first contacted bot»).
+      touch_known_user_meta(msg)
+
       # Phase 7.2 — voice от директора АН в DM боту → Voice → LLM extract →
       # TaskBatch + preview с inline-кнопками подтверждения. Не блокирует
       # дальнейший flow если не подходит (см. VoiceIntakeProcessor.applies?).
@@ -98,6 +105,20 @@ module Telegram
     end
 
     private
+
+    # @return [Boolean] true если запись TelegramUser нашлась и была обновлена
+    def touch_known_user_meta(msg)
+      from_id = msg.dig('from', 'id')
+      return false if from_id.blank?
+
+      tu = TelegramUser.find_by(tg_user_id: from_id)
+      return false if tu.nil?
+
+      tu.touch_from_message!(msg)
+    rescue StandardError => e
+      Rails.logger.warn("[InboundProcessor#touch_known_user_meta] #{e.class}: #{e.message}")
+      false
+    end
 
     def handle_reply(conv, text, msg)
       author = resolve_author(msg)

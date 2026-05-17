@@ -18,7 +18,7 @@ module Telegram
 
         def handle
           lead = lead_event
-          users = TelegramUser.active.where.not(id: lead.assigned_to_id).limit(MAX_USERS).order(:tg_username)
+          users = TelegramUser.assignable.where.not(id: lead.assigned_to_id).limit(MAX_USERS).order(:tg_username)
           return ack('Нет активных сотрудников для назначения.', alert: true) if users.empty?
 
           msg = callback_query['message'] || {}

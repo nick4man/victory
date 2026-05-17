@@ -57,7 +57,7 @@ module Telegram
 
         extraction = Telegram::WorkBot::TaskExtractor.call(
           transcript: transcription.raw['text'].to_s, # raw для LLM (PII нужны для names)
-          staff: TelegramUser.where(status: 'active').to_a,
+          staff: TelegramUser.assignable.to_a,        # active + assignable=true (опт-аут админов)
           now: Time.current
         )
 
