@@ -120,7 +120,17 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
-        badge_line = [priority_badge, returning_badge].compact.join(' · ')
+        # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
+        # после express-валуации (см. ChatTools::QualifyLead). Помогает
+        # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,
+        # подбор аналогов или это просто express-оценка с формы.
+        service_badge = case meta['service_type'].to_s
+                        when 'express'    then '🔵 <b>EXPRESS</b>'
+                        when 'investment' then '🟣 <b>INVESTMENT AUDIT</b>'
+                        when 'cma'        then '🟠 <b>SALE CMA</b>'
+                        when 'buyer_scan' then '🟢 <b>BUYER SCAN</b>'
+                        end
+        badge_line = [priority_badge, returning_badge, service_badge].compact.join(' · ')
         lines << badge_line if badge_line.present?
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''

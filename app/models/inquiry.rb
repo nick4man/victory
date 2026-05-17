@@ -454,20 +454,31 @@ class Inquiry < ApplicationRecord
              when 'mortgage'   then 'site_mortgage'
              else                   'site_form'
              end
+    # Chat-flow leads (см. ChatTools::QualifyLead) кладут extra metadata —
+    # forward'им в payload чтобы LeadAnnouncer мог отрисовать service-badge
+    # и SiteSource'у привязать lead_ref к PropertyValuation.
+    chat_meta = metadata.is_a?(Hash) ? metadata : {}
+    service_type = chat_meta['service_type'].presence || chat_meta[:service_type].presence
+    valuation_token = chat_meta['property_valuation_token'].presence ||
+                      chat_meta[:property_valuation_token].presence
+    valuation_id = (PropertyValuation.find_by(token: valuation_token)&.id if valuation_token)
+
     Lead::Intake.call(
       source: source,
       payload: {
-        name:        name,
-        phone:       phone,
-        email:       email,
-        message:     message,
-        summary:     message.presence || comment,
-        priority:    priority,             # для LeadAnnouncer badge (high/urgent)
-        property_id: property_id,
-        inquiry_id:  id,
-        origin:      referrer_url,
-        utm:         { source: utm_source, medium: utm_medium, campaign: utm_campaign }.compact_blank
-      }
+        name:          name,
+        phone:         phone,
+        email:         email,
+        message:       message,
+        summary:       message.presence || comment,
+        priority:      priority,             # для LeadAnnouncer badge (high/urgent)
+        service_type:  service_type,         # для service-badge (express/cma/...)
+        property_id:   property_id,
+        inquiry_id:    id,
+        valuation_id:  valuation_id,         # → SiteSource привяжет lead_ref к PropertyValuation
+        origin:        referrer_url,
+        utm:           { source: utm_source, medium: utm_medium, campaign: utm_campaign }.compact_blank
+      }.compact
     )
   rescue StandardError => e
     Rails.logger.error("[Inquiry#push_to_work_bot] inquiry=#{id} #{e.class}: #{e.message}")

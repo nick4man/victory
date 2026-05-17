@@ -32,6 +32,11 @@ module ChatTools
       'invest' => 'consultation'
     }.freeze
 
+    # Service-type — какой именно апсейл предложил бот после express-оценки.
+    # Прокидывается в metadata → LeadAnnouncer renders как badge (🟠 SALE CMA,
+    # 🟣 INVESTMENT AUDIT и т.д.). express по умолчанию для form-валидаций.
+    ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+
     # Score → priority enum mapping. Conservative — urgent для score ≥6
     # (premium+timeline+phone all firing).
     PRIORITY_URGENT_THRESHOLD = 6
@@ -104,6 +109,21 @@ module ChatTools
               message: {
                 type:        'string',
                 description: 'Развёрнутое описание запроса от клиента (для контекста агента)'
+              },
+              valuation_token: {
+                type:        'string',
+                description: 'Токен PropertyValuation если до qualify_lead уже вызывали ' \
+                             'estimate_property_valuation в этом же диалоге. Привязывает ' \
+                             'Inquiry к существующей оценке.'
+              },
+              service_type: {
+                type:        'string',
+                enum:        %w[express investment cma buyer_scan],
+                description: 'Тип апсейла, который клиент согласился рассмотреть: ' \
+                             'express (стандартная оценка), investment (инвест-аудит с Monte Carlo), ' \
+                             'cma (Sale CMA с выездом эксперта, фото-аудитом), ' \
+                             'buyer_scan (подбор аналогов под бюджет). ' \
+                             'Бот выбирает по intent: sell → cma, invest → investment, buy → buyer_scan.'
               }
             },
             additionalProperties: false
@@ -174,6 +194,10 @@ module ChatTools
 
       # Phone present = readiness signal (готов к контакту)
       breakdown[:phone] = args[:phone].to_s.strip.match?(/\A\+?\d{10,}\z/) ? 1 : 0
+
+      # Valuation token present = клиент уже сделал express-оценку → warm,
+      # знаком с нашим продуктом, на шаг ближе к покупке услуги. +1 pt.
+      breakdown[:valuation] = args[:valuation_token].to_s.strip.present? ? 1 : 0
 
       score = breakdown.values.sum
       [score, breakdown]
@@ -250,30 +274,43 @@ module ChatTools
         return recent if recent
       end
 
+      # Если service_type указывает на оценочный сервис — Inquiry должна быть
+      # типа 'evaluation' (даже если intent=invest/buy), чтобы попасть в
+      # auto_route_from=site_valuation → топик #ОЦЕНКА.
+      service_type = args[:service_type].to_s
+      service_type = nil unless ALLOWED_SERVICE_TYPES.include?(service_type)
+      inquiry_type = if %w[express cma investment].include?(service_type)
+                       'evaluation'
+                     else
+                       INTENT_TO_INQUIRY_TYPE[args[:intent].to_s] || 'consultation'
+                     end
+
       Inquiry.create!(
         name:          name.truncate(100),
         phone:         phone,
         email:         args[:email].to_s.strip.presence,
-        inquiry_type:  INTENT_TO_INQUIRY_TYPE[args[:intent].to_s] || 'consultation',
+        inquiry_type:  inquiry_type,
         priority:      priority,
         source:        'site_chatbot',
         message:       (args[:message].to_s.presence || reasoning).truncate(2000),
         metadata:      {
-          intent:        args[:intent].to_s,
-          budget_rub:    args[:budget_rub].to_i,
-          district:      args[:district].to_s,
-          property_type: args[:property_type].to_s,
-          timeline:      args[:timeline].to_s,
-          score:         breakdown.values.sum,
-          breakdown:     breakdown,
-          reasoning:     reasoning,
+          intent:                    args[:intent].to_s,
+          budget_rub:                args[:budget_rub].to_i,
+          district:                  args[:district].to_s,
+          property_type:             args[:property_type].to_s,
+          timeline:                  args[:timeline].to_s,
+          score:                     breakdown.values.sum,
+          breakdown:                 breakdown,
+          reasoning:                 reasoning,
           # Phone/name дублируются в metadata для LeadAnnouncer card —
           # он читает meta['name'] / meta['phone'].
-          name:          name,
-          phone:         phone,
-          priority:      priority,  # LeadAnnouncer reads meta['priority']
-          summary:       reasoning
-        }
+          name:                      name,
+          phone:                     phone,
+          priority:                  priority,    # LeadAnnouncer reads meta['priority']
+          summary:                   reasoning,
+          service_type:              service_type, # LeadAnnouncer renders badge
+          property_valuation_token:  args[:valuation_token].to_s.strip.presence
+        }.compact
       )
     rescue ActiveRecord::RecordInvalid => e
       Rails.logger.warn("[QualifyLead] Inquiry create failed: #{e.message}")

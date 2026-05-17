@@ -33,15 +33,16 @@ module Lead
 
         lead_ref = lead_ref_for(payload)
         meta = {
-          'name'     => payload[:name].presence || payload[:client_name].presence || 'Без имени',
-          'phone'    => normalize_phone(payload[:phone]),
-          'email'    => payload[:email].to_s.strip.presence,
-          'summary'  => build_summary(payload),
-          'budget'   => payload[:budget].presence,
-          'priority' => payload[:priority].to_s.presence,  # high/urgent → LeadAnnouncer badge
-          'origin'   => payload[:origin].presence,
-          'utm'      => payload[:utm].presence,
-          'raw'      => payload.to_h.except(:name, :phone, :email)
+          'name'         => payload[:name].presence || payload[:client_name].presence || 'Без имени',
+          'phone'        => normalize_phone(payload[:phone]),
+          'email'        => payload[:email].to_s.strip.presence,
+          'summary'      => build_summary(payload),
+          'budget'       => payload[:budget].presence,
+          'priority'     => payload[:priority].to_s.presence,      # high/urgent → LeadAnnouncer badge
+          'service_type' => normalize_service_type(payload),       # express/investment/cma/buyer_scan → badge
+          'origin'       => payload[:origin].presence,
+          'utm'          => payload[:utm].presence,
+          'raw'          => payload.to_h.except(:name, :phone, :email)
         }.compact
 
         if known_user&.role_client?
@@ -141,6 +142,18 @@ module Lead
         digits = "7#{digits[1..]}" if digits.start_with?('8') && digits.length == 11
         return phone.to_s if digits.length < 10
         "+#{digits}"
+      end
+
+      # Service-type: какой апсейл-вариант оценки/услуги клиент выбрал в чате
+      # (см. ChatTools::QualifyLead). Default — express для site_valuation
+      # формы (она по природе express-оценка). Для site_form/site_mortgage
+      # — nil, badge не будет показан.
+      ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+      def normalize_service_type(payload)
+        raw = payload[:service_type].to_s.strip
+        return raw if ALLOWED_SERVICE_TYPES.include?(raw)
+        return 'express' if @source == 'site_valuation'
+        nil
       end
 
       def mask_phone(phone)
