@@ -565,6 +565,9 @@ Rails.application.routes.draw do
     resources :properties, only: %i[index] do
       member do
         post :toggle_force_publish
+        # A7 Phase 3 — request signature from client (digital agency contract)
+        get  :request_consent
+        post :send_consent_request
       end
     end
 

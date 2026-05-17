@@ -49,6 +49,13 @@ module Telegram
       # инициировать DM (TG требует «user first contacted bot»).
       touch_known_user_meta(msg)
 
+      # A6 Phase 1 — client photo intake (DM + photo array).
+      # Клиент фотографирует паспорт/ИНН/ЕГРН в личке — направляем в pipeline.
+      # Проверяем ДО WorkBot flow: клиентские DM не должны попадать в staff-bot логику.
+      if client_photo_intake?(msg)
+        return Telegram::ClientBot::PhotoIntakeProcessor.call(msg)
+      end
+
       # Phase 7.2 — voice от директора АН в DM боту → Voice → LLM extract →
       # TaskBatch + preview с inline-кнопками подтверждения. Не блокирует
       # дальнейший flow если не подходит (см. VoiceIntakeProcessor.applies?).
@@ -176,6 +183,16 @@ module Telegram
     def log_and_ignore(reason)
       Rails.logger.info("[Telegram::InboundProcessor] ignored: #{reason}")
       :ignored
+    end
+
+    # A6 Phase 1: true если сообщение — фото в личном чате (DM).
+    # Telegram присылает 'photo' как массив размеров изображений.
+    # Групповые фото (тип supergroup/group) — не клиентский intake.
+    def client_photo_intake?(msg)
+      return false unless msg['photo'].is_a?(Array) && msg['photo'].any?
+      return false unless msg.dig('chat', 'type') == 'private'
+
+      true
     end
   end
 end

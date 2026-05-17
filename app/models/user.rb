@@ -74,7 +74,11 @@ class User < ApplicationRecord
 
   # A7 Phase 3 — digital agency contract consent records
   has_many :listing_consents, dependent: :destroy
-  
+
+  # A6 Phase 1 — TG-uploaded identity documents (passport/ИНН/выписка ЕГРН)
+  has_many :uploaded_documents, class_name: 'ClientDocument',
+           foreign_key: 'uploader_id', dependent: :destroy
+
   # Inquiries
   has_many :inquiries, dependent: :destroy
   

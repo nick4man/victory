@@ -45,5 +45,72 @@ module Admin
                        end
       redirect_back fallback_location: admin_properties_path
     end
+
+    # A7 Phase 3 trigger UI: admin requests client signature on agency contract.
+    # GET — form view; POST — invoke Cabinet::ConsentRequester + auto-create
+    # client User by email if not found.
+    def request_consent
+      @property = Property.unscoped.find(params[:id])
+    end
+
+    def send_consent_request
+      @property = Property.unscoped.find(params[:id])
+      email = params[:client_email].to_s.strip.downcase
+      name = params[:client_name].to_s.strip
+
+      if email.blank? || !email.match?(URI::MailTo::EMAIL_REGEXP)
+        flash[:alert] = 'Введите корректный email клиента.'
+        redirect_to request_consent_admin_property_path(@property) and return
+      end
+
+      if @property.status_pending_consent?
+        flash[:alert] = 'Этот объект уже ожидает подписи.'
+        redirect_to admin_properties_path and return
+      end
+
+      user = find_or_create_client(email, name)
+      Cabinet::ConsentRequester.new(@property, user: user).call
+
+      flash[:notice] = "Запрос отправлен на #{email}. Объект ##{@property.id} → ожидает подписи."
+      redirect_to admin_properties_path
+    rescue Cabinet::ConsentRequester::Error => e
+      flash[:alert] = "Не удалось запросить подпись: #{e.message}"
+      redirect_to request_consent_admin_property_path(@property)
+    rescue ActiveRecord::RecordNotFound
+      flash[:alert] = 'Объект не найден.'
+      redirect_to admin_properties_path
+    end
+
+    private
+
+    def find_or_create_client(email, name)
+      user = User.where(active: true, deleted_at: nil)
+                 .find_by('LOWER(email) = ?', email)
+      return user if user
+
+      # Auto-create — minimum viable client account. Password is random
+      # (Devise off — password never used), magic-link auth есть для login.
+      first_name, last_name = parse_name(name)
+      User.create!(
+        email:      email,
+        password:   SecureRandom.urlsafe_base64(32),
+        first_name: first_name,
+        last_name:  last_name,
+        role:       'client',
+        active:     true,
+        crm_status: 'active'
+      )
+    end
+
+    # «Иван Иванов» → ['Иван', 'Иванов']
+    # Если только одно слово или пусто — first_name = слово, last_name = ''.
+    def parse_name(full)
+      parts = full.to_s.split(/\s+/).reject(&:blank?)
+      case parts.size
+      when 0 then ['', '']
+      when 1 then [parts[0], '']
+      else        [parts[0], parts[1..].join(' ')]
+      end
+    end
   end
 end

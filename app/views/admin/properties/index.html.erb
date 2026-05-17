@@ -88,6 +88,13 @@
                   <% if p.external_id && (crm_url = ENV['TOPNLAB_CRM_URL']).present? %>
                     <a href="<%= crm_url.chomp('/') %>/realty/<%= p.external_id %>" target="_blank" rel="noopener" class="text-[11px] text-muted-foreground hover:text-foreground">CRM →</a>
                   <% end %>
+                  <%# A7 Phase 3 — request signature from client.
+                      Visible если объект ещё не на стадии «продан/сдан/ждёт подписи». %>
+                  <% unless %w[sold rented pending_consent].include?(p.status.to_s) %>
+                    <%= link_to 'Запросить подпись',
+                          request_consent_admin_property_path(p, token: params[:token]),
+                          class: 'text-[11px] text-emerald-300 hover:opacity-80 inline-block' %>
+                  <% end %>
                 </td>
               </tr>
             <% end %>
