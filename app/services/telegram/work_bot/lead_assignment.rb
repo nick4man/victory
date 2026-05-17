@@ -96,8 +96,10 @@ module Telegram
 
         text = "🆕 Тебе назначен лид · <b>#{escape(name)}</b>\n" \
                "Топик: ##{escape(title)}\n" \
-               "Передал: #{@actor.mention} в #{Formatters::DateFormat.fmt_dt(Time.current)}\n\n" \
-               "<a href=\"#{@lead.anchor_url}\">Открыть карточку</a>"
+               "Передал: #{@actor.mention} в #{Formatters::DateFormat.fmt_dt(Time.current)}"
+
+        link = @lead.anchor_url
+        text += "\n\n<a href=\"#{link}\">Открыть карточку</a>" if link.present?
 
         @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
       rescue Telegram::Client::Error => e
