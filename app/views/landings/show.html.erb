@@ -17,9 +17,9 @@
   <% content_for :icbm, "#{@city[:lat]}, #{@city[:lng]}" %>
 <% end %>
 <%# District hero photo — branded картинка района из public/images/landings/<slug>/.
-    Используется и как inline hero (см. секцию ниже сразу после <% if @district_slug %>),
-    и как og:image override (priority над property-first-image — фирменное фото
-    стабильнее, не меняется при ротации каталога, единообразнее в SERP). %>
+    Используется и как inline hero (figure ниже), и как og:image override.
+    Priority над property-first-image — фирменное фото стабильнее, не
+    меняется при ротации каталога, единообразнее в SERP. %>
 <% district_hero_dir = @district_slug && Rails.public_path.join("images/landings/#{@district_slug}") %>
 <% has_district_hero = district_hero_dir && district_hero_dir.join('hero.jpg').exist? %>
 <% has_district_og   = district_hero_dir && district_hero_dir.join('og.jpg').exist? %>
