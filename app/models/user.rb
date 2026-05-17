@@ -71,6 +71,9 @@ class User < ApplicationRecord
   # Favorites
   has_many :favorites, dependent: :destroy
   has_many :favorite_properties, through: :favorites, source: :property
+
+  # A7 Phase 3 — digital agency contract consent records
+  has_many :listing_consents, dependent: :destroy
   
   # Inquiries
   has_many :inquiries, dependent: :destroy

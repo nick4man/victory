@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Договор № <%= @consent.id %> подписан</title>
+</head>
+<body style="margin:0;padding:0;background:#f6f6f4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#1a1a1a;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f6f6f4;padding:48px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;max-width:600px;border:1px solid #e5e5e0;">
+          <tr>
+            <td style="padding:48px 48px 32px;">
+              <p style="margin:0 0 32px;font-size:12px;letter-spacing:0.3em;text-transform:uppercase;color:#888;">
+                <%= AgencyInfo::NAME %>
+              </p>
+              <h1 style="margin:0 0 16px;font-size:24px;font-weight:300;letter-spacing:-0.01em;line-height:1.3;">
+                Договор № <%= @consent.id %> подписан
+              </h1>
+              <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#444;">
+                Спасибо<%= @user.first_name.present? ? ", #{@user.first_name}" : '' %>.
+                Вы успешно подписали агентский договор на объект:
+              </p>
+
+              <div style="margin:0 0 32px;padding:24px;background:#fafaf8;border-left:3px solid #1a1a1a;">
+                <p style="margin:0 0 8px;font-size:15px;color:#1a1a1a;line-height:1.4;">
+                  <strong><%= @property.title %></strong>
+                </p>
+                <p style="margin:0 0 12px;font-size:13px;color:#444;">
+                  <%= @property.address %>
+                </p>
+                <p style="margin:0;font-size:12px;color:#666;line-height:1.6;">
+                  Подписано: <strong><%= @consent.signed_at.strftime('%d.%m.%y %H:%M МСК') %></strong><br>
+                  IP подписания: <%= @consent.ip_address %><br>
+                  Версия документа: <code><%= @consent.consent_version %></code>
+                </p>
+              </div>
+
+              <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#444;">
+                Ваш объект автоматически опубликован на сайте и партнёрских
+                площадках. Агент свяжется с вами в течение суток для уточнения
+                деталей показов.
+              </p>
+
+              <p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#444;">
+                <strong>Публичная верификация</strong> подписи (любой может проверить
+                целостность по этому URL):
+              </p>
+              <p style="margin:0 0 32px;font-size:12px;line-height:1.5;color:#1a1a1a;word-break:break-all;">
+                <a href="<%= @verify_url %>" style="color:#1a1a1a;"><%= @verify_url %></a>
+              </p>
+
+              <hr style="border:none;border-top:1px solid #e5e5e0;margin:32px 0;">
+
+              <p style="margin:0;font-size:12px;line-height:1.5;color:#888;">
+                Если вы захотите отозвать согласие — это можно сделать в личном
+                кабинете до момента продажи. Все юридические условия описаны
+                в подписанном договоре.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 48px;background:#fafaf8;border-top:1px solid #e5e5e0;">
+              <p style="margin:0;font-size:11px;line-height:1.5;color:#888;">
+                <%= AgencyInfo::NAME %> · <%= AgencyInfo::PHONE_PRIMARY rescue '' %><br>
+                <%= AgencyInfo::WEBSITE_URL %>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<% content_for :title, "Подписание агентского договора — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-4xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-8">
+      <%= link_to '← На подписание', cabinet_pending_consents_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <header class="mb-12">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Личный кабинет · Подписание</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+        Агентский договор
+      </h1>
+      <p class="text-sm text-muted-foreground leading-relaxed">
+        Версия документа: <code class="text-foreground"><%= @consent_version %></code> ·
+        Дата: <%= Time.current.strftime('%d.%m.%y') %>
+      </p>
+    </header>
+
+    <%# Object summary %>
+    <section class="mb-10 border border-border p-6">
+      <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">Объект</p>
+      <h2 class="text-lg font-light tracking-tight text-foreground mb-2">
+        <%= @property.title %>
+      </h2>
+      <p class="text-sm text-muted-foreground mb-3"><%= @property.address %></p>
+      <div class="grid grid-cols-3 gap-4 text-xs tracking-wider">
+        <% if (area = @property.try(:total_area) || @property.try(:area)) %>
+          <div>
+            <p class="text-muted-foreground uppercase mb-1">Площадь</p>
+            <p class="text-foreground"><%= area %> м²</p>
+          </div>
+        <% end %>
+        <div>
+          <p class="text-muted-foreground uppercase mb-1">Цена предложения</p>
+          <p class="text-foreground"><%= number_to_currency(@property.price, precision: 0, unit: '₽', format: '%n %u', delimiter: ' ') %></p>
+        </div>
+        <div>
+          <p class="text-muted-foreground uppercase mb-1">Тип</p>
+          <p class="text-foreground"><%= I18n.t("property_types.#{@property.property_type&.slug}", default: @property.property_type&.slug.to_s) %></p>
+        </div>
+      </div>
+    </section>
+
+    <%# Agreement text — full text для прочтения. Pre-wrap для preserving formatting. %>
+    <section class="mb-10">
+      <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">Текст договора</p>
+      <div class="border border-border p-6 max-h-96 overflow-y-auto text-xs leading-relaxed text-foreground/90 font-mono whitespace-pre-wrap"><%= @consent_text %></div>
+    </section>
+
+    <%# Sign form %>
+    <% if @existing_consent %>
+      <section class="border border-border bg-foreground/5 p-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-2">Статус</p>
+        <p class="text-sm text-foreground mb-1">✅ Согласие уже подписано</p>
+        <p class="text-xs text-muted-foreground">
+          <%= @existing_consent.signature_summary %> ·
+          Договор № <%= @existing_consent.id %>
+        </p>
+      </section>
+    <% else %>
+      <section class="border border-border p-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-4">Подписание</p>
+        <p class="text-sm text-muted-foreground leading-relaxed mb-6">
+          Нажимая «Подписать», вы соглашаетесь с условиями выше и подтверждаете,
+          что прочитали договор полностью. Доказательная база подписи (дата,
+          IP-адрес, идентификатор браузера, хеш документа) сохраняется в системе
+          и доступна для верификации по QR-коду в результирующем PDF.
+        </p>
+        <%= form_with url: cabinet_sign_consent_path(@property), method: :post, local: true,
+              data: { turbo: false } do |f| %>
+          <button type="submit"
+                  class="inline-block px-8 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors">
+            Подписать и опубликовать
+          </button>
+          <p class="mt-4 text-xs text-muted-foreground/70">
+            Если у вас возникли вопросы по условиям — свяжитесь с агентством до подписания:
+            <%= mail_to (AgencyInfo::EMAIL rescue 'info@victory62.org'), nil,
+                  class: 'underline hover:text-foreground' %>.
+          </p>
+        <% end %>
+      </section>
+    <% end %>
+  </div>
+</section>

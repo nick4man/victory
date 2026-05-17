@@ -1,0 +1,22 @@
+Договор № <%= @consent.id %> подписан — <%= AgencyInfo::NAME %>
+
+Спасибо<%= @user.first_name.present? ? ", #{@user.first_name}" : '' %>.
+
+Вы успешно подписали агентский договор:
+Объект: <%= @property.title %>
+Адрес: <%= @property.address %>
+
+Параметры подписи:
+- Дата: <%= @consent.signed_at.strftime('%d.%m.%y %H:%M МСК') %>
+- IP подписания: <%= @consent.ip_address %>
+- Версия документа: <%= @consent.consent_version %>
+
+Ваш объект автоматически опубликован. Агент свяжется в течение суток.
+
+Публичная верификация: <%= @verify_url %>
+
+Отозвать согласие можно в личном кабинете до момента продажи.
+
+---
+<%= AgencyInfo::NAME %>
+<%= AgencyInfo::WEBSITE_URL %>

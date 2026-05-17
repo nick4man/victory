@@ -115,6 +115,9 @@ class Property < ApplicationRecord
   has_many :viewing_schedules, dependent: :destroy
   has_many :price_histories, dependent: :destroy
   has_one :virtual_tour, dependent: :destroy
+  has_many :listing_consents, dependent: :destroy
+  has_one :active_consent, -> { active.recent },
+          class_name: 'ListingConsent'
   has_many :documents, dependent: :destroy
   has_many :notes, as: :notable, dependent: :destroy
   has_one :property_embedding, dependent: :destroy
@@ -144,13 +147,14 @@ class Property < ApplicationRecord
   }, _prefix: true
 
   enum status: {
-    draft: 0,     # Черновик
-    pending: 1,   # На модерации
-    active: 2,    # Активен
-    sold: 3,      # Продан
-    rented: 4,    # Сдан
-    archived: 5,  # Архив
-    rejected: 6   # Отклонен
+    draft: 0,             # Черновик
+    pending: 1,           # На модерации (admin review)
+    active: 2,            # Активен (в рекламе)
+    sold: 3,              # Продан
+    rented: 4,            # Сдан
+    archived: 5,          # Архив
+    rejected: 6,          # Отклонен
+    pending_consent: 7    # Ожидает подписи клиента (digital agency contract)
   }, _prefix: true
 
   enum condition: {

@@ -58,6 +58,14 @@ Rails.application.routes.draw do
   post   'cabinet/favorites',           to: 'cabinet/favorites#create',  as: :cabinet_create_favorite
   delete 'cabinet/favorites/:id',       to: 'cabinet/favorites#destroy', as: :cabinet_destroy_favorite
 
+  # A7 Phase 3: digital agency contract consent
+  get    'cabinet/listings/pending',     to: 'cabinet/consents#pending', as: :cabinet_pending_consents
+  get    'cabinet/listings/:id/consent', to: 'cabinet/consents#show',    as: :cabinet_listing_consent
+  post   'cabinet/listings/:id/consent', to: 'cabinet/consents#create',  as: :cabinet_sign_consent
+  delete 'cabinet/listings/:id/consent', to: 'cabinet/consents#destroy', as: :cabinet_revoke_consent
+  # Public verification (QR-target) — no auth, shows consent metadata only (no PII)
+  get    'verify-contract/:token',       to: 'public_consents#show',     as: :verify_contract
+
   # ============================================
   # SEO LANDINGS (M1-M3 — programmatic URL pyramid)
   # ============================================
