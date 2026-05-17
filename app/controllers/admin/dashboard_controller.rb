@@ -19,6 +19,24 @@ module Admin
         pending:  Review.where(status: Review.statuses[:pending]).count,
         approved: Review.where(status: Review.statuses[:approved]).count
       }
+      # Mirror'ит keys из Admin::PropertiesController#index — те же scopes.
+      base_props = Property.unscoped.where.not(external_id: nil)
+      @property_counts = {
+        all:              base_props.count,
+        published:        base_props.where(status: :active).where.not(published_at: nil).count,
+        archived:         base_props.where(status: :archived).count,
+        force:            base_props.where(force_publish: true).count,
+        pending_consent:  base_props.where(status: :pending_consent).count
+      }
+      @case_study_counts = {
+        total:     CaseStudy.count,
+        published: CaseStudy.where(status: CaseStudy.statuses[:published]).count,
+        drafts:    CaseStudy.where(status: CaseStudy.statuses[:draft]).count
+      }
+      @landing_counts = {
+        total:     LandingContent.count,
+        published: LandingContent.published.count
+      }
     end
   end
 end
