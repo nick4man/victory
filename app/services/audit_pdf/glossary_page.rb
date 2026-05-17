@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
 module AuditPdf
-  # Page 4 — risks, assumptions, glossary, contact. Closes the report
-  # with everything the regular reader might need to understand the
-  # numbers and reach an agent.
+  # Page 4 — risks, assumptions, glossary, contact. i18n: audit.glossary.*
   class GlossaryPage
     include Theme::Helpers
 
-    def initialize(doc, valuation, audit, _monte_carlo)
+    def initialize(doc, valuation, audit, _monte_carlo, locale: I18n.locale, rates: nil)
       @doc = doc
       @v = valuation
       @audit = audit || {}
+      @locale = locale
+      @rates = rates
     end
 
     def render
@@ -35,7 +35,7 @@ module AuditPdf
 
     def page_header
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
-        @doc.text 'РИСКИ, ПРЕДПОСЫЛКИ, ГЛОССАРИЙ', size: 18
+        @doc.text I18n.t('audit.glossary.page_title').upcase, size: 18
       end
       @doc.move_down 6
       @doc.stroke_color Theme::ACCENT_GOLD
@@ -49,7 +49,7 @@ module AuditPdf
       assumptions = Array(@audit['assumptions']).compact_blank
 
       if risks.any?
-        section_label('РИСКИ И ОГРАНИЧЕНИЯ')
+        section_label(I18n.t('audit.glossary.risks_header').upcase)
         @doc.move_down 4
         risks.each do |r|
           @doc.text "<color rgb='#{Theme::ACCENT_GOLD}'>▸</color>  #{r}",
@@ -60,7 +60,7 @@ module AuditPdf
       end
 
       if assumptions.any?
-        section_label('ПРЕДПОСЫЛКИ РАСЧЁТА')
+        section_label(I18n.t('audit.glossary.assumptions_header').upcase)
         @doc.move_down 4
         @doc.fill_color Theme::INK_SOFT
         assumptions.each do |a|
@@ -73,26 +73,20 @@ module AuditPdf
     end
 
     def glossary
-      section_label('СЛОВАРЬ ТЕРМИНОВ')
+      section_label(I18n.t('audit.glossary.glossary_header').upcase)
       @doc.move_down 4
 
       entries = [
-        ['Индекс эффективности',
-         'Соотношение полезного результата сделки (прогнозная стоимость + сэкономленная аренда) ' \
-         'к затратам (платежи по ипотеке или упущенная выгода от других вложений). EI ≥ 1.2 — покупка выгодна; ' \
-         '≤ 0.8 — невыгодна.'],
-        ['Метод Монте-Карло',
-         'Способ оценить разброс будущего: программа разыгрывает миллион вариантов того, как поведут себя цены, ' \
-         'ставки и инфляция в горизонте 5 лет, и считает индекс эффективности для каждого. На выходе мы видим не одно число, ' \
-         'а интервал и вероятность хорошего исхода.'],
-        ['Вероятность выгоды',
-         'Доля сценариев Монте-Карло, в которых индекс эффективности получился ≥ 1,2. Чем выше — тем устойчивее решение к будущим неопределённостям.'],
-        ['Сценарии рынка',
-         'Три условных будущих: оптимистичный (низкие ставки, рост цен), реалистичный (текущий прогноз ЦБ РФ) ' \
-         'и пессимистичный (высокие ставки, низкий рост). Полезно понимать, в каком из них решение разваливается.'],
-        ['Стратегии',
-         'Наличные — покупка за свои с дисконтом за полную оплату. Ипотека — покупка с заёмными по текущей рынку. ' \
-         'Депозит — НЕ покупать, положить деньги на вклад и арендовать. Лучшая стратегия — та, у которой выше индекс эффективности.']
+        [I18n.t('audit.glossary.terms.efficiency_index.term'),
+         I18n.t('audit.glossary.terms.efficiency_index.body')],
+        [I18n.t('audit.glossary.terms.monte_carlo.term'),
+         I18n.t('audit.glossary.terms.monte_carlo.body')],
+        [I18n.t('audit.glossary.terms.buy_probability.term'),
+         I18n.t('audit.glossary.terms.buy_probability.body')],
+        [I18n.t('audit.glossary.terms.market_scenarios.term'),
+         I18n.t('audit.glossary.terms.market_scenarios.body')],
+        [I18n.t('audit.glossary.terms.strategies.term'),
+         I18n.t('audit.glossary.terms.strategies.body')]
       ]
 
       entries.each do |term, body|
@@ -117,7 +111,7 @@ module AuditPdf
       @doc.move_down 10
 
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
-        @doc.text 'ОБСУДИТЬ ОТЧЁТ С АГЕНТОМ', size: 9, character_spacing: 3
+        @doc.text I18n.t('audit.glossary.contact_header'), size: 9, character_spacing: 3
       end
       @doc.move_down 6
       contact_lines = [
@@ -136,7 +130,7 @@ module AuditPdf
       @doc.move_cursor_to(40)
       @doc.fill_color Theme::MUTED
       url = AgencyInfo::WEBSITE_URL
-      @doc.text "стр. 4  ·  Отчёт #{@v.report_label}  ·  #{url}", size: 7, align: :center
+      @doc.text "#{I18n.t('audit.page_footer', page: 4, report: @v.report_label)}  ·  #{url}", size: 7, align: :center
       @doc.fill_color Theme::INK
     end
   end

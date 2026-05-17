@@ -3,16 +3,18 @@
 module AuditPdf
   # Optional 5th page — multi-offer Monte Carlo across the bank-offers
   # catalogue. Skipped entirely when the engine returned no `per_offer`
-  # array (нет банков, нет данных). Recommended program highlighted.
+  # array. Recommended program highlighted. i18n: audit.bank_offers.*
   class BankOffersPage
     include Theme::Helpers
 
     MAX_OFFERS = 10
 
-    def initialize(doc, valuation, _audit, _monte_carlo)
+    def initialize(doc, valuation, _audit, _monte_carlo, locale: I18n.locale, rates: nil)
       @doc = doc
       @v = valuation
       @bank_offers = (valuation.evaluation_data || {})['bank_offers'] || {}
+      @locale = locale
+      @rates = rates
     end
 
     def render
@@ -24,12 +26,7 @@ module AuditPdf
       page_header
       recommendation_callout
       offers_table(offers.first(MAX_OFFERS))
-      explainer(
-        'Все программы прошли отдельную симуляцию Монте-Карло (50 000 каждая) ' \
-        'с учётом своих ставок и требований к первому взносу. EI считается так же, как для одной ' \
-        'базовой программы. Рекомендованная — с максимальным индексом эффективности; если индекс < 1,0 у всех — ' \
-        'программа отмечена, но это означает, что покупать в ипотеку сейчас невыгодно для этого объекта.'
-      )
+      explainer(I18n.t('audit.bank_offers.explainer_full'))
       page_footer
     end
 
@@ -45,7 +42,7 @@ module AuditPdf
 
     def page_header
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
-        @doc.text 'ИПОТЕЧНЫЕ ПРОГРАММЫ', size: 18
+        @doc.text I18n.t('audit.bank_offers.page_title').upcase, size: 18
       end
       @doc.move_down 6
       @doc.stroke_color Theme::ACCENT_GOLD
@@ -59,7 +56,7 @@ module AuditPdf
       product = @bank_offers['recommended_product']
       return if bank.blank?
 
-      section_label('РЕКОМЕНДОВАНО ПО ИТОГАМ MULTI-OFFER MC')
+      section_label(I18n.t('audit.bank_offers.recommended_header'))
       @doc.move_down 4
       @doc.font(Theme::FONT_FAMILY, style: :bold) { @doc.text bank, size: 14 }
       @doc.move_down 2
@@ -70,11 +67,18 @@ module AuditPdf
     end
 
     def offers_table(offers)
-      section_label('ПРОГРАММЫ ПО EI MEDIAN (ОТСОРТИРОВАНЫ ПО ВЫГОДНОСТИ)')
+      section_label(I18n.t('audit.bank_offers.programs_header'))
       @doc.move_down 4
 
       recommended_id = @bank_offers['recommended_offer_id']
-      headers = ['Банк', 'Программа', 'Ставка', 'Индекс (медиана)', 'p5–p95', 'Вероятность выгоды']
+      headers = [
+        I18n.t('audit.bank_offers.bank'),
+        I18n.t('audit.bank_offers.program'),
+        I18n.t('audit.bank_offers.rate'),
+        I18n.t('audit.bank_offers.median_index'),
+        I18n.t('audit.bank_offers.p5_p95'),
+        I18n.t('audit.bank_offers.buy_probability')
+      ]
       rows = offers.map do |po|
         offer = po['offer'] || {}
         marker = offer['id'] == recommended_id ? '  ◆' : ''
@@ -106,7 +110,7 @@ module AuditPdf
     def page_footer
       @doc.move_cursor_to(40)
       @doc.fill_color Theme::MUTED
-      @doc.text "стр. 5  ·  Отчёт #{@v.report_label}", size: 7, align: :center
+      @doc.text I18n.t('audit.page_footer', page: 5, report: @v.report_label), size: 7, align: :center
       @doc.fill_color Theme::INK
     end
   end

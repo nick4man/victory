@@ -51,6 +51,13 @@ class InvestmentAuditJob < ApplicationJob
         'completed_at' => Time.current.iso8601
       )
     )
+
+    # B2: snapshot exchange rates + visa chapter для foreign audits.
+    # Snapshot курсов чтобы PDF rendered через дни не плавал; visa-chapter
+    # генерируется LLM один раз и кэшируется в metadata. Best-effort —
+    # не ломаем completion если внешний API упал.
+    enrich_for_foreign_audit(valuation)
+
     ValuationChannel.broadcast_to(valuation, {
       status: 'completed',
       token: valuation.token,
@@ -78,6 +85,40 @@ class InvestmentAuditJob < ApplicationJob
   end
 
   private
+
+  # B2: Foreign-audit enrichment.
+  # - Snapshot exchange rates → metadata['exchange_rates'] (PDF не плавает).
+  # - LLM-generated visa/residency chapter → metadata['visa_chapter_en'].
+  # Идемпотентно: skip если уже есть; soft-fail (рейзов нет).
+  def enrich_for_foreign_audit(valuation)
+    return unless valuation.metadata&.[]('audit_locale').to_s == 'en'
+
+    meta = valuation.metadata.deep_dup
+    changed = false
+
+    # 1) Exchange rates snapshot (если ещё нет)
+    if meta['exchange_rates'].blank?
+      rates = CurrencyRatesService.call
+      if rates.is_a?(Hash) && rates[:usd].present?
+        # Convert symbol-keyed → string-keyed для jsonb persistence.
+        meta['exchange_rates'] = rates.transform_keys(&:to_s)
+        changed = true
+      end
+    end
+
+    # 2) Visa/residency chapter (LLM, free-first chain)
+    if meta['visa_chapter_en'].blank?
+      content = AuditPdf::VisaResidencyContentGenerator.call(valuation)
+      if content.present?
+        meta['visa_chapter_en'] = content
+        changed = true
+      end
+    end
+
+    valuation.update_columns(metadata: meta) if changed
+  rescue StandardError => e
+    Rails.logger.warn("[InvestmentAuditJob#enrich_for_foreign_audit] #{e.class}: #{e.message}")
+  end
 
   def safe_compare_offers(client, audit_id)
     with_audit_lookup_retry(audit_id) do

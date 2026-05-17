@@ -126,6 +126,21 @@
       <% end %>
     </section>
 
+    <%# AUDIT CTA — primary B2 entry point (above catalog CTA — higher priority) %>
+    <section class="mb-12 lg:mb-16 border border-foreground/30 bg-foreground/[0.03] p-12 lg:p-16">
+      <p class="text-xs tracking-[0.4em] uppercase text-foreground/60 mb-4">
+        Free · AI-powered · 30 seconds
+      </p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-6 max-w-3xl">
+        <%= t('foreign_audit.cta.title') %>
+      </h2>
+      <p class="text-base text-muted-foreground leading-relaxed mb-8 max-w-2xl">
+        <%= t('foreign_audit.cta.body') %>
+      </p>
+      <%= link_to t('foreign_audit.cta.button'), new_foreign_audit_path,
+            class: 'inline-block px-10 py-4 bg-foreground text-background text-sm tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors' %>
+    </section>
+
     <%# CATALOG CTA — off-market %>
     <section class="mb-24 lg:mb-32 border border-border p-12 lg:p-16">
       <h2 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground mb-6 max-w-2xl">

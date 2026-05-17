@@ -13,28 +13,52 @@ require 'prawn/table'
 # but no HTTP endpoint exposes it, so we render server-side from the
 # stored `evaluation_data`.
 class AuditPdfGenerator
-  def self.call(valuation)
-    new(valuation).render
+  def self.call(valuation, locale: nil)
+    new(valuation, locale: locale).render
   end
 
-  def initialize(valuation)
-    @v     = valuation
-    @audit = (valuation.evaluation_data || {})['audit'] || {}
-    @mc    = (valuation.evaluation_data || {})['monte_carlo'] || {}
+  # @param valuation [PropertyValuation] completed investment audit
+  # @param locale [Symbol, nil] :ru (default) | :en. Если nil — читаем
+  #   valuation.metadata['audit_locale'] (Foreign::AuditsController туда
+  #   кладёт 'en'); fallback на I18n.default_locale.
+  def initialize(valuation, locale: nil)
+    @v       = valuation
+    @audit   = (valuation.evaluation_data || {})['audit'] || {}
+    @mc      = (valuation.evaluation_data || {})['monte_carlo'] || {}
+    @locale  = (locale || valuation.metadata&.[]('audit_locale') || I18n.default_locale).to_sym
+    @rates   = valuation.metadata&.[]('exchange_rates') || CurrencyRatesService.call
   end
 
   def render
-    doc = build_document
-    register_fonts(doc)
-    doc.font AuditPdf::Theme::FONT_FAMILY
+    # Wraps ENTIRE render в I18n.with_locale — все page modules вызывают
+    # I18n.t('audit.…') и автоматически получают RU или EN.
+    I18n.with_locale(@locale) do
+      doc = build_document
+      register_fonts(doc)
+      doc.font AuditPdf::Theme::FONT_FAMILY
 
-    AuditPdf::CoverPage.new(doc, @v, @audit, @mc).render
-    AuditPdf::EiDetailsPage.new(doc, @v, @audit, @mc).render
-    AuditPdf::ScenariosPage.new(doc, @v, @audit, @mc).render
-    AuditPdf::BankOffersPage.new(doc, @v, @audit, @mc).render
-    AuditPdf::GlossaryPage.new(doc, @v, @audit, @mc).render
+      shared_args = [doc, @v, @audit, @mc]
+      shared_kwargs = { locale: @locale, rates: @rates }
 
-    doc.render
+      AuditPdf::CoverPage.new(*shared_args, **shared_kwargs).render
+      AuditPdf::EiDetailsPage.new(*shared_args, **shared_kwargs).render
+      AuditPdf::ScenariosPage.new(*shared_args, **shared_kwargs).render
+      AuditPdf::BankOffersPage.new(*shared_args, **shared_kwargs).render
+
+      # Foreign audit only — visa/residency chapter + conversion table.
+      # Inserted перед glossary чтобы closing pages (glossary + signature
+      # footer) оставались последними.
+      if @locale == :en
+        if @v.metadata&.[]('visa_chapter_en').present?
+          AuditPdf::VisaResidencyPage.new(*shared_args, **shared_kwargs).render
+        end
+        AuditPdf::ConversionTablePage.new(*shared_args, **shared_kwargs).render
+      end
+
+      AuditPdf::GlossaryPage.new(*shared_args, **shared_kwargs).render
+
+      doc.render
+    end
   end
 
   private
@@ -44,11 +68,11 @@ class AuditPdfGenerator
       page_size: 'A4',
       margin: AuditPdf::Theme::PAGE_MARGIN,
       info: {
-        Title:    'Инвестиционный аудит — АН Виктори',
-        Author:   'АН Виктори',
-        Subject:  'Investment audit report',
+        Title:    I18n.t('audit.pdf_meta.title'),
+        Author:   I18n.t('audit.pdf_meta.author'),
+        Subject:  I18n.t('audit.pdf_meta.subject'),
         Creator:  'victory62.org',
-        Producer: 'АН Виктори · victory62.org'
+        Producer: I18n.t('audit.pdf_meta.producer')
       }
     )
   end

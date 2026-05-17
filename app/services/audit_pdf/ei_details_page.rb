@@ -2,16 +2,18 @@
 
 module AuditPdf
   # Page 2 — Efficiency Index breakdown + mortgage details.
-  # Three EI strategies + Monte Carlo p5-p95 + mortgage key numbers + plain-Russian
-  # "what this means" callouts after each block.
+  # Three EI strategies + Monte Carlo p5-p95 + mortgage key numbers + plain-language
+  # "what this means" callouts after each block. i18n: audit.ei.* via current locale.
   class EiDetailsPage
     include Theme::Helpers
 
-    def initialize(doc, valuation, audit, monte_carlo)
+    def initialize(doc, valuation, audit, monte_carlo, locale: I18n.locale, rates: nil)
       @doc = doc
       @v = valuation
       @audit = audit || {}
       @mc = monte_carlo || {}
+      @locale = locale
+      @rates = rates
     end
 
     def render
@@ -38,7 +40,7 @@ module AuditPdf
     def page_header
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
         @doc.fill_color Theme::INK
-        @doc.text 'ЭФФЕКТИВНОСТЬ ИНВЕСТИЦИИ', size: 18
+        @doc.text I18n.t('audit.ei.page_title').upcase, size: 18
       end
       @doc.move_down 6
       @doc.stroke_color Theme::ACCENT_GOLD
@@ -48,21 +50,26 @@ module AuditPdf
     end
 
     def ei_table
-      section_label('РЕЗУЛЬТАТ ПО ТРЁМ СТРАТЕГИЯМ')
+      section_label(I18n.t('audit.ei.three_strategies_header'))
       @doc.fill_color Theme::MUTED
       @doc.font(Theme::FONT_FAMILY, style: :normal) do
-        @doc.text 'EI ≥ 1.2 — покупать выгоднее альтернатив · 0.9–1.1 — нейтрально · < 0.8 — невыгодно',
-                  size: 9
+        @doc.text I18n.t('audit.ei.threshold_legend'), size: 9
       end
       @doc.fill_color Theme::INK
       @doc.move_down 8
 
       rec_key = @mc['recommended_strategy'].to_s.downcase
-      headers = ['Стратегия', 'Индекс (медиана)', 'Интервал p5–p95', 'Вероятность выгоды']
+      headers = [
+        I18n.t('audit.ei.strategy'),
+        I18n.t('audit.ei.median_index'),
+        I18n.t('audit.ei.p5_p95_range'),
+        I18n.t('audit.ei.buy_probability')
+      ]
+      cash_label_full = "#{strategy_label('cash')} (100%)"
       rows = [
-        ['cash',     'Наличными (100%)', @audit['ei_cash'],     @mc['cash']],
-        ['mortgage', 'Ипотека',           @audit['ei_mortgage'], @mc['mortgage']],
-        ['deposit',  'Депозит',           @audit['ei_deposit'],  @mc['deposit']]
+        ['cash',     cash_label_full,            @audit['ei_cash'],     @mc['cash']],
+        ['mortgage', strategy_label('mortgage'), @audit['ei_mortgage'], @mc['mortgage']],
+        ['deposit',  strategy_label('deposit'),  @audit['ei_deposit'],  @mc['deposit']]
       ].map do |key, label, ei, mc_s|
         marker = key == rec_key ? '  ◆' : ''
         [
@@ -88,33 +95,28 @@ module AuditPdf
       end
       @doc.move_down 6
       @doc.fill_color Theme::MUTED
-      @doc.text '◆ — стратегия, рекомендованная по итогам Монте-Карло (1 000 000 симуляций).',
-                size: 8
+      @doc.text I18n.t('audit.ei.recommended_marker_note'), size: 8
       @doc.fill_color Theme::INK
       @doc.move_down 14
     end
 
     def ei_explainer
-      explainer(
-        'Если по конкретной стратегии EI > 1.2 — этот способ покупки сейчас выгоднее, чем альтернатива ' \
-        '(депозит или съём + накопление). Если EI < 0.8 — деньги работают эффективнее в другом инструменте. ' \
-        'Вероятность выгоды показывает шанс остаться в плюсе при тысячах разных вариантов будущего.'
-      )
+      explainer(I18n.t('audit.ei.explainer_full'))
     end
 
     def mortgage_block
       m = realistic_mortgage
       return unless m
 
-      section_label('УСЛОВИЯ ИПОТЕКИ (РЕАЛИСТИЧНЫЙ СЦЕНАРИЙ)')
+      section_label(I18n.t('audit.ei.mortgage_terms_header'))
       @doc.move_down 4
 
       rows = [
-        ['Первый взнос',   fmt_rub(m['down_payment'])],
-        ['Тело кредита',   fmt_rub(m['loan_amount'])],
-        ['Платёж в месяц', fmt_rub(m['monthly_payment'])],
-        ['Всего выплат за срок', fmt_rub(m['total_payments'])],
-        ['Переплата (проценты)', fmt_rub(m['total_interest'])]
+        [I18n.t('audit.ei.down_payment'),    fmt_rub_usd(m['down_payment'])],
+        [I18n.t('audit.ei.loan_amount'),     fmt_rub_usd(m['loan_amount'])],
+        [I18n.t('audit.ei.monthly_payment'), fmt_rub_usd(m['monthly_payment'])],
+        [I18n.t('audit.ei.total_payments'),  fmt_rub_usd(m['total_payments'])],
+        [I18n.t('audit.ei.total_interest'),  fmt_rub_usd(m['total_interest'])]
       ]
       @doc.table(rows, cell_style: { borders: [:bottom], border_color: Theme::HAIRLINE,
                                      padding: [7, 0], size: 11 },
@@ -131,16 +133,15 @@ module AuditPdf
       return unless m
 
       explainer(
-        "«Всего выплат» #{fmt_rub(m['total_payments'])} — это сумма всех ежемесячных платежей за весь срок ипотеки " \
-        '(обычно 20 лет). Аудит считает решение на горизонте 5 лет — поэтому EI учитывает только то, что выплачено за эти 5 лет ' \
-        'плюс остаточный долг, а не всю переплату за 20 лет. Снижение ставки на 1% существенно меняет индекс эффективности (см. стр. 3).'
+        I18n.t('audit.ei.mortgage_explainer',
+               total_payments: fmt_rub(m['total_payments']))
       )
     end
 
     def page_footer
       @doc.move_cursor_to(40)
       @doc.fill_color Theme::MUTED
-      @doc.text "стр. 2  ·  Отчёт #{@v.report_label}", size: 7, align: :center
+      @doc.text I18n.t('audit.page_footer', page: 2, report: @v.report_label), size: 7, align: :center
       @doc.fill_color Theme::INK
     end
 

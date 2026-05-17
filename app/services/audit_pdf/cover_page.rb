@@ -6,11 +6,18 @@ module AuditPdf
   class CoverPage
     include Theme::Helpers
 
-    def initialize(doc, valuation, audit, monte_carlo)
+    # @param locale [Symbol] :ru | :en — для i18n. Generator оборачивает
+    #   весь render в I18n.with_locale, но keep аргумент для совместимости
+    #   и явности.
+    # @param rates [Hash, nil] CurrencyRatesService snapshot — { usd:, eur:, aed: }
+    #   для fmt_rub_usd helper.
+    def initialize(doc, valuation, audit, monte_carlo, locale: I18n.locale, rates: nil)
       @doc = doc
       @v = valuation
       @audit = audit || {}
       @mc = monte_carlo || {}
+      @locale = locale
+      @rates = rates
     end
 
     def render
@@ -32,15 +39,19 @@ module AuditPdf
     end
 
     def wordmark
+      # Wordmark stays «АН ВИКТОРИ» в RU; для EN — «VICTORY». Brand
+      # consistency: latin transliteration на foreign audit.
+      brand = @locale == :en ? 'VICTORY' : 'АН ВИКТОРИ'
+
       @doc.move_down 20
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
         @doc.fill_color Theme::INK
-        @doc.text 'АН ВИКТОРИ', size: 32, character_spacing: 8
+        @doc.text brand, size: 32, character_spacing: 8
       end
       @doc.move_down 6
       @doc.font(Theme::FONT_FAMILY, style: :normal) do
         @doc.fill_color Theme::MUTED
-        @doc.text 'Агентство недвижимости в Рязани', size: 10, character_spacing: 1
+        @doc.text I18n.t('audit.pdf.tagline'), size: 10, character_spacing: 1
       end
       @doc.move_down 18
       @doc.stroke_color Theme::ACCENT_GOLD
@@ -49,20 +60,20 @@ module AuditPdf
       @doc.move_down 6
       @doc.fill_color Theme::MUTED
       @doc.font(Theme::FONT_FAMILY, style: :normal) do
-        @doc.text 'Инвестиционный аудит недвижимости', size: 11, character_spacing: 4
+        @doc.text I18n.t('audit.pdf.header_title'), size: 11, character_spacing: 4
       end
       @doc.fill_color Theme::INK
       @doc.move_down 22
       @doc.fill_color Theme::INK_SOFT
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
-        @doc.text "ОТЧЁТ #{@v.report_label}", size: 13, character_spacing: 5
+        @doc.text "#{I18n.t('audit.pdf.report_label_prefix')} #{@v.report_label}", size: 13, character_spacing: 5
       end
       @doc.fill_color Theme::INK
       @doc.move_down 38
     end
 
     def property_summary
-      section_label('ОБЪЕКТ АУДИТА')
+      section_label(I18n.t('audit.cover.subject_label'))
       @doc.move_down 4
 
       address = (@v.address.presence || @audit['complex_name']).to_s
@@ -71,16 +82,18 @@ module AuditPdf
       end
       @doc.move_down 18
 
-      # 3-column key-numbers grid
+      # 3-column key-numbers grid. EN audit uses sq. m label;
+      # для финансовых чисел fmt_rub_usd показывает USD рядом если @rates.
+      sqm_label = @locale == :en ? 'sq. m' : 'м²'
       area = @audit['area_sqm']&.to_f
-      area_text = area ? "#{area.round(1)} м²" : '—'
-      price_text = fmt_rub(@audit['price_total'])
-      ppsm_text = "#{fmt_rub(@audit['price_per_sqm'])}/м²"
+      area_text = area ? "#{area.round(1)} #{sqm_label}" : '—'
+      price_text = fmt_rub_usd(@audit['price_total'])
+      ppsm_text = "#{fmt_rub_usd(@audit['price_per_sqm'])}/#{sqm_label}"
 
       cols = [
-        ['ПЛОЩАДЬ',   area_text],
-        ['ЦЕНА',      price_text],
-        ['ЗА КВ. МЕТР', ppsm_text]
+        [I18n.t('audit.cover.area'),    area_text],
+        [I18n.t('audit.cover.price'),   price_text],
+        [I18n.t('audit.cover.per_sqm'), ppsm_text]
       ]
       col_width = @doc.bounds.width / 3.0
       y_start = @doc.cursor
@@ -116,11 +129,11 @@ module AuditPdf
       @doc.bounding_box([24, y_top - 24], width: box_w - 48, height: box_h - 40) do
         @doc.fill_color fg
         @doc.font(Theme::FONT_FAMILY, style: :bold) do
-          @doc.text 'ВЕРДИКТ', size: 9, character_spacing: 4
+          @doc.text I18n.t('audit.cover.verdict_label'), size: 9, character_spacing: 4
         end
         @doc.move_down 12
         @doc.font(Theme::FONT_FAMILY, style: :bold) do
-          @doc.text verdict_ru(verdict), size: 48
+          @doc.text verdict_label(verdict), size: 48
         end
         @doc.move_down 8
         explanation = @audit['verdict_explanation'].to_s.truncate(220)
@@ -134,8 +147,8 @@ module AuditPdf
       @doc.fill_color Theme::INK
 
       if (rec = @mc['recommended_strategy']).present?
-        conf = Theme::CONFIDENCE_RU[@mc['confidence_level']] || @mc['confidence_level']
-        line = "Лучшая стратегия — #{strategy_ru(rec)}"
+        conf = confidence_label(@mc['confidence_level']) if @mc['confidence_level']
+        line = "#{I18n.t('audit.cover.recommended_strategy_prefix')} #{strategy_label(rec)}"
         line += " (#{conf})" if conf
         @doc.fill_color Theme::INK_SOFT
         @doc.text line, size: 11, align: :center
@@ -154,9 +167,10 @@ module AuditPdf
       @doc.stroke_horizontal_rule
       @doc.move_down 8
       @doc.fill_color Theme::MUTED
-      left = "Дата аудита: #{@audit['audit_date'] || I18n.l(Date.current)}"
+      date_str = @audit['audit_date'] || I18n.l(Date.current)
+      left = "#{I18n.t('audit.signature_footer.date_prefix')} #{date_str}"
       right = AgencyInfo::WEBSITE_URL
-      mid = "Отчёт #{@v.report_label}"
+      mid = "#{I18n.t('audit.pdf.report_label_prefix').capitalize} #{@v.report_label}"
       @doc.text "#{left}   ·   #{mid}   ·   #{right}", size: 7.5, align: :center
       @doc.fill_color Theme::INK
     end
@@ -188,7 +202,7 @@ module AuditPdf
           @doc.image StringIO.new(site_png), at: [x_left, @doc.cursor], width: qr_h, height: qr_h
           @doc.bounding_box([x_left + qr_h + 8, @doc.cursor], width: 110, height: qr_h) do
             @doc.fill_color Theme::MUTED
-            @doc.text 'НАШ САЙТ', size: 7, character_spacing: 1.5
+            @doc.text I18n.t('audit.signature_footer.site_label'), size: 7, character_spacing: 1.5
             @doc.fill_color Theme::INK
             @doc.text site_url.sub(%r{^https?://}, ''), size: 8
           end
@@ -199,12 +213,12 @@ module AuditPdf
           @doc.image StringIO.new(tg_png), at: [x_right, @doc.cursor], width: qr_h, height: qr_h
           @doc.bounding_box([x_right + qr_h + 8, @doc.cursor], width: 110, height: qr_h) do
             @doc.fill_color Theme::MUTED
-            @doc.text 'TELEGRAM', size: 7, character_spacing: 1.5
+            @doc.text I18n.t('audit.signature_footer.tg_label'), size: 7, character_spacing: 1.5
             @doc.fill_color Theme::INK
             @doc.text '@rznvictory', size: 8
             @doc.move_down 2
             @doc.fill_color Theme::MUTED
-            @doc.text 'новости каждые 15 мин', size: 6.5
+            @doc.text I18n.t('audit.signature_footer.tg_caption'), size: 6.5
           end
         end
       rescue StandardError => e

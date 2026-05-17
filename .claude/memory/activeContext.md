@@ -42,6 +42,23 @@ Session-domain split (рекомендуемый):
 2. **Express PDF / audit-PDF**: `app/services/audit_pdf/`, `app/services/pdf_generator_service.rb`
 3. **Property AVM / valuations**: `app/services/property_evaluation/`, `app/services/valuations/`, `app/controllers/property_valuations_controller.rb`
 
+## A6 — Document intake (статус 17.05.26)
+
+**Архитектурно собрано, в проде НЕ ПРОТЕСТИРОВАНО на реальных фото.**
+
+Pipeline wired end-to-end:
+- TG webhook → CF Worker → `/webhooks/telegram` → `Telegram::InboundProcessor#client_photo_intake?` (line 55-56) → `ClientBot::PhotoIntakeProcessor`
+- Photo → `ClientDocument.intake!` → `DocumentIntake::ParserJob` (async) → Yandex Vision OCR → `PassportParser`/`InnParser`/`EgrnParser` → `status: :ocr_completed` → staff notification в `TELEGRAM_STAFF_CHAT_ID`
+- DLP: filter_parameter_logging + `parsed_data_masked` helpers
+- ENV: `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` + legacy aliases `YANDEX_VISION_*` (один SA-ключ обслуживает оба endpoint'а)
+
+Smoke-test'ы прошли (synthetic OCR text + mocked Vision response). Известные tuning-issues
+которые проявятся на реальных скан-фото:
+- PassportParser regex может путать «Дата выдачи» с «Дата рождения» (берёт первый date pattern)
+- FIO extraction чувствителен к OCR-форматированию
+
+**Действие**: пришли тест-фото паспорта в `@anvictorybot` DM → tune regex под реальный output Yandex Vision.
+
 ## Артефакты и ссылки
 
 - TZ для этой фазы (если есть): `TZ_VICTORY62_NEWS_CROSSLINK.md` в `/home/q/`

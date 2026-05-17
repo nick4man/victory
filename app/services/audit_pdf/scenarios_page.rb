@@ -3,14 +3,16 @@
 module AuditPdf
   # Page 3 — three market scenarios + sensitivity chart.
   # Helps the reader see how the verdict shifts under different macro
-  # conditions, especially how mortgage-rate moves affect the EI.
+  # conditions, especially how mortgage-rate moves affect the EI. i18n: audit.scenarios.*
   class ScenariosPage
     include Theme::Helpers
 
-    def initialize(doc, valuation, audit, _monte_carlo)
+    def initialize(doc, valuation, audit, _monte_carlo, locale: I18n.locale, rates: nil)
       @doc = doc
       @v = valuation
       @audit = audit || {}
+      @locale = locale
+      @rates = rates
     end
 
     def render
@@ -35,7 +37,7 @@ module AuditPdf
 
     def page_header
       @doc.font(Theme::FONT_FAMILY, style: :bold) do
-        @doc.text 'СЦЕНАРИИ И ЧУВСТВИТЕЛЬНОСТЬ', size: 18
+        @doc.text I18n.t('audit.scenarios.page_title').upcase, size: 18
       end
       @doc.move_down 6
       @doc.stroke_color Theme::ACCENT_GOLD
@@ -48,23 +50,30 @@ module AuditPdf
       scenarios = Array(@audit['scenarios']).compact_blank
       return if scenarios.empty?
 
-      section_label('EI ПРИ РАЗНЫХ СЦЕНАРИЯХ РЫНКА')
+      section_label(I18n.t('audit.scenarios.ei_by_market_header'))
       @doc.fill_color Theme::MUTED
-      @doc.text 'Что будет с эффективностью инвестиций при оптимистичном, реалистичном и пессимистичном развитии рынка.',
-                size: 9
+      @doc.text I18n.t('audit.scenarios.intro'), size: 9
       @doc.fill_color Theme::INK
       @doc.move_down 8
 
-      headers = ['Сценарий', 'Рост цен', 'Ипотека', 'EI наличные', 'EI ипотека', 'EI депозит', 'Лучшая']
+      headers = [
+        I18n.t('audit.scenarios.scenario_col'),
+        I18n.t('audit.scenarios.price_growth_col'),
+        I18n.t('audit.scenarios.mortgage_col'),
+        I18n.t('audit.scenarios.ei_cash_col'),
+        I18n.t('audit.scenarios.ei_mortgage_col'),
+        I18n.t('audit.scenarios.ei_deposit_col'),
+        I18n.t('audit.scenarios.best_col')
+      ]
       rows = scenarios.map do |s|
         [
-          s['scenario_name'],
+          translate_scenario_name(s['scenario_name']),
           "#{s.dig('params', 'price_growth_annual')&.to_f&.round(1)}%",
           "#{s.dig('params', 'mortgage_rate')&.to_f&.round(1)}%",
           fmt_ei(s.dig('cash', 'ei')),
           fmt_ei(s.dig('mortgage', 'ei')),
           fmt_ei(s.dig('deposit', 'ei')),
-          strategy_ru(s['best_strategy'])
+          strategy_label(s['best_strategy'])
         ]
       end
 
@@ -83,39 +92,41 @@ module AuditPdf
       @doc.move_down 12
     end
 
+    # Python audit-engine returns scenario_name на RU («Реалистичный»,
+    # «Оптимистичный», «Пессимистичный»). Маппим на i18n для EN PDF.
+    def translate_scenario_name(name)
+      key = case name.to_s
+            when 'Реалистичный'  then 'realistic'
+            when 'Оптимистичный' then 'optimistic'
+            when 'Пессимистичный' then 'pessimistic'
+            end
+      key ? I18n.t("audit.scenarios.names.#{key}", default: name) : name.to_s
+    end
+
     def scenarios_explainer
-      explainer(
-        'Реалистичный сценарий — то, на что закладываемся по умолчанию (ставки и инфляция от ЦБ РФ). ' \
-        'Оптимистичный — если инфляция и рост цен пойдут выше, ставки снизятся. ' \
-        'Пессимистичный — обратное. Если "Лучшая" совпадает во всех трёх сценариях — решение устойчивое; ' \
-        'если меняется — стоит смотреть на свой прогноз рынка.'
-      )
+      explainer(I18n.t('audit.scenarios.explainer_full'))
     end
 
     def sensitivity_section
       sensitivity = Array(@audit['sensitivity_table']).compact_blank
       return if sensitivity.empty?
 
-      section_label('ЧУВСТВИТЕЛЬНОСТЬ EI ИПОТЕКИ К СТАВКЕ')
+      section_label(I18n.t('audit.scenarios.sensitivity_header'))
       @doc.fill_color Theme::MUTED
-      @doc.text 'Как меняется EI ипотеки если фактическая ставка отличается от прогнозной. Линия 1.0 — порог окупаемости.',
-                size: 9
+      @doc.text I18n.t('audit.scenarios.sensitivity_intro'), size: 9
       @doc.fill_color Theme::INK
       @doc.move_down 10
 
       AuditPdf::SensitivityChart.new(@doc, sensitivity).render
       @doc.move_down 8
 
-      explainer(
-        'Если вам предложили ставку ниже — найдите её на горизонтальной оси и посмотрите EI справа. ' \
-        'EI > 1.0 означает, что ипотека на этой ставке уже выгоднее депозита.'
-      )
+      explainer(I18n.t('audit.scenarios.sensitivity_explainer'))
     end
 
     def page_footer
       @doc.move_cursor_to(40)
       @doc.fill_color Theme::MUTED
-      @doc.text "стр. 3  ·  Отчёт #{@v.report_label}", size: 7, align: :center
+      @doc.text I18n.t('audit.page_footer', page: 3, report: @v.report_label), size: 7, align: :center
       @doc.fill_color Theme::INK
     end
   end

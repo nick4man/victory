@@ -40,6 +40,19 @@ Rails.application.routes.draw do
   # i18n.locale=:en для request lifecycle (set в ForeignController).
   get 'foreign', to: 'foreign#index', as: :foreign
 
+  # B2: /foreign/audits — EN investment audit flow с RUB+USD primary,
+  # multi-currency conversion table, LLM-generated visa/residency chapter.
+  # Wraps existing InvestmentAuditJob через PropertyValuation
+  # metadata['audit_locale']='en'.
+  namespace :foreign do
+    resources :audits, only: %i[new create show], path: 'audits' do
+      member do
+        get :status        # JSON polling fallback (mirror investment_audit_status_path)
+        get :download_pdf
+      end
+    end
+  end
+
   # ============================================
   # PERSONAL CABINET (A7 Phase 1 — magic-link auth)
   # ============================================

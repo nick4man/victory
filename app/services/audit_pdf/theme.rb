@@ -35,7 +35,7 @@ module AuditPdf
       'NEUTRAL' => '6E4A05'
     }.freeze
 
-    # === Russian labels ===================================================
+    # === Legacy RU labels (kept для backwards compat — новый код использует I18n) ===
     VERDICT_RU  = { 'BUY' => 'ПОКУПАТЬ', 'WAIT' => 'ПОДОЖДАТЬ', 'NEUTRAL' => 'НЕЙТРАЛЬНО' }.freeze
     STRATEGY_RU = { 'cash' => 'Наличными', 'mortgage' => 'Ипотека', 'deposit' => 'Депозит',
                     'Cash' => 'Наличные', 'Mortgage' => 'Ипотека', 'Deposit' => 'Депозит' }.freeze
@@ -83,6 +83,18 @@ module AuditPdf
         "#{v.to_f.round.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\1 ').reverse} ₽"
       end
 
+      # RUB + USD pair для foreign audits. @rates установлен в page module
+      # из generator (PropertyValuation.metadata snapshot или live).
+      # Formula: usd = rub / rates[:usd] (CBR.ru curve).
+      def fmt_rub_usd(v)
+        return '—' if v.blank?
+        rub = fmt_rub(v)
+        rates = instance_variable_defined?(:@rates) ? @rates : nil
+        return rub if rates.blank? || rates[:usd].blank?
+        usd = (v.to_f / rates[:usd].to_f).round
+        "#{rub} / $#{usd.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\1,').reverse}"
+      end
+
       def fmt_pct(v, digits = 1)
         return '—' if v.blank?
         "#{v.to_f.round(digits)}%"
@@ -93,13 +105,28 @@ module AuditPdf
         v.to_f.round(2).to_s
       end
 
-      def verdict_ru(code)
-        Theme::VERDICT_RU[code.to_s] || code.to_s
+      # i18n-aware verdict label: BUY → «ПОКУПАТЬ» / «BUY». Reads
+      # audit.verdicts.<code> через I18n.with_locale wrapper в generator.
+      def verdict_label(code)
+        key = "audit.verdicts.#{code.to_s.downcase}"
+        I18n.t(key, default: Theme::VERDICT_RU[code.to_s] || code.to_s)
       end
 
-      def strategy_ru(code)
-        Theme::STRATEGY_RU[code.to_s] || code.to_s.capitalize
+      # i18n-aware strategy label.
+      def strategy_label(code)
+        key = "audit.strategies.#{code.to_s.downcase}"
+        I18n.t(key, default: Theme::STRATEGY_RU[code.to_s] || code.to_s.capitalize)
       end
+
+      def confidence_label(code)
+        key = "audit.confidence.#{code.to_s.downcase}"
+        I18n.t(key, default: Theme::CONFIDENCE_RU[code.to_s] || code.to_s)
+      end
+
+      # Legacy aliases — старые page modules могут вызывать verdict_ru/strategy_ru
+      # напрямую. Они теперь locale-aware (читают current I18n.locale).
+      def verdict_ru(code) = verdict_label(code)
+      def strategy_ru(code) = strategy_label(code)
     end
   end
 end
