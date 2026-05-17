@@ -63,6 +63,13 @@ module Telegram
         return Telegram::WorkBot::VoiceIntakeProcessor.new(msg).call
       end
 
+      # Phase 7.5 — @mention бота в #ВОПРОС/ОТВЕТ → LLM-ответ через
+      # StaffChatResponder (классификация + chat_tools/staff + escalation
+      # на director если кейс не bot-resolvable).
+      if Telegram::WorkBot::QnaHandler.applies?(msg)
+        return Telegram::WorkBot::QnaHandler.new(msg).call
+      end
+
       # Discovery топиков рабочей группы — пассивно: смотрим каждое сообщение,
       # которое прилетает с message_thread_id, и сохраняем маппинг key → thread_id
       # если по имени удалось определить топик. См. TopicDiscovery.
