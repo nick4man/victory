@@ -1,0 +1,140 @@
+<% content_for :title, "KPI — Сотрудники АН" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <div class="flex items-end justify-between gap-6 mb-12 pb-8 border-b border-border">
+      <div>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">АДМИНИСТРИРОВАНИЕ</p>
+        <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground">KPI сотрудников</h1>
+        <p class="text-sm text-muted-foreground mt-3">
+          Daily snapshots из <code>StaffMetric</code>. Cron 23:55 пишет slice за прошедший день.
+          Period filter — диапазон дат для агрегации.
+        </p>
+      </div>
+      <div class="flex flex-col items-end gap-2">
+        <%= form_with url: dashboard_admin_kpi_path, method: :get, local: true,
+                      class: "flex items-center gap-2" do |f| %>
+          <%= f.select :period,
+                       [['Сегодня','today'], ['Неделя','week'], ['Месяц','month'], ['Квартал','quarter']],
+                       { selected: @period },
+                       class: "py-2 px-3 border border-border bg-background text-sm" %>
+          <%= f.hidden_field :token, value: params[:token] if params[:token] %>
+          <%= f.submit "Применить",
+                       class: "py-2 px-4 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm" %>
+        <% end %>
+        <p class="text-xs text-muted-foreground">
+          Период: <%= @date_range.begin.strftime('%d.%m.%y') %> — <%= @date_range.end.strftime('%d.%m.%y') %>
+        </p>
+      </div>
+    </div>
+
+    <!-- Agency totals strip -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-px bg-border mb-12">
+      <% [
+           ['Назначено', @agency_totals[:tasks_assigned]],
+           ['Закрыто',   @agency_totals[:tasks_completed]],
+           ['В срок',    @agency_totals[:tasks_on_time]],
+           ['Просрочки', @agency_totals[:tasks_overdue]],
+           ['Suspicious', @agency_totals[:suspicious_completions]],
+           ['Вопросов',  @agency_totals[:questions_asked]],
+           ['Лиды',      @agency_totals[:leads_assigned]],
+           ['Контакт ≤30м', @agency_totals[:leads_first_contact_in_30m]],
+           ['Сделки',    @agency_totals[:leads_converted]],
+           ['Документы', @agency_totals[:documents_uploaded]]
+         ].each do |label, value| %>
+        <div class="bg-background p-4">
+          <p class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1"><%= label %></p>
+          <p class="text-2xl font-light text-foreground"><%= value %></p>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- Per-staff table -->
+    <% if @rows.empty? %>
+      <div class="p-12 text-center text-muted-foreground border border-border">
+        <p>Нет активных сотрудников (<code>TelegramUser.assignable</code> пустой).</p>
+      </div>
+    <% else %>
+      <div class="overflow-x-auto border border-border">
+        <table class="min-w-full text-sm">
+          <thead class="bg-muted/30 text-muted-foreground">
+            <tr>
+              <th class="text-left p-3 font-medium">Сотрудник</th>
+              <th class="text-center p-3 font-medium" title="Задач закрыто / назначено">Задачи</th>
+              <th class="text-center p-3 font-medium" title="В срок / закрыто">В&nbsp;срок</th>
+              <th class="text-center p-3 font-medium" title="Просрочки">Просрочки</th>
+              <th class="text-center p-3 font-medium" title="Среднее время выполнения">Avg&nbsp;мин</th>
+              <th class="text-center p-3 font-medium" title="Подозрительные ack'и (быстрые/без first_contact)">Suspicious</th>
+              <th class="text-center p-3 font-medium" title="Вопросов в #ВОПРОС/ОТВЕТ">?&nbsp;dep</th>
+              <th class="text-center p-3 font-medium" title="Лидов назначено">Лиды</th>
+              <th class="text-center p-3 font-medium" title="Первый контакт ≤30 мин">≤30м</th>
+              <th class="text-center p-3 font-medium" title="Сделок выиграно (closed_at в периоде)">Сделки</th>
+              <th class="text-center p-3 font-medium" title="Документов загружено в NC">Документы</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border">
+            <% @rows.each do |r| %>
+              <tr class="hover:bg-muted/10">
+                <td class="p-3 font-medium text-foreground">
+                  <%= r[:staff].mention %>
+                  <p class="text-[10px] text-muted-foreground">
+                    <%= r[:staff].role %>
+                    <% if r[:staff].linked_to_crm? %><span class="text-emerald-600">· CRM</span><% end %>
+                  </p>
+                </td>
+                <td class="p-3 text-center">
+                  <span class="font-medium text-foreground"><%= r[:tasks_completed] %></span>
+                  <span class="text-muted-foreground">/&nbsp;<%= r[:tasks_assigned] %></span>
+                </td>
+                <td class="p-3 text-center">
+                  <%
+                    rate = r[:tasks_completed].positive? ? (r[:tasks_on_time].to_f * 100 / r[:tasks_completed]).round : 0
+                    color = rate >= 80 ? 'text-emerald-600' : rate >= 50 ? 'text-amber-600' : 'text-destructive'
+                  %>
+                  <span class="<%= color %>"><%= rate %>%</span>
+                </td>
+                <td class="p-3 text-center">
+                  <% if r[:tasks_overdue].positive? %>
+                    <span class="text-destructive font-medium"><%= r[:tasks_overdue] %></span>
+                  <% else %>
+                    <span class="text-muted-foreground">—</span>
+                  <% end %>
+                </td>
+                <td class="p-3 text-center text-muted-foreground"><%= r[:avg_completion_min] %></td>
+                <td class="p-3 text-center">
+                  <% if r[:suspicious_completions].positive? %>
+                    <span class="text-amber-600 font-medium" title="Быстрые ack'и или missing first_contact"><%= r[:suspicious_completions] %></span>
+                  <% else %>
+                    <span class="text-muted-foreground">—</span>
+                  <% end %>
+                </td>
+                <td class="p-3 text-center text-muted-foreground">
+                  <%= r[:questions_asked] %>
+                  <% if r[:tasks_completed].positive? %>
+                    <span class="text-[10px]">(<%= (r[:questions_asked].to_f / r[:tasks_completed]).round(2) %>×)</span>
+                  <% end %>
+                </td>
+                <td class="p-3 text-center"><%= r[:leads_assigned] %></td>
+                <td class="p-3 text-center">
+                  <%
+                    rate = r[:leads_assigned].positive? ? (r[:leads_first_contact_in_30m].to_f * 100 / r[:leads_assigned]).round : 0
+                  %>
+                  <span class="<%= rate >= 80 ? 'text-emerald-600' : 'text-foreground' %>"><%= rate %>%</span>
+                </td>
+                <td class="p-3 text-center font-medium"><%= r[:leads_converted] %></td>
+                <td class="p-3 text-center text-muted-foreground"><%= r[:documents_uploaded] %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="text-xs text-muted-foreground mt-6">
+        ⚠️ <strong>Suspicious</strong> — задача закрыта быстрее 60 секунд от назначения, или kind=call без first_contact_at у привязанного лида. Surface-only сигнал для weekly review.
+      </p>
+    <% end %>
+  </div>
+</section>

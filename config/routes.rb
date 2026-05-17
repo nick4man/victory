@@ -192,6 +192,8 @@ Rails.application.routes.draw do
       resources :properties, only: [:index] do
         member { patch :assign }
       end
+      # Phase 7.6 — KPI dashboard для директоров (per-staff metrics + agency view)
+      get :kpi, to: 'kpi#index'
     end
 
     # Profile

@@ -12,7 +12,8 @@ module ChatTools
         'lookup_lead' => ChatTools::Staff::LookupLead,
         'agent_status' => ChatTools::Staff::AgentStatus,
         'nextcloud_lookup_deal' => ChatTools::Staff::NextcloudLookupDeal,
-        'nextcloud_list_templates' => ChatTools::Staff::NextcloudListTemplates
+        'nextcloud_list_templates' => ChatTools::Staff::NextcloudListTemplates,
+        'kpi_for' => ChatTools::Staff::KpiFor
       }.freeze
 
       module_function

@@ -55,3 +55,15 @@ digest_cleanup:
   class: DigestCleanupJob
   queue: scheduled
   description: "Phase 7.4 — unpin вчерашний digest + seed today's в #ДИСПЕТЧЕРСКОЙ"
+
+kpi_staff_snapshot:
+  cron: "55 23 * * *"      # daily 23:55 Moscow
+  class: "Kpi::StaffSnapshotJob"
+  queue: scheduled
+  description: "Phase 7.6 — daily StaffMetric snapshot per assignable TelegramUser"
+
+kpi_agency_digest:
+  cron: "0 18 * * *"       # daily 18:00 Moscow
+  class: "Kpi::AgencyDigestJob"
+  queue: scheduled
+  description: "Phase 7.6 — DM директорам с agency-wide сводкой текущего дня"
