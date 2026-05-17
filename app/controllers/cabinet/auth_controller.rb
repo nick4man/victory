@@ -22,47 +22,81 @@ class Cabinet::AuthController < ApplicationController
     # render cabinet/auth/new.html.erb
   end
 
+  # POST /cabinet/login — branches by params:
+  #   - params[:password].present? → password-based login (BCrypt compare)
+  #   - else → magic-link flow (existing)
   def create
     identifier = params[:identifier].to_s.strip
+    password = params[:password].to_s
     if identifier.blank?
       flash.now[:alert] = 'Введите email или телефон.'
       render :new, status: :unprocessable_entity and return
     end
 
     type = identifier.match?(/@/) ? 'email' : 'phone'
-    user = lookup_user(identifier, type)
 
-    # Security: всегда показываем success — не leak'аем существует ли
-    # identifier в базе. Token создаётся ВСЕГДА (audit trail), но mail
-    # отправляется только если user найден.
-    token = MagicLinkToken.generate!(identifier: identifier, identifier_type: type, request: request)
-    if user
-      if type == 'email'
-        CabinetMailer.magic_link(user, token).deliver_later
-      else
-        # Phase 2: SMS gateway. Пока no-op.
-        Rails.logger.info("[Cabinet::Auth] SMS magic-link not yet implemented for user=#{user.id}")
-      end
+    # Password-first branch: ONLY if password field submitted.
+    return authenticate_with_password(identifier, password) if password.present?
+
+    # Otherwise — magic-link flow.
+    user = lookup_user(identifier, type)
+    token = MagicLinkToken.generate!(identifier: identifier, identifier_type: type, scope: 'login', request: request)
+
+    # Option A — auto-create User on FIRST email login if not found.
+    # We still send the magic-link in either case; verify-action does the
+    # actual User.create! after token consumed (email ownership proven).
+    if type == 'email'
+      CabinetMailer.magic_link(user || build_stub_user_for_mailer(identifier), token).deliver_later
+    elsif user
+      Rails.logger.info("[Cabinet::Auth] SMS magic-link not yet implemented for user=#{user.id}")
     end
 
     flash[:notice] = if type == 'email'
-                       'Если этот email у нас есть — ссылка отправлена. Проверьте почту (в т.ч. спам).'
+                       'Ссылка для входа отправлена на email. Проверьте почту (в т.ч. спам). ' \
+                       'Если у вас ещё нет аккаунта, он будет создан при первом входе.'
                      else
                        'SMS-вход пока в разработке. Используйте email-вход.'
                      end
     redirect_to cabinet_login_path
   end
 
+  # Mailer needs an object с .email + .first_name. Если User ещё не существует
+  # (Option A new-registration), отдаём lightweight Struct, чтобы шаблон не
+  # падал на @user.first_name nil-check.
+  def build_stub_user_for_mailer(email)
+    Struct.new(:email, :first_name).new(email, nil)
+  end
+
+  # Password-based auth — использует Devise#valid_password? (handles pepper
+  # + cost). Email-only (phone не используется для password auth).
+  def authenticate_with_password(identifier, password)
+    return reject_password('Пароль работает только с email') unless identifier.match?(/@/)
+
+    user = lookup_user(identifier, 'email')
+    return reject_password('Неверный email или пароль') if user.nil?
+    return reject_password('Неверный email или пароль') if user.encrypted_password.blank?
+    return reject_password('Неверный email или пароль') unless user.valid_password?(password)
+
+    reset_session
+    session[:cabinet_user_id] = user.id
+    flash[:notice] = "С возвращением, #{user.first_name.presence || user.email}!"
+    redirect_to cabinet_path
+  end
+
   def verify
-    token = MagicLinkToken.valid.find_by(token: params[:token])
+    # Scope to 'login' tokens — password_reset tokens consume через
+    # Cabinet::PasswordsController (отдельный flow).
+    token = MagicLinkToken.valid.where(scope: 'login').find_by(token: params[:token])
     if token.nil?
       flash[:alert] = 'Ссылка недействительна или истекла. Запросите новую.'
       redirect_to cabinet_login_path and return
     end
 
-    user = lookup_user(token.identifier, token.identifier_type)
+    # Option A: auto-create User on first email magic-link verify (email
+    # ownership proven by token possession).
+    user = lookup_user(token.identifier, token.identifier_type) || auto_register_user(token)
     if user.nil?
-      flash[:alert] = 'Пользователь не найден. Возможно, аккаунт был удалён.'
+      flash[:alert] = 'Не удалось создать аккаунт. Свяжитесь с поддержкой.'
       redirect_to cabinet_login_path and return
     end
 
@@ -77,12 +111,44 @@ class Cabinet::AuthController < ApplicationController
     redirect_to cabinet_path
   end
 
+  # Option A — first-time auto-registration. Only email tokens (phone-OTP
+  # registration TBD). Random unguessable password — user can set real one
+  # через /cabinet/password/reset когда захочет. role=:client.
+  def auto_register_user(token)
+    return nil unless token.identifier_type == 'email'
+
+    email = token.identifier.to_s.strip.downcase
+    return nil if email.blank? || !email.include?('@')
+
+    User.create!(
+      email:      email,
+      password:   SecureRandom.urlsafe_base64(32),
+      first_name: 'Клиент',
+      last_name:  '—',
+      role:       :client,
+      active:     true,
+      crm_status: 'active'
+    )
+  rescue ActiveRecord::RecordInvalid => e
+    Rails.logger.warn("[Cabinet::Auth] auto_register_user failed for #{token.identifier}: #{e.message}")
+    nil
+  end
+
   def destroy
     session.delete(:cabinet_user_id)
     redirect_to cabinet_login_path, notice: 'Вы вышли из кабинета.'
   end
 
   private
+
+  # Generic rejection helper для password flow. ВСЕГДА показывает
+  # одинаковую ошибку «Неверный email или пароль» (security: не leak
+  # whether email exists или password mismatch).
+  def reject_password(msg)
+    flash.now[:alert] = msg
+    @identifier_prefill = params[:identifier]
+    render :new, status: :unprocessable_entity
+  end
 
   # Email — exact LOWER match. Phone — last-10-digit suffix match
   # (РФ phones хранятся в разных форматах: 79..., 89..., +79...).

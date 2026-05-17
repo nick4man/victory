@@ -15,4 +15,15 @@ class CabinetMailer < ApplicationMailer
       subject: "Вход в личный кабинет — #{AgencyInfo::NAME}"
     )
   end
+
+  def password_reset(user, token)
+    @user = user
+    @url = edit_cabinet_password_url(token: token.token)
+    @expires_in_min = MagicLinkToken::TTL.in_minutes.to_i
+
+    mail(
+      to:      user.email,
+      subject: "Сброс пароля — #{AgencyInfo::NAME}"
+    )
+  end
 end

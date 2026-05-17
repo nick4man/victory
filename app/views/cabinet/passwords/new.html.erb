@@ -1,0 +1,43 @@
+<% content_for :title, "Сброс пароля — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background min-h-screen">
+  <div class="max-w-md mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-6">Личный кабинет</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      Забыли пароль?
+    </h1>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-10">
+      Введите email — мы пришлём ссылку для установки нового пароля.
+      Ссылка действительна 30 минут.
+    </p>
+
+    <% if flash[:alert] %>
+      <div class="mb-6 p-4 border border-red-700/40 bg-red-700/5 text-sm text-red-700">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+
+    <%= form_with url: cabinet_password_resets_path, method: :post, local: true, html: { class: 'space-y-5' } do %>
+      <div>
+        <label for="identifier" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+          Email
+        </label>
+        <%= text_field_tag :identifier, params[:identifier], required: true,
+              type: 'email',
+              autocomplete: 'email',
+              placeholder: 'name@example.com',
+              class: 'w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50' %>
+      </div>
+
+      <button type="submit"
+              class="w-full px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors">
+        Отправить ссылку
+      </button>
+    <% end %>
+
+    <p class="mt-12 text-xs">
+      <%= link_to '← Вернуться ко входу', cabinet_login_path,
+            class: 'text-muted-foreground hover:text-foreground tracking-wider' %>
+    </p>
+  </div>
+</section>

@@ -16,19 +16,21 @@ class MagicLinkToken < ApplicationRecord
   TTL = 30.minutes
 
   enum identifier_type: { email: 'email', phone: 'phone' }, _prefix: true
+  enum scope: { login: 'login', password_reset: 'password_reset' }, _prefix: :scope
 
-  validates :token, :identifier, :expires_at, :identifier_type, presence: true
+  validates :token, :identifier, :expires_at, :identifier_type, :scope, presence: true
   validates :token, uniqueness: true
 
   scope :valid, lambda {
     where(consumed_at: nil).where('expires_at > ?', Time.current)
   }
 
-  def self.generate!(identifier:, identifier_type: 'email', request: nil)
+  def self.generate!(identifier:, identifier_type: 'email', scope: 'login', request: nil)
     create!(
       token:           SecureRandom.urlsafe_base64(32),
       identifier:      normalize(identifier, identifier_type),
       identifier_type: identifier_type,
+      scope:           scope,
       expires_at:      TTL.from_now,
       ip_address:      request&.remote_ip,
       user_agent:      request&.user_agent.to_s.first(255).presence

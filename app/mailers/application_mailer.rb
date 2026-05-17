@@ -3,7 +3,11 @@
 # Application Mailer
 # Base mailer for all email notifications
 class ApplicationMailer < ActionMailer::Base
-  default from: ENV.fetch('DEFAULT_FROM_EMAIL', 'noreply@viktory-realty.ru')
+  # MAIL_FROM accepts "Name <addr@example.com>" формат; DEFAULT_FROM_EMAIL
+  # — legacy var, fallback. Mail.ru SMTP требует, чтобы From-адрес совпадал
+  # с SMTP_USERNAME (или входил в alias-список).
+  default from: ENV.fetch('MAIL_FROM',
+                          ENV.fetch('DEFAULT_FROM_EMAIL', 'noreply@victory62.org'))
   layout 'mailer'
   
   # Helper method to attach company logo

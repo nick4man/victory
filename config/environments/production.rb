@@ -78,33 +78,49 @@ Rails.application.configure do
   config.active_job.queue_adapter     = :sidekiq
   # config.active_job.queue_name_prefix = "viktory_realty_production"
 
-  # ActionMailer configuration for production
+  # ActionMailer configuration for production.
+  # Provider: Mail.ru для бизнеса (smtp.mail.ru:465 SSL, или :587 STARTTLS).
+  # Required ENV (see .env example):
+  #   SMTP_USERNAME    — полный адрес отправителя (например, noreply@victory62.org)
+  #   SMTP_PASSWORD    — application-password из biz.mail.ru
+  #   SMTP_ADDRESS     — smtp.mail.ru  (default)
+  #   SMTP_PORT        — 465 (SSL) или 587 (STARTTLS); default 465
+  #   MAIL_FROM        — display sender ("АН Виктори <noreply@victory62.org>")
+  #   APP_DOMAIN       — victory62.org
+  # Optional:
+  #   SMTP_SSL         — '1' or '0', default '1' для port 465
+  #   SMTP_AUTHENTICATION — default 'login' (Mail.ru рекомендует)
   config.action_mailer.perform_caching = false
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_deliveries = true
   config.action_mailer.delivery_method = :smtp
-  
-  # SMTP settings
+
+  smtp_port = ENV.fetch('SMTP_PORT', 465).to_i
+  ssl_mode  = ENV.fetch('SMTP_SSL', (smtp_port == 465 ? '1' : '0'))
+  use_ssl   = %w[1 true yes].include?(ssl_mode.to_s.downcase)
+
   config.action_mailer.smtp_settings = {
-    address:              ENV.fetch('SMTP_ADDRESS', 'smtp.yandex.ru'),
-    port:                 ENV.fetch('SMTP_PORT', 587).to_i,
-    domain:               ENV.fetch('SMTP_DOMAIN', 'viktory-realty.ru'),
+    address:              ENV.fetch('SMTP_ADDRESS', 'smtp.mail.ru'),
+    port:                 smtp_port,
+    domain:               ENV.fetch('SMTP_DOMAIN', ENV.fetch('APP_DOMAIN', 'victory62.org')),
     user_name:            ENV['SMTP_USERNAME'],
     password:             ENV['SMTP_PASSWORD'],
-    authentication:       ENV.fetch('SMTP_AUTHENTICATION', 'plain'),
-    enable_starttls_auto: ENV.fetch('SMTP_ENABLE_STARTTLS_AUTO', 'true') == 'true',
+    authentication:       ENV.fetch('SMTP_AUTHENTICATION', 'login').to_sym,
+    enable_starttls_auto: !use_ssl,
+    ssl:                  use_ssl,
+    tls:                  use_ssl,
     open_timeout:         10,
     read_timeout:         10
-  }
-  
+  }.compact
+
   # Default URL options
   config.action_mailer.default_url_options = {
-    host: ENV.fetch('APP_DOMAIN', 'viktory-realty.ru'),
+    host:     ENV.fetch('APP_DOMAIN', 'victory62.org'),
     protocol: 'https'
   }
-  
+
   # Asset host for email images
-  config.action_mailer.asset_host = ENV.fetch('APP_URL', 'https://viktory-realty.ru')
+  config.action_mailer.asset_host = ENV.fetch('APP_URL', "https://#{ENV.fetch('APP_DOMAIN', 'victory62.org')}")
 
   # Ignore bad email addresses and do not raise email delivery errors.
   # Set this to true and configure the email server for immediate delivery to raise delivery errors.

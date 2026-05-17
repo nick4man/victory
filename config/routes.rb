@@ -53,6 +53,17 @@ Rails.application.routes.draw do
   post   'cabinet/login',          to: 'cabinet/auth#create',    as: :cabinet_request_link
   get    'cabinet/verify/:token',  to: 'cabinet/auth#verify',    as: :cabinet_verify
   delete 'cabinet/logout',         to: 'cabinet/auth#destroy',   as: :cabinet_logout
+
+  # A7 Phase 4: password reset (re-uses MagicLinkToken scope='password_reset')
+  # /cabinet/password/reset       (GET)   → форма "забыли пароль" (passwords#new)
+  # /cabinet/password/resets      (POST)  → отправить ссылку (passwords#create)
+  # /cabinet/password/edit?token= (GET)   → форма "новый пароль" (passwords#edit)
+  # /cabinet/password             (PATCH) → сохранить пароль (passwords#update)
+  get    'cabinet/password/reset',   to: 'cabinet/passwords#new',    as: :new_cabinet_password
+  post   'cabinet/password/resets',  to: 'cabinet/passwords#create', as: :cabinet_password_resets
+  get    'cabinet/password/edit',    to: 'cabinet/passwords#edit',   as: :edit_cabinet_password
+  patch  'cabinet/password',         to: 'cabinet/passwords#update', as: :cabinet_password
+
   # A7 Phase 2: избранное
   get    'cabinet/favorites',           to: 'cabinet/favorites#index',   as: :cabinet_favorites
   post   'cabinet/favorites',           to: 'cabinet/favorites#create',  as: :cabinet_create_favorite
