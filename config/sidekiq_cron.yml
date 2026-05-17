@@ -49,3 +49,9 @@ task_batch_expiry:
   class: TaskBatchExpiryJob
   queue: scheduled
   description: "Phase 7.2 — pending TaskBatch > 1h → status=expired (Оксана не подтвердила)"
+
+digest_cleanup:
+  cron: "5 0 * * *"        # daily 00:05 Moscow
+  class: DigestCleanupJob
+  queue: scheduled
+  description: "Phase 7.4 — unpin вчерашний digest + seed today's в #ДИСПЕТЧЕРСКОЙ"

@@ -64,6 +64,11 @@ class Task < ApplicationRecord
   # === Validations ===
   validates :title, presence: true
 
+  # === Phase 7.4 — auto-refresh pinned digest on lifecycle changes ===
+  # Срабатывает: новая задача (assigned_at set) и переход в done. Канцелы
+  # игнорируем — они уходят из digest при следующем refresh естественно.
+  after_commit :refresh_dispatcher_digest, on: [:create, :update]
+
   # === Scopes ===
   scope :overdue,   -> { status_open.where(due_at: ...Time.current) }
   scope :due_today, -> { status_open.where(due_at: Time.current.all_day) }
@@ -106,6 +111,19 @@ class Task < ApplicationRecord
   end
 
   private
+
+  # Phase 7.4 — Async refresh pinned digest. Соответствует уровню «soft-side-effect»:
+  # любая ошибка (TG down, NotificationJob crash) НЕ блокирует основное сохранение.
+  # Skip — если флаг THREAD_LOCAL установлен (массовые backfill/migration).
+  def refresh_dispatcher_digest
+    return if Thread.current[:skip_dispatcher_digest_refresh]
+    return if assigned_at.blank? # задачи без assignment — не в digest
+
+    # Refresh — синхронный (~100ms на edit_message_text). Backgrounded в Phase 7.6.
+    Telegram::WorkBot::DispatcherDigest.refresh_for_today!
+  rescue StandardError => e
+    Rails.logger.warn("[Task#refresh_dispatcher_digest] #{e.class}: #{e.message}")
+  end
 
   def suspicious_completion?(now)
     return false if assigned_at.blank?

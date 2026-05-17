@@ -77,6 +77,17 @@ module Telegram
                disable_notification: disable_notification)
     end
 
+    # Открепить конкретное сообщение (или последнее закрепленное, если message_id nil).
+    # Telegram возвращает true. Если оно уже unpin'нуто — TG отвечает 400, мы swallow'ем.
+    def unpin_chat_message(chat_id:, message_id: nil)
+      body = { chat_id: chat_id }
+      body[:message_id] = message_id if message_id
+      api_call('unpinChatMessage', body)
+    rescue Error => e
+      Rails.logger.warn("[Telegram] unpin failed (chat=#{chat_id} msg=#{message_id}): #{e.message}")
+      nil
+    end
+
     # Upload a binary document (PDF/etc) with optional caption via the
     # sendDocument Bot API endpoint. Uses multipart/form-data.
     # @param file can be:
@@ -228,6 +239,7 @@ module Telegram
                                           open_timeout: 5, read_timeout: 60) do |http|
         http.request(Net::HTTP::Get.new(uri)) do |response|
           raise Error, "Telegram file download: HTTP #{response.code}" unless response.is_a?(Net::HTTPSuccess)
+
           response.read_body { |chunk| io.write(chunk) }
         end
       end
