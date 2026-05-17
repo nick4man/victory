@@ -15,11 +15,9 @@
   premium aesthetic instead of the Tailwind blue-pill look used by the
   legacy `breadcrumbs` helper in the dashboard.
 
-  Usage:
-    <%= render 'shared/breadcrumb', items: [
-      ['Каталог', properties_path],
-      [@property.title, nil]
-    ] %>
+  Usage (см. реальный caller — pages/about.html.erb:4):
+    render shared/breadcrumb с items как Array of [label, url] tuples,
+    последний tuple — current page с url=nil.
 %>
 <% items = local_assigns[:items] || [] %>
 <% if items.any? %>
