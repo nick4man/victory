@@ -24,12 +24,17 @@ module Telegram
     # @example
     #   res = Telegram::WorkBot::VoiceTranscriber.call(file_id: 'AwACAg...')
     #   res.success?            # => true
-    #   res.text                # => "Васе позвонить клиенту Анне до 16:00"
+    #   res.text                # => "Васе позвонить клиенту [PHONE] до 16:00"
     #   res.confidence          # => -0.28 (avg log prob; > -1.0 = high confidence)
     #   res.low_confidence?     # => false
     #   res.hallucination?      # => false
     #   res.duration_sec        # => 4
     #   res.model               # => "whisper-large-v3-turbo"
+    #
+    # ⚠️  PII safety (Phase 7.7):
+    #   • res.text — уже redacted через Privacy::TranscriptRedactor (телефоны/паспорта/ИНН/email → токены)
+    #   • res.raw['text'] — ОРИГИНАЛЬНЫЙ текст с PII. НЕ персистить в БД без TTL/encrypted!
+    #     Допустимо передавать в LLM tool-call (TaskExtractor) — это ephemeral.
     class VoiceTranscriber
       class Error < StandardError; end
       class MissingKeyError < Error; end
@@ -147,7 +152,7 @@ module Telegram
       end
 
       def build_result(raw)
-        text       = raw['text'].to_s.strip
+        raw_text   = raw['text'].to_s.strip
         duration   = raw['duration'].to_i
         confidence = aggregate_confidence(raw['segments'])
 
@@ -157,10 +162,21 @@ module Telegram
                             error: "voice too long (#{duration}s > #{MAX_DURATION_SEC}s)")
         end
 
-        hallucination = hallucination?(text)
+        hallucination = hallucination?(raw_text)
         low           = confidence.present? && confidence < LOW_CONFIDENCE_THRESHOLD
 
-        Result.new(text: hallucination ? '' : text,
+        # Phase 7.7 — PII redaction ПЕРЕД return. Hallucination check на raw_text
+        # (т.к. blacklist match'ит цельные фразы, не маскированный текст).
+        # Если hallucination=true → text=''; иначе → redacted text.
+        # raw остаётся в результате для downstream (TaskExtractor) — но caller
+        # ОБЯЗАН не персистить raw['text'] в БД без TTL/encryption (см. Phase 7.2).
+        output_text = if hallucination
+                        ''
+                      else
+                        Privacy::TranscriptRedactor.call(raw_text)
+                      end
+
+        Result.new(text: output_text,
                    confidence: confidence,
                    duration_sec: duration,
                    model: @model,
