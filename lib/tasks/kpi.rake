@@ -72,7 +72,14 @@ namespace :kpi do
     puts ''
     puts '### Strategic vector alignment (Phase A pillars)'
     puts "  Pillar 1 (frictionless): personal cabinet — TODO"
-    puts "  Pillar 2 (deep expertise): case studies count = #{defined?(Case) ? Case.count : 'n/a (no Case model yet)'}"
+    cs_label = if defined?(CaseStudy)
+                 total = CaseStudy.count
+                 public_n = CaseStudy.respond_to?(:public_facing) ? CaseStudy.public_facing.count : total
+                 "#{public_n}/#{total} (public/total)"
+               else
+                 'n/a (no CaseStudy model)'
+               end
+    puts "  Pillar 2 (deep expertise): case studies count = #{cs_label}"
     puts "  Pillar 3 (AI×human): LLM-generated meta = #{with_seo} properties"
   rescue StandardError => e
     warn "[kpi:phase_a] ERROR: #{e.class}: #{e.message}"
