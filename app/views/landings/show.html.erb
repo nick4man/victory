@@ -16,10 +16,20 @@
   <% content_for :geo_position, "#{@city[:lat]};#{@city[:lng]}" %>
   <% content_for :icbm, "#{@city[:lat]}, #{@city[:lng]}" %>
 <% end %>
-<%# OG image — use the hero variant of the first property in the matched
-    set so the social-share preview shows actual matching inventory. Falls
-    back to the layout's default if the landing is empty. %>
-<% if (og_lead = @properties.first) && og_lead.images.attached? %>
+<%# District hero photo — branded картинка района из public/images/landings/<slug>/.
+    Используется и как inline hero (см. секцию ниже сразу после <% if @district_slug %>),
+    и как og:image override (priority над property-first-image — фирменное фото
+    стабильнее, не меняется при ротации каталога, единообразнее в SERP). %>
+<% district_hero_dir = @district_slug && Rails.public_path.join("images/landings/#{@district_slug}") %>
+<% has_district_hero = district_hero_dir && district_hero_dir.join('hero.jpg').exist? %>
+<% has_district_og   = district_hero_dir && district_hero_dir.join('og.jpg').exist? %>
+
+<%# OG image precedence: district branded > first listing > layout default. %>
+<% if has_district_og %>
+  <% content_for :og_image, "#{request.protocol}#{request.host_with_port}/images/landings/#{@district_slug}/og.jpg" %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% elsif (og_lead = @properties.first) && og_lead.images.attached? %>
   <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
 <% end %>
 <%# Body content — prefer DB-backed (admin-editable) LandingContent. If
@@ -99,6 +109,20 @@
     </p>
   </div>
 </section>
+
+<%# District hero photo — рендерится перед editorial content, если есть
+    public/images/landings/<slug>/hero.jpg. Eager-loading + fetchpriority=high
+    для LCP. Caption — район-specific подпись (для centr: Лыбедский бульвар). %>
+<% if has_district_hero %>
+  <section class="px-6 lg:px-12 pb-8 bg-background">
+    <figure class="max-w-7xl mx-auto">
+      <img src="/images/landings/<%= @district_slug %>/hero.jpg"
+           alt="<%= @h1 %>"
+           loading="eager" fetchpriority="high" decoding="async"
+           class="w-full h-auto border border-border" />
+    </figure>
+  </section>
+<% end %>
 
 <!-- Optional editorial content slot (per-landing partial in landings/content/) -->
 <% if rendered_content %>
