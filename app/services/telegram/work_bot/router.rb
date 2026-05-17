@@ -19,6 +19,8 @@ module Telegram
       COMMAND_PREFIX = '/'
 
       COMMANDS = {
+        '/help' => Commands::Help,
+        '/start' => Commands::Help, # alias TG default → /help (плюс side-effect dm_chat_id update)
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
         '/promote' => Commands::Promote,
@@ -30,7 +32,8 @@ module Telegram
         '/stage' => Commands::Stage,
         '/note' => Commands::Note,
         '/close' => Commands::Close,
-        '/task' => Commands::Task
+        '/task' => Commands::Task,
+        '/done' => Commands::Done
       }.freeze
 
       def initialize(message, client: Telegram::Client.new)

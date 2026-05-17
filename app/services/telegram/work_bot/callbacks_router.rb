@@ -23,7 +23,8 @@ module Telegram
         'assign_to' => 'Telegram::WorkBot::Callbacks::AssignToCallback',
         'assign_cancel' => 'Telegram::WorkBot::Callbacks::AssignCancelCallback',
         'spam' => 'Telegram::WorkBot::Callbacks::SpamCallback',
-        'batch_confirm' => 'Telegram::WorkBot::Callbacks::TaskBatchConfirmCallback'
+        'batch_confirm' => 'Telegram::WorkBot::Callbacks::TaskBatchConfirmCallback',
+        'task' => 'Telegram::WorkBot::Callbacks::TaskActionCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

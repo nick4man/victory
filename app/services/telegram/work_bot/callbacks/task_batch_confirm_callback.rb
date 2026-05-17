@@ -43,8 +43,28 @@ module Telegram
           created = create_tasks_from(batch)
           batch.confirm!
 
-          edit_preview(batch, suffix: "\n\n✅ <b>Подтверждено</b>. Создано задач: #{created.size}.")
+          dispatch_results = dispatch_tasks(created)
+
+          edit_preview(batch, suffix: "\n\n✅ <b>Подтверждено</b>. Создано задач: #{created.size}. " \
+                                      "DM отправлено: #{dispatch_summary(dispatch_results)}.")
           ack("✅ Создано задач: #{created.size}")
+        end
+
+        def dispatch_tasks(tasks)
+          return [] if tasks.empty?
+
+          Telegram::WorkBot::TaskDispatcher.new(tasks: tasks, client: @client).call
+        rescue StandardError => e
+          Rails.logger.warn("[TaskBatchConfirmCallback] dispatch failed: #{e.class} #{e.message}")
+          []
+        end
+
+        def dispatch_summary(results)
+          return '0' if results.blank?
+
+          ok = results.count { |r| r.is_a?(Hash) && r[:error].nil? }
+          failed = results.count { |r| r.is_a?(Hash) && r[:error] }
+          failed.zero? ? ok.to_s : "#{ok} (⚠️ #{failed} fail)"
         end
 
         def cancel!(batch)
@@ -61,11 +81,15 @@ module Telegram
               due_at: parse_time(payload[:due_at]),
               status: 'open',
               created_by_id: batch.created_by_id,
-              assignee_id: assignee&.id
+              assignee_id: assignee&.id,
+              task_batch_id: batch.id,
+              priority: payload[:priority].presence || 'normal',
+              kind: payload[:kind].presence || 'other',
+              assigned_at: Time.current
             }
             next nil if task_attrs[:title] == '(без названия)' && assignee.nil?
 
-            Task.create!(task_attrs)
+            ::Task.create!(task_attrs)
           end
         end
 
