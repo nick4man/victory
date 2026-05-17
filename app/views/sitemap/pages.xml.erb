@@ -43,55 +43,59 @@
     plus 4 admin districts. Type/rooms variants without per-page content
     are NOT listed to avoid soft-404 demotion.
   %>
-  <% RyazanDistricts::MICRO.each_key do |slug| %>
+  <%# Per-district lastmod — max(file mtime, property updated_at, landing_content updated_at).
+      Убирает ложный сигнал "всё изменилось каждый день" → экономит crawl budget Я./Google. %>
+  <% RyazanDistricts::MICRO.each do |slug, info| %>
     <url>
       <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= district_lastmod(slug, info[:aliases], intent: 'sale', type: 'kvartira') %></lastmod>
       <changefreq>weekly</changefreq>
       <priority>0.7</priority>
     </url>
   <% end %>
-  <% RyazanDistricts::ADMIN.each_key do |slug| %>
+  <% RyazanDistricts::ADMIN.each do |slug, info| %>
+    <% admin_aliases = info[:children].flat_map { |c| RyazanDistricts::MICRO[c]&.dig(:aliases) }.compact %>
     <url>
       <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= district_lastmod(slug, admin_aliases, intent: 'sale', type: 'kvartira') %></lastmod>
       <changefreq>weekly</changefreq>
       <priority>0.6</priority>
     </url>
   <% end %>
-  <%# Type-only landings (no district filter) — also have editorial weight via
-      the landing's H1, intro, and downstream catalog grid. %>
+  <%# Type-only landings — lastmod = max(Property.updated_at) cross-district
+      этого type. %>
   <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
     <url>
       <loc><%= buy_landing_url(type: t) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= type_landing_lastmod(intent: 'sale', type: t) %></lastmod>
       <changefreq>daily</changefreq>
       <priority>0.8</priority>
     </url>
   <% end %>
-  <%# Premium modifier — Phase A focus, high priority for crawl quota
-      since these are the conversion-priority pages for the elite segment. %>
+  <%# Premium modifier — Phase A focus. lastmod через type_landing для
+      kvartira/dom (premium filter — subset, мах(updated_at) ≤ type-wide). %>
   <% %w[kvartira dom].each do |t| %>
     <url>
       <loc><%= buy_premium_landing_url(type: t) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= type_landing_lastmod(intent: 'sale', type: t) %></lastmod>
       <changefreq>daily</changefreq>
       <priority>0.9</priority>
     </url>
   <% end %>
-  <%# Rent (snyat) variant of the URL pyramid — mirrors the buy side. %>
-  <% RyazanDistricts::MICRO.each_key do |slug| %>
+  <%# Rent (snyat) variant — те же helpers с intent: 'rent'. %>
+  <% RyazanDistricts::MICRO.each do |slug, info| %>
     <url>
       <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= district_lastmod(slug, info[:aliases], intent: 'rent', type: 'kvartira') %></lastmod>
       <changefreq>weekly</changefreq>
       <priority>0.6</priority>
     </url>
   <% end %>
-  <% RyazanDistricts::ADMIN.each_key do |slug| %>
+  <% RyazanDistricts::ADMIN.each do |slug, info| %>
+    <% admin_aliases = info[:children].flat_map { |c| RyazanDistricts::MICRO[c]&.dig(:aliases) }.compact %>
     <url>
       <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= district_lastmod(slug, admin_aliases, intent: 'rent', type: 'kvartira') %></lastmod>
       <changefreq>weekly</changefreq>
       <priority>0.5</priority>
     </url>
@@ -99,7 +103,7 @@
   <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
     <url>
       <loc><%= rent_landing_url(type: t) %></loc>
-      <lastmod><%= today_iso %></lastmod>
+      <lastmod><%= type_landing_lastmod(intent: 'rent', type: t) %></lastmod>
       <changefreq>daily</changefreq>
       <priority>0.7</priority>
     </url>

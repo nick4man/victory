@@ -54,6 +54,17 @@
 <% content_for :head do %>
   <meta name="description" content="<%= @meta_description %>">
 
+  <%# ImageObject Schema.org для district hero фото — сигналит Я.Картинки
+      и Google Images что фото представляет страницу района (попадает в
+      image-vertical SERP по запросам района). Использует alt-теги из
+      LandingsHelper#alt_for_district_photo (per-file, уникальные). %>
+  <% if has_district_hero %>
+    <%= render 'shared/jsonld_image_object', images: district_photo_paths.map { |p|
+      { url: "/images/landings/#{@district_slug}/#{p.basename}",
+        caption: alt_for_district_photo(@district_slug, p.basename.to_s, fallback: @h1) }
+    } %>
+  <% end %>
+
   <%# Soft-404 guard. Landings with zero inventory still serve content (the
       content slot + "оставьте заявку" CTA) so we keep them at 200, but tell
       Yandex/Google not to index them while still following internal links
@@ -125,7 +136,7 @@
             interval: 5000,
             slides: district_photo_paths.map { |p|
               { src: "/images/landings/#{@district_slug}/#{p.basename}",
-                alt: @h1 }
+                alt: alt_for_district_photo(@district_slug, p.basename.to_s, fallback: @h1) }
             } %>
     </div>
   </section>

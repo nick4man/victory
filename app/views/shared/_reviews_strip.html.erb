@@ -8,6 +8,11 @@
 <% avg = aggregate[:average_rating] || 0.0 %>
 <% cnt = aggregate[:reviews_count] || 0 %>
 
+<%# JSON-LD Review markup — рендерится там же где визуальный strip, чтобы
+    star-snippet в SERP активировался на любой странице с этим блоком
+    (/, /about). Schema уже guard'ит reviews_count > 0 внутри. %>
+<%= render 'shared/jsonld_review', reviews: reviews, aggregate: aggregate %>
+
 <section class="py-24 lg:py-32 px-6 lg:px-12 bg-background border-b border-border">
   <div class="max-w-7xl mx-auto">
     <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-16">

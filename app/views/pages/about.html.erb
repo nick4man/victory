@@ -6,6 +6,16 @@
 <% content_for :og_image_width,  1200 %>
 <% content_for :og_image_height, 630 %>
 
+<%# ImageObject Schema.org для офисных фото — сигнал Я.Картинки/Google
+    Images о визуальной идентичности агентства. 3 фото из slider'а. %>
+<% content_for :head do %>
+  <%= render 'shared/jsonld_image_object', images: [
+    { url: '/images/office/hero.jpg',         caption: 'Офис АН «Виктори» — фасад с цветущей сакурой, ул. Горького 86, Рязань', width: 1600, height: 1200 },
+    { url: '/images/office/facade-wide.jpg',  caption: 'Здание офиса АН «Виктори» — общий план, ул. Горького 86', width: 1200, height: 900 },
+    { url: '/images/office/entry.jpg',        caption: 'Входная группа офиса АН «Виктори» — приёмная клиентов', width: 1200, height: 900 }
+  ] %>
+<% end %>
+
 <%= render 'shared/breadcrumb', items: [
   ['Главная', root_path],
   ['О компании', nil]

@@ -1,0 +1,39 @@
+<%# ImageObject Schema.org markup для важных страничных фото
+    (офис на /about, district hero на landings/show). Сигналит
+    Я.Картинки и Google Images что это representative photo страницы —
+    попадает в knowledge panel + image-vertical SERP.
+
+    locals (required):
+      images — Array<Hash>:
+        - url       (String, absolute or path; path → автоматически абсолютизируется)
+        - caption   (String, человекочитаемое описание; → description + fallback для name)
+        - name      (String, optional — заголовок; default = caption)
+        - width     (Integer, optional)
+        - height    (Integer, optional)
+
+    locals (optional):
+      represents_page — Boolean, default true (помечает каждое фото как
+        representativeOfPage). %>
+<%
+  absolute_base = "#{request.protocol}#{request.host_with_port}"
+  rep = local_assigns.fetch(:represents_page, true)
+  objects = Array(images).reject { |i| i[:url].blank? }.map do |img|
+    abs_url = img[:url].start_with?('http') ? img[:url] : "#{absolute_base}#{img[:url]}"
+    {
+      '@context'    => 'https://schema.org',
+      '@type'       => 'ImageObject',
+      'contentUrl'  => abs_url,
+      'url'         => abs_url,
+      'name'        => img[:name] || img[:caption],
+      'description' => img[:caption],
+      'width'       => img[:width],
+      'height'      => img[:height],
+      'representativeOfPage' => rep
+    }.compact
+  end
+%>
+<% if objects.any? %>
+<script type="application/ld+json">
+<%= raw(objects.length == 1 ? objects.first.to_json : objects.to_json) %>
+</script>
+<% end %>
