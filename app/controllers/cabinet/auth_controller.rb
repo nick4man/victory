@@ -15,6 +15,11 @@
 class Cabinet::AuthController < ApplicationController
   RATE_LIMIT = { count: 5, window: 1.hour }.freeze
 
+  # Стандартный stdlib regex для email — отвергает пробелы, нелатиницу
+  # в domain, обрывки. Это первая линия защиты перед SMTP — Mail.ru
+  # 550 invalid-headers если в `to:` попадёт мусор.
+  EMAIL_REGEX = URI::MailTo::EMAIL_REGEXP
+
   before_action :enforce_rate_limit, only: :create
 
   def new
@@ -33,7 +38,19 @@ class Cabinet::AuthController < ApplicationController
       render :new, status: :unprocessable_entity and return
     end
 
-    type = identifier.match?(/@/) ? 'email' : 'phone'
+    # Detect type + строгая validation. Если в строке есть `@`,
+    # обязан соответствовать EMAIL_REGEX — иначе reject (защита от
+    # мусора в SMTP `to:` header, который Mail.ru отдаёт как 550).
+    if identifier.include?('@')
+      unless identifier.match?(EMAIL_REGEX)
+        @identifier_prefill = identifier
+        flash.now[:alert] = 'Введите корректный email (без пробелов, латиница).'
+        render :new, status: :unprocessable_entity and return
+      end
+      type = 'email'
+    else
+      type = 'phone'
+    end
 
     # Password-first branch: ONLY if password field submitted.
     return authenticate_with_password(identifier, password) if password.present?
@@ -45,8 +62,16 @@ class Cabinet::AuthController < ApplicationController
     # Option A — auto-create User on FIRST email login if not found.
     # We still send the magic-link in either case; verify-action does the
     # actual User.create! after token consumed (email ownership proven).
+    #
+    # NB: для существующего user'а — deliver_later (Sidekiq может
+    # GlobalID-сериализовать ActiveRecord). Для stub'а (не-AR Struct)
+    # ActiveJob падает с SerializationError — поэтому deliver_now.
     if type == 'email'
-      CabinetMailer.magic_link(user || build_stub_user_for_mailer(identifier), token).deliver_later
+      if user
+        CabinetMailer.magic_link(user, token).deliver_later
+      else
+        CabinetMailer.magic_link(build_stub_user_for_mailer(identifier), token).deliver_now
+      end
     elsif user
       Rails.logger.info("[Cabinet::Auth] SMS magic-link not yet implemented for user=#{user.id}")
     end

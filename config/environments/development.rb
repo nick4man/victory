@@ -13,8 +13,11 @@ Rails.application.configure do
   # Do not eager load code on boot.
   config.eager_load = false
 
-  # Show full error reports.
-  config.consider_all_requests_local = true
+  # Show full Rails debug page (backtrace + web-console) — обычно `true` в dev,
+  # но этот контейнер обслуживает prod-трафик victory62.org с RAILS_ENV=development,
+  # поэтому юзеры не должны видеть internal traces. Управляется ENV: для локальной
+  # отладки выставляй SHOW_DEBUG_ERRORS=1. Иначе → branded ErrorsController.
+  config.consider_all_requests_local = ENV.fetch('SHOW_DEBUG_ERRORS', '0') == '1'
 
   # Enable server timing
   config.server_timing = true
@@ -44,19 +47,47 @@ Rails.application.configure do
   # ActionMailer configuration
   config.action_mailer.raise_delivery_errors = true
   config.action_mailer.perform_caching = false
-  
-  # No SMTP / letter_opener in this dev setup — use :test sink (does not raise).
-  config.action_mailer.delivery_method = :test
-  config.action_mailer.perform_deliveries = false
-  
-  # Set default URL options
-  config.action_mailer.default_url_options = {
-    host: ENV.fetch('APP_HOST', 'localhost'),
-    port: ENV.fetch('PORT', 5000)
-  }
-  
-  # Asset host for email images
-  config.action_mailer.asset_host = "http://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('PORT', 5000)}"
+
+  # SMTP if credentials present (this deployment serves prod traffic с
+  # RAILS_ENV=development — нужны real-mail capabilities). Иначе :test sink.
+  if ENV['SMTP_USERNAME'].present? && ENV['SMTP_PASSWORD'].present?
+    smtp_port = ENV.fetch('SMTP_PORT', 465).to_i
+    ssl_mode  = ENV.fetch('SMTP_SSL', (smtp_port == 465 ? '1' : '0'))
+    use_ssl   = %w[1 true yes].include?(ssl_mode.to_s.downcase)
+
+    config.action_mailer.delivery_method = :smtp
+    config.action_mailer.perform_deliveries = true
+    config.action_mailer.smtp_settings = {
+      address:              ENV.fetch('SMTP_ADDRESS', 'smtp.mail.ru'),
+      port:                 smtp_port,
+      domain:               ENV.fetch('SMTP_DOMAIN', ENV.fetch('APP_DOMAIN', 'victory62.org')),
+      user_name:            ENV['SMTP_USERNAME'],
+      password:             ENV['SMTP_PASSWORD'],
+      authentication:       ENV.fetch('SMTP_AUTHENTICATION', 'login').to_sym,
+      enable_starttls_auto: !use_ssl,
+      ssl:                  use_ssl,
+      tls:                  use_ssl,
+      open_timeout:         10,
+      read_timeout:         10
+    }.compact
+
+    # Production-style URL options (HTTPS на victory62.org).
+    config.action_mailer.default_url_options = {
+      host:     ENV.fetch('APP_DOMAIN', 'victory62.org'),
+      protocol: 'https'
+    }
+    config.action_mailer.asset_host = ENV.fetch('APP_URL', "https://#{ENV.fetch('APP_DOMAIN', 'victory62.org')}")
+  else
+    # No SMTP credentials — fall back to test sink.
+    config.action_mailer.delivery_method = :test
+    config.action_mailer.perform_deliveries = false
+
+    config.action_mailer.default_url_options = {
+      host: ENV.fetch('APP_HOST', 'localhost'),
+      port: ENV.fetch('PORT', 5000)
+    }
+    config.action_mailer.asset_host = "http://#{ENV.fetch('APP_HOST', 'localhost')}:#{ENV.fetch('PORT', 5000)}"
+  end
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

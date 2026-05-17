@@ -26,8 +26,8 @@ class Cabinet::PasswordsController < ApplicationController
   # POST /cabinet/password/reset
   def create
     identifier = params[:identifier].to_s.strip
-    if identifier.blank? || !identifier.match?(/@/)
-      flash.now[:alert] = 'Введите email — сброс пароля работает только через email.'
+    if identifier.blank? || !identifier.match?(URI::MailTo::EMAIL_REGEXP)
+      flash.now[:alert] = 'Введите корректный email — сброс пароля работает только через email.'
       render :new, status: :unprocessable_entity and return
     end
 
