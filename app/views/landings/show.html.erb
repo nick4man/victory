@@ -16,12 +16,16 @@
   <% content_for :geo_position, "#{@city[:lat]};#{@city[:lng]}" %>
   <% content_for :icbm, "#{@city[:lat]}, #{@city[:lng]}" %>
 <% end %>
-<%# District hero photo — branded картинка района из public/images/landings/<slug>/.
-    Используется и как inline hero (figure ниже), и как og:image override.
-    Priority над property-first-image — фирменное фото стабильнее, не
-    меняется при ротации каталога, единообразнее в SERP. %>
+<%# District hero photos — branded картинки района из public/images/landings/<slug>/.
+    Auto-discovery всех .jpg в каталоге, кроме og.jpg (только для meta).
+    Sort по имени файла — hero.jpg идёт первым (h перед остальными).
+    Если 2+ файла — рендерится photo_slider; если 1 — обычная figure;
+    если 0 — fall back на layout default og + первое property image. %>
 <% district_hero_dir = @district_slug && Rails.public_path.join("images/landings/#{@district_slug}") %>
-<% has_district_hero = district_hero_dir && district_hero_dir.join('hero.jpg').exist? %>
+<% district_photo_paths = district_hero_dir && district_hero_dir.exist? ?
+                            district_hero_dir.glob('*.jpg').reject { |p| p.basename.to_s == 'og.jpg' }.sort :
+                            [] %>
+<% has_district_hero = district_photo_paths.any? %>
 <% has_district_og   = district_hero_dir && district_hero_dir.join('og.jpg').exist? %>
 
 <%# OG image precedence: district branded > first listing > layout default. %>
@@ -115,12 +119,15 @@
     для LCP. Caption — район-specific подпись (для centr: Лыбедский бульвар). %>
 <% if has_district_hero %>
   <section class="px-6 lg:px-12 pb-8 bg-background">
-    <figure class="max-w-7xl mx-auto">
-      <img src="/images/landings/<%= @district_slug %>/hero.jpg"
-           alt="<%= @h1 %>"
-           loading="eager" fetchpriority="high" decoding="async"
-           class="w-full h-auto border border-border" />
-    </figure>
+    <div class="max-w-7xl mx-auto">
+      <%= render 'shared/photo_slider',
+            id: "landing-#{@district_slug}-slider",
+            interval: 5000,
+            slides: district_photo_paths.map { |p|
+              { src: "/images/landings/#{@district_slug}/#{p.basename}",
+                alt: @h1 }
+            } %>
+    </div>
   </section>
 <% end %>
 
