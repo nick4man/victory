@@ -62,7 +62,7 @@ module Telegram
       rescue StandardError => e
         Rails.logger.error("[CallbacksRouter] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
         log_audit(@cb&.dig('from', 'id'), "callback:#{@cb&.dig('data').to_s.split(':').first}", @cb&.dig('data'),
-                  'error', error_class: e.class.name)
+                  'error', error_class: e.class.name, error_message: e.message)
         begin
           @client.answer_callback_query(@cb['id'], text: '⚠️ Внутренняя ошибка', show_alert: true)
         rescue StandardError
@@ -78,7 +78,10 @@ module Telegram
         :ignored
       end
 
-      def log_audit(tg_user_id, command, args, result, error_class: nil)
+      # Phase 14 Iter 52 — extended audit log с error_message (full exception text).
+      # До фикса debugging failed callbacks был blind: result='error' + error_class
+      # без full message не позволял diagnose без grep prod logs.
+      def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
         return if tg_user_id.blank?
 
         BotCommandLog.create!(
@@ -86,7 +89,8 @@ module Telegram
           command: command,
           args: args.to_s,
           result: result,
-          error_class: error_class
+          error_class: error_class,
+          error_message: error_message.to_s.presence&.truncate(500)
         )
       rescue StandardError => e
         Rails.logger.warn("[CallbacksRouter#log_audit] #{e.class}: #{e.message}")
