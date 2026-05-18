@@ -44,8 +44,12 @@ class SitemapController < ApplicationController
   # eligible (Google drops older entries). Yandex News reads the same schema.
   # Separate route lets us emit news:news structured data without polluting
   # the main sitemap (which would slow crawl of the steady-state catalog).
+  #
+  # Visible scope ОБЯЗАТЕЛЕН — `Article.published` alone не фильтрует
+  # `hidden_at IS NOT NULL` (admin-hidden articles). Без visible они бы
+  # попадали в news-sitemap → conflict с noindex на самой странице.
   def news
-    @articles = Article.published
+    @articles = Article.published.visible
                        .where('published_at >= ?', 2.days.ago)
                        .order(published_at: :desc)
                        .limit(1000)
