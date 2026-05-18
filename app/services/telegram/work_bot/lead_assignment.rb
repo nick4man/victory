@@ -46,13 +46,67 @@ module Telegram
         return if crm_id.blank?
 
         topnlab = Topnlab::Client.new
-        begin
+        success = with_retry('transfer_client') do
           topnlab.transfer_client(order_id: crm_id.to_i, email: @assignee.email)
-        rescue Topnlab::Client::Error => e
-          Rails.logger.warn("[LeadAssignment] transfer_client failed: #{e.class}: #{e.message}")
+        end
+        success &&= with_retry('patch_entity_fc') do
+          push_fc_fields!(topnlab, crm_id.to_i)
         end
 
-        push_fc_fields!(topnlab, crm_id.to_i)
+        mark_crm_sync_status!(success: success)
+      end
+
+      # Phase 9 Iter 7 — 3-attempt retry с exponential backoff (1s, 2s, 4s).
+      # Возвращает true на success, false если все попытки upali. Last error
+      # сохраняется в @lead.crm_sync_last_error.
+      def with_retry(op_name, max_attempts: 3)
+        attempts = 0
+        last_error = nil
+        begin
+          attempts += 1
+          yield
+          true
+        rescue StandardError => e
+          last_error = "#{op_name}: #{e.class}: #{e.message.to_s.truncate(160)}"
+          Rails.logger.warn("[LeadAssignment##{op_name} attempt=#{attempts}/#{max_attempts}] #{e.message}")
+          if attempts < max_attempts
+            sleep(2**(attempts - 1)) # 1, 2, 4 seconds
+            retry
+          end
+          @lead.assign_attributes(crm_sync_last_error: last_error)
+          false
+        end
+      end
+
+      def mark_crm_sync_status!(success:)
+        return unless @lead.respond_to?(:crm_sync_failed)
+
+        if success
+          @lead.update_columns(crm_sync_failed: false, crm_sync_last_error: nil) # rubocop:disable Rails/SkipsModelValidations
+        else
+          # Phase 9 Iter 7 — persist last error из in-memory assign_attributes
+          @lead.update_columns( # rubocop:disable Rails/SkipsModelValidations
+            crm_sync_failed: true,
+            crm_sync_last_error: @lead.crm_sync_last_error.presence
+          )
+          notify_crm_failure!
+        end
+      end
+
+      def notify_crm_failure!
+        # DM Оксане/manager-ам про CRM sync failure
+        TelegramUser.directors.active.find_each do |director|
+          chat_id = director.dm_chat_id || director.tg_user_id
+          next if chat_id.blank?
+
+          text = "⚠️ <b>CRM sync failed</b> на лиде ##{@lead.id}\n" \
+                 "Assignee: #{@assignee.mention}\n" \
+                 "Error: <code>#{@lead.crm_sync_last_error.to_s[0, 200]}</code>\n\n" \
+                 "<i>Назначение проведено локально. Topnlab CRM требует ручной sync.</i>"
+          @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+        rescue Telegram::Client::Error => e
+          Rails.logger.warn("[LeadAssignment] notify_crm_failure DM failed: #{e.message}")
+        end
       end
 
       # Phase 3 — заполняем fc_* кастомные поля Topnlab при назначении.
@@ -68,8 +122,8 @@ module Telegram
           fc_tg_lead_event_id: @lead.id
         }.compact
         topnlab.patch_entity(id: crm_id, type: 'order', fields: fields)
-      rescue StandardError => e
-        Rails.logger.warn("[LeadAssignment] patch_entity fc_* failed: #{e.class}: #{e.message}")
+        # Phase 9 Iter 7 — raise instead of silent rescue (used in with_retry above).
+        # Caller (push_to_crm) handles retry + status tracking.
       end
 
       def update_anchor_card!
