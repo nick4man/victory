@@ -611,10 +611,23 @@ class Property < ApplicationRecord
   #      Управляется агентом отдельно. Influence только outbound feeds
   #      через `in_advertising` scope.
   #
-  # `ACTIVE_DEAL_STATES` mirrors importer.rb#ACTIVE_STATES — те же
-  # deal_state'ы что мы вообще импортируем (deal/archive/denied
-  # filtered на стороне CRM fetch, до нашей DB не доходят).
-  ACTIVE_DEAL_STATES = %w[ad active lead prepayment deferred].freeze
+  # `IMPORT_DEAL_STATES` — что мы вообще импортируем из CRM (mirrors
+  # importer.rb#ACTIVE_STATES). Важно различить:
+  #   IMPORT = "карточка в работе CRM, тянем для трекинга" (включая
+  #            deferred/lead — мы храним, но не показываем)
+  #   PUBLISHABLE = "agent явно пометил готовым к показу публике"
+  IMPORT_DEAL_STATES      = %w[ad active lead prepayment deferred].freeze
+
+  # `PUBLISHABLE_DEAL_STATES` — что показываем на victory62.org.
+  # Только `ad` — explicit agent signal «в рекламе». Остальные states
+  # (active/lead/prepayment/deferred) — internal/transitional:
+  #   - active: внутренний CRM state, agent ещё может оформлять card
+  #   - lead: early stage, данные могут уточниться, agent проверяет
+  #   - prepayment: задаток получен, объект почти продан → не leads
+  #   - deferred: сделка отложена (owner недоступен, документы зависли) —
+  #     buyer звонки попадают в пустоту, frustrates UX
+  # Conservative: только когда agent явно говорит «готов» — мы показываем.
+  PUBLISHABLE_DEAL_STATES = %w[ad].freeze
 
   def ready_for_site?
     # Admin explicit hide — highest priority.
@@ -626,7 +639,7 @@ class Property < ApplicationRecord
     # Site visibility = deal lifecycle + content quality. `in_ad` НЕ
     # включён здесь — outbound advertising state не должен скрывать
     # объект с нашего сайта (мы модераторы, платить не надо).
-    ACTIVE_DEAL_STATES.include?(deal_state.to_s) &&
+    PUBLISHABLE_DEAL_STATES.include?(deal_state.to_s) &&
       images.attached? &&
       ready_content?
   end
@@ -645,8 +658,8 @@ class Property < ApplicationRecord
     return [] if ready_for_site?
 
     reasons = []
-    unless ACTIVE_DEAL_STATES.include?(deal_state.to_s)
-      reasons << "deal_state=#{deal_state.inspect} (нужно: #{ACTIVE_DEAL_STATES.join('/')})"
+    unless PUBLISHABLE_DEAL_STATES.include?(deal_state.to_s)
+      reasons << "deal_state=#{deal_state.inspect} (нужно: #{PUBLISHABLE_DEAL_STATES.join('/')} — agent должен пометить «в рекламе»)"
     end
     reasons << 'нет фото' unless images.attached?
     if images.attached?
