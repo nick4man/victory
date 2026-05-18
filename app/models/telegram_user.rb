@@ -70,6 +70,16 @@ class TelegramUser < ApplicationRecord
     role_director? || role_admin?
   end
 
+  # Phase 13 Iter 41 — единый predicate для manager-level commands.
+  # До этого фикса `manager_only` гейт проверял ТОЛЬКО legacy `is_manager` boolean.
+  # Директор с role='director' но is_manager=false (например, добавленный
+  # через auto_discovery без явного /promote ... manager) блокировался от
+  # /assign, /lead, /promote, /demote, /reassign, /reopen, /deactivate.
+  # Helper расширяет: directors + admins считаются manager-equivalent.
+  def manager_or_director?
+    is_manager? || role_director? || role_admin?
+  end
+
   def touch_seen!
     update_column(:last_seen_at, Time.current)
   end

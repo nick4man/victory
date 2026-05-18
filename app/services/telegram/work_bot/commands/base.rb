@@ -52,7 +52,9 @@ module Telegram
           return handle if self.class.public_command?
 
           return reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.') if tg_user.nil?
-          return reply('🚫 Команда доступна только руководителям.') if self.class.manager_only? && !tg_user.is_manager?
+          # Phase 13 Iter 41 — manager_or_director? включает legacy is_manager + директоров + admin.
+          # До фикса /assign и подобные блокировались для директора с role=director, is_manager=false.
+          return reply('🚫 Команда доступна только руководителям.') if self.class.manager_only? && !tg_user.manager_or_director?
           return reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.') if self.class.director_only? && !tg_user.can_voice_distribute?
 
           handle
@@ -84,7 +86,10 @@ module Telegram
         # @param lead [LeadEvent]
         def assignee_or_manager?(lead)
           return false if tg_user.nil?
-          return true  if tg_user.is_manager?
+          # Phase 13 Iter 41 — расширили до manager_or_director? (directors/admins
+          # тоже могут override). До фикса director без is_manager=true не мог
+          # делать /stage/ /note по чужому лиду.
+          return true  if tg_user.manager_or_director?
           return false if lead.nil?
 
           lead.assigned_to_id == tg_user.id
