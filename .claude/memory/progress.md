@@ -89,14 +89,18 @@
 
 **Tag:** `phase-4-mvp` → `8cf3f54`. Release notes: `.claude/docs/phase-4-mvp-release-notes.md`. Design doc: `.claude/docs/phase-4-design.md`.
 
-## Phase 4.5 backlog (deferred sub-phases)
+## Phase 4 — COMPLETE (8 / 8 sub-phases)
 
-| Sub-phase | Type | Notes |
+Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verified
+на проде. Release notes: `.claude/docs/phase-4-mvp-release-notes.md` (4A-4D)
++ `.claude/docs/phase-4-complete-release-notes.md` (4E/4F/4G/4H).
+
+| Sub-phase | Done | Содержание |
 |---|---|---|
-| **4E — CRM webhook lead source** | MEDIUM | Webhooks::TopnlabController endpoint, idempotency Redis event_id 24h, event replay buffer, webhook health watcher |
-| **4F — SLA ramping reminders** | MEDIUM | DocumentReminderJob hourly, ramping cadence (24h/72h/7d), quiet hours, LLM-generated reminder text |
-| **4G — AI document classification** | MEDIUM | ClientDocument#after_classified → AutoMatchToRequirement (A6 OCR → DocumentRequirement kind match) |
-| **4H — Multi-channel attribution** | LOW | Full match priority phone>tg_user_id>email, anchor card history block (append vs new), family-phone disambiguation |
+| 4E — CRM webhook lead source | ✅ | Lead::Intake::CrmWebhookSource (replaces Phase 2 stub), TopnlabController idempotency (Redis SETNX) + last_webhook_at tracking, TopnlabCrmIntakeJob async (30s delay для consistency), TopnlabWebhookHealthJob daily silence detection (CriticalRecipients), /admin/health Phase 4 fields |
+| 4F — SLA ramping reminders | ✅ | SlaAssessor pure-logic (tier 1/2/3 cadence — 1x/2x/3x SLA × 24h/24h/48h rewindow), ReminderSender (DM client/agent/cascade), DocumentReminderJob hourly cron (quiet hours skip + weekend skip + AlertThrottle dedup) |
+| 4G — AI document auto-match | ✅ | AutoMatchToRequirement (KIND_MAP A6 doc_kind → DR.kind, confidence threshold 0.7, with_lock + reload idempotent), ParserJob wired (step 7 после notify_staff) |
+| 4H — Multi-channel attribution | ✅ | ClientResolver match priority phone>tg>email (90d window), TgDmSource cross-channel match через ClientResolver, anchor metadata['client_history'] append для returning clients, SiteSource backfill client_phone_e164/email_norm/attribution_source |
 
 **Артефакты:**
 - Role handbook PDF (12-15 стр) доставлен в @nick4man DM 18.05.26 (message_id 13)
