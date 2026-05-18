@@ -39,6 +39,14 @@ Rails.application.config.filter_parameters += %i[
   parsed_data
   ocr_raw_text
 
+  # Yandex.Webmaster OAuth — user-scope token, отзываемый, но всё равно
+  # секретный (доступ к private webmaster data + user identity).
+  yandex_webmaster_token
+  oauth_token
+  access_token
+  refresh_token
+  authorization
+
   # Iter 1.5 — добавили phone/email/message чтобы Rails-уровень логирования
   # «Processing by FormsController» не печатал raw value'ы. Trade-off:
   # cabinet/login email тоже маскируется, но это меньшая боль чем PII leak
