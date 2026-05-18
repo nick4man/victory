@@ -72,7 +72,12 @@ module Admin
       {
         db: db_ok?,
         redis: redis_ok?,
-        sidekiq: sidekiq_ok?
+        sidekiq: sidekiq_ok?,
+        # Phase 13 Iter 50 — Topnlab API reachability (cached 60s в Redis).
+        # Operator при «все assigns зависают» сразу видит — это outage CRM
+        # или local bug. Без cache health endpoint hammered'ится monitoring
+        # каждые 30s — не дёргать external API дважды в минуту.
+        topnlab: topnlab_ok?
       }
     end
 
@@ -102,6 +107,23 @@ module Admin
       Sidekiq::ProcessSet.new.size.positive? || stats.processed.positive?
     rescue StandardError => e
       Rails.logger.warn("[Admin::Health] sidekiq check: #{e.message}")
+      false
+    end
+
+    # Phase 13 Iter 50 — light Topnlab reachability check.
+    # Cache result в Rails.cache (Redis) на 60s чтобы не дёргать external
+    # API на каждый /admin/health hit (monitoring polling каждые 30s).
+    # Timeout 2s — health endpoint должен отвечать быстро.
+    def topnlab_ok?
+      Rails.cache.fetch('health:topnlab_ok', expires_in: 60.seconds) do
+        Timeout.timeout(2) do
+          # get_users — самый дешёвый идемпотентный endpoint в нашем
+          # Topnlab::Client, который мы уже используем в /link / KPI / cascade.
+          Topnlab::Client.new.get_users.is_a?(Array)
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.warn("[Admin::Health] topnlab check: #{e.class}: #{e.message.to_s.truncate(120)}")
       false
     end
 
