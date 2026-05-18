@@ -28,6 +28,7 @@ module Telegram
 
           # Manager — нужен is_manager=true
           ['/promote',      :manager,  'Активировать сотрудника: <code>/promote @username [manager]</code>'],
+          ['/demote',       :manager,  'Снять manager-привилегии: <code>/demote @username</code> (role→agent)'],
           ['/link',         :manager,  'Связать TG-юзера с Topnlab: <code>/link @username email@victory.ru</code>'],
           ['/whoami_force', :manager,  'Зарегистрировать без email-кода (если SMTP недоступен)'],
           ['/lead',         :manager,  'Создать лид вручную: <code>/lead +7900XXX Имя, бюджет N</code>'],

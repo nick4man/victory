@@ -24,6 +24,7 @@ module Telegram
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
         '/promote' => Commands::Promote,
+        '/demote' => Commands::Demote,
         '/link' => Commands::Link,
         '/learn_topic' => :handle_learn_topic,
         '/lead' => Commands::Lead,
