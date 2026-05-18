@@ -104,6 +104,9 @@ module Lead
       # минимальный Inquiry, чтобы LeadEvent.lead_ref не был nil.
       # Thread-local-флаг предотвращает рекурсию: Inquiry#after_create_commit
       # сам вызывает Lead::Intake, и без флага мы получили бы бесконечный цикл.
+      #
+      # Phase 4H — populate client_phone_e164 + client_email_norm + attribution_source
+      # для cross-channel ClientResolver match (TG-DM → existing site-form lead).
       def fallback_inquiry(payload)
         Thread.current[:skip_workbot_push] = true
         Inquiry.create!(
@@ -113,7 +116,10 @@ module Lead
           email:        payload[:email].to_s.strip.presence,
           message:      payload[:summary].to_s.presence || payload[:message].to_s.presence || 'Лид через Telegram-бот',
           source:       @source,
-          status:       'new'
+          status:       'new',
+          client_phone_e164: Lead::Intake::ClientResolver.normalize_phone(payload[:phone]),
+          client_email_norm: Lead::Intake::ClientResolver.normalize_email(payload[:email]),
+          attribution_source: @source
         )
       ensure
         Thread.current[:skip_workbot_push] = false
