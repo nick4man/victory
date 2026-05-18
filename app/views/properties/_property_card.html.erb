@@ -34,7 +34,11 @@
         <% if property.respond_to?(:premium?) && property.premium? %>
           <%= render 'properties/premium_badge' %>
         <% end %>
-        <% if property.respond_to?(:external_source) && property.external_source.present? %>
+        <%# «БАЗА АГЕНТСТВ» — только для properties from EXTERNAL feeds
+            (Yandex YRL competitor / Avito / Cian / agency_sitemap).
+            Наши собственные имеют external_source='topnlab' — badge
+            скрываем (мы не «база агентств» по отношению к своему каталогу). %>
+        <% if property.respond_to?(:external_source) && property.external_source.present? && property.external_source != 'topnlab' %>
           <span class="px-3 py-1 text-xs tracking-widest bg-background/80 backdrop-blur-sm text-foreground border border-border">БАЗА&nbsp;АГЕНТСТВ</span>
         <% end %>
       </div>
