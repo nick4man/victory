@@ -39,6 +39,19 @@ module Telegram
         end
         return Result.new(false, @lead.current_stage, @new, "already at #{@new}") if @lead.current_stage == @new
 
+        # Phase 14 Iter 51 — закрытый лид (closed_won/closed_lost) → reject любой
+        # transition обратно в open-pipeline (re-open lead). Симметрия с Iter 42:
+        # /assign на closed отклоняется, но раньше /stage показ на closed_won
+        # вернул бы карточку в активный pipeline и сломал KPI-учёт (повторный
+        # first_contact_at, lost win event). Closed → only closed (won↔lost
+        # admin-override через rails console).
+        if @lead.current_stage.to_s.start_with?('closed_') && !@new.start_with?('closed_')
+          return Result.new(false, @lead.current_stage, @new,
+                            "Лид уже закрыт (#{@lead.current_stage}). " \
+                            'Re-open запрещён через бота — manual revert через Topnlab UI ' \
+                            '+ rails console для current_stage.')
+        end
+
         prev = @lead.current_stage
         apply_local!
         update_anchor_card!
