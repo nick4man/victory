@@ -119,15 +119,14 @@ class Task < ApplicationRecord
 
   private
 
-  # Phase 7.4 — Async refresh pinned digest. Соответствует уровню «soft-side-effect»:
-  # любая ошибка (TG down, NotificationJob crash) НЕ блокирует основное сохранение.
-  # Skip — если флаг THREAD_LOCAL установлен (массовые backfill/migration).
+  # Phase 9 Iter 9 — Async digest refresh через Sidekiq + Redis-lock debounce.
+  # Раньше синхронный edit_message_text → race на parallel updates.
+  # Теперь — job с 1s debounce window, 5 параллельных updates → 1 TG call.
   def refresh_dispatcher_digest
     return if Thread.current[:skip_dispatcher_digest_refresh]
     return if assigned_at.blank? # задачи без assignment — не в digest
 
-    # Refresh — синхронный (~100ms на edit_message_text). Backgrounded в Phase 7.6.
-    Telegram::WorkBot::DispatcherDigest.refresh_for_today!
+    DispatcherDigestRefreshJob.perform_async
   rescue StandardError => e
     Rails.logger.warn("[Task#refresh_dispatcher_digest] #{e.class}: #{e.message}")
   end

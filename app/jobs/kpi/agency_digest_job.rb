@@ -11,8 +11,10 @@ module Kpi
     def perform(date_str = nil)
       date = date_str.present? ? Date.parse(date_str) : Date.current
 
-      # Сначала snapshot — чтобы digest показал свежие данные за сегодня
-      Kpi::StaffSnapshot.run!(date: date)
+      # Phase 9 Iter 9 — НЕ вызываем StaffSnapshot.run! здесь.
+      # Snapshot уже запускается в 23:55 prior day через Kpi::StaffSnapshotJob.
+      # Раньше — double-compute (одни и те же metrics дважды). Если данные
+      # старше суток нужны — отдельно вручную через console.
 
       text = Kpi::AgencyDigest.new(date: date).build_text
       send_to_directors(text)
