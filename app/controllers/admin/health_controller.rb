@@ -122,7 +122,10 @@ module Admin
         task_batches_expired_recent: TaskBatch.where(status: 'expired')
                                               .where(expired_at: 24.hours.ago..).count,
         tasks_overdue: ::Task.status_open.where(due_at: ...Time.current).count,
-        crm_sync_failed: LeadEvent.where(crm_sync_failed: true).count
+        crm_sync_failed: LeadEvent.where(crm_sync_failed: true).count,
+        # Phase 12 Iter 38 — surface YAML/DB drift в health JSON
+        topic_registry_orphans: Telegram::TopicRegistry.orphan_anchor_keys,
+        topic_registry_missing: Telegram::TopicRegistry.missing_keys
       }
     rescue StandardError => e
       Rails.logger.warn("[Admin::Health] operational: #{e.message}")

@@ -26,13 +26,27 @@ module Telegram
       # @return [Integer, nil] message_thread_id или nil если ещё не известен
       def thread_id(key)
         key = key.to_s
-        return nil unless valid_key?(key)
+        # Phase 12 Iter 38 — лог при unknown key. До этого фикса invalid_key
+        # → nil молча → send_message без thread_id попадал в General-топик
+        # (root группы) — visible drift между БД и YAML.
+        unless valid_key?(key)
+          Rails.logger.warn("[TopicRegistry] thread_id('#{key}') — unknown key. " \
+                            "Valid keys: #{all_keys.join(', ')}")
+          return nil
+        end
         overrides[key] || config.dig(:topics, key.to_sym, :message_thread_id)
       end
 
       # @return [String, nil] человекочитаемое название топика
       def title(key)
-        config.dig(:topics, key.to_sym, :tg_title)
+        result = config.dig(:topics, key.to_sym, :tg_title)
+        # Phase 12 Iter 38 — лог при unknown key. callers (LeadAssignment, SLA)
+        # используют title для format'инга, миссы → 'nil' в текстах.
+        if result.nil? && key.present?
+          Rails.logger.warn("[TopicRegistry] title('#{key}') — unknown key. " \
+                            "Valid keys: #{all_keys.join(', ')}")
+        end
+        result
       end
 
       def role(key)
@@ -111,6 +125,25 @@ module Telegram
       # законно nil (сообщения пишутся в корень группы).
       def missing_keys
         all_keys.reject { |k| thread_id(k) || general_topic?(k) }
+      end
+
+      # Phase 12 Iter 38 — audit consistency БД vs YAML. Возвращает ключи,
+      # которые встречаются в LeadEvent.anchor_topic_key, но НЕ в YAML.
+      # Используется в /admin/health (Iter 30+) и manual diagnostics.
+      # @return [Array<String>] unknown anchor_topic_keys (или [] если всё ок)
+      def orphan_anchor_keys
+        return [] unless defined?(LeadEvent)
+
+        db_keys = LeadEvent.distinct.pluck(:anchor_topic_key).compact.uniq
+        unknown = db_keys - all_keys
+        unknown.each do |k|
+          Rails.logger.warn("[TopicRegistry] orphan anchor_topic_key=#{k} in LeadEvent — " \
+                            'YAML drift. Topic был переименован/удалён?')
+        end
+        unknown
+      rescue StandardError => e
+        Rails.logger.warn("[TopicRegistry#orphan_anchor_keys] #{e.class}: #{e.message}")
+        []
       end
 
       # Сброс памяти процесса (тесты + после ручного редактирования YAML).
