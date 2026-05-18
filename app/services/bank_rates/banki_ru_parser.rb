@@ -3,6 +3,7 @@
 require 'net/http'
 require 'nokogiri'
 require 'uri'
+require 'json'
 
 # Scrapes banki.ru aggregator pages for current deposit / mortgage rates.
 # Returns a normalised array of program hashes that the same shape as
@@ -111,10 +112,96 @@ module BankRates
 
     def parse(html)
       doc = Nokogiri::HTML(html)
+      case @kind
+      when 'deposit'  then parse_deposit_cards(doc)
+      when 'mortgage' then parse_mortgage_json_ld(doc)
+      else
+        Rails.logger.warn("[BankiRuParser] unknown kind=#{@kind} in parse")
+        []
+      end
+    end
+
+    # Deposit page = React DOM with data-test attributes. Walk-up to card root,
+    # regex-extract canonical fields. See parse_card for layout details.
+    def parse_deposit_cards(doc)
       rate_nodes = doc.css('[data-test="deposit-card--stat-rate"]')
       return [] if rate_nodes.empty?
 
       rate_nodes.filter_map { |rate_node| parse_card(rate_node) }.uniq { |i| [i[:bank_name], i[:product_name]] }
+    end
+
+    # Mortgage page = JSON-LD schema.org (Product → AggregateOffer → MortgageLoan[]).
+    # banki.ru embeds full offer catalog в `<script type="application/ld+json">`.
+    # Structure per fixture (services/audit-engine/engine/tests/fixtures/banki_ru_mortgage.html):
+    #   { @type: Product, offers: { offers: [ { @type: MortgageLoan, ... } ] } }
+    def parse_mortgage_json_ld(doc)
+      ld_scripts = doc.css('script[type="application/ld+json"]')
+      return [] if ld_scripts.empty?
+
+      loans = ld_scripts.flat_map do |script|
+        data = JSON.parse(script.text) rescue nil
+        next [] unless data.is_a?(Hash)
+        extract_mortgage_loans(data)
+      end
+      loans.compact.uniq { |l| [l[:bank_name], l[:product_name]] }
+    rescue StandardError => e
+      Rails.logger.warn("[BankiRuParser] mortgage json-ld parse: #{e.class}: #{e.message.to_s.truncate(160)}")
+      []
+    end
+
+    def extract_mortgage_loans(data)
+      # schema.org Product → offers (AggregateOffer) → offers[] (MortgageLoan)
+      offers = data.dig('offers', 'offers') || []
+      offers.filter_map { |o| build_mortgage_item(o) }
+    end
+
+    def build_mortgage_item(offer)
+      return nil unless offer.is_a?(Hash)
+      return nil unless offer['@type'].to_s.include?('Loan')
+
+      rate_obj = offer['annualPercentageRate']
+      rate = rate_obj.is_a?(Hash) ? rate_obj['minValue']&.to_f : rate_obj&.to_f
+      return nil if rate.nil? || rate <= 0
+
+      term = parse_mortgage_term(offer['loanTerm'])
+      bank = offer.dig('broker', 'name').to_s.strip
+      product = offer['name'].to_s.strip
+      return nil if bank.blank? || product.blank?
+
+      {
+        bank_name:        bank,
+        product_name:     product.truncate(120),
+        rate_max:         rate,
+        term_months_min:  term[:min],
+        term_months_max:  term[:max],
+        min_amount:       parse_mortgage_amount(offer.dig('amount', 'value')),
+        capitalization:   nil,
+        withdraw_allowed: nil,
+        source_url:       offer['url'].to_s.presence
+      }
+    end
+
+    # JSON-LD loanTerm.value + unitCode → months. Per banki.ru: usually DAY (10950 = 30y),
+    # иногда MON или ANN. Default to direct value (treat as months).
+    def parse_mortgage_term(loan_term)
+      return { min: nil, max: nil } unless loan_term.is_a?(Hash)
+      value = loan_term['value'].to_f
+      months = case loan_term['unitCode'].to_s
+               when 'ANN' then value * 12
+               when 'MON' then value
+               when 'DAY' then (value / 30.0)
+               else value
+               end
+      m = months.round
+      { min: m, max: m }
+    end
+
+    # amount.value формата «300 000–30 000 000 ₽» → 300_000 (нижняя граница).
+    def parse_mortgage_amount(raw)
+      return nil if raw.blank?
+      digits = raw.to_s.scan(/\d[\d\s]*\d|\d/).first
+      return nil if digits.blank?
+      digits.gsub(/\s/, '').to_i
     end
 
     # Card layout has `*--stat-rate` deep inside; walk up to find the
