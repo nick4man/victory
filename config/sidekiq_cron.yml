@@ -96,3 +96,9 @@ document_reminder:
   class: DocumentReminderJob
   queue: scheduled
   description: "Phase 4F — DocumentRequirement SLA ramping reminders. Tier 1 client (>=1xSLA), Tier 2 manager (>=2x), Tier 3 director cascade (>=3x). Quiet hours 21-07 + weekend skip."
+
+topnlab_webhook_health:
+  cron: "0 8 * * *"        # daily 08:00 Moscow
+  class: TopnlabWebhookHealthJob
+  queue: scheduled
+  description: "Phase 4E — silent webhook detection. Alert via CriticalRecipients if last_webhook_at > 24h ago."

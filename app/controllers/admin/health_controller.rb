@@ -127,6 +127,18 @@ module Admin
       false
     end
 
+    # Phase 4E — Topnlab webhook freshness probe (Redis key
+    # 'topnlab:last_webhook_at' set'ится в TopnlabController#mark_webhook_seen!).
+    # Returns ISO8601 timestamp ИЛИ nil (never seen / Redis down).
+    def topnlab_webhook_freshness
+      require 'redis' unless defined?(Redis)
+      Redis.new(url: ENV.fetch('REDIS_URL', 'redis://redis:6379/0'))
+           .get('topnlab:last_webhook_at')
+    rescue StandardError => e
+      Rails.logger.warn("[Admin::Health] topnlab_webhook_freshness: #{e.message}")
+      nil
+    end
+
     def bot_state
       {
         directors_active: TelegramUser.directors.where(status: 'active').count,
@@ -151,7 +163,14 @@ module Admin
         # Phase 13 Iter 48 — surface throttled alerts (Iter 26 counters).
         # До этого фикса throttled alerts были invisible — operator видел
         # 'все ок' в health, но реальные alerts dropped'ись Redis-throttle.
-        alerts_suppressed_5min: Telegram::AlertThrottle.all_suppressed_summary
+        alerts_suppressed_5min: Telegram::AlertThrottle.all_suppressed_summary,
+        # Phase 4 — open document requirements + recent intake counters
+        documents_open: DocumentRequirement.where(status: %w[requested received]).count,
+        documents_overdue: DocumentRequirement.overdue.count,
+        tg_dm_inquiries_24h: Inquiry.where(attribution_source: 'tg_dm')
+                                    .where('created_at > ?', 24.hours.ago).count,
+        # Phase 4E — silent webhook detection (last_webhook_at staleness)
+        topnlab_webhook_last_seen: topnlab_webhook_freshness
       }
     rescue StandardError => e
       Rails.logger.warn("[Admin::Health] operational: #{e.message}")

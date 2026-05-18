@@ -89,10 +89,11 @@ class Inquiry < ApplicationRecord
   # ============================================
   validates :name, presence: true, length: { minimum: 2, maximum: 100 }
   # Phase 4D — TG-DM intake может прийти БЕЗ phone (клиент только начал
-  # диалог). Phone qualification — отдельный шаг (LLM-driven follow-up
-  # вопрос или manager-side собирает). Site-формы и manual продолжают
-  # требовать phone.
-  validates :phone, presence: true, unless: -> { source == 'tg_dm' }
+  # диалог). Phase 4E — crm_webhook source хранит только masked phone (PII
+  # stays в Topnlab). Phone qualification — отдельный шаг. Site-формы и
+  # manual продолжают требовать phone.
+  PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+  validates :phone, presence: true, unless: -> { PHONE_OPTIONAL_SOURCES.include?(source) }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :inquiry_type, presence: true
   validates :status, presence: true
@@ -518,7 +519,11 @@ class Inquiry < ApplicationRecord
   # Validations
   def phone_format
     return unless phone.present?
-    
+    # Phase 4E — masked phone из CRM ('+7 999 ***-**-67') legitimately
+    # содержит < 10 digits. Skip format check для sources которые могут
+    # legitimately иметь masked phone.
+    return if PHONE_OPTIONAL_SOURCES.include?(source)
+
     cleaned = phone.gsub(/\D/, '')
     unless cleaned.match?(/\A\d{10,11}\z/)
       errors.add(:phone, 'должен содержать 10-11 цифр')
