@@ -38,4 +38,16 @@ Rails.application.config.filter_parameters += %i[
   yandex_vision_response
   parsed_data
   ocr_raw_text
+
+  # Iter 1.5 — добавили phone/email/message чтобы Rails-уровень логирования
+  # «Processing by FormsController» не печатал raw value'ы. Trade-off:
+  # cabinet/login email тоже маскируется, но это меньшая боль чем PII leak
+  # (152-ФЗ + log retention compliance). Если нужен debug — Rails.logger
+  # tagged + explicit hash.
+  phone
+  email
+  message
+  comment
+  identifier
+  full_name
 ]

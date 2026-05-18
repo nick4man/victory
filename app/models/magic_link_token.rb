@@ -49,11 +49,27 @@ class MagicLinkToken < ApplicationRecord
   end
 
   # Idempotent: возвращает true только при первом успехе.
+  # Atomic под race — два параллельных consume! на один token не должны
+  # оба пройти. SELECT ... FOR UPDATE через with_lock гарантирует exclusive
+  # access на DB-уровне. Без lock'а можно дважды consume один magic-link
+  # (e.g. double-submit / browser preview hitting URL).
+  #
+  # NOTE: не использовать `return` внутри with_lock-блока — это abort'ит
+  # transaction до release lock. Используем in-block flag вместо.
   def consume!
     return false if consumed_at.present? || expires_at < Time.current
 
-    update!(consumed_at: Time.current)
-    true
+    succeeded = false
+    with_lock do
+      reload
+      next if consumed_at.present? || expires_at < Time.current
+
+      update!(consumed_at: Time.current)
+      succeeded = true
+    end
+    succeeded
+  rescue ActiveRecord::StaleObjectError, ActiveRecord::RecordNotFound
+    false
   end
 
   def expired?

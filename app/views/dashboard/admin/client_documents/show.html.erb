@@ -4,7 +4,7 @@
 
 <section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
   <div class="max-w-4xl mx-auto">
-    <%= link_to '← К очереди', dashboard_admin_client_documents_path(token: params[:token]),
+    <%= link_to '← К очереди', dashboard_admin_client_documents_path(),
                 class: "text-sm text-muted-foreground hover:text-foreground" %>
 
     <div class="mt-6 mb-12 pb-8 border-b border-border">
@@ -59,11 +59,11 @@
           Проверь распознанные поля выше. Если корректно — подтверди. Если ошибки — отметь на повторную обработку.
         </p>
         <div class="flex gap-3">
-          <%= button_to '✅ Подтвердить', approve_dashboard_admin_client_document_path(@document, token: params[:token]),
+          <%= button_to '✅ Подтвердить', approve_dashboard_admin_client_document_path(@document),
                         method: :patch,
                         class: "py-2 px-6 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm",
                         data: { confirm: 'Подтверждаешь корректность распознанных полей?' } %>
-          <%= form_with url: reject_dashboard_admin_client_document_path(@document, token: params[:token]),
+          <%= form_with url: reject_dashboard_admin_client_document_path(@document),
                         method: :patch, local: true, class: "flex items-center gap-2" do |f| %>
             <%= f.text_field :reason, placeholder: 'Причина (опц.)',
                              class: "py-2 px-3 border border-border bg-background text-sm w-64" %>

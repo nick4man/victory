@@ -42,7 +42,7 @@ module Admin
       @case_study = CaseStudy.new(case_study_params)
       @case_study.published_at ||= Time.current if @case_study.status_published?
       if @case_study.save
-        redirect_to admin_case_studies_path(token: params[:token]), notice: 'Кейс создан.'
+        redirect_to admin_case_studies_path, notice: 'Кейс создан.'
       else
         render :new, status: :unprocessable_entity
       end
@@ -52,7 +52,7 @@ module Admin
 
     def update
       if @case_study.update(case_study_params)
-        redirect_to admin_case_studies_path(token: params[:token]), notice: 'Сохранено.'
+        redirect_to admin_case_studies_path, notice: 'Сохранено.'
       else
         render :edit, status: :unprocessable_entity
       end
@@ -76,7 +76,7 @@ module Admin
     def destroy
       # Hard delete только для черновиков без relation'ов.
       @case_study.destroy!
-      redirect_to admin_case_studies_path(token: params[:token]), notice: 'Кейс удалён без возможности восстановления.'
+      redirect_to admin_case_studies_path, notice: 'Кейс удалён без возможности восстановления.'
     end
 
     private

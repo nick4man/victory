@@ -80,12 +80,12 @@
                 </td>
                 <td class="p-3 text-right space-x-2 whitespace-nowrap">
                   <% if p.force_publish %>
-                    <%= button_to 'Выключить force', toggle_force_publish_admin_property_path(p, token: params[:token]),
+                    <%= button_to 'Выключить force', toggle_force_publish_admin_property_path(p),
                           method: :post,
                           data: { turbo_confirm: 'Выключить принудительную публикацию?' },
                           class: 'text-[11px] text-amber-300 hover:opacity-80 inline-block' %>
                   <% else %>
-                    <%= button_to 'Force publish →', toggle_force_publish_admin_property_path(p, token: params[:token]),
+                    <%= button_to 'Force publish →', toggle_force_publish_admin_property_path(p),
                           method: :post,
                           data: { turbo_confirm: blockers.any? ? "Опубликовать «#{p.address.to_s.truncate(40)}» в обход CRM (#{blockers.join(', ')})?" : nil },
                           class: 'text-[11px] text-foreground hover:opacity-80 inline-block' %>
@@ -97,7 +97,7 @@
                       Visible если объект ещё не на стадии «продан/сдан/ждёт подписи». %>
                   <% unless %w[sold rented pending_consent].include?(p.status.to_s) %>
                     <%= link_to 'Запросить подпись',
-                          request_consent_admin_property_path(p, token: params[:token]),
+                          request_consent_admin_property_path(p),
                           class: 'text-[11px] text-emerald-300 hover:opacity-80 inline-block' %>
                   <% end %>
                 </td>

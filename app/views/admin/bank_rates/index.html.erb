@@ -17,12 +17,12 @@
     <div class="flex gap-2 mb-6">
       <% BankRateSnapshot::KINDS.each do |k| %>
         <%= link_to (k == 'deposit' ? 'ДЕПОЗИТЫ' : 'ИПОТЕКА'),
-              admin_bank_rates_path(kind: k, token: params[:token]),
+              admin_bank_rates_path(kind: k),
               class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@kind == k ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground'} transition-colors" %>
       <% end %>
       <span class="ml-auto"></span>
       <%= button_to '⟳ Обновить сейчас',
-            admin_refresh_bank_rates_path(token: params[:token]),
+            admin_refresh_bank_rates_path(),
             method: :post,
             class: 'px-3 py-1.5 text-[11px] tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
     </div>

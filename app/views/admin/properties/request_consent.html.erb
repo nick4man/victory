@@ -3,7 +3,7 @@
 <section class="px-6 lg:px-12 py-12 lg:py-16 bg-background min-h-screen">
   <div class="max-w-2xl mx-auto">
     <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-8">
-      <%= link_to '← К списку объектов', admin_properties_path(token: params[:token]),
+      <%= link_to '← К списку объектов', admin_properties_path(),
             class: 'hover:text-foreground' %>
     </nav>
 
@@ -42,7 +42,7 @@
       </p>
     </div>
 
-    <%= form_with url: send_consent_request_admin_property_path(@property, token: params[:token]),
+    <%= form_with url: send_consent_request_admin_property_path(@property),
           method: :post, local: true, html: { class: 'space-y-6' } do |f| %>
       <div>
         <label for="client_email" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">

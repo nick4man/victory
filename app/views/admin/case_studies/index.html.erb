@@ -10,7 +10,7 @@
         <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Кейсы</h1>
       </div>
       <%= link_to '+ Новый кейс',
-            new_admin_case_study_path(token: params[:token]),
+            new_admin_case_study_path(),
             class: 'px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
     </div>
 
@@ -29,7 +29,7 @@
     ] %>
     <div class="flex flex-wrap gap-2 mb-8">
       <% tabs.each do |slug, label| %>
-        <%= link_to label, admin_case_studies_path(scope: slug, token: params[:token]),
+        <%= link_to label, admin_case_studies_path(scope: slug),
               class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
       <% end %>
     </div>
@@ -48,7 +48,7 @@
               </p>
             </div>
             <div class="flex items-center gap-3">
-              <%= link_to 'Изменить', edit_admin_case_study_path(cs, token: params[:token]),
+              <%= link_to 'Изменить', edit_admin_case_study_path(cs),
                     class: 'text-xs tracking-[0.2em] text-foreground hover:text-muted-foreground uppercase' %>
               <% if cs.status_published? && cs.deleted_at.nil? %>
                 <%= link_to 'Открыть', case_path(cs), target: '_blank',
@@ -63,7 +63,7 @@
         <p class="text-sm text-muted-foreground">
           В этой группе нет кейсов.
           <% if @scope != 'visible' %>
-            <%= link_to 'Опубликованные →', admin_case_studies_path(token: params[:token]), class: 'underline hover:text-foreground' %>
+            <%= link_to 'Опубликованные →', admin_case_studies_path(), class: 'underline hover:text-foreground' %>
           <% else %>
             Создайте первый кейс через кнопку выше.
           <% end %>

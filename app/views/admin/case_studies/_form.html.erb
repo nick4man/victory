@@ -1,6 +1,6 @@
 <%# Shared form для admin/case_studies new + edit. %>
 <%= form_with model: [:admin, @case_study],
-              url: @case_study.persisted? ? admin_case_study_path(@case_study, token: params[:token]) : admin_case_studies_path(token: params[:token]),
+              url: @case_study.persisted? ? admin_case_study_path(@case_study) : admin_case_studies_path(),
               local: true,
               class: 'space-y-6' do |f| %>
   <% if @case_study.errors.any? %>
@@ -149,7 +149,7 @@
   <div class="flex flex-wrap gap-4 pt-2">
     <%= f.submit (@case_study.persisted? ? 'Сохранить' : 'Создать'),
           class: 'px-6 py-3 text-xs tracking-[0.3em] uppercase bg-foreground text-background hover:bg-foreground/85 transition-colors cursor-pointer border-0' %>
-    <%= link_to 'Отмена', admin_case_studies_path(token: params[:token]),
+    <%= link_to 'Отмена', admin_case_studies_path(),
           class: 'px-6 py-3 text-xs tracking-[0.3em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors' %>
   </div>
 <% end %>

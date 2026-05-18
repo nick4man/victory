@@ -24,7 +24,7 @@ module Admin
                       else
                         'Парсер выполнен, но snapshot не создан — см. логи.'
                       end
-      redirect_to admin_bank_rates_path(token: params[:token])
+      redirect_to admin_bank_rates_path
     end
   end
 end

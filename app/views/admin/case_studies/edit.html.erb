@@ -25,17 +25,17 @@
       <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase">Быстрые действия</p>
       <div class="flex flex-wrap gap-3">
         <% unless @case_study.status_published? %>
-          <%= button_to 'Опубликовать', publish_admin_case_study_path(@case_study, token: params[:token]),
+          <%= button_to 'Опубликовать', publish_admin_case_study_path(@case_study),
                 method: :post,
                 class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors' %>
         <% end %>
         <% unless @case_study.status_archived? %>
-          <%= button_to 'В архив', archive_admin_case_study_path(@case_study, token: params[:token]),
+          <%= button_to 'В архив', archive_admin_case_study_path(@case_study),
                 method: :post,
                 class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors',
                 data: { confirm: 'Кейс в архив — скрыть из публичного списка?' } %>
         <% end %>
-        <%= button_to 'Soft-delete', soft_delete_admin_case_study_path(@case_study, token: params[:token]),
+        <%= button_to 'Soft-delete', soft_delete_admin_case_study_path(@case_study),
               method: :post,
               class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-destructive/40 text-destructive hover:border-destructive transition-colors',
               data: { confirm: 'Скрыть кейс полностью? Восстановить можно только через консоль.' } %>

@@ -57,7 +57,7 @@ module Admin
 
     def update
       if @article.update(article_params)
-        redirect_to admin_articles_path(token: params[:token]), notice: 'Сохранено.'
+        redirect_to admin_articles_path, notice: 'Сохранено.'
       else
         render :edit, status: :unprocessable_entity
       end
@@ -65,13 +65,13 @@ module Admin
 
     def hide
       @article.hide!
-      redirect_back fallback_location: admin_articles_path(token: params[:token]),
+      redirect_back fallback_location: admin_articles_path,
                     notice: "Статья «#{@article.title.truncate(50)}» скрыта."
     end
 
     def unhide
       @article.unhide!
-      redirect_back fallback_location: admin_articles_path(token: params[:token]),
+      redirect_back fallback_location: admin_articles_path,
                     notice: "Статья восстановлена."
     end
 
@@ -96,7 +96,7 @@ module Admin
 
     def destroy
       @article.destroy
-      redirect_to admin_articles_path(token: params[:token]), notice: 'Удалено.'
+      redirect_to admin_articles_path, notice: 'Удалено.'
     end
 
     private
