@@ -88,7 +88,8 @@ class LeadEvent < ApplicationRecord
     'notes' => 50,
     'routing_history' => 20,
     'stage_history' => 20,
-    'dispatch_failures' => 5
+    'dispatch_failures' => 5,
+    'crm_sync_errors' => 5 # Phase 13 Iter 47 — last 5 CRM-sync errors для pattern detection
   }.freeze
 
   def append_history(key:, entry:, cap: nil)

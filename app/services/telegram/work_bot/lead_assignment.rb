@@ -106,6 +106,20 @@ module Telegram
             retry
           end
           @lead.assign_attributes(crm_sync_last_error: last_error)
+          # Phase 13 Iter 47 — append к metadata['crm_sync_errors'] (history,
+          # last 5 через HISTORY_DEFAULT_CAPS). До этого фикса
+          # crm_sync_last_error overwrite'ил, теряя pattern (транзиентный
+          # таймаут vs persistent invalid email).
+          history = @lead.append_history(
+            key: 'crm_sync_errors',
+            entry: {
+              'at' => Time.current.iso8601,
+              'op' => op_name,
+              'error' => last_error.to_s.truncate(200),
+              'attempts' => attempts
+            }
+          )
+          @lead.assign_attributes(metadata: @lead.metadata.merge('crm_sync_errors' => history))
           false
         end
       end
@@ -147,18 +161,39 @@ module Telegram
       def notify_crm_failure!
         # Phase 11 Iter 25 — cascade fallback через CriticalRecipients.
         # Если directors неактивны → admins → managers (не теряем alert).
+        # Phase 13 Iter 47 — show error history (last 3) для pattern detection.
+        history_block = crm_error_history_block
+
         Telegram::CriticalRecipients.resolve.each do |recipient|
           chat_id = recipient.dm_chat_id || recipient.tg_user_id
           next if chat_id.blank?
 
           text = "⚠️ <b>CRM sync failed</b> на лиде ##{@lead.id}\n" \
                  "Assignee: #{@assignee.mention}\n" \
-                 "Error: <code>#{@lead.crm_sync_last_error.to_s[0, 200]}</code>\n\n" \
+                 "Error: <code>#{@lead.crm_sync_last_error.to_s[0, 200]}</code>\n" \
+                 "#{history_block}\n" \
                  "<i>Назначение проведено локально. Topnlab CRM требует ручной sync.</i>"
           @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
         rescue Telegram::Client::Error => e
           Rails.logger.warn("[LeadAssignment] notify_crm_failure DM failed: #{e.message}")
         end
+      end
+
+      # Phase 13 Iter 47 — собирает последние 3 CRM-sync errors из metadata
+      # для visible pattern detection в alert DM. Если history пустая —
+      # возвращает '' (no decoration).
+      def crm_error_history_block
+        history = Array(@lead.reload.metadata['crm_sync_errors']).last(3)
+        return '' if history.empty?
+
+        lines = history.map.with_index do |e, i|
+          ts = (Time.zone.parse(e['at'].to_s).strftime('%d.%m %H:%M') rescue 'unknown')
+          "  #{i + 1}. [#{ts}] #{e['op']}: #{e['error'].to_s.truncate(80)}"
+        end
+        "Последние ошибки:\n#{lines.join("\n")}\n"
+      rescue StandardError => err
+        Rails.logger.warn("[LeadAssignment#crm_error_history_block] #{err.message}")
+        ''
       end
 
       # Phase 3 — заполняем fc_* кастомные поля Topnlab при назначении.
