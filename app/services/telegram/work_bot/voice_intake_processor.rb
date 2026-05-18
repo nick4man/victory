@@ -168,14 +168,31 @@ module Telegram
       end
 
       # Phase 13 Iter 43 — отказ при уже существующем pending TaskBatch.
-      # Auto-cancel предыдущего опасен (потеря заметок) — лучше явный reject.
+      # Auto-cancel предыдущего опасен (потеря заметок) — поэтому делаем
+      # explicit reject + inline-кнопка [✖️ Отменить старый] (Phase 14 Iter 56)
+      # для one-click cancel без скролла истории к preview.
       def refuse_pending_batch(pending)
         age_min = ((Time.current - pending.created_at) / 60).to_i
-        reply(
-          "🚫 У вас есть недоподтверждённый пакет <b>##{pending.id}</b> (создан #{age_min}мин назад). " \
-          "Подтверди или отмени его в DM (через inline-кнопки preview), затем повтори голосовое. " \
-          "Если preview потерялся — используй <code>/resume_batch #{pending.id}</code>."
-        )
+        text = "🚫 У вас есть недоподтверждённый пакет <b>##{pending.id}</b> (создан #{age_min}мин назад). " \
+               "Подтверди или отмени его в DM (через inline-кнопки preview), затем повтори голосовое. " \
+               "Если preview потерялся — используй <code>/resume_batch #{pending.id}</code>."
+
+        # Phase 14 Iter 56 — inline-кнопка для быстрой отмены прежнего batch.
+        # callback_data reuses TaskBatchConfirmCallback prefix 'batch_confirm:'
+        # — он уже умеет :cancel. Director кликает → batch.cancel! → может
+        # сразу записать новый voice. UX one-click вместо ручного поиска preview.
+        markup = {
+          inline_keyboard: [
+            [{ text: "✖️ Отменить старый ##{pending.id} и попробовать снова",
+               callback_data: "batch_confirm:#{pending.id}:cancel" }]
+          ]
+        }
+
+        @client.send_message(text,
+                             chat_id: @msg.dig('chat', 'id'),
+                             reply_to_message_id: @msg['message_id'],
+                             parse_mode: 'HTML',
+                             reply_markup: markup)
         Rails.logger.info("[VoiceIntakeProcessor] refused new voice — pending batch ##{pending.id}")
         :refused_pending
       end
