@@ -1,0 +1,23 @@
+<%# Schema.org HowTo — emit ТОЛЬКО когда article body содержит structured
+    ordered list of >= MIN_STEPS items. Я.Wand + Google активируют
+    accordion-style rich snippet в SERP с CTR boost vs. regular Article.
+    locals: article (Article), extractor (Seo::HowToExtractor) %>
+<% if extractor.extractable? %>
+<%
+  hero_image = article.hero_image_url
+  hero_image = "#{request.protocol}#{request.host_with_port}#{hero_image}" if hero_image.present? && hero_image.start_with?('/')
+
+  how_to_payload = {
+    '@context' => 'https://schema.org',
+    '@type' => 'HowTo',
+    'name' => article.title,
+    'description' => article.short_excerpt(length: 220),
+    'totalTime' => article.iso_duration,
+    'image' => hero_image,
+    'step' => extractor.steps
+  }.compact
+%>
+<script type="application/ld+json">
+<%= raw how_to_payload.to_json %>
+</script>
+<% end %>

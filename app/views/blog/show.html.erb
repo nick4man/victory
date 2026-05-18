@@ -21,6 +21,14 @@
   <% if faq_pairs.any? %>
     <%= faq_jsonld(faq_pairs) %>
   <% end %>
+
+  <%# HowTo Schema — emit parallel к Article JSON-LD когда category=guides
+      и body содержит структурированный <ol> >= 3 шагов. Я.Wand + Google
+      активируют accordion rich snippet в SERP (CTR boost). %>
+  <% if @article.category == 'guides' %>
+    <% how_to_extractor = Seo::HowToExtractor.new(@article.body_html) %>
+    <%= render 'jsonld_how_to', article: @article, extractor: how_to_extractor %>
+  <% end %>
 <% end %>
 
 <%= render 'shared/breadcrumb', items: [
