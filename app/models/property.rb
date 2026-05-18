@@ -114,7 +114,11 @@ class Property < ApplicationRecord
   has_many :inquiries, dependent: :destroy
   has_many :viewing_schedules, dependent: :destroy
   has_many :price_histories, dependent: :destroy
-  has_one :virtual_tour, dependent: :destroy
+  # NOTE: `has_one :virtual_tour` removed — VirtualTour model никогда не
+  # существовала (orphan association с initial scaffold, как Inquiry#activities).
+  # Виртуальные туры представлены через scalar `virtual_tour_url` column
+  # + scope `with_virtual_tour` (line 284). Все callers (home_controller,
+  # api/v1/properties_controller) используют именно url, не association.
   has_many :listing_consents, dependent: :destroy
   has_one :active_consent, -> { active.recent },
           class_name: 'ListingConsent'
@@ -336,7 +340,7 @@ class Property < ApplicationRecord
   end
 
   def self.ransackable_associations(auth_object = nil)
-    %w[property_type user virtual_tour]
+    %w[property_type user]
   end
 
   def self.ransackable_scopes(auth_object = nil)
