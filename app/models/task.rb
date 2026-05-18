@@ -77,18 +77,25 @@ class Task < ApplicationRecord
   scope :suspicious,   -> { where(suspicious_flag: true) }
 
   # === Phase 7.3 — multi-modal completion ack ===
+  # Phase 9 Iter 3: idempotent через transaction + reload check —
+  # параллельные button/command/reaction вызовы → single completion.
   # @param acked_method [String] 'button' | 'command' | 'reaction'
   # @return [self]
   def mark_completed!(acked_method:)
-    now = Time.current
-    assign_attributes(
-      status: 'done',
-      completed_at: now,
-      first_acked_at: first_acked_at || now,
-      acked_method: acked_method.to_s,
-      suspicious_flag: suspicious_completion?(now)
-    )
-    save!
+    Task.transaction do
+      reload if persisted?
+      return self if status_done?
+
+      now = Time.current
+      assign_attributes(
+        status: 'done',
+        completed_at: now,
+        first_acked_at: first_acked_at || now,
+        acked_method: acked_method.to_s,
+        suspicious_flag: suspicious_completion?(now)
+      )
+      save!
+    end
     self
   end
 

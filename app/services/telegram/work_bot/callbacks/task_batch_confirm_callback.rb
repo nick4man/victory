@@ -26,14 +26,20 @@ module Telegram
           batch = TaskBatch.find_by(id: batch_id)
           return ack('⚠️ Batch не найден', alert: true) if batch.nil?
 
-          unless batch.status_pending_confirm?
-            return ack("ℹ️ Batch уже #{batch.status} — повторное действие невозможно", alert: true)
-          end
+          # Phase 9 Iter 3 — DB lock защищает от double-confirm race.
+          # Два параллельных webhook'а (Оксана дважды кликнула быстро) больше
+          # не создадут duplicate Task records.
+          batch.with_lock do
+            batch.reload # refresh status under lock
+            unless batch.status_pending_confirm?
+              return ack("ℹ️ Batch уже #{batch.status} — повторное действие невозможно", alert: true)
+            end
 
-          case action
-          when 'approve' then approve!(batch)
-          when 'cancel'  then cancel!(batch)
-          else                ack('⚠️ Неизвестное действие', alert: true)
+            case action
+            when 'approve' then approve!(batch)
+            when 'cancel'  then cancel!(batch)
+            else                ack('⚠️ Неизвестное действие', alert: true)
+            end
           end
         end
 
