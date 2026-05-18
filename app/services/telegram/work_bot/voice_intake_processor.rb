@@ -105,11 +105,17 @@ module Telegram
         )
       end
 
-      # JSONB hates Time objects → конвертим datetime'ы в ISO8601, остальное
-      # оставляем как есть. Symbol keys → strings.
+      # Phase 10 Iter 14 — PII redaction для persist'а task в jsonb.
+      # title может содержать «позвонить клиенту Анна Петрова +79991234567» —
+      # без redaction PII сидят в БД. related_property_address тоже маскируется.
+      # JSONB hates Time objects → ISO8601.
+      REDACT_KEYS = %i[title related_property_address].freeze
+
       def serialize_task(task)
         task.each_with_object({}) do |(k, v), h|
-          h[k.to_s] = v.is_a?(Time) || v.is_a?(Date) || v.is_a?(DateTime) ? v.iso8601 : v
+          v = v.iso8601 if v.is_a?(Time) || v.is_a?(Date) || v.is_a?(DateTime)
+          v = Privacy::TranscriptRedactor.call(v) if REDACT_KEYS.include?(k) && v.is_a?(String)
+          h[k.to_s] = v
         end
       end
 
