@@ -23,6 +23,8 @@ module Telegram
            'Отметить задачу выполненной: <code>/done 42</code> (или жми кнопку / ✅ реакцию на DM-карточку)'],
           ['/cancel',       :staff,
            'Отменить задачу: <code>/cancel 42 причина</code> (assignee или manager)'],
+          ['/reopen',       :staff,
+           'Переоткрыть done/canceled задачу (окно 24ч): <code>/reopen 42</code>'],
 
           # Manager — нужен is_manager=true
           ['/promote',      :manager,  'Активировать сотрудника: <code>/promote @username [manager]</code>'],
