@@ -2,13 +2,19 @@
 
 # Yandex Realty (YRL) feed — emitted per Property in @properties via
 # PropertyFeedMapper. Schema spec:
-# https://yandex.ru/support/realty/realty-feed-info.html
+# https://yandex.ru/support/realty-partner/ru/
 #
 # Empty / nil values are skipped (the spec marks most fields optional, and
 # Yandex's import validator rejects empty tags like <floor></floor>).
+#
+# Namespace: webmaster.yandex.ru/schemas/feed/realty/2010-06 (НЕ feed.yandex.ru
+# и НЕ schema без s). 18.05.26 — Я.Webmaster XML-validator rejected feed
+# with old `feed.yandex.ru/schema/feed/realty/2010-06` namespace ("Не удалось
+# найти объявление элемента 'realty-feed'" / "неверное пространство имён").
+# Confirmed current namespace через partner ecosystem (Bitrix/CMS plugins).
 
 xml.instruct! :xml, version: '1.0', encoding: 'UTF-8'
-xml.tag!('realty-feed', xmlns: 'http://feed.yandex.ru/schema/feed/realty/2010-06') do
+xml.tag!('realty-feed', xmlns: 'http://webmaster.yandex.ru/schemas/feed/realty/2010-06') do
   xml.tag!('generation-date', Time.current.iso8601)
 
   @properties.each do |property|
