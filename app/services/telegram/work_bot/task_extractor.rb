@@ -146,7 +146,7 @@ module Telegram
         Array(raw_tasks).filter_map do |t|
           next unless t.is_a?(Hash)
 
-          {
+          normalized = {
             assignee_username: normalize_username(t['assignee_username']),
             title: t['title'].to_s.strip,
             due_at: parse_due_at(t['due_at']),
@@ -154,6 +154,15 @@ module Telegram
             kind: normalize_enum(t['kind'], KINDS, 'other'),
             related_property_address: t['related_property_address'].presence
           }.compact
+
+          # Phase 10 Iter 20 — Quality gate: skip garbled tasks
+          # (no title OR no assignee). Free-chain LLM иногда возвращает
+          # `{tasks: [{assignee_username: null, title: ""}]}` — раньше
+          # persist'или мусор, теперь skip + record в uncertainties (внешний caller
+          # должен escalate если >50% tasks filtered).
+          next if normalized[:title].blank?
+
+          normalized
         end
       end
 
