@@ -74,4 +74,27 @@ class LeadEvent < ApplicationRecord
       "https://t.me/c/#{chat}/#{anchor_message_id}"
     end
   end
+
+  # Phase 12 Iter 39 — anti-bloat helper для metadata-history arrays.
+  # До этого фикса /note + AnchorMigrator + /stage history append'или
+  # entries в metadata jsonb без cap'а. Лид с 50 reassignments + 100 notes
+  # → metadata 200+ KB → slow queries, slow LeadEvent#update!.
+  #
+  # @param key [String] — например 'notes', 'routing_history', 'stage_history'
+  # @param entry [Hash] — pre-built hash для append
+  # @param cap [Integer] — оставить last(cap) entries (default 50)
+  # @return [Array] обрезанный массив (caller сам делает update! с metadata.merge)
+  HISTORY_DEFAULT_CAPS = {
+    'notes' => 50,
+    'routing_history' => 20,
+    'stage_history' => 20,
+    'dispatch_failures' => 5
+  }.freeze
+
+  def append_history(key:, entry:, cap: nil)
+    cap ||= HISTORY_DEFAULT_CAPS[key.to_s] || 50
+    existing = Array(metadata[key.to_s])
+    existing << entry
+    existing.last(cap)
+  end
 end

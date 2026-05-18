@@ -61,13 +61,18 @@ module Telegram
 
       def merged_metadata
         meta = (@lead.metadata || {}).deep_dup
-        meta['routing_history'] ||= []
-        meta['routing_history'] << {
-          'at' => Time.current.iso8601,
-          'from' => @lead.anchor_topic_key,
-          'to' => @target_key,
-          'by' => @actor.tg_username
-        }
+        # Phase 12 Iter 39 — cap routing_history через LeadEvent#append_history
+        # (HISTORY_DEFAULT_CAPS['routing_history'] = 20). Anti-bloat для лидов
+        # с frequent re-routing (manager A → B → A → C сценарии).
+        meta['routing_history'] = @lead.append_history(
+          key: 'routing_history',
+          entry: {
+            'at' => Time.current.iso8601,
+            'from' => @lead.anchor_topic_key,
+            'to' => @target_key,
+            'by' => @actor.tg_username
+          }
+        )
         meta
       end
 

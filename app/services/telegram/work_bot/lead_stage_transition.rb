@@ -61,15 +61,17 @@ module Telegram
         attrs[:first_contact_at] = Time.current if @new == 'first_contact' && @lead.first_contact_at.nil?
         attrs[:closed_at]        = Time.current if @new.start_with?('closed_')
 
-        # Append stage_history entry (capped at 20 в Iter 39).
-        history = Array(@lead.metadata['stage_history'])
-        history << {
-          'at' => Time.current.iso8601,
-          'from' => prev,
-          'to' => @new,
-          'by' => @actor&.mention || 'system'
-        }
-        history = history.last(20) # safety cap
+        # Append stage_history entry. Phase 12 Iter 39 — cap через
+        # LeadEvent#append_history (HISTORY_DEFAULT_CAPS['stage_history'] = 20).
+        history = @lead.append_history(
+          key: 'stage_history',
+          entry: {
+            'at' => Time.current.iso8601,
+            'from' => prev,
+            'to' => @new,
+            'by' => @actor&.mention || 'system'
+          }
+        )
         attrs[:metadata] = @lead.metadata.merge('stage_history' => history)
 
         @lead.update!(attrs)

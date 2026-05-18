@@ -45,12 +45,16 @@ module Telegram
         end
 
         def persist_to_metadata(lead, text)
-          notes = lead.metadata['notes'] || []
-          notes << {
-            'at' => Time.current.iso8601,
-            'by' => tg_user.tg_username,
-            'text' => text.to_s[0, 1000]
-          }
+          # Phase 12 Iter 39 — cap notes at HISTORY_DEFAULT_CAPS['notes'] (50)
+          # через LeadEvent#append_history. Anti-bloat при долгоживущих лидах.
+          notes = lead.append_history(
+            key: 'notes',
+            entry: {
+              'at' => Time.current.iso8601,
+              'by' => tg_user.tg_username,
+              'text' => text.to_s[0, 1000]
+            }
+          )
           lead.update!(metadata: lead.metadata.merge('notes' => notes))
         end
       end
