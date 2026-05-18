@@ -75,10 +75,20 @@ class PropertyEvaluationService
     real_comps = pool[:comparables]
 
     # 2. Semantic: pgvector cosine search over PropertyEmbedding
-    semantic = Valuations::SemanticCompFinder.call(@v) rescue []
+    semantic = begin
+      Valuations::SemanticCompFinder.call(@v)
+    rescue StandardError => e
+      Rails.logger.warn("[PropertyEvaluationService] SemanticCompFinder failed (valuation=#{@v.id}): #{e.class}: #{e.message.to_s.truncate(160)}")
+      []
+    end
 
     # 3. Cross-city adapted: real comps from donor city × median ratio
-    cross_city = Valuations::CrossCityAdapter.call(@v) rescue []
+    cross_city = begin
+      Valuations::CrossCityAdapter.call(@v)
+    rescue StandardError => e
+      Rails.logger.warn("[PropertyEvaluationService] CrossCityAdapter failed (valuation=#{@v.id}): #{e.class}: #{e.message.to_s.truncate(160)}")
+      []
+    end
 
     # 4. AI shadow comps — only if real+semantic+cross-city < 5
     base_pool = (real_comps + semantic + cross_city).uniq { |c|

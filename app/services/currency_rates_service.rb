@@ -52,9 +52,17 @@ class CurrencyRatesService
 
   def self.fetch
     xml = fetch_xml
-    return FALLBACK_RATES if xml.blank?
+    if xml.blank?
+      Rails.logger.warn('[CurrencyRatesService] xml blank — using FALLBACK rates (cbr.ru unreachable)')
+      return FALLBACK_RATES
+    end
 
-    doc = Nokogiri::XML(xml) { |c| c.strict.nonet }
+    # CBR XML declaration: <?xml version="1.0" encoding="windows-1251"?>
+    # После наших CP1251→UTF-8 байтов declaration лжёт. Strict parser
+    # отказывается («Invalid bytes in character encoding»). Заменяем
+    # declaration на UTF-8 ИЛИ роняем strict — оба варианта стабильны.
+    xml_utf = xml.sub(/encoding="windows-1251"/i, 'encoding="UTF-8"')
+    doc = Nokogiri::XML(xml_utf, &:nonet)
     rates = {}
     CURRENCY_CODES.each do |code|
       node = doc.at_xpath("//Valute[CharCode='#{code}']")
@@ -67,7 +75,10 @@ class CurrencyRatesService
       rates[code.downcase.to_sym] = (value / nominal).round(4)
     end
 
-    return FALLBACK_RATES if rates.empty?
+    if rates.empty?
+      Rails.logger.warn('[CurrencyRatesService] empty rates from cbr — XML parse OK but no Valute nodes — using FALLBACK')
+      return FALLBACK_RATES
+    end
 
     rates[:aed] = (rates[:usd] / AED_PER_USD).round(4) if rates[:usd]
     rates[:source] = 'cbr.ru'

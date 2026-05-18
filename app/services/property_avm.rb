@@ -157,7 +157,8 @@ class PropertyAvm
     else
       scope
     end
-  rescue StandardError
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyAvm##{__method__}] tier=#{@tier_label} fallback to base scope: #{e.class}: #{e.message.to_s.truncate(160)}")
     scope
   end
 
@@ -184,7 +185,8 @@ class PropertyAvm
       [other.latitude, other.longitude],
       units: :km
     )
-  rescue StandardError
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyAvm#distance_km_to] property=#{@property.id} other=#{other&.id}: #{e.class}: #{e.message.to_s.truncate(120)}")
     nil
   end
 

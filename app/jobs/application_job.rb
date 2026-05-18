@@ -6,8 +6,16 @@ class ApplicationJob < ActiveJob::Base
   # Automatically retry jobs that encountered a deadlock
   retry_on ActiveRecord::Deadlocked
 
-  # Most jobs are safe to ignore if the underlying records are no longer available
-  discard_on ActiveJob::DeserializationError
+  # Most jobs are safe to ignore if the underlying records are no longer
+  # available — но логируем чтобы понять статистику discards (типичный
+  # симптом — job создан до cleanup-задачи которая удалила запись).
+  discard_on ActiveJob::DeserializationError do |job, error|
+    Rails.logger.warn(
+      "[ApplicationJob discard] #{job.class.name} jid=#{job.job_id} " \
+      "args=#{job.arguments.inspect.to_s.truncate(200)} " \
+      "reason=#{error.class}: #{error.message.to_s.truncate(120)}"
+    )
+  end
   
   # Retry on common errors
   retry_on StandardError, wait: :exponentially_longer, attempts: 3
