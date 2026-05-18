@@ -88,6 +88,10 @@ Rails.application.routes.draw do
   get    'cabinet/password/edit',    to: 'cabinet/passwords#edit',   as: :edit_cabinet_password
   patch  'cabinet/password',         to: 'cabinet/passwords#update', as: :cabinet_password
 
+  # Visibility-decoupling Layer 5 — «Мои объекты» dashboard (clients
+  # see their owner_user_id-linked properties с lifecycle badges).
+  get    'cabinet/properties',          to: 'cabinet/properties#index',  as: :cabinet_properties
+
   # A7 Phase 2: избранное
   get    'cabinet/favorites',           to: 'cabinet/favorites#index',   as: :cabinet_favorites
   post   'cabinet/favorites',           to: 'cabinet/favorites#create',  as: :cabinet_create_favorite
