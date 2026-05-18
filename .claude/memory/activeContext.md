@@ -131,6 +131,43 @@ Bonus:
   /kupit/kvartira fixed (16 Рязанских квартир, было 0)
   force_archive — admin hide для жалоб клиентов/спорных сделок
 
+## Catalog Polish + Client Onboarding (18.05.26) — 4/5 deliverables shipped
+
+OODA-driven bundle ответил на user mandate (catalog UX + client flow):
+1. ✅ D1 (1431c65) — «БАЗА АГЕНТСТВ» badge только для НЕ-наших
+2. 🔬 D2 — external-feed inbound: research-only, см. ниже
+3. ✅ D3 (71b9dd7) — CabinetInvitationMailer fired by Topnlab::OwnerSyncService
+4. ✅ D4 (469d454) — LeadStageTransition broadcasts → CabinetChannel +
+   Notification + CabinetMailer.stage_update (feature-flagged
+   `ENABLE_LEAD_STAGE_BROADCAST`)
+5. ✅ D5 (058942c) — `signed_agency_contract_at` gate перед публикацией
+   + grandfather backfill (26 published остались)
+
+**D2 (external feeds inbound) — decision: DEFER**
+
+Цель user'а — «получить список объектов для публикации через открытые
+фиды Яндекс / Topnlab». ExternalListing infra готова
+(YRL parser + 6 sources enum + 4h cron), но:
+- `ENV['YRL_FEED_URLS']` пуст; 0 ExternalListing rows
+- /properties index НЕ показывает ExternalListings (только comparable data)
+
+Два пути:
+- **Option A — Yandex YRL public feeds** (zero-code, free): найти YRL
+  Рязанских агентств (961-961.ru, novosele.ru, agent62.ru — требует
+  верификации), добавить в .env, restart sidekiq. Risk: SEO duplicate
+  content, lead-capture gap (buyer уходит на external URL).
+- **Option B — Topnlab MLS** (~2h, требует API key): новый
+  TopnlabMlsSyncJob, POST `/clients/get-entities-from-mls`, rate 1/sec.
+
+Defer triggers перед implementation:
+1. User decision — действительно показываем чужие listings? (SEO risk)
+2. Lead-capture path для external — нам нужен redirect через наш
+   detail page, не direct outbound link
+3. Verify Yandex YRL public для целевых Рязанских агентств
+
+Backlog: `app/views/properties/_external_card.html.erb` + index
+controller mix, если решим показывать.
+
 ## Topnlab sync audit (18.05.26) — P0+P1 fixed
 
 Аудит: что было / что починено:
