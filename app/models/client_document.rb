@@ -26,27 +26,28 @@
 class ClientDocument < ApplicationRecord
   belongs_to :uploader, class_name: 'User'
   belongs_to :inquiry, optional: true
+  belongs_to :property, optional: true # A6 Phase 2 — для NC DealFolderResolver
   belongs_to :reviewed_by, class_name: 'User', optional: true,
-             foreign_key: 'reviewed_by_user_id'
+                           foreign_key: 'reviewed_by_user_id'
 
-  enum document_kind: {
-    passport: 0,      # Российский паспорт
-    inn:      1,      # ИНН
-    egrn:     2,      # Выписка ЕГРН
-    contract: 3,      # Подписанный договор (scan)
-    other:    4
-  }, _prefix: :kind
+  enum :document_kind, {
+    passport: 0, # Российский паспорт
+    inn: 1, # ИНН
+    egrn: 2, # Выписка ЕГРН
+    contract: 3, # Подписанный договор (scan)
+    other: 4
+  }, prefix: :kind
 
-  enum status: {
-    received:       0,  # Photo получен, OCR не начался
-    ocr_processing: 1,  # Yandex Vision в работе
-    ocr_completed:  2,  # Parsed data доступен
-    ocr_failed:     3,  # Yandex Vision/parser упал
-    reviewed:       4,  # Agent проверил correctness
-    archived:       5   # Удалён client'ом / archived
-  }, _prefix: true
+  enum :status, {
+    received: 0, # Photo получен, OCR не начался
+    ocr_processing: 1, # Yandex Vision в работе
+    ocr_completed: 2, # Parsed data доступен
+    ocr_failed: 3, # Yandex Vision/parser упал
+    reviewed: 4,  # Agent проверил correctness
+    archived: 5   # Удалён client'ом / archived
+  }, prefix: true
 
-  validates :uploader_id, :document_kind, :status, presence: true
+  validates :document_kind, :status, presence: true
 
   scope :recent,         -> { order(created_at: :desc) }
   scope :pending_review, -> { where(status: :ocr_completed, reviewed_at: nil) }
@@ -85,12 +86,12 @@ class ClientDocument < ApplicationRecord
   #                          tg_chat_id:, tg_message_id:, tg_file_id:)
   def self.intake!(uploader:, kind:, tg_chat_id:, tg_message_id:, tg_file_id:)
     create!(
-      uploader:      uploader,
+      uploader: uploader,
       document_kind: kind,
-      status:        :received,
-      tg_chat_id:    tg_chat_id.to_s,
+      status: :received,
+      tg_chat_id: tg_chat_id.to_s,
       tg_message_id: tg_message_id.to_s,
-      tg_file_id:    tg_file_id.to_s
+      tg_file_id: tg_file_id.to_s
     )
   end
 end

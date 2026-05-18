@@ -1,0 +1,78 @@
+<% content_for :title, "Документы клиентов — модерация" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+    <div class="flex items-end justify-between gap-6 mb-12 pb-8 border-b border-border">
+      <div>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">МОДЕРАЦИЯ</p>
+        <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground">Документы клиентов</h1>
+        <p class="text-sm text-muted-foreground mt-3">
+          Очередь OCR-распознанных документов от клиентов через Telegram. После проверки →
+          status=reviewed + JSON-snapshot в Nextcloud client-intake/.
+        </p>
+      </div>
+    </div>
+
+    <!-- Status filter tabs -->
+    <div class="flex gap-2 mb-8">
+      <% [
+           ['pending',  'На проверку',  @counts[:pending],  'amber'],
+           ['failed',   'Ошибки OCR',   @counts[:failed],   'destructive'],
+           ['reviewed', 'Проверено',    @counts[:reviewed], 'emerald'],
+           ['all',      'Все',          @counts[:all],      'foreground']
+         ].each do |code, label, count, color| %>
+        <%= link_to dashboard_admin_client_documents_path(status: code),
+                    class: "px-4 py-2 text-sm border #{@status == code ? "border-foreground bg-foreground text-background" : "border-border text-foreground hover:bg-muted/30"}" do %>
+          <%= label %>
+          <span class="ml-2 text-xs <%= @status == code ? "text-background/70" : "text-muted-foreground" %>">(<%= count %>)</span>
+        <% end %>
+      <% end %>
+    </div>
+
+    <% if @documents.empty? %>
+      <div class="p-12 text-center text-muted-foreground border border-border">
+        <p>Очередь пустая — все документы проверены.</p>
+      </div>
+    <% else %>
+      <div class="space-y-px bg-border">
+        <% @documents.each do |doc| %>
+          <% masked = doc.parsed_data_masked %>
+          <div class="bg-background p-5 flex items-center justify-between gap-6">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-3 mb-2 flex-wrap">
+                <% kind_label = { 'passport' => 'Паспорт', 'inn' => 'ИНН', 'egrn' => 'Выписка ЕГРН', 'contract' => 'Договор' }[doc.document_kind] || doc.document_kind %>
+                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-foreground text-foreground"><%= kind_label %></span>
+                <% status_color = { 'received' => 'amber', 'ocr_processing' => 'amber', 'ocr_completed' => 'emerald', 'ocr_failed' => 'destructive', 'reviewed' => 'emerald', 'archived' => 'muted-foreground' }[doc.status] %>
+                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-<%= status_color %> text-<%= status_color %>"><%= doc.status %></span>
+                <% if doc.uploader %>
+                  <span class="text-xs text-muted-foreground">от <%= doc.uploader.email %></span>
+                <% end %>
+                <span class="text-xs text-muted-foreground"><%= l doc.created_at, format: '%d.%m.%y %H:%M' %></span>
+              </div>
+              <% if masked['last_name'] || masked['first_name'] %>
+                <p class="text-base text-foreground font-medium">
+                  <%= [masked['last_name'], masked['first_name'], masked['middle_name']].compact_blank.join(' ') %>
+                </p>
+              <% end %>
+              <% if masked['passport_number'] || masked['inn'] %>
+                <p class="text-sm text-muted-foreground">
+                  <% if masked['passport_number'] %>Паспорт: <code><%= masked['passport_number'] %></code><% end %>
+                  <% if masked['inn'] %>· ИНН: <code><%= masked['inn'] %></code><% end %>
+                </p>
+              <% end %>
+              <% if doc.error_message.present? %>
+                <p class="text-sm text-destructive mt-1"><%= doc.error_message.truncate(120) %></p>
+              <% end %>
+            </div>
+            <div class="flex gap-2 shrink-0">
+              <%= link_to 'Открыть', dashboard_admin_client_document_path(doc, token: params[:token]),
+                          class: "py-2 px-4 border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors text-sm" %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</section>

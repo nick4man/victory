@@ -212,6 +212,14 @@ Rails.application.routes.draw do
       end
       # Phase 7.6 — KPI dashboard для директоров (per-staff metrics + agency view)
       get :kpi, to: 'kpi#index'
+
+      # A6 Phase 2 — admin review UI для client document intake
+      resources :client_documents, only: %i[index show] do
+        member do
+          patch :approve
+          patch :reject
+        end
+      end
     end
 
     # Profile

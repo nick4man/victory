@@ -36,10 +36,10 @@ module DocumentIntake
 
       # Попытка пометить ocr_failed — может уже удалён
       ClientDocument.find_by(id: document_id)&.update(
-        status:        :ocr_failed,
+        status: :ocr_failed,
         error_message: "#{e.class}: #{e.message.to_s.truncate(500)}"
       )
-      raise  # перебрасываем для ApplicationJob retry chain
+      raise # перебрасываем для ApplicationJob retry chain
     end
 
     private
@@ -60,14 +60,18 @@ module DocumentIntake
 
       # 4. Persist
       doc.update!(
-        status:                 :ocr_completed,
-        parsed_data:            parsed,
-        ocr_raw_text:           raw_text.truncate(10_000),
+        status: :ocr_completed,
+        parsed_data: parsed,
+        ocr_raw_text: raw_text.truncate(10_000),
         yandex_vision_response: yv_response,
-        processed_at:           Time.current
+        processed_at: Time.current
       )
 
-      # 5. Staff notification (DLP-safe)
+      # 5. NC mirror — JSON snapshot в <deal>/client-intake/ для audit-trail
+      # (Phase 7.8a NC + DealFolderResolver). Soft-fail если nope property/inquiry.
+      DocumentIntake::NextcloudMirror.call(client_document: doc)
+
+      # 6. Staff notification (DLP-safe)
       notify_staff(doc)
 
       Rails.logger.info("[ParserJob] doc ##{doc.id} kind=#{doc.document_kind} ocr_completed confidence=#{parsed[:confidence]}")
@@ -98,11 +102,11 @@ module DocumentIntake
     end
 
     def notify_staff(doc)
-      chat_id = ENV['TELEGRAM_STAFF_CHAT_ID']
+      chat_id = ENV.fetch('TELEGRAM_STAFF_CHAT_ID', nil)
       return Rails.logger.warn('[ParserJob#notify_staff] TELEGRAM_STAFF_CHAT_ID not set') if chat_id.blank?
 
       # DLP-safe summary: mask sensitive fields before building message
-      masked  = doc.parsed_data_masked
+      doc.parsed_data_masked
       kind_ru = kind_label(doc.document_kind)
       conf    = doc.parsed_data&.dig('confidence') || doc.parsed_data&.dig(:confidence)
       conf_pct = conf ? format('%.0f%%', conf.to_f * 100) : '—'
@@ -136,10 +140,10 @@ module DocumentIntake
     def kind_label(kind)
       {
         'passport' => 'Паспорт РФ',
-        'inn'      => 'ИНН',
-        'egrn'     => 'Выписка ЕГРН',
+        'inn' => 'ИНН',
+        'egrn' => 'Выписка ЕГРН',
         'contract' => 'Договор',
-        'other'    => 'Документ'
+        'other' => 'Документ'
       }.fetch(kind.to_s, 'Документ')
     end
   end
