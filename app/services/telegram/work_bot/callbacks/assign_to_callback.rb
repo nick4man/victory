@@ -16,6 +16,12 @@ module Telegram
           assignee = TelegramUser.find_by(id: @args[1])
           return ack('⚠️ Сотрудник не найден', alert: true) unless assignee
 
+          # Phase 11 Iter 29 — capture audit trail (prev assignee) BEFORE call.
+          # Iter 22 handles DM to prev; here мы фиксируем структурированный
+          # audit-log для observability + future KPI (reassignment frequency).
+          prev_assignee = lead.assigned_to
+          log_reassignment_audit(lead, prev_assignee, assignee)
+
           result = Telegram::WorkBot::LeadAssignment.new(lead, assignee: assignee, actor: tg_user, client: client).call
 
           delete_picker(lead)
@@ -30,6 +36,30 @@ module Telegram
         end
 
         private
+
+        def log_reassignment_audit(lead, prev_assignee, new_assignee)
+          return if prev_assignee.nil? # initial assign — не reassignment
+
+          # Структурированный audit: BotCommandLog уже логирует "callback:assign_to"
+          # с args="assign_to:<lead>:<user>", но из этого нельзя восстановить prev.
+          # Добавляем JSON в args для full diff (старый → новый assignee + lead context).
+          BotCommandLog.create!(
+            tg_user_id: tg_user.tg_user_id,
+            command: 'callback:assign_to:reassignment',
+            args: {
+              lead_event_id: lead.id,
+              prev_assignee_id: prev_assignee.id,
+              prev_assignee_mention: prev_assignee.mention,
+              new_assignee_id: new_assignee.id,
+              new_assignee_mention: new_assignee.mention,
+              actor_mention: tg_user.mention,
+              anchor_topic_key: lead.anchor_topic_key
+            }.to_json,
+            result: 'reassignment'
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[AssignToCallback#log_reassignment_audit] #{e.class}: #{e.message}")
+        end
 
         def delete_picker(lead)
           picker_id = lead.metadata['assign_picker_message_id']
