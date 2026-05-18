@@ -35,13 +35,22 @@ module DocumentIntake
       @nc_client = nc_client
     end
 
+    UNLINKED_FALLBACK_ROOT = 'Офис/НЕДВИЖИМОСТЬ/UNLINKED-CLIENT-INTAKE'
+
     def call
       return empty('no parsed_data') if @doc.parsed_data.blank?
 
-      deal_dir = resolve_deal_dir
-      return empty('no property/inquiry to resolve deal-folder') unless deal_dir
-
-      intake_dir = "#{deal_dir}/client-intake"
+      # Phase 10 Iter 17 — Если нет Property/Inquiry для resolve, используем
+      # fallback path UNLINKED-CLIENT-INTAKE/YYYY-MM/ — иначе audit gap.
+      # Admin позже manually привязывает ClientDocument к deal и пере-mirror'ит.
+      intake_dir = resolve_deal_dir.then do |dir|
+        if dir
+          "#{dir}/client-intake"
+        else
+          Rails.logger.info("[DocumentIntake::NextcloudMirror] unlinked doc ##{@doc.id} → fallback path")
+          "#{UNLINKED_FALLBACK_ROOT}/#{Time.current.strftime('%Y-%m')}"
+        end
+      end
       @nc_client.mkdir_p(intake_dir)
 
       json_path = "#{intake_dir}/#{filename}"
