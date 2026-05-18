@@ -1,0 +1,63 @@
+<%#
+  D4 UI — Sales pipeline summary for one Property card.
+  Renders compact stage-by-stage badges showing how many buyer-side
+  inquiries reached each LeadEvent stage.
+
+  Locals:
+    stage_counts: Hash { 'new' => 3, 'first_contact' => 1, … }
+                  (from Cabinet::PropertiesController#build_stage_pipeline)
+
+  Hidden if no inquiries (empty Hash). Stage order matches
+  Telegram::WorkBot::LeadStageTransition::STAGE_LABELS sequence.
+%>
+<%
+  stage_counts = (local_assigns[:stage_counts] || {}).to_h
+  ru_plural = ->(n, one, few, many) do
+    return many if (n % 100).between?(11, 14)
+    case n % 10 when 1 then one when 2..4 then few else many end
+  end
+%>
+<% if stage_counts.any? %>
+  <%
+    stages = [
+      ['new',           '🆕', 'новые'],
+      ['first_contact', '📞', 'контакт'],
+      ['show',          '👀', 'показ'],
+      ['contract',      '📄', 'договор'],
+      ['deal',          '🤝', 'сделка'],
+      ['closed_won',    '✅', 'закрыта']
+    ]
+    total = stage_counts.values.sum
+  %>
+  <div class="text-[10px] border-t border-border pt-2">
+    <div class="flex items-center justify-between mb-1.5">
+      <span class="text-muted-foreground/70 tracking-wider uppercase">
+        Воронка интереса
+      </span>
+      <span class="text-foreground/80 tracking-wider">
+        <%= total %> <%= ru_plural.call(total, 'заявка', 'заявки', 'заявок') %>
+      </span>
+    </div>
+    <div class="flex items-center gap-1.5 flex-wrap">
+      <% stages.each do |key, emoji, label| %>
+        <% count = stage_counts[key].to_i %>
+        <% next if count.zero? %>
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-card border border-border text-foreground/80"
+              title="<%= label.capitalize %>: #{count}">
+          <span><%= emoji %></span>
+          <span class="text-foreground"><%= count %></span>
+          <span class="text-muted-foreground/60"><%= label %></span>
+        </span>
+      <% end %>
+      <% closed_lost = stage_counts['closed_lost'].to_i %>
+      <% if closed_lost.positive? %>
+        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-card border border-border text-muted-foreground/60"
+              title="Отказались: <%= closed_lost %>">
+          <span>✗</span>
+          <span><%= closed_lost %></span>
+          <span>отказ</span>
+        </span>
+      <% end %>
+    </div>
+  </div>
+<% end %>

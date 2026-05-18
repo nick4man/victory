@@ -35,6 +35,8 @@ class Cabinet::PropertiesController < ApplicationController
       archived:  @groups[:archived]&.size.to_i,
       total:     @properties.size
     }
+
+    @stage_pipeline = build_stage_pipeline(@properties)
   end
 
   private
@@ -46,6 +48,33 @@ class Cabinet::PropertiesController < ApplicationController
     return :on_site   if p.status_active? && p.published_at.present?
     return :not_ready if p.publication_blockers.any?
     :archived
+  end
+
+  # D4 UI — sales pipeline summary для каждого property: сколько buyer-side
+  # inquiries в каждой стадии LeadEvent. Возвращает Hash:
+  #   { property_id => { 'new' => 3, 'first_contact' => 1, ... } }
+  #
+  # Two-query plan (avoids N+1):
+  #   1. Inquiry.pluck — все inquiries для @properties, мап inquiry_id→property_id
+  #   2. LeadEvent.where polymorphic — все LeadEvents для этих inquiries
+  # Если нет inquiries (новый объект без интереса) — Hash.new(0) default.
+  def build_stage_pipeline(properties)
+    return {} if properties.empty?
+
+    property_ids = properties.map(&:id)
+    inquiry_to_property = Inquiry.where(property_id: property_ids)
+                                 .pluck(:id, :property_id)
+                                 .to_h
+    return {} if inquiry_to_property.empty?
+
+    pipeline = Hash.new { |h, k| h[k] = Hash.new(0) }
+    LeadEvent.where(lead_ref_type: 'Inquiry', lead_ref_id: inquiry_to_property.keys)
+             .pluck(:lead_ref_id, :current_stage)
+             .each do |inq_id, stage|
+      prop_id = inquiry_to_property[inq_id]
+      pipeline[prop_id][stage] += 1
+    end
+    pipeline
   end
 
   def require_client_cabinet_user

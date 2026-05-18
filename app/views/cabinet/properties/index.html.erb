@@ -110,6 +110,9 @@
                   </div>
                 <% end %>
 
+                <%# D4 UI — sales pipeline (только для on_site/sold/hidden, у not_ready+archived без заявок) %>
+                <%= render 'lead_timeline', stage_counts: @stage_pipeline[p.id] || {} %>
+
                 <%# Actions %>
                 <div class="flex items-center justify-between gap-2 text-xs border-t border-border pt-3">
                   <% if p.status_active? && p.try(:slug).present? %>
