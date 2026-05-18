@@ -37,6 +37,20 @@
       <priority><%= prio %></priority>
     </url>
   <% end %>
+
+  <%# Article category hub-pages — internal authority distribution. Lastmod =
+      max(Article.updated_at) в категории; если пусто — skip (soft-404
+      avoidance, не индексируем empty hub-pages). %>
+  <% Article::CATEGORIES.each do |cat| %>
+    <% latest = Article.public_facing.where(category: cat).maximum(:updated_at) %>
+    <% next unless latest %>
+    <url>
+      <loc><%= blog_category_url(category: cat) %></loc>
+      <lastmod><%= latest.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
   <%#
     SEO district landings — each has a 300-500 word editorial partial in
     landings/content/sale_kvartira_<slug>.html.erb. All 20 micro-districts
