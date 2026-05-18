@@ -784,15 +784,33 @@ class Property < ApplicationRecord
 
   def track_price_change
     return unless saved_change_to_price?
-    
+
+    old = price_before_last_save
+    new = price
+    # Skip если price became nil или 0 (CRM-sync артефакт) — PriceHistory
+    # требует new_price > 0 + change_type → invalid record иначе.
+    return if new.blank? || new.to_f <= 0
+    # Skip если price не изменилась (saved_change_to_price? может срабатывать
+    # на null→null edge cases) — PriceHistory validates old != new.
+    return if old.present? && old.to_f == new.to_f
+
+    change_type = old.to_f.zero? || old.blank? ? 'increase' : (new > old ? 'increase' : 'decrease')
+
     price_histories.create(
-      price: price,
-      changed_from: price_before_last_save,
-      changed_at: Time.current
+      old_price: old,
+      new_price: new,
+      change_type: change_type,
+      effective_date: Time.current,
+      auto_generated: true,
+      reason: 'CRM sync / admin update'
     )
-    
-    self.price_changed_at = Time.current
-    self.original_price ||= price_before_last_save
+
+    update_columns(
+      price_changed_at: Time.current,
+      original_price:   (original_price || old)
+    )
+  rescue ActiveRecord::RecordInvalid, ActiveModel::UnknownAttributeError => e
+    Rails.logger.warn("[Property##{id} track_price_change] #{e.class}: #{e.message}")
   end
 
   def update_search_index
