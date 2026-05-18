@@ -73,7 +73,38 @@ module Telegram
           # из агентов task не получил → клиент в ожидании, никто не знает.
           handle_dispatch_failures(batch, created, dispatch_results)
 
+          # Phase 13 Iter 45 — alert director о orphan tasks (assignee=nil после
+          # LLM-extract). Эти задачи в БД, но TaskDispatcher group_by skip'ает
+          # их — silent void. Директор должен manually edit/reassign.
+          handle_orphan_tasks(batch, created)
+
           ack("✅ Создано задач: #{created.size}")
+        end
+
+        # Phase 13 Iter 45 — DM director о tasks без assignee_id.
+        def handle_orphan_tasks(batch, created)
+          orphans = Array(created).select { |t| t.assignee_id.blank? }
+          return if orphans.empty?
+
+          throttle_key = "task_orphan:#{batch.id}"
+          return unless Telegram::AlertThrottle.allow?(key: throttle_key)
+
+          lines = orphans.first(10).map { |t| "  • ##{t.id}: #{t.title.to_s.truncate(80)}" }
+          lines << "  …+#{orphans.size - 10} more" if orphans.size > 10
+
+          text = "⚠️ <b>TaskBatch ##{batch.id} — #{orphans.size} задач(и) без assignee</b>\n" \
+                 "LLM не сматчил никого из staff. Задачи в БД, но DM не уходят " \
+                 "(TaskDispatcher пропускает nil assignee).\n\n" \
+                 "#{lines.join("\n")}\n\n" \
+                 "<i>Назначь вручную через rails console или удали soft-delete'ом.</i>"
+
+          director = batch.created_by
+          chat_id = director&.dm_chat_id || director&.tg_user_id
+          return if chat_id.blank?
+
+          @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+        rescue StandardError => e
+          Rails.logger.warn("[TaskBatchConfirmCallback#handle_orphan_tasks] #{e.class}: #{e.message}")
         end
 
         def handle_dispatch_failures(batch, created, results)

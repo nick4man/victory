@@ -56,9 +56,22 @@ module Telegram
           max_tokens: 1500
         )
         parsed = parse_response(res[:content])
+        tasks = normalize_tasks(parsed['tasks'])
+        uncertainties = Array(parsed['uncertainties'])
+
+        # Phase 13 Iter 45 — append orphan-warning к uncertainties (видно
+        # директору в TaskBatchConfirmer preview). До этого фикса задачи
+        # без assignee показывались в (нет получателя) группе но без
+        # explicit warn, директор мог их не заметить, после approve они
+        # тихо проваливались в TaskDispatcher (group_by skip nil assignee).
+        orphans = tasks.select { |t| t[:assignee_username].blank? }
+        orphans.each do |t|
+          uncertainties << "⚠️ задача '#{t[:title].to_s.truncate(60)}' без assignee — LLM не сматчил никого из staff"
+        end
+
         Result.new(
-          tasks: normalize_tasks(parsed['tasks']),
-          uncertainties: Array(parsed['uncertainties']),
+          tasks: tasks,
+          uncertainties: uncertainties,
           model: res[:model],
           raw: res[:content],
           error: nil
