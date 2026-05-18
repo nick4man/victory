@@ -44,8 +44,25 @@ module Telegram
         update_anchor_card!
         push_stage_to_crm(prev)
         maybe_mirror_to_deal
+        notify_client_owner!(prev)
 
         Result.new(true, prev, @new, nil)
+      end
+
+      # Russian labels для emoji + клиент-facing strings. Sync с
+      # LeadAnnouncer::STAGE_EMOJI на формате.
+      STAGE_LABELS = {
+        'new'           => 'новая заявка',
+        'first_contact' => 'первый контакт',
+        'show'          => 'показ объекта',
+        'contract'      => 'договор',
+        'deal'          => 'сделка',
+        'closed_won'    => 'успешно закрыто',
+        'closed_lost'   => 'отказ / не сложилось'
+      }.freeze
+
+      def self.stage_label(stage)
+        STAGE_LABELS[stage.to_s] || stage.to_s
       end
 
       private
@@ -110,6 +127,86 @@ module Telegram
         return unless ['contract', 'deal'].include?(@new)
 
         DealMirror.new(@lead, client: @client).post
+      end
+
+      # D4 — fan-out: cabinet broadcast + persistent Notification + email.
+      #
+      # Feature-flag (default OFF на первом деплое): ENABLE_LEAD_STAGE_BROADCAST.
+      # После двух недель monitoring'а — переключаем default в `true` и
+      # удаляем guard (см. project memory).
+      #
+      # Failure isolation: каждый transport в отдельном rescue. Сломанный
+      # email не должен убить cabinet broadcast и vice versa.
+      def notify_client_owner!(prev_stage)
+        return unless ENV['ENABLE_LEAD_STAGE_BROADCAST'] == 'true'
+
+        client = resolve_client_user
+        return if client.nil?
+
+        label = self.class.stage_label(@new)
+
+        # 1. WebSocket → live update в /cabinet (нет reload)
+        begin
+          CabinetChannel.broadcast_to(client, {
+            type:          'lead_stage_changed',
+            lead_event_id: @lead.id,
+            stage:         @new,
+            prev_stage:    prev_stage,
+            stage_label:   label,
+            changed_at:    Time.current.iso8601
+          })
+        rescue StandardError => e
+          Rails.logger.warn("[LeadStageTransition] CabinetChannel.broadcast failed: #{e.class} #{e.message}")
+        end
+
+        # 2. Persistent Notification — bell-badge на /dashboard
+        begin
+          Notification.notify!(
+            client,
+            kind:       'lead_stage',
+            title:      "Статус сделки: #{label}",
+            body:       "Этап обновлён с «#{self.class.stage_label(prev_stage)}» на «#{label}».",
+            notifiable: @lead
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[LeadStageTransition] Notification.notify! failed: #{e.class} #{e.message}")
+        end
+
+        # 3. Email — основной канал для клиента вне сайта
+        begin
+          if client.email.present?
+            CabinetMailer.stage_update(client, @lead, prev_stage).deliver_later
+          end
+        rescue StandardError => e
+          Rails.logger.warn("[LeadStageTransition] CabinetMailer.stage_update failed: #{e.class} #{e.message}")
+        end
+      end
+
+      # lead_ref polymorphic — может быть Inquiry, PropertyValuation,
+      # MortgageRequest etc. Resolve client User по:
+      #   1. lead_ref.user (если адаптер уже linked в Lead::Intake)
+      #   2. lead_ref.email → User.find_by(LOWER(email)=...)
+      #
+      # Filter: only role=:client AND active. Без этого риск notify'ить
+      # admin/agent у которого тот же email что у клиента (rare, но
+      # возможно при тестировании).
+      def resolve_client_user
+        ref = @lead.lead_ref
+        return nil if ref.nil?
+
+        if ref.respond_to?(:user) && ref.user.present?
+          u = ref.user
+          return u if u.respond_to?(:role_client?) && u.role_client? && u.active?
+        end
+
+        if ref.respond_to?(:email) && ref.email.present?
+          u = User.where(active: true, deleted_at: nil)
+                  .where(role: User.roles[:client])
+                  .find_by('LOWER(email) = ?', ref.email.to_s.downcase)
+          return u if u
+        end
+
+        nil
       end
     end
   end

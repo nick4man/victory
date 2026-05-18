@@ -26,4 +26,20 @@ class CabinetMailer < ApplicationMailer
       subject: "Сброс пароля — #{AgencyInfo::NAME}"
     )
   end
+
+  # D4 — деал-стадии: email клиенту при каждом stage transition.
+  # Caller: Telegram::WorkBot::LeadStageTransition#notify_client_owner!
+  # (feature-flagged через ENV['ENABLE_LEAD_STAGE_BROADCAST']).
+  def stage_update(user, lead_event, prev_stage = nil)
+    @user = user
+    @lead = lead_event
+    @prev_stage_label = Telegram::WorkBot::LeadStageTransition.stage_label(prev_stage) if prev_stage
+    @new_stage_label  = Telegram::WorkBot::LeadStageTransition.stage_label(lead_event.current_stage)
+    @cabinet_url      = "#{ENV.fetch('APP_URL', 'https://victory62.org')}/cabinet"
+
+    mail(
+      to:      user.email,
+      subject: "Статус сделки обновлён: #{@new_stage_label} — #{AgencyInfo::NAME}"
+    )
+  end
 end

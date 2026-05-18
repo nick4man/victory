@@ -8,12 +8,14 @@
 #   valuation      — express / investment audit ready
 #   property_match — saved-search hit
 #   message        — staff replied via chat
+#   lead_stage     — D4: stage transition в LeadEvent pipeline
+#                    (new → first_contact → show → contract → deal → closed_*)
 #   system         — generic
 class Notification < ApplicationRecord
   belongs_to :user
   belongs_to :notifiable, polymorphic: true, optional: true
 
-  KINDS = %w[inquiry valuation property_match message system].freeze
+  KINDS = %w[inquiry valuation property_match message lead_stage system].freeze
 
   validates :kind,  presence: true, inclusion: { in: KINDS }
   validates :title, presence: true, length: { maximum: 200 }
