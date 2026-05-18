@@ -4,8 +4,8 @@ class PropertiesController < ApplicationController
   # Public pages - no authentication required
   # Private actions require authentication via before_action below
   
-  before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite, 
-                                       :schedule_viewing, :share, :print, :report]
+  before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite,
+                                       :schedule_viewing, :share, :print, :report, :dossier]
   before_action :authorize_property, only: [:edit, :update, :destroy]
   
   # Require authentication for these actions
@@ -388,6 +388,26 @@ class PropertiesController < ApplicationController
   # GET /properties/:id/print
   def print
     render layout: 'print'
+  end
+
+  # GET /properties/:id/dossier.pdf
+  # A3 — premium-gated PDF dossier (5 страниц: cover/gallery/description/
+  # agent/cta). Returns 403-style redirect для non-premium объектов чтобы
+  # не палить сам endpoint, но и не палить dossier-template для бюджет-сегмента.
+  def dossier
+    unless @property.premium?
+      redirect_to @property, alert: 'Дозсье доступно только для премиум-объектов.' and return
+    end
+
+    pdf_bytes = PropertyDossierPdfGenerator.call(@property, locale: :ru)
+    filename  = "dossier-#{@property.try(:slug) || @property.id}.pdf"
+    send_data pdf_bytes,
+              filename: filename,
+              type: 'application/pdf',
+              disposition: params[:download] == '1' ? 'attachment' : 'inline'
+  rescue StandardError => e
+    Rails.logger.warn("[PropertiesController#dossier] #{e.class}: #{e.message}")
+    redirect_to @property, alert: 'PDF временно недоступен, попробуйте через минуту.'
   end
   
   # POST /properties/:id/report

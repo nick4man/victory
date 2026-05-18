@@ -491,6 +491,20 @@
                 class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-2.5 transition-colors" do %>
             РАССЧИТАТЬ ИПОТЕКУ →
           <% end %>
+
+          <%# A3 — premium dossier PDF (5 страниц: cover/gallery/description/
+              agent/cta). Только для premium-объектов (price >= 15M ₽
+              или is_premium=true) — иначе CTA скрыт. %>
+          <% if @property.premium? %>
+            <%= link_to dossier_property_path(@property, format: :pdf),
+                  target: '_blank', rel: 'noopener',
+                  class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-foreground hover:bg-foreground hover:text-background border border-foreground/40 transition-colors mt-2" do %>
+              📑 СКАЧАТЬ ДОЗСЬЕ PDF
+            <% end %>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 -mt-1">
+              PREMIUM · 5 СТРАНИЦ · ФОТО · ОПИСАНИЕ · АГЕНТ
+            </p>
+          <% end %>
         </div>
 
         <div class="mt-12 pt-8 border-t border-border">

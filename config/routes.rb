@@ -147,18 +147,23 @@ Rails.application.routes.draw do
       # Favorites
       post :favorite
       delete :unfavorite
-      
+
       # Viewing schedule
       post :schedule_viewing
-      
+
       # Share
       get :share
-      
+
       # Print version
       get :print
-      
+
       # Report problem
       post :report
+
+      # A3 — premium property dossier (5-page PDF). Premium-gated в controller;
+      # 403 если property.premium? = false. Cache-friendly: ETag по
+      # updated_at + images_count.
+      get :dossier, defaults: { format: 'pdf' }
     end
 
     collection do
