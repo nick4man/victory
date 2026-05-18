@@ -39,13 +39,22 @@ export default {
       }
     }
 
-    // Forward тело без изменений
+    // Forward тело без изменений + forward TG secret-token header,
+    // чтобы Rails-side также мог провалидировать (defense-in-depth).
+    // ДО фикса 19.05.26 header strip'ался → Rails отбраковывал все
+    // webhook'и с 'secret_token mismatch'.
     const body = await request.text();
+    const tgSecret = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    const upstreamHeaders = { 'Content-Type': 'application/json' };
+    if (tgSecret) {
+      upstreamHeaders['X-Telegram-Bot-Api-Secret-Token'] = tgSecret;
+    }
+
     let upstream;
     try {
       upstream = await fetch(UPSTREAM_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: upstreamHeaders,
         body
       });
     } catch (e) {

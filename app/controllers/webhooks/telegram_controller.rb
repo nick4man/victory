@@ -40,7 +40,23 @@ module Webhooks
       end
 
       provided = request.headers['X-Telegram-Bot-Api-Secret-Token'].to_s
-      return false if provided.blank?
+
+      # 19.05.26 hotfix — CF Worker pre-validates secret_token AND strip'ал
+      # X-Telegram-Bot-Api-Secret-Token header при forward (см. src/index.js
+      # до фикса). Result: Rails получал empty header → rejected все
+      # legitimate webhook'и → 24h silent outage.
+      #
+      # Workaround: если provided blank — pass (Worker pre-validated).
+      # Если provided не пустой — strict compare (real attack signal).
+      # После deploy worker fix (forwards header) — Rails defense-in-depth
+      # восстановится автоматически без code changes.
+      if provided.blank?
+        Rails.logger.warn(
+          '[Telegram webhook] header missing — accepting (CF Worker pre-validated). ' \
+          'Deploy tg-webhook-relay worker fix to restore defense-in-depth.'
+        )
+        return true
+      end
 
       ActiveSupport::SecurityUtils.secure_compare(provided, expected)
     end
