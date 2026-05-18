@@ -48,6 +48,9 @@ class Inquiry < ApplicationRecord
   belongs_to :user, optional: true, counter_cache: true
   belongs_to :property, optional: true, counter_cache: true
   belongs_to :agent, class_name: 'User', optional: true
+  # Phase 2 MLS/YRL: client interested в чужом объекте (показывается через
+  # /external-listings/:id). Используется в Phase 3 для auto-create Referral.
+  belongs_to :external_listing, optional: true
 
   has_many :messages, dependent: :nullify
   # NOTE: `has_many :activities, as: :trackable` removed — Activity model

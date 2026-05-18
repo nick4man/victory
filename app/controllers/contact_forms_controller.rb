@@ -213,7 +213,7 @@ class ContactFormsController < ApplicationController
   private
   
   def quick_inquiry_params
-    params.require(:inquiry).permit(:name, :phone, :email, :message, :property_id)
+    params.require(:inquiry).permit(:name, :phone, :email, :message, :property_id, :external_listing_id)
   end
   
   def viewing_params

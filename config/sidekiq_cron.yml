@@ -102,3 +102,15 @@ topnlab_webhook_health:
   class: TopnlabWebhookHealthJob
   queue: scheduled
   description: "Phase 4E — silent webhook detection. Alert via CriticalRecipients if last_webhook_at > 24h ago."
+
+kpi_morning_digest:
+  cron: "0 8 * * 1-5"      # weekdays 08:00 Moscow
+  class: "Kpi::MorningDigestJob"
+  queue: scheduled
+  description: "Phase 6 — per-staff DM с задачами на сегодня + просрочки + open leads + SLA warnings + вчерашний recap"
+
+kpi_weekly_report:
+  cron: "0 10 * * 1"       # Monday 10:00 Moscow
+  class: "Kpi::WeeklyReportJob"
+  queue: scheduled
+  description: "Phase 6 — недельный отчёт managers+directors: agency totals, top-3 staff, overdue/suspicious bottom, trends vs prev week"

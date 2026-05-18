@@ -547,6 +547,15 @@ Rails.application.routes.draw do
   resources :case_studies, only: %i[index show], path: 'cases', as: :cases, param: :slug
 
   # ============================================
+  # EXTERNAL LISTINGS (Phase 2 MLS/YRL)
+  # ============================================
+  # Показ чужих объявлений (из ExternalListing) на нашем сайте с lead-capture
+  # формой. Detail page имеет rel="canonical" → наша же страница (НЕ external
+  # URL — не leak'ить трафик). Lead через нашу форму → Inquiry с
+  # external_listing_id, дальше Phase 3 routing к partner agency с комиссией.
+  resources :external_listings, only: %i[show], path: 'external-listings'
+
+  # ============================================
   # REVIEWS
   # ============================================
   resources :reviews, only: [:index, :new, :create] do

@@ -206,6 +206,30 @@
         <% end %>
       </div>
 
+      <%# Phase 2 MLS/YRL — external listings (БАЗА АГЕНТСТВ) после наших.
+          Visible только на page=1 без active filters (см. controller). %>
+      <% if @external_listings&.any? %>
+        <div class="mt-16 pt-12 border-t border-border">
+          <div class="flex flex-wrap items-end justify-between gap-4 mb-8">
+            <div>
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2 uppercase">База агентств</p>
+              <h2 class="text-2xl font-light tracking-tight text-foreground">
+                Объекты других агентств в Рязани
+              </h2>
+              <p class="text-sm text-muted-foreground mt-2 max-w-2xl">
+                Помогаем выбрать из всего рынка, не только из нашей базы. Связаться
+                по любому объекту — через нашу форму, мы скоординируем с агентством-владельцем.
+              </p>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <% @external_listings.each do |el| %>
+              <%= render 'external_card', external_listing: el %>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
       <% if @properties.respond_to?(:total_pages) && @properties.total_pages > 1 %>
         <div class="flex justify-center mt-16">
           <%= paginate @properties, theme: 'plain' rescue nil %>

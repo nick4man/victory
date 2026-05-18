@@ -42,7 +42,17 @@ class PropertiesController < ApplicationController
     
     # Pagination
     @properties = @properties.page(params[:page]).per(@per_page)
-    
+
+    # Phase 2 MLS/YRL — добавляем external listings (другие агентства) после
+    # наших карточек. Только на page=1 первой страницы; чтобы не каннибализ-
+    # ировать SEO, ограничиваем 12 cards (~1 row на desktop). Если пользователь
+    # фильтрует (q params present) — НЕ показываем externals, потому что они
+    # не пройдут наш ransack filter (мы не индексируем все их поля одинаково).
+    @external_listings = []
+    if params[:page].to_i <= 1 && params[:q].blank? && !@premium_filter_active
+      @external_listings = ExternalListing.active.priced.recent.order(fetched_at: :desc).limit(12)
+    end
+
     # Get AI recommendations if user is logged in
     if current_user
       @recommended_properties = Property.recommended_for_user(current_user, 6)
