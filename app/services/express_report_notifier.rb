@@ -17,28 +17,34 @@ class ExpressReportNotifier
     @v = valuation
   end
 
+  # Default: рабочая группа АН + топик #ОЦЕНКА (Phase A6 routing fix).
+  # Override через ENV если нужно тестовое окружение / отдельный канал.
+  DEFAULT_CHAT_ID   = -1_003_779_115_845 # «🚀 Виктори | Конвейер сделок»
+  DEFAULT_THREAD_ID = 24 # топик #ОЦЕНКА (см. config/telegram_topics.yml)
+
   def deliver
-    chat_id = ENV['TELEGRAM_VALUATIONS_CHAT_ID'].presence ||
-              ENV['TELEGRAM_STAFF_CHAT_ID'].presence
-    token   = ENV['TELEGRAM_BOT_TOKEN'].to_s
-    return false if chat_id.blank? || token.empty?
+    chat_id   = (ENV['TELEGRAM_VALUATIONS_CHAT_ID'].presence || DEFAULT_CHAT_ID).to_i
+    thread_id = ENV.fetch('TELEGRAM_VALUATIONS_THREAD_ID', DEFAULT_THREAD_ID).to_i.then { |i| i.positive? ? i : nil }
+    token     = ENV['TELEGRAM_BOT_TOKEN'].to_s
+    return false if chat_id.zero? || token.empty?
 
     client = Telegram::Client.new(token: token)
-    client.send_message(summary_text, chat_id: chat_id, parse_mode: 'HTML',
-                        disable_web_page_preview: true)
-    send_pdf(client, chat_id)
+    client.send_message(summary_text, chat_id: chat_id, message_thread_id: thread_id,
+                                      parse_mode: 'HTML', disable_web_page_preview: true)
+    send_pdf(client, chat_id, thread_id)
     true
   end
 
   private
 
-  def send_pdf(client, chat_id)
+  def send_pdf(client, chat_id, thread_id)
     pdf_bytes = PdfGeneratorService.new(@v).call
     io = StringIO.new(pdf_bytes)
     client.send_document(
       { io: io, filename: "valuation-#{@v.report_number || @v.token}.pdf",
         content_type: 'application/pdf' },
       chat_id: chat_id,
+      message_thread_id: thread_id,
       caption: "Экспресс-оценка #{@v.report_label}"
     )
   rescue StandardError => e
@@ -49,7 +55,7 @@ class ExpressReportNotifier
     lines = []
     lines << "📐 <b>Экспресс-оценка #{escape(@v.report_label)}</b>"
     lines << ''
-    lines << contact_block.presence || '👤 <i>анонимно (контакты не оставлены)</i>'
+    (lines << contact_block.presence) || '👤 <i>анонимно (контакты не оставлены)</i>'
     lines << ''
     lines << '🏠 <b>Объект</b>'
     lines << "  · #{escape(@v.address.to_s)}"
@@ -74,20 +80,21 @@ class ExpressReportNotifier
     email = @v.email.presence
     phone = @v.phone.presence
     return nil if name.blank? && email.blank? && phone.blank?
+
     parts = ['👤 <b>Контакт</b>']
     parts << "  · #{escape(name)}"      if name
     parts << "  · 📞 #{escape(phone)}"   if phone
-    parts << "  · ✉️ #{escape(email)}"    if email
+    parts << "  · ✉️ #{escape(email)}" if email
     parts.join("\n")
   end
 
   PROPERTY_TYPE_RU = {
-    'apartment'  => 'Квартира',
-    'house'      => 'Дом',
-    'land'       => 'Участок',
+    'apartment' => 'Квартира',
+    'house' => 'Дом',
+    'land' => 'Участок',
     'commercial' => 'Коммерческая',
-    'garage'     => 'Гараж',
-    'room'       => 'Комната'
+    'garage' => 'Гараж',
+    'room' => 'Комната'
   }.freeze
 
   def property_type_ru

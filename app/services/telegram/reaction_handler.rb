@@ -37,13 +37,19 @@ module Telegram
       tg_user = TelegramUser.find_by(tg_user_id: @rx.dig('user', 'id'))
       return :unknown_user unless tg_user&.status == 'active'
 
-      lead = find_lead_by_message
-      return :not_on_anchor unless lead
-
-      return :lead_closed if lead.closed_at.present?
-
       emoji = pick_ack_emoji
       return :not_ack_emoji unless emoji
+
+      # Phase 7.3 — реакция на task DM (assignee's own DM с задачами).
+      # Если single task в DM-группе → mark_completed!(acked_method: 'reaction').
+      # Multiple → ignore (user должен использовать кнопку или /done с id).
+      task_result = handle_task_reaction(tg_user)
+      return task_result if task_result
+
+      # Phase 3 — реакция на якорь лида.
+      lead = find_lead_by_message
+      return :not_on_anchor unless lead
+      return :lead_closed   if lead.closed_at.present?
 
       maybe_advance_to_first_contact(lead, tg_user)
       :handled
@@ -53,6 +59,47 @@ module Telegram
     end
 
     private
+
+    # Phase 7.3 — Task reaction completion.
+    # @return [Symbol, nil] :task_completed / :task_group_multiple / :task_closed,
+    #   или nil если msg_id не относится к задаче (фолбэк на lead reaction).
+    def handle_task_reaction(tg_user)
+      msg_id = @rx['message_id']
+      return nil if msg_id.blank?
+
+      tasks_in_dm = ::Task.where(tg_message_id: msg_id, assignee_id: tg_user.id).to_a
+      return nil if tasks_in_dm.empty?
+
+      open_tasks = tasks_in_dm.select(&:status_open?)
+      if open_tasks.empty?
+        Rails.logger.info("[ReactionHandler] tg_msg=#{msg_id} — все задачи в DM уже закрыты")
+        return :task_closed
+      end
+
+      if open_tasks.size > 1
+        # Multi-task DM — reaction неоднозначен. Friendly hint в DM.
+        send_multitask_hint(tg_user, open_tasks)
+        return :task_group_multiple
+      end
+
+      task = open_tasks.first
+      task.mark_completed!(acked_method: 'reaction')
+      Rails.logger.info("[ReactionHandler] task ##{task.id} done by #{tg_user.mention} via emoji reaction")
+      :task_completed
+    end
+
+    def send_multitask_hint(tg_user, open_tasks)
+      chat_id = tg_user.dm_chat_id || tg_user.tg_user_id
+      return if chat_id.blank?
+
+      ids = open_tasks.map(&:id).join(', ')
+      text = "🤔 В этом DM #{open_tasks.size} задач — реакция неоднозначна. " \
+             "Используй кнопку <code>[✅ Выполнено #N]</code> или команду <code>/done #{open_tasks.first.id}</code>. " \
+             "Открытые: #{ids}."
+      @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+    rescue Telegram::Client::Error => e
+      Rails.logger.warn("[ReactionHandler] hint DM failed: #{e.message}")
+    end
 
     def find_lead_by_message
       msg_id = @rx['message_id']

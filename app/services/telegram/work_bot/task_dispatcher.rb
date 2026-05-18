@@ -64,10 +64,13 @@ module Telegram
                                    parse_mode: 'HTML',
                                    reply_markup: markup)
 
-        now = Time.current
-        tasks.each { |t| t.update_columns(notified_at: now) }
+        now    = Time.current
+        msg_id = msg['message_id']
+        # Save tg_message_id для всех задач в группе — ReactionHandler по нему
+        # найдёт group + assignee → mark_completed (если single task в группе).
+        tasks.each { |t| t.update_columns(notified_at: now, tg_message_id: msg_id) }
 
-        { assignee: assignee.mention, count: tasks.size, message_id: msg['message_id'] }
+        { assignee: assignee.mention, count: tasks.size, message_id: msg_id }
       rescue Telegram::Client::Error => e
         Rails.logger.warn("[TaskDispatcher] DM to #{assignee.mention} failed: #{e.message}")
         { assignee: assignee.mention, count: tasks.size, error: e.message }

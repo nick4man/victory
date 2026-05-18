@@ -20,7 +20,9 @@ module Telegram
 
           # Staff — для зарегистрированных активных
           ['/done',         :staff,
-           'Отметить задачу выполненной: <code>/done 42</code> (или жми кнопку под DM-карточкой задачи)'],
+           'Отметить задачу выполненной: <code>/done 42</code> (или жми кнопку / ✅ реакцию на DM-карточку)'],
+          ['/cancel',       :staff,
+           'Отменить задачу: <code>/cancel 42 причина</code> (assignee или manager)'],
 
           # Manager — нужен is_manager=true
           ['/promote',      :manager,  'Активировать сотрудника: <code>/promote @username [manager]</code>'],
