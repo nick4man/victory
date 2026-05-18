@@ -51,6 +51,17 @@ module Telegram
       api_call('editMessageText', body)
     end
 
+    # Phase 12 Iter 34 — отдельный endpoint для удаления только клавиатуры
+    # без edit'а текста. Используется в /reassign чтобы инвалидировать stale
+    # inline-кнопки в старой DM-карточке assignee (текст не трогаем — он
+    # уже multiline + содержит history задачи).
+    def edit_message_reply_markup(chat_id:, message_id:, reply_markup:)
+      api_call('editMessageReplyMarkup',
+               chat_id: chat_id,
+               message_id: message_id,
+               reply_markup: reply_markup)
+    end
+
     # Удаление сообщения. Бот может удалить любое сообщение в группе с can_delete_messages,
     # либо своё в течение 48ч. Telegram возвращает true либо ошибку.
     def delete_message(chat_id:, message_id:)

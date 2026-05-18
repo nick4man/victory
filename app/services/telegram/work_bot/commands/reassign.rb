@@ -55,16 +55,23 @@ module Telegram
             return reply("ℹ️ Задача ##{task.id} уже назначена на #{new_assignee.mention}.")
           end
 
+          # Phase 12 Iter 34 — capture stale TG-card coordinates ПЕРЕД update.
+          # После update notified_at сбрасывается, но нам нужен старый
+          # tg_message_id чтобы инвалидировать кнопки в DM-карточке прежнего.
+          stale_card = { chat_id: prev_assignee&.dm_chat_id || prev_assignee&.tg_user_id, message_id: task.tg_message_id }
+
           ::Task.transaction do
             task.assign_attributes(
               assignee: new_assignee,
               assigned_at: Time.current,
-              notified_at: nil # новый DM-цикл — fresh notification
+              notified_at: nil, # новый DM-цикл — fresh notification
+              tg_message_id: nil # новый dispatch получит свежий message_id
             )
             task.save!
           end
 
-          notify_new_assignee(task, new_assignee, prev_assignee)
+          invalidate_stale_card(stale_card, new_assignee) if stale_card[:message_id].present?
+          dispatch_new_card(task) # full DM-карта с inline-кнопками [▶][✅] для new assignee
           notify_previous_assignee(task, prev_assignee, new_assignee) if prev_assignee
 
           prev_mention = prev_assignee&.mention || '<i>никого</i>'
@@ -73,14 +80,32 @@ module Telegram
 
         private
 
-        def notify_new_assignee(task, new_assignee, prev_assignee)
-          due_str = task.due_at ? "до #{task.due_at.strftime('%d.%m.%y %H:%M')}" : 'без срока'
-          prev_str = prev_assignee ? " (была у #{prev_assignee.mention})" : ''
-          text = "🆕 <b>Тебе передана задача</b> ##{task.id}#{prev_str}\n" \
-                 "📋 #{escape_html(task.title)}\n" \
-                 "⏰ #{due_str}\n" \
-                 "Передал: #{@tg_user.mention}"
-          dm(text, to: new_assignee)
+        # Phase 12 Iter 34 — отправляем full DM-card (с inline-кнопками) через
+        # TaskDispatcher. До этого фикса /reassign слал plain DM без кнопок,
+        # новый assignee мог /done только через команду — UX неравенство
+        # с обычным dispatch.
+        def dispatch_new_card(task)
+          Telegram::WorkBot::TaskDispatcher.new(tasks: [task.reload], client: @client).call
+        rescue StandardError => e
+          Rails.logger.warn("[Reassign#dispatch_new_card] #{e.class}: #{e.message}")
+        end
+
+        # Phase 12 Iter 34 — инвалидируем старую DM-карточку прежнего assignee.
+        # Кнопки [▶][✅] в ней по-прежнему живые: callback приходит,
+        # TaskActionCallback#authorized? отсеивает (assignee_id != tg_user.id),
+        # юзер видит «🚫 Это не твоя задача» toast — confusing UX. Убираем кнопки
+        # через editMessageReplyMarkup. Текст не трогаем (multiline, с history) —
+        # явный notice о передаче идёт отдельным DM через notify_previous_assignee.
+        def invalidate_stale_card(coords, _new_assignee)
+          return if coords[:chat_id].blank? || coords[:message_id].blank?
+
+          @client.edit_message_reply_markup(
+            chat_id: coords[:chat_id],
+            message_id: coords[:message_id],
+            reply_markup: { inline_keyboard: [] }
+          )
+        rescue Telegram::Client::Error => e
+          Rails.logger.warn("[Reassign#invalidate_stale_card] #{e.message}")
         end
 
         def notify_previous_assignee(task, prev_assignee, new_assignee)
