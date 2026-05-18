@@ -23,9 +23,18 @@ module Telegram
             return reply("🚫 Управлять документами может assignee (#{lead.assigned_to&.mention || 'не назначен'}) или manager.")
           end
 
-          # /doc init — Phase 4C autobuild — пока stub (реализация в 4C)
+          # /doc init — Phase 4C auto-build checklist из template registry
           if args.to_s.strip == 'init'
-            return reply('ℹ️ Auto-build будет в Phase 4C — сейчас добавляй вручную: <code>/doc passport+ snils? egrn?</code>')
+            res = ::DocumentChecklist::Builder.new(lead_event: lead, actor: tg_user).call
+            if res.success?
+              created_lines = res.created.map { |r| "  • #{r.ru_label}" }
+              skipped_note = res.skipped.empty? ? '' : "\n<i>Пропущено (уже было): #{res.skipped.size}</i>"
+              return reply("📋 <b>Чек-лист создан</b> по шаблону <code>#{res.template_key}</code>\n" \
+                           "Добавлено: <b>#{res.created.size}</b>\n#{created_lines.join("\n")}#{skipped_note}\n\n" \
+                           '<i>Запросить от клиента: <code>/doc passport? snils? egrn?</code></i>')
+            else
+              return reply("⚠️ Auto-build failed: #{res.error.to_s.truncate(160)}")
+            end
           end
 
           # /doc без args — формат текущий checklist
