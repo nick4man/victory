@@ -98,6 +98,39 @@ foreign + A6 docs). Key wins:
 - N+1 perf audit (отдельный perf sprint)
 - Sentry/error tracking setup (отдельная инфра-задача)
 
+## Property Visibility Decoupling (18.05.26) — 3 independent concerns
+
+`Property#in_ad?` отделён от site visibility. До: `ready_for_site?`
+требовал `in_ad=TRUE` → когда Topnlab снимал in_ad (Avito balance, модерация,
+другие outbound-проблемы) — property пропадал с victory62.org. Это
+архитектурно неправильно: мы модераторы своего сайта, не платим ни кому.
+
+3 concerns (orthogonal):
+| Concern | Source | Use |
+|---|---|---|
+| Site visibility | `status=:active` + `published_at` (via `ready_for_site?` gate) | /properties, /landings/*, cabinet, sitemaps |
+| Outbound paid ad | `in_ad` (Topnlab) | Admin/cabinet badge только. Informational |
+| MLS feeds | `in_mls` (Topnlab) | FeedsController via `in_advertising` scope |
+
+`ready_for_site?` теперь: `force_archive ? false : (force_publish || (deal_state ∈ ACTIVE_DEAL_STATES + content))`.
+
+ACTIVE_DEAL_STATES = `%w[ad active lead prepayment deferred]` (mirrors importer
+ACTIVE_STATES — same set we sync from CRM).
+
+Changes (4 commits):
+  e90c3d1 — Property model + migration + bulk swap (~24 callers) `in_advertising → on_site`
+  6bc816b — Admin UI: «Сайт» column + «Внешн. реклама» chips + «Скрыть с сайта» button
+  8127c7d — Cabinet «Мои объекты» dashboard at /cabinet/properties
+
+Funnel impact:
+  Before: 9 status=active → 8 in_advertising → 8 on /properties
+  After:  56 status=active → 56 on_site (4× больше on site)
+           24 in_advertising (unchanged — outbound feeds respect agent's in_ad)
+
+Bonus:
+  /kupit/kvartira fixed (16 Рязанских квартир, было 0)
+  force_archive — admin hide для жалоб клиентов/спорных сделок
+
 ## Topnlab sync audit (18.05.26) — P0+P1 fixed
 
 Аудит: что было / что починено:
