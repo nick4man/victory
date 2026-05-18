@@ -32,6 +32,7 @@ module Telegram
 
           lead = find_lead_via_reply
           return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
+          return reply("🚫 Стадию меняет только assignee (#{lead.assigned_to&.mention || 'не назначен'}) или manager.") unless assignee_or_manager?(lead)
 
           result = Telegram::WorkBot::LeadStageTransition.new(lead, new_stage, actor: tg_user, client: client).call
           if result.success?

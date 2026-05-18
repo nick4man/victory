@@ -78,6 +78,18 @@ module Telegram
           )
         end
 
+        # Phase 9 Iter 1 — Authorization helper для commands которые операют
+        # ОТДЕЛЬНЫЙ lead-event (не обязательно "свой"). Разрешает: assignee
+        # лида ИЛИ manager (для override). Используется в /stage, /note.
+        # @param lead [LeadEvent]
+        def assignee_or_manager?(lead)
+          return false if tg_user.nil?
+          return true  if tg_user.is_manager?
+          return false if lead.nil?
+
+          lead.assigned_to_id == tg_user.id
+        end
+
         # Личная переписка (DM) с пользователем-агентом — если у TelegramUser
         # есть dm_chat_id, шлём туда; иначе пытаемся отправить по tg_user_id
         # (Telegram примет, если пользователь когда-либо писал боту).

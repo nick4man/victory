@@ -13,6 +13,7 @@ module Telegram
 
           lead = find_lead_via_reply
           return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
+          return reply("🚫 Заметку добавляет только assignee (#{lead.assigned_to&.mention || 'не назначен'}) или manager.") unless assignee_or_manager?(lead)
 
           push_to_crm(lead, text)
           persist_to_metadata(lead, text)

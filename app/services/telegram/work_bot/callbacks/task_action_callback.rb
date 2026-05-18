@@ -34,6 +34,11 @@ module Telegram
         private
 
         def authorized?(task)
+          # Phase 9 Iter 1 — explicit nil-guard. Базовый CallbacksRouter уже
+          # отсеивает unregistered users alert'ом, но защита изнутри callback'а
+          # на случай race condition (user удалён между routing и handle).
+          return false if tg_user.nil?
+
           task.assignee_id == tg_user.id || tg_user.is_manager?
         end
 
