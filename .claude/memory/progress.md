@@ -76,6 +76,28 @@
 | 13 | 41-50 | Director auth gate (`manager_or_director?`), `/assign` reject closed lead, voice batch concurrency guard, `LeadAssignment.with_lock` race, orphan tasks surface, TG 429 retry_after, `crm_sync_error_history`, AlertThrottle counters in health, CriticalRecipients tier visibility, Topnlab API in health | `phase-13-final` |
 | 14 | 51-56 | `/stage` reject re-open closed, `BotCommandLog.error_message`, anchor edit lock (LeadStageTransition/SpamCallback/HashtagHandler), TelegramUser touch race, AdminTokenAuth Devise decoupling, voice batch one-click cancel | `phase-14-final` |
 
+## TG work-bot — product layer (Phase 4 MVP, 18.05.26)
+
+Переход от audit к функционалу. Phase 4 master-plan 8 sub-phases — 4 MVP сделаны (4A-4D), 4 в backlog (4E-4H).
+
+| Sub-phase | Done | Содержание |
+|---|---|---|
+| 4A — DocumentRequirement foundation | ✅ | Model (16 kinds × 6 statuses), SLA_SECONDS, DEPENDS_ON graph, RU_LABELS, KIND_ALIASES (25), migration с 4 partial indices, polymorphic anchor (lead_event OR property) |
+| 4B — /doc command + Manager | ✅ | Tokenizer (10 token forms RU+EN), Manager.apply (transaction lifecycle), format_status (HTML grouped по state + SLA countdown), authorization via assignee_or_manager? |
+| 4C — Builder + TemplateRegistry | ✅ | 16 templates (deal_type × property_type + inquiry-driven flows), optional conditions с lambdas, idempotent через savepoint, DEPENDS_ON cascade, /doc init wired |
+| 4D — Client TG-DM intake | ✅ | Llm::IntentClassifier (8 intents free-chain LLM), Lead::Intake::TgDmSource (full impl), Telegram::ClientBot::TextIntakeProcessor (rate-limit + spam-drop + soft-greeting), Inquiry attribution columns (client_tg_user_id/phone/email/source), recursion guard, returning-client detection |
+
+**Tag:** `phase-4-mvp` → `8cf3f54`. Release notes: `.claude/docs/phase-4-mvp-release-notes.md`. Design doc: `.claude/docs/phase-4-design.md`.
+
+## Phase 4.5 backlog (deferred sub-phases)
+
+| Sub-phase | Type | Notes |
+|---|---|---|
+| **4E — CRM webhook lead source** | MEDIUM | Webhooks::TopnlabController endpoint, idempotency Redis event_id 24h, event replay buffer, webhook health watcher |
+| **4F — SLA ramping reminders** | MEDIUM | DocumentReminderJob hourly, ramping cadence (24h/72h/7d), quiet hours, LLM-generated reminder text |
+| **4G — AI document classification** | MEDIUM | ClientDocument#after_classified → AutoMatchToRequirement (A6 OCR → DocumentRequirement kind match) |
+| **4H — Multi-channel attribution** | LOW | Full match priority phone>tg_user_id>email, anchor card history block (append vs new), family-phone disambiguation |
+
 **Артефакты:**
 - Role handbook PDF (12-15 стр) доставлен в @nick4man DM 18.05.26 (message_id 13)
 - `/admin/health.json` — operational status snapshot для monitoring (401 без token, JSON-only)
