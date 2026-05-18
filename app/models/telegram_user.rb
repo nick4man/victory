@@ -96,19 +96,35 @@ class TelegramUser < ApplicationRecord
     from = msg['from'] || {}
     chat = msg['chat'] || {}
 
-    changes = {}
-    changes[:tg_username] = from['username'] if from['username'].present? && from['username'] != tg_username
-    changes[:first_name]  = from['first_name'] if from['first_name'].present? && first_name.blank?
-    changes[:last_name]   = from['last_name']  if from['last_name'].present?  && last_name.blank?
-    if chat['type'] == 'private' && chat['id'].present? && chat['id'] != dm_chat_id
-      changes[:dm_chat_id] =
-        chat['id']
+    # Phase 14 Iter 54 — wrap в with_lock чтобы parallel inbound messages
+    # (особенно serial TG-rapid-fire) не race'или username / dm_chat_id.
+    # До фикса: handler1 видит stored='old' + new='new', handler2 параллельно
+    # видит stored='old' + new='old_reverted'. Порядок update_columns →
+    # final state может быть 'new' вместо 'old_reverted'.
+    #
+    # with_lock + reload даёт atomic check-and-set — handler2 видит уже
+    # обновлённое handler1 state, делает correct delta.
+    #
+    # На hot path (каждое TG-сообщение) — но lock pessimistic per-row, не
+    # блокирует other users. Trade-off OK для correctness.
+    result = false
+    with_lock do
+      reload
+      changes = {}
+      changes[:tg_username] = from['username'] if from['username'].present? && from['username'] != tg_username
+      changes[:first_name]  = from['first_name'] if from['first_name'].present? && first_name.blank?
+      changes[:last_name]   = from['last_name']  if from['last_name'].present?  && last_name.blank?
+      if chat['type'] == 'private' && chat['id'].present? && chat['id'] != dm_chat_id
+        changes[:dm_chat_id] = chat['id']
+      end
+      changes[:last_seen_at] = Time.current
+
+      next if changes.empty?
+
+      # update_columns — skip validations/callbacks (heavy use в InboundProcessor)
+      update_columns(changes) # rubocop:disable Rails/SkipsModelValidations
+      result = true
     end
-    changes[:last_seen_at] = Time.current
-
-    return false if changes.empty?
-
-    update_columns(changes) # update_columns — skip validations/callbacks (heavy use в InboundProcessor)
-    true
+    result
   end
 end
