@@ -23,18 +23,24 @@ namespace :yandex do
       exit 1
     end
 
-    desc 'Pull + отправить в TG staff-чат'
+    desc 'Pull + отправить в TG (recipient = TELEGRAM_ADMIN_DM_CHAT_ID или TELEGRAM_STAFF_CHAT_ID)'
     task tg: :environment do
       data = Yandex::WebmasterSummaryService.call(force_refresh: true)
       markdown = WebmasterMarkdown.render(data)
-      chat_id = ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+
+      # Precedence: TELEGRAM_ADMIN_DM_CHAT_ID > TELEGRAM_STAFF_CHAT_ID.
+      # Admin DM приватнее — owner получает SEO-метрики персонально без шума
+      # в staff-чате. STAFF-чат — fallback если DM env не задан.
+      chat_id = ENV['TELEGRAM_ADMIN_DM_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
       if chat_id.blank?
-        warn '[yandex:webmaster:summary:tg] TELEGRAM_STAFF_CHAT_ID не задан — печатаю в STDOUT.'
+        warn '[yandex:webmaster:summary:tg] ни TELEGRAM_ADMIN_DM_CHAT_ID, ни TELEGRAM_STAFF_CHAT_ID не задан — печатаю в STDOUT.'
         puts markdown
         next
       end
-      Telegram::Client.new.send_message(chat_id: chat_id, text: markdown, parse_mode: 'Markdown')
-      puts '[yandex:webmaster:summary:tg] отправлено в staff-чат.'
+
+      Telegram::Client.new.send_message(markdown, chat_id: chat_id, parse_mode: 'Markdown')
+      target = ENV['TELEGRAM_ADMIN_DM_CHAT_ID'].present? ? 'admin DM' : 'staff-чат'
+      puts "[yandex:webmaster:summary:tg] отправлено в #{target} (chat_id=#{chat_id})."
     end
   end
 end
