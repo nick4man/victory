@@ -90,3 +90,9 @@ telegram_webhook_acks_cleanup:
   class: "Telegram::WebhookAcksCleanupJob"
   queue: scheduled
   description: "Phase 9 Iter 8 — delete TelegramWebhookAck rows > 7 дней"
+
+document_reminder:
+  cron: "0 * * * *"        # hourly at :00 Moscow
+  class: DocumentReminderJob
+  queue: scheduled
+  description: "Phase 4F — DocumentRequirement SLA ramping reminders. Tier 1 client (>=1xSLA), Tier 2 manager (>=2x), Tier 3 director cascade (>=3x). Quiet hours 21-07 + weekend skip."
