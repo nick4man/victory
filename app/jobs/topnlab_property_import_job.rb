@@ -23,5 +23,10 @@ class TopnlabPropertyImportJob < ApplicationJob
       "TopnlabPropertyImportJob #{id}: published=#{published} status=#{property.status} " \
       "in_ad=#{property.in_ad} in_mls=#{property.in_mls}"
     )
+
+    # Enqueue owner linkage sweep if not yet set. The sweep picks up this
+    # property (and any others with owner_user_id=nil) via ORDER BY id.
+    # Runs in scheduled queue so it doesn't delay the webhook response path.
+    TopnlabOwnerSyncJob.perform_later if property.owner_user_id.nil?
   end
 end

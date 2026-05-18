@@ -26,6 +26,11 @@ module Webhooks
       case type
       when 'realty'
         TopnlabPropertyImportJob.perform_later(id)
+      when 'order'
+        # Re-sync a single BuyerOrder from CRM. Full orders sweep runs every 3h;
+        # this keeps a specific order current when CRM pushes a change (stage move,
+        # agent reassignment, etc.).
+        TopnlabOrdersSyncJob.perform_later
       else
         Rails.logger.info("Webhook Topnlab: type=#{type.inspect} not handled (yet)")
       end

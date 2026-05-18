@@ -165,6 +165,26 @@ module Topnlab
       http_get('/menu/delete', { key: @api_key, id: id }, throttle: :fast)
     end
 
+    # POST /public/clients/get-by-entity — fetch физлица (clients) linked to an entity.
+    # entity_type: 2=realty, 3=order, 4=service.
+    # Returns array of client hashes: id, firstname, lastname, fathername, phones[], emails[].
+    # Used to populate Property#owner_user_id (seller client linkage).
+    #
+    # @param entity_id [Integer] Topnlab card id
+    # @param entity_type [Integer] 2=объект, 3=заявка, 4=услуга
+    # @return [Array<Hash>] list of client records; empty array on error/not-found
+    def get_clients_by_entity(entity_id:, entity_type: 2)
+      body = { key: @api_key, entity_id: entity_id.to_i, entity_type: entity_type.to_i }
+      response = http_post_json('/clients/get-by-entity', body)
+      return [] unless response.is_a?(Hash) && %w[ok success].include?(response['status'])
+
+      clients = response.dig('data', 'clients')
+      Array(clients).compact
+    rescue Topnlab::Client::Error => e
+      Rails.logger.warn("[Topnlab] get_clients_by_entity entity_id=#{entity_id}: #{e.message}")
+      []
+    end
+
     # POST /public/get-entities  with patch[] body — update fc_* custom fields on an entity.
     def patch_entity(id:, type:, fields:)
       http_post_json('/get-entities',

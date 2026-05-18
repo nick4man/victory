@@ -98,6 +98,44 @@ foreign + A6 docs). Key wins:
 - N+1 perf audit (отдельный perf sprint)
 - Sentry/error tracking setup (отдельная инфра-задача)
 
+## Topnlab sync audit (18.05.26) — P0+P1 fixed
+
+Аудит: что было / что починено:
+
+**Что работало правильно:**
+- Property sync (every 30min): 73 active объектов, runs clean
+- Staff sync: 14/17 agents have crm_user_id
+- BuyerOrders (950): all assigned to agent + client_name present
+- Magic-link cabinet auth: fully built, role=:client auto-created on first login
+- TopnlabSyncRun#finish!: корректно handles both `errors:` and `error_log:` kwargs
+
+**P0 — Fixed (owner linkage):**
+- Добавлен `Topnlab::Client#get_clients_by_entity` (POST /clients/get-by-entity)
+- Создан `Topnlab::OwnerSyncService` — pulls seller client → upsert User(role=:client) → set Property#owner_user_id
+- Создан `TopnlabOwnerSyncJob` (queue: scheduled, cron: daily 03:00)
+- `TopnlabPropertyImportJob` теперь enqueues TopnlabOwnerSyncJob после webhook import если owner_user_id nil
+- Webhook controller теперь handles `type=order` → enqueues TopnlabOrdersSyncJob
+
+**P1b — Fixed (BuyerOrder client linkage):**
+- Миграция `20260528001000_add_client_crm_id_to_buyer_orders.rb`
+- `OrderMapper#client_crm_id` — извлекает `client.id` из payload
+- Теперь BuyerOrder.client_crm_id = Topnlab физлица.id → будущий cross-ref с User.crm_user_id
+
+**P2 — TODO (требует решения):**
+- `TopnlabClientsSyncJob` — bulk pull всех Topnlab clients в User(role=:client). 
+  БЛОКЕР: нужно твоё одобрение на mass User.create (потенциально 100s records).
+  Вопрос: создавать Users для клиентов без email? (они не смогут логиниться до сбора email)
+- Inquiry → CRM sync (push): Inquiry.crm_id сейчас не заполняется.
+  Нужен job TopnlabInquirySyncJob (push новых Inquiry в Topnlab как type=order).
+- `Property.owner_user_id` currently NULL for all 102 properties.
+  НУЖНО запустить `TopnlabOwnerSyncJob.perform_now` в victory-сессии после миграции.
+
+**Чтобы активировать:**
+В victory-сессии выполни:
+  bundle exec rails db:migrate
+  bundle exec rails db:structure:dump  # обновить structure.sql
+  bundle exec rails runner "TopnlabOwnerSyncJob.perform_now"  # первый запуск
+
 ## A6 — Document intake (статус 17.05.26)
 
 **Архитектурно собрано, в проде НЕ ПРОТЕСТИРОВАНО на реальных фото.**

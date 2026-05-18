@@ -44,10 +44,11 @@ module Topnlab
         stage_name:     @p.dig('stage', 'name') || @p['stage_name'],
         stage_id:       pos_int(@p.dig('stage', 'id') || @p['stage_id']),
         deal_state:     @p['deal_state'].presence || 'active',
-        client_name:    client_first_name,
+        client_name:     client_first_name,
         client_phone_masked: masked_phone,
-        fc_data:        fc_data,
-        synced_at:      Time.current
+        client_crm_id:   client_crm_id,
+        fc_data:         fc_data,
+        synced_at:       Time.current
       }
     end
 
@@ -101,6 +102,12 @@ module Topnlab
     def agent_id
       email = (@p.dig('user', 'email') || @p['user_email']).to_s.downcase
       @agents[email] || User.find_by('LOWER(email) = ?', email)&.id
+    end
+
+    def client_crm_id
+      id = @p.dig('client', 'id') || @p['client_id']
+      n = id.to_i
+      n.positive? ? n : nil
     end
 
     def client_first_name
