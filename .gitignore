@@ -40,6 +40,7 @@
 .env.production
 .env.staging
 .env.audit
+.env.bak-*
 
 # Ignore node_modules
 /node_modules

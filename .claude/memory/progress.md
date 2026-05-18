@@ -62,3 +62,38 @@
 ## Strategic future migration
 
 - **Topnlab → собственная CRM**: миграция стратегическая, инкрементальная (Phase 0-4). См. `futureCrm.md` + `.claude/docs/topnlab/migration-roadmap.md`. Агент `topnlab-api-expert` обслуживает текущую интеграцию + миграционные решения. TG staff bot уже играет роль CRM-канала через `app/services/telegram/work_bot/`.
+
+## TG work-bot — audit history (Phase 9-13, 50 итераций, до 18.05.26)
+
+Все 5 раундов аудита prod-ready и smoke-verified. HEAD ветки `claude/currency-converter-app-9Ljw6` — `0668472`.
+
+| Phase | Итерации | Тема |
+|---|---|---|
+| 9 | 1-10 | Auth gaps, DLP regex, race conditions (TaskBatch/mark_completed/NC mkdir/share-links), idempotency (intake + voice), LLM cost cap, Topnlab retry, webhook dedup, async digest, observability |
+| 10 | 11-20 | TG anti-spam, timezone confirmation, NC fallback path, HTML escape audit, TaskExtractor quality gate, owner sync collision |
+| 11 | 21-30 | SLA stale assignee skip, lead reassignment DM previous, `/reassign`, `/reopen`, CriticalRecipients cascade, AlertThrottle 5min bucket, `/deactivate`, `/resume_batch`, AssignTo audit, `/admin/health` |
+| 12 | 31-40 | `/promote+/link` sync role enum, `/demote`, TaskBatch partial dispatch alert, stale inline buttons after `/reassign`, `/stage` history audit, `/help` DM redirect in groups, JSON 401 for health, TopicRegistry drift surfacing, `metadata` pruning helper, TaskExtractor dedup |
+| 13 | 41-50 | Director auth gate (`manager_or_director?`), `/assign` reject closed lead, voice batch concurrency guard, `LeadAssignment.with_lock` race, orphan tasks surface, TG 429 retry_after, `crm_sync_error_history`, AlertThrottle counters in health, CriticalRecipients tier visibility, Topnlab API in health |
+
+**Артефакты:**
+- Role handbook PDF (12-15 стр) доставлен в @nick4man DM 18.05.26 (message_id 13)
+- `/admin/health.json` — operational status snapshot для monitoring (401 без token, JSON-only)
+
+## Phase 14 backlog (после Phase 13, не закрытые adjacent bugs)
+
+Surface'ил Explore-агент Phase 13. Priority sorted:
+
+| Bug | Severity | Где | Notes |
+|---|---|---|---|
+| `/stage` из closed_won → not-closed (re-open lead) не блокируется | MEDIUM | `lead_stage_transition.rb` | Iter 42 TODO. Полная симметрия с /assign guard. |
+| `BotCommandLog` нет `error_message` column — debugging blind | MEDIUM | `models/bot_command_log.rb` + migration | `result='error'` + `error_class` есть, full message нет |
+| Multiple managers concurrent `edit_message_text` на одном anchor → last-write-wins | LOW | `lead_assignment.rb` + `lead_stage_transition.rb` | Iter 44 (with_lock) частично mitigates; нужен per-anchor lock |
+| `TelegramUser#touch_from_message!` `update_columns` без lock — username/dm_chat_id race | LOW | `telegram_user.rb` | Низкая частота |
+| `AdminTokenAuth` хрупкий `respond_to?(:current_user)` — Devise coupling | LOW (cosmetic) | `concerns/admin_token_auth.rb` | Devise off, но guard остался для future |
+| Auto-cancel previous voice batch (Iter 43 — reject-only MVP) | LOW (UX) | `voice_intake_processor.rb` | Trade-off; Phase 14 может предложить explicit `[✖️ Отменить предыдущий]` |
+
+## Phase 14+ functionality (по master-plan'у, не аудит)
+
+- **Phase 4** — `DocumentRequirement` + `/doc` команда + TG-DM источник лидов от клиентов + CRM-webhook intake — закрыть оставшиеся каналы intake
+- **Phase 5** — `Llm::StaffChatResponder` + `chat_tools/staff/*` + `#ВОПРОС-ОТВЕТ` живой Q&A (NL запросы агентов к боту)
+- **Phase 6** — Утренние/вечерние/недельные дайджесты в `#ОТЧЁТЫ ПО SLA` (operational rhythm)
