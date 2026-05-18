@@ -40,12 +40,20 @@ module Telegram
           end
 
           was_manager = tu.is_manager?
+          new_attrs = {
+            topnlab_user_id: crm_user['id'],
+            email: email.downcase.strip,
+            is_manager: was_manager || role == 'manager'
+          }
+          # Phase 12 Iter 31 — синхронизируем role enum с is_manager.
+          # Если повышаем до manager и role был 'agent' — поднимаем role.
+          # director/admin не понижаем (более высокий уровень).
+          if role == 'manager' && !was_manager && tu.role == 'agent'
+            new_attrs[:role] = 'manager'
+          end
+
           begin
-            tu.update!(
-              topnlab_user_id: crm_user['id'],
-              email: email.downcase.strip,
-              is_manager: was_manager || role == 'manager'
-            )
+            tu.update!(new_attrs)
           rescue ActiveRecord::RecordNotUnique
             return reply("⚠️ Topnlab id=#{crm_user['id']} уже привязан к другому TelegramUser. " \
                          'Разлинкуй существующего через rails console: ' \

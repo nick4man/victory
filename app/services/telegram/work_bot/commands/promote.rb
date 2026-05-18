@@ -30,17 +30,24 @@ module Telegram
 
           changes = {}
           changes[:status]     = 'active' if tu.status != 'active'
-          changes[:is_manager] = true     if role == 'manager' && !tu.is_manager?
+          # Phase 12 Iter 31 — синхронизируем role enum с is_manager.
+          # До этого фикса: /promote @user manager → is_manager=true, но role='agent'.
+          # Phase 11 cascade (CriticalRecipients) использует role enum — skew → user
+          # учитывается как manager в legacy scope, но не как manager в role-based.
+          if role == 'manager' && !tu.is_manager?
+            changes[:is_manager] = true
+            changes[:role] = 'manager' if tu.role == 'agent' # не понижаем director/admin
+          end
 
           if changes.empty?
-            current_role = tu.is_manager? ? 'manager' : 'active agent'
-            return reply("ℹ️ #{tu.mention} уже <b>#{current_role}</b>.")
+            current_label = tu.is_manager? ? 'manager' : 'active agent'
+            return reply("ℹ️ #{tu.mention} уже <b>#{current_label}</b> (role=<code>#{tu.role}</code>).")
           end
 
           tu.update!(changes)
 
           role_msg = changes[:is_manager] ? ' и повышен до <b>manager</b>' : ''
-          reply("✅ #{tu.mention} активирован#{role_msg}. " \
+          reply("✅ #{tu.mention} активирован#{role_msg} (role=<code>#{tu.reload.role}</code>). " \
                 'Доступен для [👤 Назначить] и <code>/assign</code>.')
         end
 
