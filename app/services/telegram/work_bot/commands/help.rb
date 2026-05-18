@@ -41,6 +41,8 @@ module Telegram
            'Закрыть лид: <code>/close выиграно</code> или <code>/close проиграно причина:цена</code>'],
           ['/reassign',     :manager,
            'Передать задачу другому: <code>/reassign 42 @username</code> (DM обоим — старому и новому)'],
+          ['/deactivate',   :manager,
+           'Offboarding сотрудника: <code>/deactivate @username</code> (diagnosis) → <code>… confirm</code> (apply)'],
           ['/learn_topic',  :manager, 'Привязать thread_id к ключу топика: <code>/learn_topic apartments</code>'],
 
           # Director (Phase 7.2+) — для voice-distribution

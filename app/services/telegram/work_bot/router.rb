@@ -36,7 +36,8 @@ module Telegram
         '/done' => Commands::Done,
         '/cancel' => Commands::Cancel,
         '/reassign' => Commands::Reassign,
-        '/reopen' => Commands::Reopen
+        '/reopen' => Commands::Reopen,
+        '/deactivate' => Commands::Deactivate
       }.freeze
 
       def initialize(message, client: Telegram::Client.new)
