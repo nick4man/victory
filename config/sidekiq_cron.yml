@@ -1,3 +1,8 @@
+# Phase 10 Iter 18 — Timezone confirmed: TZ=Europe/Moscow в обоих контейнерах
+# (web + sidekiq, см. docker-compose.yml). Sidekiq-cron interpretирует cron
+# expressions в локальной timezone runner'а. Все «23:55» строки — MSK time.
+# Изменение TZ требует rebuild containers + restart Sidekiq.
+
 topnlab_sync:
   cron: "*/30 * * * *"     # every 30 minutes
   class: TopnlabSyncJob
@@ -19,6 +24,12 @@ topnlab_orders_sync:
   class: TopnlabOrdersSyncJob
   queue: scheduled
   description: "Sync Topnlab buyer/renter orders (type=order) into BuyerOrder"
+
+topnlab_owner_sync:
+  cron: "0 3 * * *"        # daily at 03:00 — after staff sync (06:30 is later; owner sync is lighter)
+  class: TopnlabOwnerSyncJob
+  queue: scheduled
+  description: "Enrich Property#owner_user_id from Topnlab seller-client linkage; enables cabinet 'мои объекты'"
 
 external_yrl_sync:
   cron: "25 */4 * * *"     # every 4 hours at :25
