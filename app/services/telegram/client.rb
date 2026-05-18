@@ -65,7 +65,9 @@ module Telegram
     # Удаление сообщения. Бот может удалить любое сообщение в группе с can_delete_messages,
     # либо своё в течение 48ч. Telegram возвращает true либо ошибку.
     def delete_message(chat_id:, message_id:)
-      api_call('deleteMessage', chat_id: chat_id, message_id: message_id)
+      # Ruby 3 kwargs strictness — body должно быть explicit Hash в положительном
+      # arg, иначе api_call интерпретирует key-value pairs как kwargs.
+      api_call('deleteMessage', { chat_id: chat_id, message_id: message_id })
     rescue Error => e
       # Сообщение уже удалено / не существует / слишком старое — это не критично, логируем.
       Rails.logger.warn("[Telegram] deleteMessage failed (chat=#{chat_id} msg=#{message_id}): #{e.message}")
@@ -173,7 +175,11 @@ module Telegram
     # Returns Hash { file_id, file_unique_id, file_size, file_path } или nil.
     # file_path валиден ~1 час; для долгосрочного хранения файл надо скачать.
     def get_file(file_id)
-      api_call('getFile', file_id: file_id)
+      # Ruby 3 strict kwargs — body should be explicit positional Hash,
+      # не bare kwarg-style. Без скобок Ruby треат `file_id:` как kwargs,
+      # а api_call signature declares только `retried:` kwarg →
+      # ArgumentError 'unknown keyword: :file_id'. 19.05.26 hotfix.
+      api_call('getFile', { file_id: file_id })
     rescue Error => e
       Rails.logger.warn("[Telegram] getFile failed (file_id=#{file_id}): #{e.message}")
       nil
@@ -215,7 +221,8 @@ module Telegram
     # @param limit  [Integer] 1-100
     # @param timeout [Integer] long-polling seconds (0 = short poll)
     def get_updates(offset: 0, limit: 100, timeout: 0)
-      api_call('getUpdates', offset: offset, limit: limit, timeout: timeout)
+      # Ruby 3 kwargs strictness — see comment в get_file/delete_message.
+      api_call('getUpdates', { offset: offset, limit: limit, timeout: timeout })
     end
 
     private

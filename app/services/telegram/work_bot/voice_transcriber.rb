@@ -156,7 +156,12 @@ module Telegram
       end
 
       def build_multipart(local_path, boundary)
-        filename = File.basename(local_path)
+        # Groq STT принимает: flac mp3 mp4 mpeg mpga m4a ogg opus wav webm.
+        # TG voice — это OGG/Opus container, но download_file получает .oga
+        # (TG-side path) или .bin (если remote_path без ext). Groq отбраковывает
+        # эти extensions HTTP 400. Force filename с .ogg чтобы pass type check.
+        # 19.05.26 hotfix.
+        filename = "voice-#{SecureRandom.hex(4)}.ogg"
         content  = File.binread(local_path)
 
         parts = String.new(encoding: 'ASCII-8BIT')
