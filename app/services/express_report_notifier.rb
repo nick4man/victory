@@ -55,7 +55,7 @@ class ExpressReportNotifier
     lines = []
     lines << "📐 <b>Экспресс-оценка #{escape(@v.report_label)}</b>"
     lines << ''
-    (lines << contact_block.presence) || '👤 <i>анонимно (контакты не оставлены)</i>'
+    lines << (contact_block.presence || '👤 <i>анонимно (контакты не оставлены)</i>')
     lines << ''
     lines << '🏠 <b>Объект</b>'
     lines << "  · #{escape(@v.address.to_s)}"
