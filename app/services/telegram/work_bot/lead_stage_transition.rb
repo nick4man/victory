@@ -37,29 +37,36 @@ module Telegram
           return Result.new(false, @lead.current_stage, @new,
                             "Неизвестная стадия: #{@new}")
         end
-        return Result.new(false, @lead.current_stage, @new, "already at #{@new}") if @lead.current_stage == @new
 
-        # Phase 14 Iter 51 — закрытый лид (closed_won/closed_lost) → reject любой
-        # transition обратно в open-pipeline (re-open lead). Симметрия с Iter 42:
-        # /assign на closed отклоняется, но раньше /stage показ на closed_won
-        # вернул бы карточку в активный pipeline и сломал KPI-учёт (повторный
-        # first_contact_at, lost win event). Closed → only closed (won↔lost
-        # admin-override через rails console).
-        if @lead.current_stage.to_s.start_with?('closed_') && !@new.start_with?('closed_')
-          return Result.new(false, @lead.current_stage, @new,
-                            "Лид уже закрыт (#{@lead.current_stage}). " \
-                            'Re-open запрещён через бота — manual revert через Topnlab UI ' \
-                            '+ rails console для current_stage.')
+        # Phase 14 Iter 53 — wrap всё в @lead.with_lock чтобы predотвратить race
+        # между Manager A (/stage показ) и Manager B (/stage договор) на одном
+        # анкоре. Без lock: оба читают current_stage='new', оба edit_message_text
+        # → конфликт + last-write-wins в TG. Lock сериализует mutations + edits.
+        result = nil
+        @lead.with_lock do
+          @lead.reload
+
+          return Result.new(false, @lead.current_stage, @new, "already at #{@new}") if @lead.current_stage == @new
+
+          # Phase 14 Iter 51 — closed → not-closed reject (re-open lead).
+          if @lead.current_stage.to_s.start_with?('closed_') && !@new.start_with?('closed_')
+            result = Result.new(false, @lead.current_stage, @new,
+                                "Лид уже закрыт (#{@lead.current_stage}). " \
+                                'Re-open запрещён через бота — manual revert через Topnlab UI ' \
+                                '+ rails console для current_stage.')
+            next # exit with_lock block
+          end
+
+          prev = @lead.current_stage
+          apply_local!
+          update_anchor_card!
+          push_stage_to_crm(prev)
+          maybe_mirror_to_deal
+          notify_client_owner!(prev)
+
+          result = Result.new(true, prev, @new, nil)
         end
-
-        prev = @lead.current_stage
-        apply_local!
-        update_anchor_card!
-        push_stage_to_crm(prev)
-        maybe_mirror_to_deal
-        notify_client_owner!(prev)
-
-        Result.new(true, prev, @new, nil)
+        result
       end
 
       # Russian labels для emoji + клиент-facing strings. Sync с

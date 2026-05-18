@@ -20,14 +20,25 @@ module Telegram
 
         def handle
           lead = lead_event
-          tag_in_crm(lead)
-          delete_anchor_messages(lead)
-          lead.update!(
-            current_stage: 'closed_lost',
-            closed_at: Time.current,
-            metadata: lead.metadata.merge('spam_marked_by' => actor_mention,
-                                          'spam_marked_at' => Time.current.iso8601)
-          )
+          # Phase 14 Iter 53 — wrap deletion + status flip в with_lock чтобы
+          # параллельный /spam vs /assign vs /stage не race'или. Two managers
+          # одновременно spam-click — один winner, второй reload видит
+          # closed_lost и idempotent skip.
+          lead.with_lock do
+            lead.reload
+            if lead.current_stage == 'closed_lost' && lead.metadata['spam_marked_by'].present?
+              return ack('ℹ️ Уже помечено как спам')
+            end
+
+            tag_in_crm(lead)
+            delete_anchor_messages(lead)
+            lead.update!(
+              current_stage: 'closed_lost',
+              closed_at: Time.current,
+              metadata: lead.metadata.merge('spam_marked_by' => actor_mention,
+                                            'spam_marked_at' => Time.current.iso8601)
+            )
+          end
 
           ack('🚫 Помечено как спам')
         end

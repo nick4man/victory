@@ -26,9 +26,17 @@ module Telegram
         return :no_hashtag unless text.match?(AHTUNG_REGEX)
 
         lead = find_lead_via_reply
-        mark_priority!(lead) if lead
+        # Phase 14 Iter 53 — wrap priority-flip + anchor edit в lock чтобы
+        # параллельный #ахтунг + /stage не race'или mutation + edit.
+        # Notify managers идёт outside lock (TG-calls долгие, не должны блокировать).
+        if lead
+          lead.with_lock do
+            lead.reload
+            mark_priority!(lead)
+            edit_card_if_anchor(lead)
+          end
+        end
         notify_managers(lead, text)
-        edit_card_if_anchor(lead)
 
         :handled
       rescue StandardError => e
