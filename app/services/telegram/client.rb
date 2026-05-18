@@ -257,7 +257,7 @@ module Telegram
       io
     end
 
-    def api_call(method, body = {})
+    def api_call(method, body = {}, retried: false)
       uri = URI("#{BASE}/bot#{@token}/#{method}")
       req = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json')
       req.body = JSON.generate(body) unless body.empty?
@@ -269,6 +269,18 @@ module Telegram
       rescue StandardError
         {}
       end
+
+      # Phase 13 Iter 46 — honor TG 429 retry_after (single retry).
+      # До фикса storm critical DMs (Iter 25 CriticalRecipients × 5 directors
+      # после AlertThrottle expire) триггерил 429, остальные DMs молча
+      # падали с Error '429'. Теперь — один sleep + retry, дальше raise.
+      if res.code == '429' && !retried
+        retry_after = (data.dig('parameters', 'retry_after') || res['retry-after']).to_i.clamp(1, 30)
+        Rails.logger.warn("[Telegram::Client] 429 on #{method} → sleep #{retry_after}s and retry once")
+        sleep(retry_after) if retry_after.positive?
+        return api_call(method, body, retried: true)
+      end
+
       raise Error, "Telegram #{method}: #{data['description'] || res.code}" unless data['ok']
 
       data['result']
