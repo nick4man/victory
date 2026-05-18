@@ -50,7 +50,10 @@ class Inquiry < ApplicationRecord
   belongs_to :agent, class_name: 'User', optional: true
 
   has_many :messages, dependent: :nullify
-  has_many :activities, as: :trackable, dependent: :destroy
+  # NOTE: `has_many :activities, as: :trackable` removed — Activity model
+  # never existed (orphaned polymorphic association с initial scaffold).
+  # No callers in app/. If activity-log нужен в будущем — добавлять
+  # Topnlab::ActivityLogFetcher pattern (existing).
 
   # ============================================
   # ENUMS
