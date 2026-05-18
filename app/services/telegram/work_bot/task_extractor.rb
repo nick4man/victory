@@ -143,10 +143,10 @@ module Telegram
       end
 
       def normalize_tasks(raw_tasks)
-        Array(raw_tasks).filter_map do |t|
+        normalized = Array(raw_tasks).filter_map do |t|
           next unless t.is_a?(Hash)
 
-          normalized = {
+          n = {
             assignee_username: normalize_username(t['assignee_username']),
             title: t['title'].to_s.strip,
             due_at: parse_due_at(t['due_at']),
@@ -160,10 +160,33 @@ module Telegram
           # `{tasks: [{assignee_username: null, title: ""}]}` — раньше
           # persist'или мусор, теперь skip + record в uncertainties (внешний caller
           # должен escalate если >50% tasks filtered).
-          next if normalized[:title].blank?
+          next if n[:title].blank?
 
-          normalized
+          n
         end
+
+        # Phase 12 Iter 40 — dedup identical (assignee, normalized_title) tasks.
+        # LLM иногда дублирует extraction (echo в transcript / hallucination)
+        # → один и тот же task два раза в payload → два DM assignee'у.
+        # Сравнение по downcased title (без spaces) + assignee для tolerance.
+        deduplicate_tasks(normalized)
+      end
+
+      # Возвращает уникальные tasks. Sign — (assignee_username || nil) + downcased+stripped title.
+      # Сохраняет порядок (first-wins). Лог при skip.
+      def deduplicate_tasks(tasks)
+        seen = {}
+        unique = []
+        tasks.each do |t|
+          sig = [t[:assignee_username], t[:title].to_s.downcase.gsub(/\s+/, ' ').strip]
+          if seen.key?(sig)
+            Rails.logger.info("[TaskExtractor] dedup skip — duplicate (assignee=#{sig[0]}, title=#{sig[1].truncate(40)})")
+            next
+          end
+          seen[sig] = true
+          unique << t
+        end
+        unique
       end
 
       def normalize_username(raw)
