@@ -75,8 +75,11 @@ class PropertyFeedMapper
 
   private
 
+  # Force https:// — раньше property_url возвращал http:// для feeds
+  # (default protocol unset вне controller context). Aggregators
+  # (Yandex.Realty/CIAN/Avito) валидаторы предпочитают canonical https://.
   def property_full_url
-    @url_helpers.property_url(@p, host: @host)
+    @url_helpers.property_url(@p, host: @host, protocol: 'https')
   end
 
   def location_hash

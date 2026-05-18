@@ -56,6 +56,21 @@ class RobotsController < ApplicationController
       User-agent: bingbot
       Allow: /
 
+      # Real-estate aggregator validators. /feeds/yrl.xml + cian.xml + avito.xml
+      # они обычно получают URL out-of-band (через свой cabinet), но валидаторы
+      # иногда проверяют robots.txt перед fetch'ом и refuse если стоит Disallow
+      # под `*`. Even Yandex.Realty docs рекомендуют explicit allow.
+      # Если bot имени не знаем — feed-URL всё равно публичный (no auth), и
+      # legitimate aggregator получит его. Этот блок — courtesy для strict валидаторов.
+      User-agent: YandexRealty
+      Allow: /feeds/
+
+      User-agent: CIAN
+      Allow: /feeds/
+
+      User-agent: AvitoBot
+      Allow: /feeds/
+
       # AI training crawlers: allowed for now (the plan says monitor, don't
       # block by default). Re-evaluate if logs show abusive volume.
       User-agent: GPTBot
