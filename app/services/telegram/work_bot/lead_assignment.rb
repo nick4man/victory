@@ -28,6 +28,14 @@ module Telegram
       end
 
       def call
+        # Phase 13 Iter 42 — reject reassignment on closed lead.
+        # До фикса /assign на closed_won/closed_lost проходил, re-fire'ил
+        # transfer_client в Topnlab на уже закрытом order'е → CRM state confusion.
+        if @lead.current_stage.to_s.start_with?('closed_')
+          return Result.new(false, "Лид уже закрыт (#{@lead.current_stage}). " \
+                                   'Возврат — ручной через manager в Topnlab.')
+        end
+
         # Phase 11 Iter 22 — capture previous assignee для notification (reassignment).
         prev_assignee = @lead.assigned_to
 
