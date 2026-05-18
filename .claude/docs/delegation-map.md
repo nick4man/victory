@@ -6,7 +6,7 @@
 
 Стратегия — **Balanced**: явные match'ы → делегация; неопределённые → handle directly с упоминанием опции.
 
-## 15 проектных агентов
+## 16 проектных агентов
 
 | Trigger keywords / domain | Primary agent | Cross-refs / related |
 |---|---|---|
@@ -25,8 +25,9 @@
 | **post-deal кейс**, case study, /cases landing, видео-сценарий, success story, анонимизированный кейс | `case-study-writer` | `pdf-report-designer` (PDF dossier вёрстка), `seo-content-curator` (landing publish), skill `russian-real-estate-copywriting` (tone), `market-analytics-publisher` (market context within case) |
 | **VDS Traefik/CrowdSec ops** — роутеры, middlewares, services, TLS, bouncer, AppSec, cscli decisions, через `ssh vds` (sodix.org) | `traefik-vds-ops` | skill `traefik-config-authoring` (router/middleware/service patterns + safety workflow), skill `crowdsec-policy-management` (bouncer + cscli + AppSec), doc `.claude/docs/vds-infra-cheatsheet.md` (paths + inventory) |
 | **Nextcloud (rclone `nxt:`)** — Офис/НЕДВИЖИМОСТЬ загрузка дозсье, share link клиенту, читать шаблоны договоров + банковские программы, deep-scan структуры | `nextcloud-rclone-ops` | skill `rclone-nextcloud-patterns` (commands + safety + share-link workflow), doc `.claude/docs/nextcloud-cheatsheet.md` (полная taxonomy + save-routing matrix). HARD-EXCLUDE `Офис/Обмен`. |
+| **Yandex Webmaster API v4** — SEO digest (SQI/queries/sitemap), opportunity detection (low CTR + mid position + impressions ≥ 50), recrawl trigger с quota discipline, диагностика, query history tracking | `yandex-webmaster-seo-ops` | skill `yandex-webmaster-api-patterns` (verified endpoint catalogue с quirks, opportunity thresholds, recrawl quota safety, privacy для search-query data), service objects `Yandex::Webmaster*Service`, OAuth setup `.claude/docs/yandex-webmaster-oauth-setup.md` |
 
-## 10 проектных скиллов
+## 11 проектных скиллов
 
 | Trigger | Skill | Notes |
 |---|---|---|
@@ -40,6 +41,7 @@
 | Traefik dynamic config edit на VDS — routers/middlewares/services/TLS + safety workflow | `traefik-config-authoring` | obligatory 7-step backup→edit→verify→rollback; cert resolver matrix (cloudflare DNS-01 vs letsencrypt HTTP-01); existing middleware library |
 | CrowdSec policy на VDS — bouncer params, cscli decisions, AppSec, scenarios, profiles | `crowdsec-policy-management` | sidecar engine + Traefik plugin (v1.3.3); whitelist patterns (immediate vs persistent); AppSec test→block workflow |
 | Nextcloud rclone — taxonomy, deal-folder naming, save-routing matrix, share-link OCS workflow, backup-before-overwrite, Cyrillic quoting | `rclone-nextcloud-patterns` | single remote `nxt:`, WebDAV, рабочий каталог `Офис`. EXCLUDED: `Офис/Обмен`. Cheatsheet: `.claude/docs/nextcloud-cheatsheet.md` |
+| Yandex.Webmaster API v4 — verified endpoint paths (recrawl/quota НЕ под queue/, diagnostics returns problems hash), opportunity thresholds (impressions≥50, CTR<3%, pos 4-15), recrawl quota safety, privacy для search-query | `yandex-webmaster-api-patterns` | service entry: `Yandex::WebmasterSummaryService`. Daily quota 150 recrawls. OAuth doc: `.claude/docs/yandex-webmaster-oauth-setup.md` |
 
 ## Когда НЕ делегировать (anti-patterns)
 

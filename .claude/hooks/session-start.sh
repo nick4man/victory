@@ -158,6 +158,7 @@ cat <<'ROUTING'
   post-deal кейс / /cases / видео     → case-study-writer
   VDS Traefik / CrowdSec / роутеры    → traefik-vds-ops (+ traefik-config-authoring, crowdsec-policy-management)
   Nextcloud / rclone / nxt: / Офис    → nextcloud-rclone-ops (+ rclone-nextcloud-patterns)
+  Yandex.Webmaster / ИКС / recrawl    → yandex-webmaster-seo-ops (+ yandex-webmaster-api-patterns)
   Figma → ERB+Tailwind                → skill: figma-to-erb-handoff
   enums/soft-del/dd.MM.yy conventions → skill: victory-rails-conventions
   user-facing русский копирайт        → skill: russian-real-estate-copywriting
