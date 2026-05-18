@@ -17,7 +17,10 @@ module Webhooks
       return unauthorized unless valid_signature?
 
       payload = parse_payload
-      Telegram::InboundProcessor.new(payload).call if payload.present?
+      # Phase 10 Iter 12 — async dispatch. Возвращаем 200 за ~50ms; processing
+      # в Sidekiq. Voice/photo flows (10-25s) больше не блокируют TG webhook.
+      # Iter 8 dedup на update_id catches concurrent retries.
+      Telegram::InboundProcessorJob.perform_async(payload) if payload.present?
 
       head :ok
     rescue StandardError => e
