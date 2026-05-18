@@ -66,7 +66,54 @@ module Telegram
           dispatch_results = dispatch_tasks(created || [])
           edit_preview(batch, suffix: "\n\n✅ <b>Подтверждено</b>. Создано задач: #{created.size}. " \
                                       "DM отправлено: #{dispatch_summary(dispatch_results)}.")
+
+          # Phase 12 Iter 33 — partial dispatch failure → escalate.
+          # До этого фикса: 1 task failed DM (assignee заблокировал бота) → silent
+          # log warn, batch выглядит «успешно подтверждённым» в preview, но один
+          # из агентов task не получил → клиент в ожидании, никто не знает.
+          handle_dispatch_failures(batch, created, dispatch_results)
+
           ack("✅ Создано задач: #{created.size}")
+        end
+
+        def handle_dispatch_failures(batch, created, results)
+          failures = Array(results).select { |r| r.is_a?(Hash) && r[:error] }
+          return if failures.empty?
+
+          # Persist в batch.parsed_payload для будущего /retry_dispatch (Phase 13+)
+          batch.update!(
+            parsed_payload: batch.parsed_payload.merge(
+              'dispatch_failures' => failures.map { |f| f.slice(:assignee, :count, :error) },
+              'dispatch_failures_at' => Time.current.iso8601
+            )
+          )
+
+          alert_directors_about_failures(batch, created, failures)
+        rescue StandardError => e
+          Rails.logger.warn("[TaskBatchConfirmCallback#handle_dispatch_failures] #{e.class}: #{e.message}")
+        end
+
+        def alert_directors_about_failures(batch, created, failures)
+          throttle_key = "task_dispatch_fail:#{batch.id}"
+          return unless Telegram::AlertThrottle.allow?(key: throttle_key)
+
+          failed_count = failures.sum { |f| f[:count].to_i }
+          summary_lines = failures.map { |f| "  • #{f[:assignee]}: #{f[:count]} task(s) — #{f[:error].to_s[0, 80]}" }
+          text = "⚠️ <b>TaskBatch ##{batch.id} — partial dispatch failure</b>\n" \
+                 "Создано задач: <b>#{created.size}</b>, не доставлено: <b>#{failed_count}</b>\n\n" \
+                 "Сбои:\n#{summary_lines.join("\n")}\n\n" \
+                 "<i>Задачи в БД, но assignees не получили DM. Проверь:\n" \
+                 "  • Заблокировали ли они бота?\n" \
+                 "  • Есть ли у них dm_chat_id (нужно /start от них)?</i>"
+
+          Telegram::CriticalRecipients.resolve.each do |recipient|
+            chat_id = recipient.dm_chat_id || recipient.tg_user_id
+            next if chat_id.blank?
+
+            @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+          rescue StandardError => e
+            Rails.logger.warn("[TaskBatchConfirmCallback#alert_directors] DM to #{recipient.mention}: #{e.message}")
+          end
         end
 
         def dispatch_tasks(tasks)
