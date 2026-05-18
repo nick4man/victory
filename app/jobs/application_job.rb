@@ -60,13 +60,15 @@ class ApplicationJob < ActiveJob::Base
            '<i>Phase 9 Iter 10 — automatic alert.</i>'
 
     client = Telegram::Client.new
-    TelegramUser.directors.active.find_each do |director|
-      chat_id = director.dm_chat_id || director.tg_user_id
+    # Phase 11 Iter 25 — cascade fallback: directors → admins → managers.
+    # Если все directors неактивны, alert не теряется.
+    Telegram::CriticalRecipients.resolve.each do |recipient|
+      chat_id = recipient.dm_chat_id || recipient.tg_user_id
       next if chat_id.blank?
 
       client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
     rescue StandardError => e
-      Rails.logger.warn("[ApplicationJob#notify_critical_failure] DM to #{director.mention}: #{e.message}")
+      Rails.logger.warn("[ApplicationJob#notify_critical_failure] DM to #{recipient.mention}: #{e.message}")
     end
   end
 end

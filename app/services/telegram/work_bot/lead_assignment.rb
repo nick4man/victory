@@ -117,9 +117,10 @@ module Telegram
       end
 
       def notify_crm_failure!
-        # DM Оксане/manager-ам про CRM sync failure
-        TelegramUser.directors.active.find_each do |director|
-          chat_id = director.dm_chat_id || director.tg_user_id
+        # Phase 11 Iter 25 — cascade fallback через CriticalRecipients.
+        # Если directors неактивны → admins → managers (не теряем alert).
+        Telegram::CriticalRecipients.resolve.each do |recipient|
+          chat_id = recipient.dm_chat_id || recipient.tg_user_id
           next if chat_id.blank?
 
           text = "⚠️ <b>CRM sync failed</b> на лиде ##{@lead.id}\n" \
