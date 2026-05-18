@@ -11,7 +11,18 @@ Rails.application.routes.draw do
   # ============================================
   # SIDEKIQ DASHBOARD (admin only)
   # ============================================
-  authenticate :user, ->(u) { u.role_admin? } do
+  # Phase 10 Iter 16 — Devise effectively off, поэтому `authenticate :user`
+  # блокирует всех. Альтернатива: token-based constraint (ADMIN_TOKEN).
+  # Защищает Sidekiq Web UI пока Devise не вернётся.
+  sidekiq_admin = lambda do |request|
+    expected = ENV['ADMIN_TOKEN'].to_s
+    return false if expected.blank?
+
+    provided = request.params['token'].to_s
+    ActiveSupport::SecurityUtils.secure_compare(provided, expected)
+  end
+
+  constraints(sidekiq_admin) do
     mount Sidekiq::Web => '/sidekiq'
   end
 
