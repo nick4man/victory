@@ -112,3 +112,50 @@ end
 every :sunday, at: '3:00 am' do
   rake 'topnlab:stages:refresh'
 end
+
+# ============================================
+# SEO / Yandex.Webmaster — data-driven SEO cycle
+# ============================================
+# Deployment note: schedule.rb — source of truth, но `whenever --update-crontab`
+# не запускался регулярно. На host'е был manual crontab entry для yandex:tg —
+# здесь зафиксирована canonical версия + новые entries для new tooling.
+# Deploy: `bundle exec whenever --update-crontab` после review.
+
+# Weekly Yandex.Webmaster summary (SQI + queries + sitemap + diagnostics) →
+# admin DM (или staff fallback). Понедельник 06:00 MSK — еженедельный SEO пульс.
+every :monday, at: '6:00 am' do
+  rake 'yandex:webmaster:tg'
+end
+
+# Weekly opportunity detection — queries c low CTR / mid position / real
+# impressions → optimisation targets. Wednesday 09:00 MSK (середина недели,
+# время на действие до конца недели). Output в log файл — TG-доставку добавим
+# когда нужен push-уведомление.
+every :wednesday, at: '9:00 am' do
+  rake 'yandex:webmaster:opportunities'
+end
+
+# Daily Yandex diagnostics — кратко в log; если active > 1 — alert через TG
+# выносим в follow-up subplan (нужен yandex:webmaster:diagnostics:tg-on-alert task).
+every 1.day, at: '7:00 am' do
+  rake 'yandex:webmaster:diagnostics'
+end
+
+# ============================================
+# KPI cache refresh — для SessionStart hook
+# ============================================
+# KPI dashboard в SessionStart hook читает .claude/sessions/kpi-cache.txt и
+# warning'и stale если файл старше 24h. Refresh каждые 6 часов чтобы число
+# в hook было свежим без burning live API calls.
+every 6.hours do
+  command 'cd /home/q/victory && /usr/bin/docker compose exec -T web bundle exec rake kpi:phase_a > /home/q/victory/.claude/sessions/kpi-cache.txt 2>> /home/q/victory/log/kpi-cron.log'
+end
+
+# ============================================
+# Inter-session hygiene
+# ============================================
+# Stale lock cleanup — empty или > 2h lock files в tmp/claude-locks/.
+# Воскресенье 00:00 — quiet hour, ничего активного.
+every :sunday, at: '0:00 am' do
+  command 'cd /home/q/victory && /home/q/victory/bin/lock-clean --force >> /home/q/victory/log/lock-clean-cron.log 2>&1'
+end
