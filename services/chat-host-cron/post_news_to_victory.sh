@@ -33,16 +33,34 @@ case "$(basename "$META")" in
 esac
 
 # Build payload via jq — pull headline + hashtags from meta, body from .txt.
-# Filter out the trailing hashtag block from body when present (chat-host
-# embeds them at the bottom for Telegram, but we surface them as metadata).
+# Strip trailing hashtag-only paragraph from body (chat-host appends it at the
+# bottom for Telegram; on the site we render hashtags from the `hashtags`
+# array instead of duplicating them inside the article body).
+STRIPPED_BODY=$(python3 - "$TEXT" <<'PYEOF'
+import sys, re
+text = open(sys.argv[1], "r", encoding="utf-8").read().rstrip()
+text = re.sub(r"\n\s*\n\s*(?:#[\wА-Яа-яЁё_]+\s*)+\s*$", "", text)
+sys.stdout.write(text)
+PYEOF
+)
+
+# Fallbacks: digest pipelines write meta WITHOUT event_id/headline keys
+# (they use short_summary + week_start/end). Urgent pipelines DO write them.
+# Без fallbacks digest всегда падает с http=422 "title required".
+EID=$(jq -r '.event_id // empty' "$META")
+[ -z "$EID" ] && EID=$(basename "$META" .meta.json)
+TITLE=$(jq -r '.headline // .short_summary // ""' "$META")
+
 PAYLOAD=$(jq -n \
-  --arg eid    "$(jq -r '.event_id // empty' "$META")" \
+  --arg eid    "$EID" \
   --arg src    "$SOURCE" \
-  --arg title  "$(jq -r '.headline // ""' "$META")" \
-  --rawfile body "$TEXT" \
+  --arg title  "$TITLE" \
+  --arg body   "$STRIPPED_BODY" \
   --argjson tags "$(jq '.hashtags // []' "$META")" \
   --arg pub    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg src_url "$(jq -r '.source_url // ""' "$META")" \
+  --arg tg_url    "https://t.me/rznvictory" \
+  --arg tg_handle "@rznvictory" \
   '{
     external_id:     ($eid // null),
     external_source: $src,
@@ -52,7 +70,9 @@ PAYLOAD=$(jq -n \
     category:        "news",
     schema_type:     "NewsArticle",
     published_at:    $pub,
-    source_url:      (if $src_url == "" then null else $src_url end)
+    source_url:      (if $src_url == "" then null else $src_url end),
+    telegram_channel_url:    $tg_url,
+    telegram_channel_handle: $tg_handle
   } | with_entries(select(.value != null))')
 
 # Retry transient failures (5xx, network) up to 3 times with backoff.
@@ -66,7 +86,13 @@ while [ $attempt -le 3 ]; do
            --max-time 20 \
            "$ENDPOINT" || echo "000")
   if [[ "$HTTP" =~ ^2 ]]; then
-    echo "[news_ingest] OK $HTTP $(jq -r '.action + " #" + (.article_id|tostring) + " " + .url' /tmp/news_ingest_resp.json 2>/dev/null || echo)"
+    URL=$(jq -r '.url // empty' /tmp/news_ingest_resp.json 2>/dev/null || true)
+    ARTICLE_ID=$(jq -r '.article_id // empty' /tmp/news_ingest_resp.json 2>/dev/null || true)
+    ACTION=$(jq -r '.action // empty' /tmp/news_ingest_resp.json 2>/dev/null || true)
+    echo "[news_ingest] OK $HTTP $ACTION #$ARTICLE_ID $URL" >&2
+    if [ -n "$URL" ]; then
+      printf '%s\n' "$URL"
+    fi
     exit 0
   fi
   echo "[news_ingest] attempt $attempt http=$HTTP body=$(head -c 200 /tmp/news_ingest_resp.json 2>/dev/null)" >&2
