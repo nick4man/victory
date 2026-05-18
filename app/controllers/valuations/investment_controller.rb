@@ -47,7 +47,7 @@ class Valuations::InvestmentController < ApplicationController
     # without JS / old caches. Dadata autocomplete (Phase 4.6 task #135)
     # supersedes this when present.
     @address_suggestions = Rails.cache.fetch('valuations:address_suggestions:v1', expires_in: 1.hour) do
-      Property.in_advertising
+      Property.on_site
               .where.not(address: [nil, ''])
               .order(updated_at: :desc)
               .limit(150)

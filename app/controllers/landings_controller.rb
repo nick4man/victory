@@ -62,7 +62,7 @@ class LandingsController < ApplicationController
   end
 
   def show
-    # 15-minute public cache — landings aggregate Property.in_advertising
+    # 15-minute public cache — landings aggregate Property.on_site
     # and LandingContent; both change on Topnlab sync (hourly) and admin
     # edits (sporadic). 15 min is a safe compromise between freshness for
     # users and crawl-rate savings for Yandex/Google. Yandex pages with
@@ -120,7 +120,7 @@ class LandingsController < ApplicationController
 
   def build_scope
     deal_type = (@intent == 'rent' ? :rent : :sale)
-    scope = Property.in_advertising.where(deal_type: deal_type)
+    scope = Property.on_site.where(deal_type: deal_type)
 
     if (pt = PropertyType.find_by(slug: @type_def[:property_type_slug]))
       scope = scope.where(property_type_id: pt.id)

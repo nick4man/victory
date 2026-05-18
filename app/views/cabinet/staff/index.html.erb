@@ -7,7 +7,7 @@
                               )
                               .limit(50)
 
-  my_properties = Property.in_advertising.assigned_to(cabinet_user).order(updated_at: :desc).limit(50)
+  my_properties = Property.on_site.assigned_to(cabinet_user).order(updated_at: :desc).limit(50)
 
   status_label = {
     'new' => 'Новая', 'contacted' => 'В работе',

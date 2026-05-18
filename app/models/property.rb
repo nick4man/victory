@@ -281,6 +281,13 @@ class Property < ApplicationRecord
   # An object is "in advertising" if it's active in either channel AND not in
   # a paused/closed funnel stage.
   scope :published, -> { where.not(published_at: nil).where(status: :active) }
+  # `on_site` — каталог victory62.org. После visibility-decoupling
+  # (см. ready_for_site? + ACTIVE_DEAL_STATES) status=:active уже
+  # учитывает все условия → alias на published.
+  scope :on_site, -> { published }
+  # `in_advertising` — outbound feeds (/feeds/yrl.xml, cian.xml, avito.xml).
+  # Сохраняет `in_ad OR in_mls` requirement — feeds должны respect
+  # agent's outbound-channel choice (платная реклама).
   scope :in_advertising, lambda {
     published
       .where('in_ad = TRUE OR in_mls = TRUE')
@@ -589,14 +596,37 @@ class Property < ApplicationRecord
   # context to publish.
   MIN_IMAGES_WITHOUT_DESCRIPTION = 3
 
+  # Visibility decoupling (см. plan «Decouple Site Visibility from
+  # Outbound Advertising»). 3 independent concerns:
+  #
+  #   1. Site visibility (status=:active) ← `ready_for_site?` ниже
+  #      Управляется: deal_state lifecycle + content + admin overrides
+  #
+  #   2. Outbound paid advertising (Avito/Cian) ← `in_ad?`
+  #      Управляется агентом в CRM; снимается автоматически когда
+  #      кончились деньги на агрегаторе / зависла модерация. НЕ влияет
+  #      на site visibility.
+  #
+  #   3. MLS feed (наш /feeds/yrl.xml/cian.xml/avito.xml) ← `in_mls?`
+  #      Управляется агентом отдельно. Influence только outbound feeds
+  #      через `in_advertising` scope.
+  #
+  # `ACTIVE_DEAL_STATES` mirrors importer.rb#ACTIVE_STATES — те же
+  # deal_state'ы что мы вообще импортируем (deal/archive/denied
+  # filtered на стороне CRM fetch, до нашей DB не доходят).
+  ACTIVE_DEAL_STATES = %w[ad active lead prepayment deferred].freeze
+
   def ready_for_site?
-    # Manual admin override — bypasses the entire gate. Used when CRM state
-    # is misaligned (agent forgot to flip in_ad) and we want to keep the
-    # listing on the site anyway.
+    # Admin explicit hide — highest priority.
+    return false if respond_to?(:force_archive) && force_archive
+
+    # Admin explicit show — bypasses gate, для misaligned CRM cases.
     return true if respond_to?(:force_publish) && force_publish
 
-    deal_state.to_s == 'ad' &&
-      in_ad? &&
+    # Site visibility = deal lifecycle + content quality. `in_ad` НЕ
+    # включён здесь — outbound advertising state не должен скрывать
+    # объект с нашего сайта (мы модераторы, платить не надо).
+    ACTIVE_DEAL_STATES.include?(deal_state.to_s) &&
       images.attached? &&
       ready_content?
   end
@@ -608,14 +638,16 @@ class Property < ApplicationRecord
       images.attachments.count >= MIN_IMAGES_WITHOUT_DESCRIPTION
   end
 
-  # Human-readable reason a listing isn't on the site (or nil if it is).
-  # Used by the admin status page to surface "fix this in CRM".
+  # Human-readable reasons listing isn't on the site (empty array if it is).
+  # Used by admin status page to surface "fix this in CRM".
   def publication_blockers
+    return ['скрыт администратором (force_archive)'] if respond_to?(:force_archive) && force_archive
     return [] if ready_for_site?
 
     reasons = []
-    reasons << "deal_state=#{deal_state.inspect} (нужно 'ad')" unless deal_state.to_s == 'ad'
-    reasons << 'in_ad=false (не помечено в рекламу в CRM)' unless in_ad?
+    unless ACTIVE_DEAL_STATES.include?(deal_state.to_s)
+      reasons << "deal_state=#{deal_state.inspect} (нужно: #{ACTIVE_DEAL_STATES.join('/')})"
+    end
     reasons << 'нет фото' unless images.attached?
     if images.attached?
       desc_len = description.to_s.strip.length
@@ -625,6 +657,20 @@ class Property < ApplicationRecord
       end
     end
     reasons
+  end
+
+  # Informational: какие outbound channels активны. НЕ влияет на site
+  # visibility (см. ready_for_site?). Используется в admin UI badge
+  # + cabinet «Мои объекты» для информирования владельца.
+  def outbound_advertised?
+    in_ad? || in_mls?
+  end
+
+  def outbound_status_label
+    parts = []
+    parts << 'Avito/Cian' if in_ad?
+    parts << 'MLS-feed' if in_mls?
+    parts.empty? ? 'нет (только сайт)' : parts.join(' + ')
   end
 
   # Soft delete

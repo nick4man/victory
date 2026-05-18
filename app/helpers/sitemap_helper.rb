@@ -29,7 +29,7 @@ module SitemapHelper
 
     # 2. max(Property.updated_at) для района
     if aliases.is_a?(Array) && aliases.any?
-      prop_max = Property.in_advertising.where(district: aliases).maximum(:updated_at)
+      prop_max = Property.on_site.where(district: aliases).maximum(:updated_at)
       candidates << prop_max if prop_max
     end
 
@@ -52,7 +52,7 @@ module SitemapHelper
     pt = PropertyType.find_by(slug: type) if defined?(PropertyType)
     if pt
       deal_type = (intent == 'rent' ? :rent : :sale)
-      prop_max = Property.in_advertising.where(deal_type: deal_type, property_type_id: pt.id)
+      prop_max = Property.on_site.where(deal_type: deal_type, property_type_id: pt.id)
                          .maximum(:updated_at)
       candidates << prop_max if prop_max
     end

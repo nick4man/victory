@@ -15,7 +15,7 @@ class ForeignController < ApplicationController
   before_action :set_english_locale
 
   def index
-    @premium = Property.in_advertising
+    @premium = Property.on_site
                        .premium
                        .where('price >= ?', 15_000_000)
                        .order(price: :desc)
@@ -23,8 +23,8 @@ class ForeignController < ApplicationController
                        .to_a
 
     @stats = {
-      count_active: Property.in_advertising.premium.count,
-      avg_price:    Property.in_advertising.premium.average(:price)&.to_i,
+      count_active: Property.on_site.premium.count,
+      avg_price:    Property.on_site.premium.average(:price)&.to_i,
       cities:       %w[Ryazan Moscow Saint-Petersburg]
     }
 

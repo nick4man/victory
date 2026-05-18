@@ -3,7 +3,7 @@
 # Imports a single Topnlab object by id. Triggered by /webhooks/topnlab and
 # by the dashboard "обновить из CRM" button. After upserting the Property
 # row, we run `publish_if_ready!` so the listing flips to active and lands
-# in `Property.in_advertising` — the same scope that Avito/Cian/Yandex feeds
+# in `Property.on_site` — the same scope that Avito/Cian/Yandex feeds
 # read. Conversely, when CRM clears the ad flag, the listing auto-archives
 # in the same tick.
 class TopnlabPropertyImportJob < ApplicationJob

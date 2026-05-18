@@ -124,7 +124,7 @@ class PropertyAvm
 
   def build_scope(tier)
     a = @property.area.to_f
-    scope = Property.in_advertising
+    scope = Property.on_site
                     .where.not(id: @property.id)
                     .where(deal_type: @property.deal_type)
                     .where(property_type_id: @property.property_type_id)

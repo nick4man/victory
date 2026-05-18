@@ -71,7 +71,7 @@
           <%= link_to properties_path, target: '_blank', class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
             <div class="flex items-start justify-between mb-4">
               <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">КАТАЛОГ</h3>
-              <p class="text-3xl font-light text-foreground"><%= (Property.in_advertising.count rescue 0) %></p>
+              <p class="text-3xl font-light text-foreground"><%= (Property.on_site.count rescue 0) %></p>
             </div>
             <p class="text-sm text-muted-foreground leading-relaxed">Публичный каталог: только объекты в стадии «реклама» (deal_state=ad).</p>
             <p class="text-xs text-muted-foreground mt-4">Открывается в новой вкладке</p>

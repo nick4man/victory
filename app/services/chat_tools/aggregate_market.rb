@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module ChatTools
-  # Aggregate stats over Property.in_advertising. Used when the user asks
+  # Aggregate stats over Property.on_site. Used when the user asks
   # "how many" / "what's the average" / "what's the cheapest" — instead of
   # the bot guessing or calling search_properties for an aggregate.
   module AggregateMarket
@@ -28,7 +28,7 @@ module ChatTools
 
     def self.call(args)
       args ||= {}
-      scope = Property.in_advertising
+      scope = Property.on_site
       scope = scope.where(deal_type: args[:deal_type])    if args[:deal_type].present?
       scope = scope.where(rooms: args[:rooms])            if args[:rooms].present?
       scope = scope.where('district ILIKE ?', "%#{args[:district]}%") if args[:district].present?

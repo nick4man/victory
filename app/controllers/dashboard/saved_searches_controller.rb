@@ -89,7 +89,7 @@ module Dashboard
     # CRM payloads include city as the first segment of the address string.
     def run_filter(search)
       filters = (search.filters || {}).symbolize_keys
-      scope = Property.in_advertising
+      scope = Property.on_site
       scope = scope.where(deal_type: filters[:deal_type])                if filters[:deal_type].present?
       scope = scope.where(property_type_id: filters[:property_type])     if filters[:property_type].present?
       scope = scope.where('price >= ?', filters[:price_min].to_i)        if filters[:price_min].present?

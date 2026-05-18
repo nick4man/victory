@@ -7,7 +7,7 @@ class PremiumController < ApplicationController
   CARDS_LIMIT = 24
 
   def index
-    base = Property.in_advertising.premium
+    base = Property.on_site.premium
 
     @premium_properties = base.recent.limit(CARDS_LIMIT).to_a
     @districts = base.where.not(district: [nil, '']).distinct.pluck(:district).sort

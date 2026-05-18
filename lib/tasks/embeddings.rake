@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 namespace :embeddings do
-  desc 'Generate embeddings for every Property.in_advertising (synchronous, rate-limited)'
+  desc 'Generate embeddings for every Property.on_site (synchronous, rate-limited)'
   task backfill: :environment do
-    scope = Property.in_advertising
+    scope = Property.on_site
     total = scope.count
     puts "[embeddings:backfill] target=#{total} properties"
 
@@ -27,7 +27,7 @@ namespace :embeddings do
   desc 'Re-embed properties whose content_hash is stale or missing'
   task refresh_stale: :environment do
     embedded_ids = PropertyEmbedding.pluck(:property_id).to_set
-    stale = Property.in_advertising.find_each.reject { |p| embedded_ids.include?(p.id) }
+    stale = Property.on_site.find_each.reject { |p| embedded_ids.include?(p.id) }
     puts "[embeddings:refresh_stale] missing=#{stale.size}"
     stale.each { |p| EmbedPropertyJob.perform_later(p.id) }
   end

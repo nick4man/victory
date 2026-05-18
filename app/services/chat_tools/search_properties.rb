@@ -4,7 +4,7 @@ module ChatTools
   # Structural property filter — the chatbot calls this for any concrete
   # request like "2-комн в Левобережном до 5 млн с балконом".
   #
-  # All filters apply on top of Property.in_advertising scope, so the bot
+  # All filters apply on top of Property.on_site scope, so the bot
   # only ever sees objects that are currently in advertising.
   module SearchProperties
     MAX_LIMIT = 10
@@ -50,7 +50,7 @@ module ChatTools
 
     def self.call(args)
       args ||= {}
-      scope = Property.in_advertising
+      scope = Property.on_site
       if args[:property_type].present? && PROPERTY_TYPE_SLUGS.include?(args[:property_type].to_s)
         scope = scope.joins(:property_type).where(property_types: { slug: args[:property_type] })
       end

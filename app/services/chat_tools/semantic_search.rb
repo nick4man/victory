@@ -43,7 +43,7 @@ module ChatTools
 
       query_vector = Embedding::GoogleClient.new.embed(query)
 
-      base_ids = Property.in_advertising
+      base_ids = Property.on_site
       if args[:property_type].present?
         base_ids = base_ids.joins(:property_type).where(property_types: { slug: args[:property_type] })
       end

@@ -26,7 +26,7 @@ module ChatTools
 
     def self.call(args)
       slug = args.is_a?(Hash) ? args[:slug].to_s : args.to_s
-      p = Property.in_advertising.friendly.find(slug)
+      p = Property.on_site.friendly.find(slug)
       {
         id:            p.id,
         slug:          p.slug,

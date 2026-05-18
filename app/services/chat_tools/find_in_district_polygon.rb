@@ -49,7 +49,7 @@ module ChatTools
           results:      results
         }
       else
-        scope = Property.in_advertising.where('district ILIKE ?', "%#{name}%")
+        scope = Property.on_site.where('district ILIKE ?', "%#{name}%")
         results = scope.limit(limit).map { |p| ChatTools::Format.property(p) }
         {
           mode:         'fallback_text',

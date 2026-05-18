@@ -39,7 +39,7 @@ module Llm
     end
 
     def catalog_greeting
-      n = (Property.in_advertising.count rescue 0)
+      n = (Property.on_site.count rescue 0)
       base = 'Помочь подобрать объект? Скажите бюджет, район или тип — найду подходящие варианты.'
       n.positive? ? "В каталоге сейчас #{n} объектов в рекламе. #{base}" : base
     end

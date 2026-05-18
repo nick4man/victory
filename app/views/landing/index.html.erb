@@ -12,7 +12,7 @@
     <%
       slides = Rails.cache.fetch('landing/hero_slides_v2', expires_in: 10.minutes) do
         # PG forbids RANDOM() ORDER BY with DISTINCT, so shuffle in Ruby (small N).
-        candidates = Property.in_advertising
+        candidates = Property.on_site
                              .joins(:images_attachments)
                              .distinct
                              .limit(50)
@@ -175,7 +175,7 @@
        ============================================ -->
   <%
     featured = Rails.cache.fetch('landing/featured_v2', expires_in: 10.minutes) do
-      Property.in_advertising.joins(:images_attachments).distinct.order(updated_at: :desc).limit(4).to_a
+      Property.on_site.joins(:images_attachments).distinct.order(updated_at: :desc).limit(4).to_a
     rescue StandardError
       []
     end

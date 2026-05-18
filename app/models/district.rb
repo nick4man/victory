@@ -22,7 +22,7 @@ class District < ApplicationRecord
 
   # Properties whose geom falls inside this district's polygon.
   def properties_within
-    Property.in_advertising
+    Property.on_site
             .where('ST_Within(properties.geom::geometry, ?)', boundary)
   end
 end

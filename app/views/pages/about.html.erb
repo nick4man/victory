@@ -49,7 +49,7 @@
       <div class="grid grid-cols-2 gap-8">
         <% [
           [@metrics[:years_on_market],                            "лет на рынке"],
-          [Property.in_advertising.count,                         "объектов в рекламе"],
+          [Property.on_site.count,                         "объектов в рекламе"],
           deals_tile,
           [@metrics[:total_volume_human].presence || 'Рязань',    @metrics[:total_volume_human].present? ? "объём продаж" : "и область"]
         ].each do |v, l| %>

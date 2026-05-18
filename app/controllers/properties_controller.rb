@@ -22,7 +22,7 @@ class PropertiesController < ApplicationController
   # GET /properties
   def index
     # Build ransack search
-    @q = Property.in_advertising.ransack(params[:q])
+    @q = Property.on_site.ransack(params[:q])
 
     # Apply filters
     @properties = @q.result(distinct: true)
@@ -101,7 +101,7 @@ class PropertiesController < ApplicationController
     # block keeps users (and crawlers) inside the same geo cluster, giving
     # Yandex a stronger neighborhood-relevance signal.
     @district_properties = if @property.district.present?
-                             Property.in_advertising
+                             Property.on_site
                                      .in_district(@property.district)
                                      .where.not(id: @property.id)
                                      .order(Arel.sql('RANDOM()'))
@@ -215,7 +215,7 @@ class PropertiesController < ApplicationController
   
   # GET /properties/map
   def map
-    @q = Property.in_advertising.ransack(params[:q])
+    @q = Property.on_site.ransack(params[:q])
     @properties = @q.result(distinct: true)
                     .where.not(latitude: nil, longitude: nil)
                     .includes(:property_type)
@@ -241,7 +241,7 @@ class PropertiesController < ApplicationController
     # doesn't crash on a String.
     @search_query = params[:q].to_s
     params[:q] = nil
-    @q = Property.in_advertising.ransack({}) # empty ransack so search_form_for renders
+    @q = Property.on_site.ransack({}) # empty ransack so search_form_for renders
 
     # Search-result URLs are an infinite-permutation space and dilute crawl
     # budget if indexed. noindex (follow keeps internal links live) tells

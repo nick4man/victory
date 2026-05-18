@@ -22,7 +22,7 @@ class ValuationsController < ApplicationController
       {
         audit_count:   completed.count,
         avg_seconds:   median_seconds(completed),
-        catalog_count: Property.in_advertising.count
+        catalog_count: Property.on_site.count
       }
     end
   end

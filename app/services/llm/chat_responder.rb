@@ -86,11 +86,11 @@ module Llm
     # every visitor message.
     def system_prompt
       Rails.cache.fetch('llm/system_prompt/v8_investment_audit', expires_in: 5.minutes) do
-        cities    = Property.in_advertising.where.not(district: nil)
+        cities    = Property.on_site.where.not(district: nil)
                             .group(:district).count.sort_by { |_, n| -n }.first(10).map(&:first).compact
         services  = (ServiceType.public_visible.active.ordered.pluck(:title) rescue [])
         offices   = (Department.active.where.not(address: [nil, '']).pluck(:title, :address).first(3) rescue [])
-        catalog   = Property.in_advertising.count rescue 0
+        catalog   = Property.on_site.count rescue 0
         metrics   = AgencyMetricsService.call rescue {}
         years     = metrics[:years_on_market] || 18
         processed = metrics[:processed_requests].to_i
