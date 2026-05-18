@@ -130,14 +130,19 @@ module Telegram
 
           failed_count = failures.sum { |f| f[:count].to_i }
           summary_lines = failures.map { |f| "  • #{f[:assignee]}: #{f[:count]} task(s) — #{f[:error].to_s[0, 80]}" }
+
+          # Phase 13 Iter 49 — surface tier-info на fallback.
+          cascade = Telegram::CriticalRecipients.resolve
+          tier_note = cascade.fallback? ? "\n<i>(routed to #{cascade.tier} tier — directors недоступны)</i>" : ''
+
           text = "⚠️ <b>TaskBatch ##{batch.id} — partial dispatch failure</b>\n" \
                  "Создано задач: <b>#{created.size}</b>, не доставлено: <b>#{failed_count}</b>\n\n" \
                  "Сбои:\n#{summary_lines.join("\n")}\n\n" \
                  "<i>Задачи в БД, но assignees не получили DM. Проверь:\n" \
                  "  • Заблокировали ли они бота?\n" \
-                 "  • Есть ли у них dm_chat_id (нужно /start от них)?</i>"
+                 "  • Есть ли у них dm_chat_id (нужно /start от них)?</i>#{tier_note}"
 
-          Telegram::CriticalRecipients.resolve.each do |recipient|
+          cascade.each do |recipient|
             chat_id = recipient.dm_chat_id || recipient.tg_user_id
             next if chat_id.blank?
 

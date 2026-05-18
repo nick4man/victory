@@ -24,6 +24,19 @@ module Telegram
   class CriticalRecipients
     LEVELS = %i[directors admins managers].freeze
 
+    # Phase 13 Iter 49 — Result struct с tier-info вместо bare array.
+    # Caller'ы (ApplicationJob, LeadAssignment, TaskBatchConfirmCallback)
+    # могут показать в alert text 'routed to admins tier' если tier !=
+    # primary. До фикса manager получал director-level alert не зная
+    # что он fallback.
+    Result = Struct.new(:recipients, :tier, keyword_init: true) do
+      def each(&block); recipients.each(&block); end
+      def any?; recipients.any?; end
+      def empty?; recipients.empty?; end
+      def size; recipients.size; end
+      def fallback?; tier != 'directors'; end
+    end
+
     def self.resolve(min_level: :directors)
       new(min_level: min_level).resolve
     end
@@ -32,26 +45,30 @@ module Telegram
       @min_level = min_level
     end
 
-    # @return [Array<TelegramUser>] non-empty если хоть кто-то из cascade найден.
+    # @return [Result] {recipients:, tier:}. recipients — Array (возможно
+    # empty); tier — 'directors' / 'admins' / 'managers' / 'empty'.
     def resolve
       tiers = build_tiers
-      tiers.each do |tier|
-        recipients = tier.call.to_a
-        return recipients if recipients.any?
+      tiers.each do |name, tier_lambda|
+        recipients = tier_lambda.call.to_a
+        if recipients.any?
+          Rails.logger.info("[CriticalRecipients] tier=#{name} count=#{recipients.size}") if name != :directors
+          return Result.new(recipients: recipients, tier: name.to_s)
+        end
       end
 
       Rails.logger.error('[CriticalRecipients] EMPTY cascade — no director, admin, or manager active. ' \
                          'Critical alerts будут потеряны до восстановления.')
-      []
+      Result.new(recipients: [], tier: 'empty')
     end
 
     private
 
     def build_tiers
-      # Lambda-tier'ы — lazy eval (не дёргаем БД пока не нужно)
-      directors = -> { TelegramUser.directors.where(status: 'active') }
-      admins    = -> { TelegramUser.where(role: 'admin', status: 'active') }
-      managers  = -> { TelegramUser.managers.where(status: 'active') }
+      # Named tier'ы (name, lambda) — name нужен для logging + Result.tier.
+      directors = [:directors, -> { TelegramUser.directors.where(status: 'active') }]
+      admins    = [:admins,    -> { TelegramUser.where(role: 'admin', status: 'active') }]
+      managers  = [:managers,  -> { TelegramUser.managers.where(status: 'active') }]
 
       case @min_level
       when :directors then [directors, admins, managers]

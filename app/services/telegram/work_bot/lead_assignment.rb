@@ -164,7 +164,12 @@ module Telegram
         # Phase 13 Iter 47 — show error history (last 3) для pattern detection.
         history_block = crm_error_history_block
 
-        Telegram::CriticalRecipients.resolve.each do |recipient|
+        # Phase 13 Iter 49 — surface tier-info на fallback (manager получает
+        # director-level alert).
+        cascade = Telegram::CriticalRecipients.resolve
+        tier_note = cascade.fallback? ? "\n<i>(routed to #{cascade.tier} tier — directors недоступны)</i>" : ''
+
+        cascade.each do |recipient|
           chat_id = recipient.dm_chat_id || recipient.tg_user_id
           next if chat_id.blank?
 
@@ -172,7 +177,7 @@ module Telegram
                  "Assignee: #{@assignee.mention}\n" \
                  "Error: <code>#{@lead.crm_sync_last_error.to_s[0, 200]}</code>\n" \
                  "#{history_block}\n" \
-                 "<i>Назначение проведено локально. Topnlab CRM требует ручной sync.</i>"
+                 "<i>Назначение проведено локально. Topnlab CRM требует ручной sync.</i>#{tier_note}"
           @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
         rescue Telegram::Client::Error => e
           Rails.logger.warn("[LeadAssignment] notify_crm_failure DM failed: #{e.message}")

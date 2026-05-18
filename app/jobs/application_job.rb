@@ -67,16 +67,21 @@ class ApplicationJob < ActiveJob::Base
 
     suppressed = Telegram::AlertThrottle.suppressed_count(key: throttle_key)
     suppress_note = suppressed.positive? ? "\n<i>(suppressed #{suppressed} similar over last 5min)</i>" : ''
+
+    # Phase 11 Iter 25 — cascade fallback: directors → admins → managers.
+    # Phase 13 Iter 49 — surface tier-info чтобы receiver понимал что это
+    # fallback alert (manager-tier видит director-level CRM failure).
+    cascade = Telegram::CriticalRecipients.resolve
+    tier_note = cascade.fallback? ? "\n<i>(routed to #{cascade.tier} tier — directors недоступны)</i>" : ''
+
     text = "⚠️ <b>Background job failed</b>\n" \
            "Class: <code>#{self.class.name}</code>\n" \
            "Args: <code>#{arguments.inspect.to_s.truncate(200)}</code>\n" \
-           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>#{suppress_note}\n\n" \
+           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>#{suppress_note}#{tier_note}\n\n" \
            '<i>Phase 9 Iter 10 / 11 Iter 26 — auto alert + throttle.</i>'
 
     client = Telegram::Client.new
-    # Phase 11 Iter 25 — cascade fallback: directors → admins → managers.
-    # Если все directors неактивны, alert не теряется.
-    Telegram::CriticalRecipients.resolve.each do |recipient|
+    cascade.each do |recipient|
       chat_id = recipient.dm_chat_id || recipient.tg_user_id
       next if chat_id.blank?
 
