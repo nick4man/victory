@@ -22,9 +22,16 @@ module DocumentIntake
       doc = ClientDocument.find_by(id: document_id)
       return Rails.logger.warn("[ParserJob] ClientDocument ##{document_id} not found, skipping") unless doc
 
-      # Idempotency guard — не запускать повторно если уже обработан
+      # Phase 9 Iter 5 — Idempotent retry: NC mirror retry-able даже если OCR
+      # уже completed. Это закрывает gap: первая попытка OCR ✓ + NC mirror ✗ →
+      # retry skip'нул бы mirror навсегда.
       if doc.status_ocr_completed? || doc.status_reviewed?
-        Rails.logger.info("[ParserJob] doc ##{document_id} already #{doc.status}, skip")
+        if doc.nextcloud_path.blank? && doc.parsed_data.present?
+          Rails.logger.info("[ParserJob] doc ##{document_id} OCR done но NC mirror missing → retry mirror only")
+          DocumentIntake::NextcloudMirror.call(client_document: doc)
+        else
+          Rails.logger.info("[ParserJob] doc ##{document_id} already #{doc.status} + mirrored, skip")
+        end
         return
       end
 

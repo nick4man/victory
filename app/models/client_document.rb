@@ -100,7 +100,15 @@ class ClientDocument < ApplicationRecord
   # Factory called by Telegram::InboundProcessor (extended by agent):
   #   ClientDocument.intake!(uploader: user, kind: :passport,
   #                          tg_chat_id:, tg_message_id:, tg_file_id:)
+  #
+  # Phase 9 Iter 5 — Idempotent через unique index (tg_chat_id, tg_message_id).
+  # При повторном photo upload (повтор client'а от плохого инета) возвращает
+  # existing document вместо create duplicate. Защищает от double Groq API
+  # charge + double NC mirror.
   def self.intake!(uploader:, kind:, tg_chat_id:, tg_message_id:, tg_file_id:)
+    existing = find_by(tg_chat_id: tg_chat_id.to_s, tg_message_id: tg_message_id.to_s)
+    return existing if existing
+
     create!(
       uploader: uploader,
       document_kind: kind,
@@ -109,5 +117,8 @@ class ClientDocument < ApplicationRecord
       tg_message_id: tg_message_id.to_s,
       tg_file_id: tg_file_id.to_s
     )
+  rescue ActiveRecord::RecordNotUnique
+    # Race: другой webhook одновременно создал ту же запись — reload и возвращаем
+    find_by!(tg_chat_id: tg_chat_id.to_s, tg_message_id: tg_message_id.to_s)
   end
 end

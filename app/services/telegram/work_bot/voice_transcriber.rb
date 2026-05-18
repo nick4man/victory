@@ -80,11 +80,18 @@ module Telegram
       def call
         ensure_api_key!
 
+        # Phase 9 Iter 5 — Redis cache по file_id + model. Предотвращает double
+        # Groq API charge при retry или повторных webhook'ах. TTL 24h (TG file_id
+        # валиден ~1 час, но retry chains могут проявиться позже).
+        cached = cached_raw
+        return build_result(cached) if cached
+
         tmp = @tg_client.download_file(@file_id, prefix: 'voice-')
         raise DownloadError, "TG download failed for file_id=#{@file_id}" unless tmp
 
         begin
           raw = transcribe(tmp.path)
+          store_cache(raw)
           build_result(raw)
         ensure
           tmp.close
@@ -101,6 +108,33 @@ module Telegram
         return if ENV['GROQ_API_KEY'].present?
 
         raise MissingKeyError, 'GROQ_API_KEY not set in ENV (Phase 7.1)'
+      end
+
+      # Phase 9 Iter 5 — Redis cache. Returns parsed Hash или nil если miss.
+      def cache_key
+        "groq:whisper:#{@model}:#{@file_id}"
+      end
+
+      def cached_raw
+        return nil unless defined?(Rails) && Rails.application
+
+        raw = Rails.cache.read(cache_key)
+        return nil if raw.blank?
+
+        Rails.logger.info("[VoiceTranscriber] cache hit for #{cache_key[0, 50]}")
+        raw
+      rescue StandardError => e
+        Rails.logger.warn("[VoiceTranscriber] cache read failed: #{e.message}")
+        nil
+      end
+
+      def store_cache(raw)
+        return unless defined?(Rails) && Rails.application
+        return if raw.blank?
+
+        Rails.cache.write(cache_key, raw, expires_in: 24.hours)
+      rescue StandardError => e
+        Rails.logger.warn("[VoiceTranscriber] cache write failed: #{e.message}")
       end
 
       def transcribe(local_path)
