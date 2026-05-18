@@ -168,6 +168,34 @@ Defer triggers перед implementation:
 Backlog: `app/views/properties/_external_card.html.erb` + index
 controller mix, если решим показывать.
 
+## MLS/YRL launch — Phase 0 baseline (18.05.26)
+
+Запущен plan `.claude/plans/merry-honking-kay.md` («MLS/YRL feeds на полную
+катушку + commission-strategy»). Phase 0 — baseline snapshot Yandex
+метрик для post-launch diff.
+
+**Yandex.Webmaster snapshot (host=victory62.org):**
+- **SQI = 10** (Site Quality Index — низкая, ожидаемо для нового проекта)
+- **SQI trend (15-18.05):** stable 10
+- **Top query:** «купить квартиру в рязани»
+- **Opportunities (mid-position + low-CTR + impressions>50):** 0 пока
+  (Phase A early — мало impressions для opportunity detection)
+- **Recrawl quota:** 139/150 remaining (11 used сегодня)
+- **Sitemaps tracked:** sitemap.xml (4 URLs), sitemap-news.xml (0 URLs)
+
+**Artifacts:**
+- `tmp/yandex_baseline_2026-05-18.json` (5.2 KB) — full snapshot
+- `tmp/yandex_opportunities_2026-05-18.json` (2 bytes — empty array)
+
+**Next: Phase 1.** `rake yrl:launch:phase1` →
+- backfill `in_mls=true` для ad-stage Topnlab properties (~24)
+- ping Yandex.Webmaster recrawl для свежих URL'ов (~21 calls из 139 quota)
+- остаётся ~118 quota для Phase 2 + дальше
+
+Plan детально: `.claude/plans/merry-honking-kay.md`.
+Diff-instruction: через 7 дней после Phase 1+2 — re-run `rake yrl:baseline`,
+diff с `yandex_baseline_2026-05-18.json`.
+
 ## Topnlab sync audit (18.05.26) — P0+P1 fixed
 
 Аудит: что было / что починено:

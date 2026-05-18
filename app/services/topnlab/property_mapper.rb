@@ -99,8 +99,14 @@ module Topnlab
         # `in_ad`  — listing on agency's own site
         # `in_mls` — outbound MLS feed (Avito/Cian/etc.)
         # The public catalog should show objects active in EITHER channel.
+        #
+        # YRL launch Phase 1: для deal_state='ad' defaultim `in_mls=true`
+        # если Topnlab его явно не передаёт. Без этого новые объекты
+        # не попадают в `/feeds/yrl.xml` пока агент не выставит флаг
+        # вручную в CRM. Бизнес-логика: «if it's in the public ad pipeline,
+        # syndicate it».
         in_ad:           @p['in_ad']  == true,
-        in_mls:          @p['in_mls'] == true,
+        in_mls:          @p['in_mls'] == true || (@p['in_mls'].nil? && @p['deal_state'].to_s == 'ad'),
         closed_at:       derive_closed_at,
         synced_at:       Time.current
       }
