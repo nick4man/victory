@@ -29,6 +29,37 @@ module Telegram
       new(key: key).suppressed_count
     end
 
+    # Phase 13 Iter 48 — aggregate всех suppressed counters в текущем окне.
+    # Используется /admin/health.json чтобы surface'ить throttled alerts
+    # operator'у (raw counters else invisible).
+    #
+    # Redis SCAN по pattern 'alert_throttle:*:suppressed' — non-blocking,
+    # safe для production. Cap at 50 keys как defensive limit (не должно
+    # быть >50 distinct throttle keys одновременно).
+    #
+    # @return [Hash{String => Integer}] {throttle_key (без префикса) => count}
+    def self.all_suppressed_summary
+      redis = new(key: 'dummy').send(:connection)
+      return {} if redis.nil?
+
+      result = {}
+      cursor = '0'
+      iterations = 0
+      loop do
+        cursor, keys = redis.scan(cursor, match: 'alert_throttle:*:suppressed', count: 100)
+        keys.each do |k|
+          throttle_key = k.delete_prefix('alert_throttle:').delete_suffix(':suppressed')
+          result[throttle_key] = redis.get(k).to_i
+          break if result.size >= 50
+        end
+        break if cursor == '0' || result.size >= 50 || (iterations += 1) > 10
+      end
+      result
+    rescue StandardError => e
+      Rails.logger.warn("[AlertThrottle.all_suppressed_summary] #{e.message}")
+      {}
+    end
+
     def initialize(key:)
       @key = "alert_throttle:#{key}"
       @counter_key = "#{@key}:suppressed"

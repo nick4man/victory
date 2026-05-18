@@ -125,7 +125,11 @@ module Admin
         crm_sync_failed: LeadEvent.where(crm_sync_failed: true).count,
         # Phase 12 Iter 38 — surface YAML/DB drift в health JSON
         topic_registry_orphans: Telegram::TopicRegistry.orphan_anchor_keys,
-        topic_registry_missing: Telegram::TopicRegistry.missing_keys
+        topic_registry_missing: Telegram::TopicRegistry.missing_keys,
+        # Phase 13 Iter 48 — surface throttled alerts (Iter 26 counters).
+        # До этого фикса throttled alerts были invisible — operator видел
+        # 'все ок' в health, но реальные alerts dropped'ись Redis-throttle.
+        alerts_suppressed_5min: Telegram::AlertThrottle.all_suppressed_summary
       }
     rescue StandardError => e
       Rails.logger.warn("[Admin::Health] operational: #{e.message}")
@@ -139,6 +143,13 @@ module Admin
       # Soft-degradation signals (operational thresholds)
       return 'degraded' if operational.is_a?(Hash) &&
                           (operational[:bot_state].is_a?(Hash) && operational[:bot_state][:directors_active].to_i.zero?)
+
+      # Phase 13 Iter 48 — >20 throttled alerts в окне → degraded
+      # (operator должен расследовать рост error rate в jobs).
+      if operational.is_a?(Hash) && operational[:alerts_suppressed_5min].is_a?(Hash)
+        total_suppressed = operational[:alerts_suppressed_5min].values.sum
+        return 'degraded' if total_suppressed > 20
+      end
 
       'ok'
     end
