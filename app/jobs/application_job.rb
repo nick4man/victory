@@ -53,11 +53,25 @@ class ApplicationJob < ActiveJob::Base
   private
 
   def notify_directors_on_critical_failure(exception)
+    # Phase 11 Iter 26 — throttle 5-min bucket per (job_class + exception_class).
+    # При transient failure (Sidekiq retry × N + parallel workers) directors
+    # получают 1 alert вместо десятков → нет alert fatigue.
+    throttle_key = "#{self.class.name}:#{exception.class.name}"
+    unless Telegram::AlertThrottle.allow?(key: throttle_key)
+      Rails.logger.info(
+        "[ApplicationJob#notify_critical_failure] throttled — #{throttle_key} " \
+        "(suppressed=#{Telegram::AlertThrottle.suppressed_count(key: throttle_key)})"
+      )
+      return
+    end
+
+    suppressed = Telegram::AlertThrottle.suppressed_count(key: throttle_key)
+    suppress_note = suppressed.positive? ? "\n<i>(suppressed #{suppressed} similar over last 5min)</i>" : ''
     text = "⚠️ <b>Background job failed</b>\n" \
            "Class: <code>#{self.class.name}</code>\n" \
            "Args: <code>#{arguments.inspect.to_s.truncate(200)}</code>\n" \
-           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>\n\n" \
-           '<i>Phase 9 Iter 10 — automatic alert.</i>'
+           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>#{suppress_note}\n\n" \
+           '<i>Phase 9 Iter 10 / 11 Iter 26 — auto alert + throttle.</i>'
 
     client = Telegram::Client.new
     # Phase 11 Iter 25 — cascade fallback: directors → admins → managers.
