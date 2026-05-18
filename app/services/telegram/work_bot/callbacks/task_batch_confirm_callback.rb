@@ -26,31 +26,44 @@ module Telegram
           batch = TaskBatch.find_by(id: batch_id)
           return ack('⚠️ Batch не найден', alert: true) if batch.nil?
 
-          # Phase 9 Iter 3 — DB lock защищает от double-confirm race.
-          # Два параллельных webhook'а (Оксана дважды кликнула быстро) больше
-          # не создадут duplicate Task records.
-          batch.with_lock do
-            batch.reload # refresh status under lock
-            unless batch.status_pending_confirm?
-              return ack("ℹ️ Batch уже #{batch.status} — повторное действие невозможно", alert: true)
-            end
+          # Phase 10 Iter 13 — narrow critical section. DB lock держит row
+          # ТОЛЬКО для status check + create_tasks_from + confirm! (~50-100ms).
+          # TG calls (dispatch_tasks, edit_preview) — outside lock, чтобы
+          # другие webhooks не блокировались.
+          case action
+          when 'approve'
+            created = nil
+            batch.with_lock do
+              batch.reload
+              unless batch.status_pending_confirm?
+                return ack("ℹ️ Batch уже #{batch.status} — повторное действие невозможно", alert: true)
+              end
 
-            case action
-            when 'approve' then approve!(batch)
-            when 'cancel'  then cancel!(batch)
-            else                ack('⚠️ Неизвестное действие', alert: true)
+              created = create_tasks_from(batch)
+              batch.confirm!
             end
+            # Outside lock — TG operations (slow, can hang) не блокируют batch row.
+            post_approve_dispatch!(batch, created)
+          when 'cancel'
+            batch.with_lock do
+              batch.reload
+              unless batch.status_pending_confirm?
+                return ack("ℹ️ Batch уже #{batch.status} — повторное действие невозможно", alert: true)
+              end
+
+              batch.cancel!
+            end
+            edit_preview(batch, suffix: "\n\n✖️ <b>Отменено</b>")
+            ack('✖️ Отменено')
+          else
+            ack('⚠️ Неизвестное действие', alert: true)
           end
         end
 
         private
 
-        def approve!(batch)
-          created = create_tasks_from(batch)
-          batch.confirm!
-
-          dispatch_results = dispatch_tasks(created)
-
+        def post_approve_dispatch!(batch, created)
+          dispatch_results = dispatch_tasks(created || [])
           edit_preview(batch, suffix: "\n\n✅ <b>Подтверждено</b>. Создано задач: #{created.size}. " \
                                       "DM отправлено: #{dispatch_summary(dispatch_results)}.")
           ack("✅ Создано задач: #{created.size}")
@@ -73,10 +86,11 @@ module Telegram
           failed.zero? ? ok.to_s : "#{ok} (⚠️ #{failed} fail)"
         end
 
+        # Phase 10 Iter 13 — cancel логика inlined в handle (двойная with_lock
+        # секция). Этот метод сохранён как dead-code чтобы тесты не ломались,
+        # удалить в следующем рефакторинге.
         def cancel!(batch)
           batch.cancel!
-          edit_preview(batch, suffix: "\n\n✖️ <b>Отменено</b>")
-          ack('✖️ Отменено')
         end
 
         def create_tasks_from(batch)
