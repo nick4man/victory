@@ -37,6 +37,12 @@ module Telegram
         file_id = @msg.dig('voice', 'file_id')
         return reply('⚠️ Не вижу file_id в voice payload — TG-баг?') if file_id.blank?
 
+        # Phase 13 Iter 43 — reject если у director уже есть pending TaskBatch.
+        # Иначе два неподтверждённых пакета в DM одновременно → confusion
+        # «какой preview мой»; race при approve неверного.
+        pending = TaskBatch.pending.where(created_by: tg_user).order(created_at: :desc).first
+        return refuse_pending_batch(pending) if pending
+
         process_voice(tg_user, file_id)
       rescue StandardError => e
         Rails.logger.error("[VoiceIntakeProcessor] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
@@ -159,6 +165,19 @@ module Telegram
         reply('🚫 Только директор АН распределяет задачи голосом. ' \
               'Используй <code>/task @username dd.MM.yy &lt;текст&gt;</code> для одиночной.')
         :refused
+      end
+
+      # Phase 13 Iter 43 — отказ при уже существующем pending TaskBatch.
+      # Auto-cancel предыдущего опасен (потеря заметок) — лучше явный reject.
+      def refuse_pending_batch(pending)
+        age_min = ((Time.current - pending.created_at) / 60).to_i
+        reply(
+          "🚫 У вас есть недоподтверждённый пакет <b>##{pending.id}</b> (создан #{age_min}мин назад). " \
+          "Подтверди или отмени его в DM (через inline-кнопки preview), затем повтори голосовое. " \
+          "Если preview потерялся — используй <code>/resume_batch #{pending.id}</code>."
+        )
+        Rails.logger.info("[VoiceIntakeProcessor] refused new voice — pending batch ##{pending.id}")
+        :refused_pending
       end
 
       def transcription_failed(t)
