@@ -52,7 +52,15 @@ module Nextcloud
       res = @client.create_share(path: @path, password: @password, expire_date: expire_date)
       raise Error, 'OCS create_share returned empty' if res.blank? || res[:url].blank?
 
-      record = persist!(res, expire_date, fingerprint)
+      begin
+        record = persist!(res, expire_date, fingerprint)
+      rescue ActiveRecord::RecordNotUnique
+        # Phase 9 Iter 4 — параллельный поток успел создать ShareLink для того же
+        # path. Reload existing cache + delete duplicate NC share (orphan).
+        record = Nextcloud::ShareLink.active.find_by(path_sha256: fingerprint)
+        @client.delete_share(res[:id]) if record && res[:id]
+      end
+
       result_from(record)
     end
 

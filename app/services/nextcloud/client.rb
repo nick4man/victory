@@ -76,12 +76,15 @@ module Nextcloud
     end
 
     # Создать одну директорию (parent должен существовать).
+    # Phase 9 Iter 4: 405 (Method Not Allowed) и 409 (Conflict) трактуются как
+    # «папка уже существует» (race с параллельным mkdir) — не ошибка.
     def mkdir(path)
       assert_safe_path!(path)
       res = webdav_request('MKCOL', path)
-      raise Error, "MKCOL #{path}: HTTP #{res.code}" unless res.is_a?(Net::HTTPCreated)
+      return true if res.is_a?(Net::HTTPCreated)
+      return true if %w[405 409].include?(res.code) # Concurrent mkdir won
 
-      true
+      raise Error, "MKCOL #{path}: HTTP #{res.code}"
     end
 
     # Recursive mkdir — создаёт цепочку директорий (как mkdir -p).
