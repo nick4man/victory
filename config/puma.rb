@@ -66,14 +66,10 @@ on_worker_boot do
   # Worker specific setup for Rails
   # This is required for ActiveRecord to work correctly in clustered mode
   ActiveRecord::Base.establish_connection if defined?(ActiveRecord)
-  
-  # If using Redis/Sidekiq, reconnect
-  if defined?(Redis)
-    Redis.current.disconnect!
-    Redis.current = Redis.new(url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0'))
-  end
-  
-  # Reconnect to any other external services
+
+  # Sidekiq client redis: reconnects automatically через configure_client.
+  # `Redis.current` removed в redis-rb v5 — раньше тут вылетал
+  # `NoMethodError: undefined method current` на каждый worker boot.
   if defined?(Sidekiq)
     Sidekiq.configure_client do |config|
       config.redis = { url: ENV.fetch('REDIS_URL', 'redis://localhost:6379/0') }
@@ -82,11 +78,9 @@ on_worker_boot do
 end
 
 before_fork do
-  # Close database connections before forking
+  # Close database connections before forking — fork-safe pattern.
+  # Redis уже не требует ручного disconnect (redis-rb v5 fork-safe pool).
   ActiveRecord::Base.connection_pool.disconnect! if defined?(ActiveRecord)
-  
-  # Close Redis connections
-  Redis.current.disconnect! if defined?(Redis)
 end
 
 # === Health check endpoint ===

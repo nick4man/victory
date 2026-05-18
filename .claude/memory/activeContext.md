@@ -42,6 +42,62 @@ Session-domain split (рекомендуемый):
 2. **Express PDF / audit-PDF**: `app/services/audit_pdf/`, `app/services/pdf_generator_service.rb`
 3. **Property AVM / valuations**: `app/services/property_evaluation/`, `app/services/valuations/`, `app/controllers/property_valuations_controller.rb`
 
+## Security/bugfix sweep (18.05.26) — 5 итераций closed
+
+5-iter security + reliability sweep после feature work (A3 dossier + B2
+foreign + A6 docs). Key wins:
+
+**Iter 1 (security) — `cc64386`**
+- Admin token больше не utekает через URL Referer (все redirect'ы и
+  view links без `token=` — session-cookie only)
+- Telegram webhook требует `X-Telegram-Bot-Api-Secret-Token` если ENV
+  настроен (graceful fallback с warn-log если не настроен)
+- Yookassa + AmoCRM webhooks возвращают 501 если ENV-secrets blank,
+  иначе HMAC/Bearer auth
+- MagicLinkToken#consume! теперь atomic (with_lock + double-check)
+- Form-controllers (6 шт) больше не дампают raw PII через to_unsafe_h
+- filter_parameter_logging расширен phone/email/message — фильтрует
+  даже Rails-уровень «Processing by…» log
+
+**Iter 2 (data integrity) — `99052f4`**
+- Document model получил `default_scope { where(deleted_at: nil) }`
+  + scope :with_deleted (соблюдает CLAUDE rule #1). User уже имел.
+
+**Iter 3 (observability + БОЛЬШОЙ скрытый bug) — `26485a6`**
+- 🎯 **CurrencyRatesService never worked live** — всегда FALLBACK_RATES
+  (USD=95, EUR=103). Причина: Nokogiri::XML strict парсер отвергал
+  CBR.ru XML после CP1251→UTF-8 (declaration лжёт). Fix: replace
+  declaration на UTF-8 + drop strict. Foreign-investor PDFs и
+  /foreign landing **неделями** показывали stale rates с пометкой
+  «cbr.ru». Сейчас live: USD=73.13, EUR=85.18, AED=19.91 from cbr.ru.
+- PropertyEvaluationService SemanticCompFinder/CrossCityAdapter
+  failures теперь logged (был silent rescue → [])
+- PropertyAvm tier-fallback + distance_km_to errors теперь logged
+- ApplicationJob discard_on tells which job + args + reason
+
+**Iter 4 (XSS + permit + uploads) — `49be987`**
+- Article/CaseStudy markdown теперь passes через Rails-html-sanitizer
+  с explicit allow-list — `<script>` стрипается, `onerror=` стрипается
+- dashboard/settings_controller permit! → permit(*DEFAULT_NOTIFICATION_KEYS)
+- Property.images + .floor_plans + User.avatar validate content_type
+  + byte_size — .exe/.svg больше не примутся как .jpg
+
+**Iter 5 (verification + bonus puma fix)**
+- E2E все ключевые URL'ы возвращают 200
+- Telegram → 401 без secret, Yookassa/AmoCRM → 501 без ENV
+- CurrencyRates live (USD=73.13) подтверждено
+- Bonus: puma.rb убран broken `Redis.current` (removed в redis-rb v5)
+  — был WARNING на каждый worker boot/fork
+
+Что НЕ сделано (carry-forward):
+- JSONB metadata schema validation (Inquiry/User) — risky, нужен
+  data audit перед enforce
+- PropertyValuation/ViewingSchedule enums без `_prefix:` — too many
+  callers (>10) для safe rename
+- JWT token blacklist/rotation (отдельный security sprint)
+- N+1 perf audit (отдельный perf sprint)
+- Sentry/error tracking setup (отдельная инфра-задача)
+
 ## A6 — Document intake (статус 17.05.26)
 
 **Архитектурно собрано, в проде НЕ ПРОТЕСТИРОВАНО на реальных фото.**
