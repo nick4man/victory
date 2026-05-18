@@ -88,7 +88,11 @@ class Inquiry < ApplicationRecord
   # VALIDATIONS
   # ============================================
   validates :name, presence: true, length: { minimum: 2, maximum: 100 }
-  validates :phone, presence: true
+  # Phase 4D — TG-DM intake может прийти БЕЗ phone (клиент только начал
+  # диалог). Phone qualification — отдельный шаг (LLM-driven follow-up
+  # вопрос или manager-side собирает). Site-формы и manual продолжают
+  # требовать phone.
+  validates :phone, presence: true, unless: -> { source == 'tg_dm' }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :inquiry_type, presence: true
   validates :status, presence: true

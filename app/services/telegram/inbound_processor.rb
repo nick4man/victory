@@ -61,6 +61,14 @@ module Telegram
         return Telegram::ClientBot::PhotoIntakeProcessor.call(msg)
       end
 
+      # Phase 4D — client TEXT intake в DM. Срабатывает только если non-staff
+      # пишет в private chat. Spam/abuse → silently dropped + counter. Inquiry
+      # intent → Lead::Intake::TgDmSource → anchor в #ДИСПЕТЧЕРСКОЙ + reply
+      # клиенту. См. ClientBot::TextIntakeProcessor.applies?
+      if Telegram::ClientBot::TextIntakeProcessor.applies?(msg)
+        return Telegram::ClientBot::TextIntakeProcessor.call(msg)
+      end
+
       # Phase 7.2 — voice от директора АН в DM боту → Voice → LLM extract →
       # TaskBatch + preview с inline-кнопками подтверждения. Не блокирует
       # дальнейший flow если не подходит (см. VoiceIntakeProcessor.applies?).
