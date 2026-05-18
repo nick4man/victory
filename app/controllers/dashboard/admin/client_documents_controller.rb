@@ -29,9 +29,16 @@ module Dashboard
       end
 
       def show
-        # full parsed_data exposed только в admin view (masked everywhere else)
-        @parsed_data = @document.parsed_data
+        # Phase 9 Iter 2 — DLP: по умолчанию admin видит MASKED данные.
+        # Полный unmasked доступен через `?reveal=1` (audit-logged для compliance).
         @masked_data = @document.parsed_data_masked
+        @reveal      = params[:reveal] == '1'
+        @parsed_data = @reveal ? @document.parsed_data : @masked_data
+
+        if @reveal
+          Rails.logger.info("[Admin DLP reveal] document_id=#{@document.id} kind=#{@document.document_kind} " \
+                            "by_token=#{request.params[:token].to_s[0, 8]}*** at=#{Time.current.iso8601}")
+        end
       end
 
       def approve

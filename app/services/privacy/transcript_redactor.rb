@@ -63,15 +63,33 @@ module Privacy
     # === Email === простой паттерн, достаточный для воле речевой транскрипции.
     EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/
 
-    # Порядок важен: passport raньше INN (10/12 цифр могут пересекаться с
-    # passport «45 21 123456» если убрать пробел — но мы требуем разделитель).
-    # Phone до INN — номер может быть прочитан как «1234567890» без +7 → INN-pattern.
-    # Email первым — содержит спецсимволы, не пересекается с цифровыми.
+    # === SNILS (Phase 9 Iter 2) === 11 цифр в формате NNN-NNN-NNN NN
+    # или slim NNNNNNNNNNN. Контрольная сумма не проверяется (для DLP не критично).
+    SNILS_RE = /
+      (?<!\d)
+      \d{3}[\s-]?\d{3}[\s-]?\d{3}[\s-]?\d{2}
+      (?!\d)
+    /x
+
+    # === Passport SERIES alone (Phase 9 Iter 2) === Серия из 4 цифр БЕЗ номера
+    # после неё («серия 4521»). Имеет lookahead "не цифра" чтобы не двигать
+    # PASSPORT_RE (где серия + номер). Регистронечувствительный keyword guard.
+    PASSPORT_SERIES_RE = /(?:серия|серии|сер\.?)\s*(\d{2}[\s-]?\d{2})\b(?!\s*\d{6})/i
+
+    # Порядок важен:
+    #   • EMAIL первым — alphanum, не пересекается
+    #   • PHONE — может быть прочитан как INN если короткий
+    #   • PASSPORT (серия+номер) — длиннее SNILS, должен идти первым из числовых docs
+    #   • SNILS — 11 цифр с дефисами; не пересекается с PASSPORT (там есть [\s-]+ между серией и номером, но pattern requires 4+6 а не 3+3+3+2)
+    #   • PASSPORT_SERIES — keyword guard, поэтому после общих numeric
+    #   • INN — последним (10/12 цифр)
     PATTERNS = [
-      [EMAIL_RE,    '[EMAIL]'],
-      [PHONE_RE,    '[PHONE]'],
-      [PASSPORT_RE, '[PASSPORT]'],
-      [INN_RE,      '[INN]']
+      [EMAIL_RE,           '[EMAIL]'],
+      [PHONE_RE,           '[PHONE]'],
+      [PASSPORT_RE,        '[PASSPORT]'],
+      [SNILS_RE,           '[SNILS]'],
+      [PASSPORT_SERIES_RE, 'серия [SERIES]'],
+      [INN_RE,             '[INN]']
     ].freeze
 
     def self.call(text)

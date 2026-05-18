@@ -17,6 +17,12 @@ class StaffQuestion < ApplicationRecord
 
   validates :question_text, presence: true
 
+  # Phase 9 Iter 2 — DLP. Сотрудник может спросить «номер паспорта Анны?» —
+  # ответ потенциально утечёт через question_text/answer_text в БД и в
+  # Rails.logger.inspect. Маскируем PII до persist'а. Raw text — ephemeral
+  # (только в memory пока вопрос обрабатывается LLM'ом).
+  before_validation :redact_pii
+
   scope :not_deleted,    -> { where(deleted_at: nil) }
   scope :for_asker,      ->(tg_user) { where(asked_by: tg_user) }
   scope :answered,       -> { not_deleted.where.not(answered_at: nil) }
@@ -27,5 +33,12 @@ class StaffQuestion < ApplicationRecord
 
   def soft_delete!
     update!(deleted_at: Time.current)
+  end
+
+  private
+
+  def redact_pii
+    self.question_text = Privacy::TranscriptRedactor.call(question_text) if question_text.present?
+    self.answer_text   = Privacy::TranscriptRedactor.call(answer_text)   if answer_text.present?
   end
 end

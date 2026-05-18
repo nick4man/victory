@@ -54,7 +54,7 @@ class ClientDocument < ApplicationRecord
   scope :for_user,       ->(u) { where(uploader: u) }
 
   # DLP: возвращает masked version parsed_data для UI/logs.
-  # «12 34 567890» → «12 34 ******»
+  # Phase 9 Iter 2 — расширено FIO + issued_by + address masking.
   def parsed_data_masked
     return {} if parsed_data.blank?
 
@@ -62,7 +62,14 @@ class ClientDocument < ApplicationRecord
       masked['passport_number'] = mask_passport(masked['passport_number']) if masked['passport_number'].present?
       masked['inn']             = mask_inn(masked['inn']) if masked['inn'].present?
       masked['birth_date']      = '***.***.****' if masked['birth_date'].present?
-      # ФИО оставляем — это не secret, но не показываем в public log
+      # ФИО — masked до first char + asterisks: "Иванов" → "И*****"
+      %w[last_name first_name middle_name].each do |k|
+        masked[k] = mask_name(masked[k]) if masked[k].present?
+      end
+      # Адрес / орган выдачи — потенциально PII (адрес проживания)
+      masked['passport_issued_by'] = '[ORG]' if masked['passport_issued_by'].present?
+      masked['address']            = '[ADDRESS]' if masked['address'].present?
+      masked['registration_address'] = '[ADDRESS]' if masked['registration_address'].present?
     end
   end
 
@@ -79,6 +86,15 @@ class ClientDocument < ApplicationRecord
     return '***' if digits.length < 5
 
     "#{digits[0, 2]}****#{digits[-2, 2]}"
+  end
+
+  # «Иванов» → «И*****»; «Анна» → «А***». Сохраняет первую букву для
+  # частичной идентификации в admin UI без leak полного имени.
+  def mask_name(name)
+    s = name.to_s.strip
+    return '***' if s.length < 2
+
+    "#{s[0]}#{'*' * (s.length - 1)}"
   end
 
   # Factory called by Telegram::InboundProcessor (extended by agent):
