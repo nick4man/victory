@@ -49,7 +49,13 @@
     },
     'mainEntityOfPage' => { '@type' => 'WebPage', '@id' => page_url },
     'articleSection' => @article.category.humanize,
-    'wordCount' => @article.body.to_s.split(/\s+/).size
+    'wordCount' => @article.body.to_s.split(/\s+/).size,
+    # timeRequired — Я.Wand carousel показывает «X min read» badge
+    # для NewsArticle/BlogPosting с этим полем
+    'timeRequired' => @article.iso_duration,
+    # keywords — comma-separated hashtags из metadata (webhook-ingested)
+    # либо category fallback (admin-created articles)
+    'keywords' => @article.keywords_for_seo.join(', ')
   }.compact
 %>
 <script type="application/ld+json">

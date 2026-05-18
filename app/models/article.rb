@@ -121,6 +121,21 @@ class Article < ApplicationRecord
     [(word_count / 200.0).ceil, 1].max
   end
 
+  # ISO 8601 duration для Schema.org `timeRequired` поля. Я./Google
+  # parsing: NewsArticle/BlogPosting с timeRequired показывают
+  # «X min read» badge в Я.Wand carousel.
+  def iso_duration
+    "PT#{reading_minutes}M"
+  end
+
+  # Keywords для Schema.org Article. Источник: metadata.hashtags (если
+  # webhook-ingested статья с TG hashtag'ами) → fallback на [category]
+  # для admin-created articles без hashtags. # префикс stripp'ится.
+  def keywords_for_seo
+    tags = Array(meta_value('hashtags')).map { |t| t.to_s.sub(/^#/, '').strip }.compact_blank
+    tags.presence || [category]
+  end
+
   # Cover image URL with explicit precedence:
   #   1. attached cover_image OG variant (1200×630, admin-managed)
   #   2. first <img> from body_html (regex parse, cheap inline)
