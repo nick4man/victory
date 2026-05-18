@@ -90,6 +90,15 @@ module Telegram
           lead.assigned_to_id == tg_user.id
         end
 
+        # Phase 10 Iter 19 — Shared HTML escape helper для безопасной интерполяции
+        # user-controlled strings (Inquiry.name, TelegramUser.first_name, и т.п.)
+        # в parse_mode=HTML messages. Используется индивидуально в каждом command/
+        # callback/service — audit confirmed coverage. Helper централизован для
+        # future-proofing.
+        def escape_html(text)
+          text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+        end
+
         # Личная переписка (DM) с пользователем-агентом — если у TelegramUser
         # есть dm_chat_id, шлём туда; иначе пытаемся отправить по tg_user_id
         # (Telegram примет, если пользователь когда-либо писал боту).
