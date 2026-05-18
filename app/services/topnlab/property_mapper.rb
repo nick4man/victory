@@ -26,6 +26,28 @@ module Topnlab
     #   1 = м²,  2 = Сотки,  3 = Гектары
     AREA_UNIT_TO_M2 = { 1 => 1.0, 2 => 100.0, 3 => 10_000.0 }.freeze
 
+    # Topnlab rooms enum (verified via /realty/getoptions 18.05.26).
+    # Поле `rooms` в realty payload — это NOT литеральное число комнат,
+    # а enum-id кратный 10. См. .claude/docs/topnlab/listings-and-mls.md §3a.
+    #
+    # Convention: для студии — `rooms = 0` (matches Property#rooms_info).
+    # Free planning (`id=99`) — оставляем nil + помечаем в title.
+    ROOMS_ENUM_TO_COUNT = {
+      10  => 0,           # Студия
+      20  => 1,  30 => 2,  40 => 3,  50 => 4,  60 => 5,
+      70  => 6,  80 => 7,  90 => 8, 100 => 9, 110 => 10,
+      120 => 11, 130 => 12, 140 => 13, 150 => 14, 160 => 15,
+      170 => 16, 180 => 17, 190 => 18, 200 => 19,
+      205 => 20            # «20+ ком.» — cap at 20
+    }.freeze
+    ROOMS_FREE_PLANNING_CODE = 99
+
+    # Для realty_type='room' (комната в общежитии/коммуналке) словарь
+    # называется `rooms_for_room` — id означает «в N-комн. квартире/общаге»,
+    # а не «N комнат в этом объекте». Сам listing — это всегда ОДНА комната.
+    # Поэтому для type='room' мы оставляем Property.rooms = nil и формируем
+    # title через room_type («Комната в общежитии», «Комната в коммуналке»).
+
     def initialize(payload, agents_index = {}, type_index = {}, fallback_user_id: nil)
       @p = payload || {}
       @agents = agents_index
@@ -195,14 +217,17 @@ module Topnlab
       end
     end
 
+    # Convert Topnlab `rooms` enum-id → literal room count.
+    # Returns nil если значение неизвестно / type='room' (см. ROOMS_ENUM_TO_COUNT).
     def sane_rooms
-      r = @p['rooms']
-      # Topnlab sometimes returns an enum-like code (e.g. 20 for "studio");
-      # accept only plausible 1..20 actual room counts; map studio (>10) to 1.
-      n = to_int(r)
+      n = to_int(@p['rooms'])
       return nil if n.nil?
-      return 1   if n > 9
-      n
+      return nil if n == ROOMS_FREE_PLANNING_CODE        # свободная планировка
+      # Для type='room' (комната в общежитии) `rooms` означает размер
+      # квартиры-родителя, не число комнат в листинге. Сам listing — 1 ком.
+      # Сохраняем nil — title формируется через room_type.
+      return nil if @p['realty_type'].to_s == 'room'
+      ROOMS_ENUM_TO_COUNT[n]
     end
 
     def map_condition
@@ -219,9 +244,11 @@ module Topnlab
       city        = @p['city_name'].presence || @p['region_name'].presence
       street      = build_street_phrase
 
-      # Lead with realty type; e.g. "1-комн. квартира" or just "Студия"
-      head = if rooms_label == 'Студия'
-               'Студия'
+      # Lead with realty type; e.g. "1-комн. квартира" or just "Студия".
+      # SELF_CONTAINED_LABELS уже содержат указание типа (Студия / Комната
+      # в общежитии / Свободная планировка) — суффикс «квартира» не нужен.
+      head = if SELF_CONTAINED_TITLE_LABELS.include?(rooms_label)
+               rooms_label
              else
                [rooms_label, pretty_realty_type].compact_blank.join(' ').presence || pretty_realty_type
              end
@@ -250,17 +277,39 @@ module Topnlab
       end
     end
 
-    # rooms in Topnlab encoding: 1..9 = number of rooms; ≥ 10 → studio code (only meaningful for flat/room).
+    # Label-часть title для секции «N-комн. / Студия / Свободная планировка
+    # / Комната в общежитии». Использует тот же enum что и `sane_rooms`,
+    # но возвращает строку для human-readable title.
     def rooms_title_part
-      n = to_int(@p['rooms'])
-      return nil if n.nil?
       type = @p['realty_type'].to_s
-      if n > 9
-        return nil unless %w[flat room].include?(type)
-        return 'Студия'
+      raw  = to_int(@p['rooms'])
+
+      # realty_type='room' — отдельная ветка через room_type.
+      if type == 'room'
+        return ROOM_TYPE_TITLES[to_int(@p['room_type'])] || 'Комната'
       end
-      "#{n}-комн."
+
+      return nil if raw.nil?
+      return 'Свободная планировка' if raw == ROOMS_FREE_PLANNING_CODE
+
+      count = ROOMS_ENUM_TO_COUNT[raw]
+      return nil if count.nil?
+      return 'Студия' if count.zero?
+      "#{count}-комн."
     end
+
+    # room_type enum из /realty/getoptions (key='room_type'):
+    ROOM_TYPE_TITLES = {
+      1 => 'Комната в общежитии',
+      2 => 'Комната в коммунальной квартире',
+      3 => 'Комната'        # «Стандартная квартира» — комната в стандартной кв.
+    }.freeze
+
+    # Labels that уже описывают realty_type — в build_title не добавляем
+    # суффикс «квартира» к ним.
+    SELF_CONTAINED_TITLE_LABELS = (
+      ['Студия', 'Свободная планировка'] + ROOM_TYPE_TITLES.values
+    ).freeze
 
     def build_street_phrase
       street = ["#{@p['street_type']}".strip, @p['street_name']].compact.reject(&:blank?).join(' ').strip
