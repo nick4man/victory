@@ -44,10 +44,10 @@ refresh_topnlab_stats:
   description: "Refresh Topnlab counts cache (processed_requests metric on /landing + /about). Throttled API: full sweep ≈ 8 min."
 
 bank_rates_refresh:
-  cron: "0 4 * * SUN"      # weekly Sunday 04:00 MSK
+  cron: "0 4 * * *"        # daily 04:00 MSK (was weekly SUN — user mandate: daily freshness)
   class: BankRatesRefreshJob
   queue: scheduled
-  description: "Refresh deposit/mortgage program rates from banki.ru aggregator"
+  description: "Refresh deposit programs from banki.ru (mortgage DOM TODO — see job comments)"
 
 tg_polling:
   cron: "* * * * *"        # every minute
