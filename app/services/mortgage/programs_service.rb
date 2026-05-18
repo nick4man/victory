@@ -38,9 +38,11 @@ module Mortgage
     }.freeze
 
     class << self
-      # Fresh cache → 6h. If fresh is missing AND engine call fails,
-      # fall back to the long-lived stale snapshot so the page keeps
-      # rendering programs through brief engine outages.
+      # Fallback chain (Option C Track 2):
+      #   fresh cache (6h) → engine fetch → stale cache (7d) →
+      #   BankRateSnapshot.latest_ok('mortgage') → empty []
+      # Snapshot — 3-я линия защиты если audit-engine down >7d. Source:
+      # daily BankRatesRefreshJob → BankiRuParser JSON-LD scraper.
       def all
         cached = Rails.cache.read(CACHE_KEY)
         return cached if cached.is_a?(Array) && cached.any?
@@ -49,11 +51,18 @@ module Mortgage
         if fresh.any?
           Rails.cache.write(CACHE_KEY, fresh, expires_in: CACHE_TTL)
           Rails.cache.write(STALE_CACHE_KEY, fresh, expires_in: STALE_TTL)
-          fresh
-        else
-          stale = Rails.cache.read(STALE_CACHE_KEY)
-          stale.is_a?(Array) ? stale : []
+          return fresh
         end
+
+        stale = Rails.cache.read(STALE_CACHE_KEY)
+        return stale if stale.is_a?(Array) && stale.any?
+
+        # Last-resort: read latest scraped snapshot (banki.ru via BankiRuParser).
+        # Format отличается — нормализуем в engine-shape.
+        snapshot = from_snapshot
+        return snapshot if snapshot.any?
+
+        []
       end
 
       def find(id)
@@ -83,9 +92,55 @@ module Mortgage
       def fetch_from_engine
         data = AuditEngine::Client.new.bank_offers_list(active: true)
         Array(data).map { |row| normalize(row) }.sort_by { |p| [p[:bank_name].to_s, p[:rate_min].to_f] }
-      rescue AuditEngine::UnavailableError => e
-        Rails.logger.warn("[Mortgage::ProgramsService] engine unavailable: #{e.message}")
+      rescue AuditEngine::UnavailableError, AuditEngine::Error => e
+        Rails.logger.warn("[Mortgage::ProgramsService] engine unavailable: #{e.class}: #{e.message.truncate(160)} — will try snapshot fallback")
         []
+      end
+
+      # Option C Track 2 fallback: read latest BankRateSnapshot kind=mortgage.
+      # Snapshot rows created by BankRatesRefreshJob (daily). Items имеют
+      # shape от BankiRuParser (bank_name, product_name, rate_max, term_*,
+      # min_amount, source_url) — нормализуем в engine-shape (используется
+      # views на /services/mortgage).
+      def from_snapshot
+        return [] unless defined?(BankRateSnapshot)
+
+        snap = BankRateSnapshot.latest_ok('mortgage')
+        return [] if snap.nil? || snap.payload.blank?
+
+        Rails.logger.info("[Mortgage::ProgramsService] using snapshot fallback ##{snap.id} (#{snap.payload.size} items, as_of=#{snap.as_of})")
+        snap.payload.map { |item| normalize_snapshot_item(item) }
+      rescue StandardError => e
+        Rails.logger.warn("[Mortgage::ProgramsService] snapshot fallback failed: #{e.class}: #{e.message.truncate(160)}")
+        []
+      end
+
+      # Snapshot item (banki.ru JSON-LD via BankiRuParser) → engine-shape.
+      # snapshot stores rate_max only (best advertised rate); we duplicate
+      # в оба rate_min/rate_max чтобы view не show nil.
+      def normalize_snapshot_item(item)
+        h = item.is_a?(Hash) ? item.transform_keys(&:to_s) : {}
+        rate = h['rate_max'].to_f
+        term_months = h['term_months_min'].to_i
+        term_years = (term_months / 12.0).round
+
+        {
+          id:                   "snapshot-#{[h['bank_name'], h['product_name']].compact.join('-').parameterize}",
+          bank_name:            h['bank_name'].to_s,
+          product_name:         h['product_name'].to_s,
+          product_type:         'mortgage',
+          product_type_ru:      'Готовое жильё',
+          rate_min:             rate,
+          rate_max:             rate,
+          term_years_min:       [term_years, 1].max,
+          term_years_max:       [term_years, 30].max,
+          down_payment_min_pct: nil,
+          max_loan_amount:      h['min_amount']&.to_i,
+          requirements:         [],
+          source_url:           h['source_url'],
+          active:               true,
+          source_label:         "banki.ru (backup snapshot #{(h['snapshot_as_of'] || Date.current).to_s.first(10)})"
+        }
       end
 
       # Normalize keys to symbols + flatten any nested structures the engine
