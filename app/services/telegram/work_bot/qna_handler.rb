@@ -3,19 +3,25 @@
 module Telegram
   module WorkBot
     # Phase 7.5 — Триггер для StaffChatResponder из #ВОПРОС/ОТВЕТ топика.
+    # Phase 5.2 — Расширено: any supergroup топик с @mention (кроме quiet
+    # топиков), плюс /ask команда в qna без mention.
     #
-    # MVP условия:
+    # Active conditions:
     #   1. chat.type='supergroup' AND chat.id = WORK_CHAT_ID
-    #   2. message_thread_id == TopicRegistry.thread_id('qna')
-    #   3. text mentions bot (@anvictorybot) ИЛИ начинается с /ask
-    #   4. from — known TelegramUser (active staff)
+    #   2. EITHER:
+    #      a) thread is qna AND (mention OR /ask)        — original Phase 7.5
+    #      b) thread is anchor-topic AND mention         — NEW Phase 5.2
+    #      c) thread blank (General) AND mention         — NEW Phase 5.2
+    #      Excluded: announcements/flood топики (whitelist topic-keys)
+    #   3. from — known TelegramUser (active staff)
     #
-    # 2-min silence trigger (без mention) — Phase 7.5+ TODO. Сейчас MVP
-    # требует explicit @mention чтобы избежать ложных срабатываний.
-    #
-    # На match → StaffChatResponder.call → reply в топик.
+    # На match → StaffChatResponder.call → reply в топик (где задан вопрос).
     class QnaHandler
       WORK_CHAT_ID = -1_003_779_115_845
+
+      # Phase 5.2 — топики где QnA НЕ срабатывает (избегаем noise в
+      # "тихих" каналах — объявления / флуд).
+      QUIET_TOPIC_KEYS = %w[announcements flood].freeze
 
       def self.applies?(msg)
         return false unless msg.is_a?(Hash)
@@ -24,9 +30,29 @@ module Telegram
 
         thread = msg['message_thread_id']
         qna_thread = Telegram::TopicRegistry.thread_id('qna')
-        return false if thread.blank? || qna_thread.blank? || thread.to_i != qna_thread.to_i
 
-        bot_mentioned?(msg) || text_starts_with_ask?(msg)
+        # Path A (Phase 7.5): qna топик с mention/ask
+        if thread.present? && qna_thread.present? && thread.to_i == qna_thread.to_i
+          return bot_mentioned?(msg) || text_starts_with_ask?(msg)
+        end
+
+        # Path B (Phase 5.2): mention в любом топике, кроме quiet
+        return false unless bot_mentioned?(msg)
+        return false if in_quiet_topic?(thread)
+
+        true
+      end
+
+      # Phase 5.2 — топик принадлежит к "тихим" (announcements/flood)?
+      # Reverse-lookup через TopicRegistry: find key whose thread_id ==
+      # @msg.thread_id, then check if в QUIET_TOPIC_KEYS.
+      def self.in_quiet_topic?(thread_id)
+        return false if thread_id.blank?
+
+        QUIET_TOPIC_KEYS.any? do |key|
+          tid = Telegram::TopicRegistry.thread_id(key)
+          tid.present? && tid.to_i == thread_id.to_i
+        end
       end
 
       def self.bot_mentioned?(msg)

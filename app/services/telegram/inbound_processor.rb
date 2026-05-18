@@ -107,6 +107,14 @@ module Telegram
 
       return workbot_result if [:handled, :verified, :code_failed].include?(workbot_result)
 
+      # Phase 5.3 — DM staff Q&A. Если staff пишет non-command сообщение в
+      # DM боту → routes to StaffChatResponder (instead of falling through
+      # to inbox-saver). Команды + voice уже handled выше; этот branch для
+      # natural-language questions.
+      if Telegram::WorkBot::DmQnaHandler.applies?(msg)
+        return Telegram::WorkBot::DmQnaHandler.call(msg)
+      end
+
       # Inbox saver — enqueued, NOT synchronous. Telegram disconnects the
       # webhook after ~5s, and large photo/document downloads from
       # api.telegram.org easily blow past that. The job does the actual

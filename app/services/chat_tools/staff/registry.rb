@@ -13,7 +13,9 @@ module ChatTools
         'agent_status' => ChatTools::Staff::AgentStatus,
         'nextcloud_lookup_deal' => ChatTools::Staff::NextcloudLookupDeal,
         'nextcloud_list_templates' => ChatTools::Staff::NextcloudListTemplates,
-        'kpi_for' => ChatTools::Staff::KpiFor
+        'kpi_for' => ChatTools::Staff::KpiFor,
+        # Phase 5.1 — DocumentRequirement checklist status
+        'document_checklist_status' => ChatTools::Staff::DocumentChecklistStatus
       }.freeze
 
       module_function

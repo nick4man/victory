@@ -158,7 +158,7 @@ module Llm
     # --- Persistence ---
 
     def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
-      StaffQuestion.create!(
+      record = StaffQuestion.create!(
         asked_by: @asked_by,
         kind: classification.kind,
         question_text: @question,
@@ -172,9 +172,33 @@ module Llm
         classifier_confidence: classification.confidence,
         answered_at: Time.current
       )
+      # Phase 5.4 — dual-track audit. StaffQuestion = full Q&A record (KPI
+      # question_dependency metric). BotCommandLog = unified bot-action stream
+      # (для /admin/health observability + cross-action filtering).
+      log_to_bot_command_log(classification, used_tools)
+      record
     rescue StandardError => e
       Rails.logger.warn("[StaffChatResponder#persist_question] #{e.class}: #{e.message}")
       nil
+    end
+
+    def log_to_bot_command_log(classification, used_tools)
+      return if @asked_by.nil?
+
+      args_payload = {
+        question_truncated: @question.to_s.truncate(120),
+        used_tools: used_tools,
+        confidence: classification.confidence,
+        escalated: classification.kind == 'escalation'
+      }
+      BotCommandLog.create!(
+        tg_user_id: @asked_by.tg_user_id,
+        command: 'qna',
+        args: args_payload.to_json,
+        result: classification.kind || 'unclear'
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[StaffChatResponder#log_to_bot_command_log] #{e.class}: #{e.message}")
     end
 
     def empty_result(error)
@@ -206,6 +230,9 @@ module Llm
           • lookup_task — задача по id/title
           • lookup_lead — лид по id/имени/телефону
           • agent_status — нагрузка сотрудника
+          • document_checklist_status — Phase 4 docs checklist по lead_id
+            (сколько получено / overdue / pending)
+          • kpi_for — KPI snapshot по сотруднику или агентству за период
           • nextcloud_lookup_deal — папка сделки + share-link
           • nextcloud_list_templates — шаблоны договоров
       PROMPT
