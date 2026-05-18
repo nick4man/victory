@@ -65,7 +65,16 @@ module Telegram
             lines << '<i>Для привязки: <code>/whoami email@victory.ru</code></i>'
           end
 
-          reply(lines.join("\n"))
+          # Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
+          # Шлём один-line redirect inline + полный список приватно в DM.
+          # В DM-чате — inline как раньше.
+          full_text = lines.join("\n")
+          if group_chat?
+            send_full_via_dm(full_text)
+            reply('📖 Полный список команд отправил тебе в DM боту.')
+          else
+            reply(full_text)
+          end
         end
 
         private
@@ -95,6 +104,31 @@ module Telegram
 
         def director?
           tg_user&.can_voice_distribute?
+        end
+
+        # Phase 12 Iter 36 — distinguish group vs DM. /help в группе → noise
+        # для всех, DM-route чище для индивидуальной справки.
+        def group_chat?
+          chat_type = message.dig('chat', 'type')
+          ['group', 'supergroup'].include?(chat_type)
+        end
+
+        def send_full_via_dm(text)
+          return if tg_user.nil? # незарегистрированный — fallback inline (Base#reply ниже)
+
+          chat_id = tg_user.dm_chat_id || tg_user.tg_user_id
+          return if chat_id.blank?
+
+          client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+        rescue Telegram::Client::Error => e
+          # DM не доставлен (бот заблокирован / нет /start) — мягко fallback'имся
+          # на inline-reply в группу (лучше шум чем нет ответа).
+          Rails.logger.warn("[Help#send_full_via_dm] #{e.message}")
+          client.send_message(text,
+                              chat_id: message.dig('chat', 'id'),
+                              message_thread_id: message['message_thread_id'],
+                              reply_to_message_id: message['message_id'],
+                              parse_mode: 'HTML')
         end
       end
     end
