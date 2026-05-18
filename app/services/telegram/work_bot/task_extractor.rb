@@ -50,7 +50,7 @@ module Telegram
         res = @client.complete(
           [{ role: 'system', content: system_prompt },
            { role: 'user',   content: user_prompt }],
-          chain: :analysis,
+          chain: :staff_analysis, # Phase 9 Iter 6 — cheap-first (free → Haiku → Sonnet)
           response_format: { type: 'json_object' },
           temperature: 0.2,
           max_tokens: 1500

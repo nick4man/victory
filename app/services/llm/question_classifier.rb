@@ -36,10 +36,13 @@ module Llm
     def call
       return empty('пустой текст') if @text.empty?
 
+      # Phase 9 Iter 6 — :staff_analysis (cheap-first) вместо :analysis
+      # (paid-first для valuation). Quality для classifier — adequate
+      # на Llama 3.3 70B free.
       res = @client.complete(
         [{ role: 'system', content: system_prompt },
          { role: 'user',   content: @text }],
-        chain: :analysis,
+        chain: :staff_analysis,
         response_format: { type: 'json_object' },
         temperature: 0.1,
         max_tokens: 400
@@ -54,13 +57,22 @@ module Llm
       )
     rescue StandardError => e
       Rails.logger.warn("[QuestionClassifier] #{e.class}: #{e.message}")
-      empty(e.message)
+      # Phase 9 Iter 6 — на LLM failure → kind=escalation (НЕ tool-call path).
+      # Защита от двойного LLM cost: если classifier упал, не вызываем второй
+      # LLM (tools). Director получит ping — лучше чем silent failure.
+      escalation_fallback(e.message)
     end
 
     private
 
     def empty(error)
       Result.new(kind: 'information', confidence: 0.0, reasoning: nil, model: nil, error: error)
+    end
+
+    def escalation_fallback(error)
+      Result.new(kind: 'escalation', confidence: 0.0,
+                 reasoning: 'classifier LLM unavailable — defaulting to escalation',
+                 model: nil, error: error)
     end
 
     def normalize_kind(raw)
