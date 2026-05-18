@@ -155,6 +155,19 @@ class Article < ApplicationRecord
     EmbedArticleJob.perform_later(id)
   end
 
+  # Defense-in-depth: even though only admins edit articles, sanitize the
+  # Markdown→HTML output чтобы случайно вставленный `<script>` или
+  # `<iframe src=...>` не выполнился. Allow-list мирится с типичными
+  # blog tags + Redcarpet table/code-fence output.
+  ALLOWED_HTML_TAGS = %w[
+    h1 h2 h3 h4 h5 h6 p a ul ol li blockquote
+    strong em b i code pre
+    table thead tbody tr td th
+    br hr sup sub
+    img figure figcaption
+  ].freeze
+  ALLOWED_HTML_ATTRS = %w[href title alt src srcset width height class id].freeze
+
   def render_markdown
     renderer = Redcarpet::Render::HTML.new(
       hard_wrap: true,
@@ -167,7 +180,12 @@ class Article < ApplicationRecord
                                  fenced_code_blocks: true,
                                  strikethrough: true,
                                  superscript: true)
-    self.body_html = md.render(body.to_s).html_safe
+    raw_html = md.render(body.to_s)
+    self.body_html = ActionController::Base.helpers.sanitize(
+      raw_html,
+      tags: ALLOWED_HTML_TAGS,
+      attributes: ALLOWED_HTML_ATTRS
+    ).html_safe
   end
 
   # Push IndexNow notification when article transitions to public state

@@ -63,8 +63,14 @@ module Dashboard
     # Form checkboxes only arrive in params when CHECKED. Translate the
     # submission into an explicit-true/false hash so unchecking a box
     # records `false` instead of silently keeping the old value.
+    #
+    # Explicit whitelist — раньше использовался `permit!` который
+    # принимал ЛЮБЫЕ keys. Если позже какой-то downstream code будет
+    # читать `notification_settings['admin_mode']` или подобное,
+    # атакующий смог бы инжектить такие keys через форму. Сейчас —
+    # только known keys из DEFAULT_NOTIFICATION_KEYS попадают в Hash.
     def submitted_notifications
-      submitted = params[:notifications]&.permit!&.to_h || {}
+      submitted = params[:notifications]&.permit(*DEFAULT_NOTIFICATION_KEYS)&.to_h || {}
       DEFAULT_NOTIFICATION_KEYS.index_with { |k| submitted[k] == '1' }
     end
   end

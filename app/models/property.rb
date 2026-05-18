@@ -138,6 +138,40 @@ class Property < ApplicationRecord
   end
   has_many_attached :floor_plans
 
+  ACCEPTABLE_IMAGE_TYPES = %w[image/jpeg image/png image/webp image/gif image/heic image/heif].freeze
+  MAX_IMAGE_BYTES = 15.megabytes
+
+  # Reject non-image uploads + размер cap. Если кто-то bypass'ит form и
+  # шлёт .exe/.svg/.pdf — отлавливаем на model save (ActiveStorage сам
+  # не валидирует content_type). Variants ломаются на не-images, что
+  # раньше давало 500 при view render.
+  validate :acceptable_image_uploads
+  validate :acceptable_floor_plan_uploads
+
+  def acceptable_image_uploads
+    return unless images.attached?
+
+    images.each do |img|
+      unless ACCEPTABLE_IMAGE_TYPES.include?(img.content_type)
+        errors.add(:images, "тип файла недопустим (#{img.content_type})")
+      end
+      if img.byte_size > MAX_IMAGE_BYTES
+        errors.add(:images, "размер #{img.byte_size / 1.megabyte}MB больше лимита #{MAX_IMAGE_BYTES / 1.megabyte}MB")
+      end
+    end
+  end
+
+  def acceptable_floor_plan_uploads
+    return unless floor_plans.attached?
+
+    floor_plans.each do |fp|
+      allowed = ACCEPTABLE_IMAGE_TYPES + %w[application/pdf]
+      unless allowed.include?(fp.content_type)
+        errors.add(:floor_plans, "тип файла недопустим (#{fp.content_type})")
+      end
+    end
+  end
+
   # External CRM identifier (Topnlab); aliased so notes/_crm_notes/notes_sync use crm_id uniformly.
   alias_attribute :crm_id, :external_id
 

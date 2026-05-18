@@ -125,6 +125,8 @@ class CaseStudy < ApplicationRecord
 
   private
 
+  # Defense-in-depth XSS sanitization — см. Article#render_markdown для
+  # rationale. Используем same allow-list (Article::ALLOWED_HTML_TAGS).
   def render_markdown
     renderer = Redcarpet::Render::HTML.new(
       hard_wrap: true,
@@ -137,7 +139,12 @@ class CaseStudy < ApplicationRecord
                                  fenced_code_blocks: true,
                                  strikethrough: true,
                                  superscript: true)
-    self.body_html = md.render(body.to_s).html_safe
+    raw_html = md.render(body.to_s)
+    self.body_html = ActionController::Base.helpers.sanitize(
+      raw_html,
+      tags: Article::ALLOWED_HTML_TAGS,
+      attributes: Article::ALLOWED_HTML_ATTRS
+    ).html_safe
   end
 
   def pluralize_ru(count, forms)

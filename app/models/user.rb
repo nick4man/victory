@@ -115,6 +115,21 @@ class User < ApplicationRecord
   
   # Avatar
   has_one_attached :avatar
+  AVATAR_TYPES = %w[image/jpeg image/png image/webp image/gif].freeze
+  MAX_AVATAR_BYTES = 5.megabytes
+
+  validate :acceptable_avatar_upload
+
+  def acceptable_avatar_upload
+    return unless avatar.attached?
+
+    unless AVATAR_TYPES.include?(avatar.content_type)
+      errors.add(:avatar, "тип файла недопустим (#{avatar.content_type})")
+    end
+    if avatar.byte_size > MAX_AVATAR_BYTES
+      errors.add(:avatar, "размер больше лимита #{MAX_AVATAR_BYTES / 1.megabyte}MB")
+    end
+  end
 
   # CRM department (Topnlab structure)
   belongs_to :department, optional: true
