@@ -110,9 +110,22 @@
 
       <% current_deal_type = params.dig(:q, :deal_type_eq).to_s %>
       <div class="flex flex-wrap gap-2 items-center">
-        <% [["Все", {}], ["Купить", { deal_type_eq: 'sale' }], ["Снять", { deal_type_eq: 'rent' }]].each do |label, q| %>
+        <%# Facet counts (controller#build_facet_counts) — absolute global
+            counts на on_site scope. Помогают user'у понять масштаб каждой
+            опции до клика («Снять 2» vs «Купить 22»). %>
+        <% [
+          ["Все",    {},                          @facet_counts.dig(:deal_type, 'all')],
+          ["Купить", { deal_type_eq: 'sale' },    @facet_counts.dig(:deal_type, 'sale')],
+          ["Снять",  { deal_type_eq: 'rent' },    @facet_counts.dig(:deal_type, 'rent')]
+        ].each do |label, q, count| %>
           <% active = (current_deal_type == q[:deal_type_eq].to_s) %>
-          <%= link_to label, properties_path(q.any? ? { q: q } : {}), class: "px-5 py-2 text-sm tracking-wider border #{active ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground'} transition-colors" %>
+          <%= link_to properties_path(q.any? ? { q: q } : {}),
+                      class: "px-5 py-2 text-sm tracking-wider border #{active ? 'bg-foreground text-background border-foreground' : 'bg-transparent text-muted-foreground border-border hover:border-foreground hover:text-foreground'} transition-colors inline-flex items-center gap-2" do %>
+            <span><%= label %></span>
+            <% if count.to_i.positive? %>
+              <span class="text-[10px] opacity-70 tracking-wide"><%= count %></span>
+            <% end %>
+          <% end %>
         <% end %>
 
         <%# Premium-segment toggle (Phase A1). URL param ?premium=1
@@ -122,9 +135,14 @@
         <% next_premium = premium_on ? {} : { premium: '1' } %>
         <% preserved = params.permit(q: {}, sort: [], filter: []).to_h %>
         <% preserved = preserved.merge(next_premium) %>
-        <%= link_to (premium_on ? '✕ Только премиум' : 'Только премиум'),
-                    properties_path(preserved),
-                    class: "px-5 py-2 text-sm tracking-wider border #{premium_on ? 'bg-amber-900/30 text-amber-200 border-amber-700/60' : 'bg-transparent text-muted-foreground border-border hover:border-amber-700/60 hover:text-amber-200'} transition-colors" %>
+        <% premium_count = @facet_counts[:premium].to_i %>
+        <%= link_to properties_path(preserved),
+                    class: "px-5 py-2 text-sm tracking-wider border #{premium_on ? 'bg-amber-900/30 text-amber-200 border-amber-700/60' : 'bg-transparent text-muted-foreground border-border hover:border-amber-700/60 hover:text-amber-200'} transition-colors inline-flex items-center gap-2" do %>
+          <span><%= premium_on ? '✕ Только премиум' : 'Только премиум' %></span>
+          <% if premium_count.positive? %>
+            <span class="text-[10px] opacity-70 tracking-wide"><%= premium_count %></span>
+          <% end %>
+        <% end %>
       </div>
     </div>
 
@@ -136,9 +154,14 @@
     <div class="flex flex-wrap items-center gap-2 mb-16 -mt-4">
       <span class="text-xs tracking-[0.3em] text-muted-foreground mr-2">РАЙОНЫ:</span>
       <% chip_slugs.each do |slug| %>
-        <%= link_to RyazanDistricts.name_for(slug),
-                    buy_district_landing_path(type: 'kvartira', district: slug),
-                    class: "px-3 py-1 text-xs tracking-wider border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors" %>
+        <% count = @facet_counts.dig(:district, slug).to_i %>
+        <%= link_to buy_district_landing_path(type: 'kvartira', district: slug),
+                    class: "px-3 py-1 text-xs tracking-wider border border-border #{count.positive? ? 'text-muted-foreground hover:border-foreground hover:text-foreground' : 'text-muted-foreground/40 border-border/40'} transition-colors inline-flex items-center gap-1.5" do %>
+          <span><%= RyazanDistricts.name_for(slug) %></span>
+          <% if count.positive? %>
+            <span class="text-[10px] opacity-60"><%= count %></span>
+          <% end %>
+        <% end %>
       <% end %>
       <%= link_to "Все районы →", buy_landing_path(type: 'kvartira'),
                   class: "px-3 py-1 text-xs tracking-[0.2em] text-foreground hover:text-muted-foreground transition-colors" %>

@@ -53,6 +53,13 @@ class PropertiesController < ApplicationController
     stats_scope = @premium_filter_active ? @q.result.premium : @q.result
     @total_count = stats_scope.count
     @avg_price = stats_scope.average(:price)
+
+    # Facet counts для UI-badges рядом с filter chips (district + deal_type +
+    # premium). Считаем по Property.on_site (global) — даёт user'у absolute
+    # сигнал «N объектов в категории», независимо от текущих filters. Без
+    # этого user догадывается есть ли смысл кликнуть «Канищево» (3) vs
+    # «Семчино» (0).
+    @facet_counts = build_facet_counts
     
     # Track search event
     track_event('properties_searched', {
@@ -457,7 +464,38 @@ class PropertiesController < ApplicationController
   def set_per_page
     @per_page = per_page
   end
-  
+
+  # Facet counts для /properties index — рядом с filter chips. Возвращает:
+  #   { deal_type: { 'all' => N, 'sale' => N, 'rent' => N },
+  #     premium:   N,
+  #     district:  { 'centr' => N, 'kanishchevo' => N, ... } }
+  #
+  # 3 SQL запроса: deal_type group, premium count, district group.
+  # Performance: одно on_site scope, чистые AR aggregations — ~10ms total.
+  def build_facet_counts
+    base = Property.on_site
+
+    deal_type_grouped = base.group(:deal_type).count
+    deal_types = {
+      'all'  => deal_type_grouped.values.sum,
+      'sale' => deal_type_grouped['sale'].to_i,
+      'rent' => deal_type_grouped['rent'].to_i
+    }
+
+    district_grouped = base.where.not(district: nil).group(:district).count
+    chip_slugs = %w[centr kanishchevo dashkovo-pesochnya priokskiy semchino gorroshcha kalnoe solotcha]
+    districts = chip_slugs.index_with do |slug|
+      aliases = RyazanDistricts.aliases_for(slug) || []
+      aliases.sum { |a| district_grouped[a].to_i }
+    end
+
+    {
+      deal_type: deal_types,
+      premium:   base.premium.count,
+      district:  districts
+    }
+  end
+
   # ============================================
   # STRONG PARAMETERS
   # ============================================
