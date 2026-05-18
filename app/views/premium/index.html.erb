@@ -110,8 +110,11 @@
   <section class="px-6 lg:px-12 pb-16 bg-background">
     <div class="max-w-7xl mx-auto">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <%# Only the first card gets fetchpriority=high (Lighthouse best-practice:
+            один LCP candidate). Cards 2-3 above-fold browsers preload автоматически.
+            Fixed 2026-05-19 — было idx < 3, что давало 3 conflicting high-priority. %>
         <% @premium_properties.each_with_index do |property, idx| %>
-          <%= render 'properties/property_card', property: property, priority_image: idx < 3 %>
+          <%= render 'properties/property_card', property: property, priority_image: idx.zero? %>
         <% end %>
       </div>
 

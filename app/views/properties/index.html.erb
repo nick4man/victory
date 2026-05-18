@@ -196,13 +196,14 @@
 
     <% if @properties.any? %>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        <%# Mark the first two cards as priority — they are the LCP slot on
-            mobile (single column) and tablet (two columns). property_picture
-            translates priority_image: true into loading="eager" +
-            fetchpriority="high", which Yandex MatrixNet weights heavily for
-            mobile ranking. %>
+        <%# Mark ONLY the first card as priority (LCP candidate per
+            Lighthouse best-practice: `fetchpriority="high"` должен быть
+            на одной image — две конкурируют за bandwidth и замедляют LCP).
+            Previously i<2 → fixed 2026-05-19 после CWV audit findings.
+            Cards 2-3 (above mobile fold) автоматически грузятся eager по
+            умолчанию browser preload. Cards 4+ lazy. %>
         <% @properties.each_with_index do |property, i| %>
-          <%= render "property_card", property: property, priority_image: i < 2 %>
+          <%= render "property_card", property: property, priority_image: i.zero? %>
         <% end %>
       </div>
 
