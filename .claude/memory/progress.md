@@ -89,6 +89,28 @@
 
 **Tag:** `phase-4-mvp` → `8cf3f54`. Release notes: `.claude/docs/phase-4-mvp-release-notes.md`. Design doc: `.claude/docs/phase-4-design.md`.
 
+## Phase 5 + Phase 6 — SHIPPED (18.05.26)
+
+Tag `phase-5-6-complete`. Master-plan Phase 5 (Q&A) и Phase 6 (digests) — done.
+
+**Phase 5 — Staff Q&A enhancements (7.5 уже был built, Phase 5 это polish):**
+
+| Sub | Содержание |
+|---|---|
+| 5.1 | `ChatTools::Staff::DocumentChecklistStatus` — new staff chat_tool, connects Phase 4 ↔ Phase 5 (agent в qna спрашивает «сколько документов на лиде #145?») |
+| 5.2 | Cross-topic @mention — QnaHandler.applies? расширен на любой supergroup topic (кроме quiet whitelist announcements/flood) |
+| 5.3 | `Telegram::WorkBot::DmQnaHandler` — staff Q&A в DM. Trigger: private chat + known active staff + non-command text. Wired в InboundProcessor после Router |
+| 5.4 | BotCommandLog audit для QnA — dual-track (StaffQuestion + BotCommandLog), args=JSON {question, used_tools, confidence, escalated} |
+
+**Phase 6 — Digests:**
+
+| Sub | Содержание |
+|---|---|
+| Morning digest (Mon-Fri 08:00) | Kpi::MorningDigest per-staff: greeting + overdue/due today/open leads/SLA warnings + вчерашний recap. Kpi::MorningDigestJob skips weekend. |
+| Weekly report (Monday 10:00) | Kpi::WeeklyReport agency-level: header period, totals (tasks/leads/conversion + delta %), top-3 medals, bottom (overdue + suspicious), trend vs prev week. DM managers + directors. |
+
+Existing digests (sохраняются): kpi_agency_digest (18:00 evening), pinned dispatcher_digest (any task mutation), kpi_staff_snapshot (23:55).
+
 ## Phase 4 — COMPLETE (8 / 8 sub-phases)
 
 Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verified
