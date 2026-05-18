@@ -81,6 +81,15 @@ module DocumentIntake
       # 6. Staff notification (DLP-safe)
       notify_staff(doc)
 
+      # 7. Phase 4G — auto-match к DocumentRequirement (если есть открытый DR
+      # того же kind на lead'е через inquiry/property). Closes loop A6 OCR →
+      # DocumentChecklist status. Soft-fail на ошибке (notify_staff уже sent).
+      auto_match_result = DocumentChecklist::AutoMatchToRequirement.call(client_document: doc)
+      Rails.logger.info(
+        "[ParserJob] doc ##{doc.id} auto-match → #{auto_match_result.status}" \
+        "#{auto_match_result.reason ? " (#{auto_match_result.reason})" : ''}"
+      )
+
       Rails.logger.info("[ParserJob] doc ##{doc.id} kind=#{doc.document_kind} ocr_completed confidence=#{parsed[:confidence]}")
     end
 
