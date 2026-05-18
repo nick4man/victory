@@ -28,25 +28,45 @@ module Telegram
       end
 
       def call
-        # Phase 13 Iter 42 — reject reassignment on closed lead.
-        # До фикса /assign на closed_won/closed_lost проходил, re-fire'ил
-        # transfer_client в Topnlab на уже закрытом order'е → CRM state confusion.
-        if @lead.current_stage.to_s.start_with?('closed_')
-          return Result.new(false, "Лид уже закрыт (#{@lead.current_stage}). " \
-                                   'Возврат — ручной через manager в Topnlab.')
+        # Phase 13 Iter 44 — wrap всю операцию в @lead.with_lock чтобы
+        # два manager'а параллельно (один /assign в группе, другой inline
+        # picker в той же секунде) не fire'или transfer_client дважды и
+        # не race'или friends на assigned_to / assigned_at.
+        #
+        # Lock держится через TG calls (~200-500ms) — trade-off correctness
+        # > latency. Если станет узким — narrow lock как Phase 9 Iter 13.
+        result = nil
+        @lead.with_lock do
+          @lead.reload
+
+          # Phase 13 Iter 42 — reject reassignment on closed lead (after reload).
+          if @lead.current_stage.to_s.start_with?('closed_')
+            result = Result.new(false, "Лид уже закрыт (#{@lead.current_stage}). " \
+                                       'Возврат — ручной через manager в Topnlab.')
+            next # exit with_lock block
+          end
+
+          # Phase 11 Iter 22 — capture previous assignee для notification.
+          # После reload — это уже актуальное состояние внутри лока.
+          prev_assignee = @lead.assigned_to
+
+          # Phase 13 Iter 44 — idempotency: если другой race-winner уже
+          # назначил на того же agent, пропускаем mutation + side effects.
+          if prev_assignee && prev_assignee.id == @assignee.id
+            result = Result.new(true, 'уже назначен (race-winner отработал первым)')
+            next
+          end
+
+          @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
+          push_to_crm                    # internally gated by linked_to_crm? + crm_id
+          update_anchor_card!
+          notify_assignee                # DM new сотруднику всегда
+          notify_previous_assignee(prev_assignee) if prev_assignee && prev_assignee.id != @assignee.id
+
+          warn = @assignee.linked_to_crm? ? nil : 'без CRM sync (нет topnlab_user_id)'
+          result = Result.new(true, warn)
         end
-
-        # Phase 11 Iter 22 — capture previous assignee для notification (reassignment).
-        prev_assignee = @lead.assigned_to
-
-        @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
-        push_to_crm                    # internally gated by linked_to_crm? + crm_id
-        update_anchor_card!
-        notify_assignee                # DM new сотруднику всегда
-        notify_previous_assignee(prev_assignee) if prev_assignee && prev_assignee.id != @assignee.id
-
-        warn = @assignee.linked_to_crm? ? nil : 'без CRM sync (нет topnlab_user_id)'
-        Result.new(true, warn)
+        result
       end
 
       private
