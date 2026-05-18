@@ -52,7 +52,36 @@ module Yandex
           order_by: 'TOTAL_SHOWS',
           query_indicator: %w[TOTAL_SHOWS TOTAL_CLICKS AVG_SHOW_POSITION AVG_CLICK_POSITION],
           limit: @top_queries_limit
-        )&.dig('queries')
+        )&.dig('queries'),
+        # Phase A SEO data-driven layer — verified against live API (18.05.2026):
+        # - /diagnostics/ returns {problems: {KEY: {severity, state, last_state_update}}},
+        #   NOT {diagnostics: [...]}. Normalised here для easier consumption.
+        # - /recrawl/queue/quota/ возвращает {daily_quota, quota_remainder} (см.
+        #   WebmasterRecrawlService).
+        # - popular-pages, indexing-history, external-links-history endpoint paths
+        #   we tried initially → HTTP 404. Either renamed/moved в Yandex API v4 OR
+        #   нужен другой metric pathway (через query-history endpoint). Out of scope
+        #   для этого snapshot; добавим если найдём правильные paths.
+        diagnostics: diagnostics_normalised,
+        recrawl_quota: safe_get('recrawl/quota/')
+      }
+    end
+
+    private
+
+    # Yandex Diagnostics API возвращает hash вида:
+    #   {"problems": {"FAVICON_PROBLEM": {"severity":"RECOMMENDATION","state":"PRESENT"}, ...}}
+    # Normalise в array собранных «active» проблем + аналитический summary.
+    def diagnostics_normalised
+      raw = safe_get('diagnostics/')
+      return nil unless raw
+
+      problems = raw['problems'] || {}
+      active = problems.select { |_, v| v['state'] == 'PRESENT' }
+      {
+        active_count: active.size,
+        total_keys: problems.size,
+        active: active.map { |key, v| { key: key, severity: v['severity'], updated: v['last_state_update'] } }
       }
     end
 

@@ -49,7 +49,10 @@ class SitemapController < ApplicationController
   # `hidden_at IS NOT NULL` (admin-hidden articles). Без visible они бы
   # попадали в news-sitemap → conflict с noindex на самой странице.
   def news
-    @articles = Article.published.visible
+    # Pure news-feed: category=news ONLY. Guides/market/investment statьи
+    # бывают long-form, не подходят под Google/Я.News spec (свежие новости).
+    # Если попадут — Я.News crawler downgrade'нет наш news-sitemap reliability.
+    @articles = Article.published.visible.in_category('news')
                        .where('published_at >= ?', 2.days.ago)
                        .order(published_at: :desc)
                        .limit(1000)

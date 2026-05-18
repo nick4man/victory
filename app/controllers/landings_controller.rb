@@ -181,15 +181,34 @@ class LandingsController < ApplicationController
                else
                  "в #{declination_in(city_name)} и #{declination_region_prep(region)}"
                end
+    # Avg price/m² — динамический live signal в meta description для CTR-boost.
+    # Я. читает meta description при ranking и часто использует как SERP snippet
+    # → конкретные цифры > generic «подбор». Computed только если N≥5
+    # (иначе число шумное и звучит подозрительно низко/высоко).
+    price_clause = avg_price_clause_for_meta
     if @modifier == 'premium'
       "#{@h1}. Премиум-сегмент от АН «Виктори»: #{@total_count} актуальных " \
-        "#{@type_def[:plural_genitive]} #{location}, объекты от 15 млн ₽, " \
+        "#{@type_def[:plural_genitive]} #{location}#{price_clause}, объекты от 15 млн ₽, " \
         'банки-партнёры, юридическое сопровождение, конфиденциальность. Звоните: ' + AgencyInfo::PHONE_PRIMARY
     else
       "#{@h1}. Подбор #{@type_def[:plural_genitive]} #{location} от АН «Виктори» — " \
-        "#{@total_count} актуальных предложений, реальные фото, выезд агента, " \
+        "#{@total_count} актуальных предложений#{price_clause}, реальные фото, выезд агента, " \
         'сопровождение сделки. Звоните: ' + AgencyInfo::PHONE_PRIMARY
     end
+  end
+
+  def avg_price_clause_for_meta
+    return '' if @total_count.to_i < 5
+
+    avg = build_scope.where('price_per_sqm > 0').average(:price_per_sqm)
+    return '' if avg.blank? || avg <= 0
+
+    # Округляем до тысяч (signal accurate но не показывает копейки)
+    formatted = ActionController::Base.helpers.number_with_delimiter(avg.round(-3).to_i, delimiter: ' ')
+    ", средняя цена #{formatted} ₽/м²"
+  rescue StandardError => e
+    Rails.logger.warn("[LandingsController] avg_price_clause failed: #{e.class}: #{e.message}")
+    ''
   end
 
   # «Рязань» → «Рязани», «Москва» → «Москве», «Санкт-Петербург» →

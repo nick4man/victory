@@ -81,9 +81,59 @@ namespace :kpi do
                end
     puts "  Pillar 2 (deep expertise): case studies count = #{cs_label}"
     puts "  Pillar 3 (AI×human): LLM-generated meta = #{with_seo} properties"
+
+    puts ''
+    puts '### Yandex SEO'
+    yandex_section
   rescue StandardError => e
     warn "[kpi:phase_a] ERROR: #{e.class}: #{e.message}"
     warn e.backtrace.first(5).join("\n")
     exit 1
+  end
+
+  # Yandex section — uses 12h cached snapshot (WebmasterSummaryService),
+  # НЕ дёргает live API при каждом kpi run. Gracefully degrades если token
+  # отсутствует или Yandex недоступен.
+  def yandex_section
+    unless defined?(Yandex::WebmasterSummaryService)
+      puts '  (Yandex::WebmasterSummaryService not loaded — skip)'
+      return
+    end
+
+    data = Yandex::WebmasterSummaryService.call
+    summary = data[:summary] || {}
+    sqi = summary['sqi']
+    searchable = summary['searchable_pages_count']
+    excluded = summary['excluded_pages_count']
+    puts "  SQI (ИКС):                     #{sqi || '?'}"
+    puts "  searchable pages:              #{searchable || '?'}"
+    puts "  excluded pages:                #{excluded || '?'}"
+
+    queries = data[:top_queries] || []
+    if queries.any?
+      total_shows = queries.sum { |q| q.dig('indicators', 'TOTAL_SHOWS').to_i }
+      total_clicks = queries.sum { |q| q.dig('indicators', 'TOTAL_CLICKS').to_i }
+      avg_ctr = total_shows.positive? ? (total_clicks.to_f / total_shows * 100).round(2) : 0
+      puts "  top-#{queries.size} queries: shows=#{total_shows} clicks=#{total_clicks} CTR=#{avg_ctr}%"
+    end
+
+    ops_count = begin
+                  defined?(Yandex::WebmasterOpportunitiesService) ? Yandex::WebmasterOpportunitiesService.call.size : '(service not loaded)'
+                rescue StandardError
+                  '?'
+                end
+    puts "  optimisation opportunities:    #{ops_count}"
+
+    quota = data[:recrawl_quota]
+    if quota
+      puts "  recrawl quota:                 #{quota['quota_remainder']}/#{quota['daily_quota']} remaining"
+    end
+
+    diag = data[:diagnostics]
+    if diag.is_a?(Hash) && diag[:active_count]
+      puts "  active diagnostics issues:     #{diag[:active_count]}/#{diag[:total_keys]}"
+    end
+  rescue StandardError => e
+    puts "  (Yandex section error: #{e.class}: #{e.message})"
   end
 end

@@ -54,6 +54,11 @@ class Article < ApplicationRecord
   after_commit :enqueue_embedding, on: %i[create update]
   after_commit :notify_indexnow_on_publish, on: %i[create update],
                if: :should_notify_indexnow?
+  # Yandex.Webmaster recrawl — параллельно с IndexNow (Я. поддерживает оба
+  # signal'a; recrawl быстрее заходит в Я.indexer чем IndexNow в их pipeline,
+  # IndexNow зато feed'ит Bing/Brave/DDG). Тот же should_notify guard.
+  after_commit :notify_yandex_recrawl_on_publish, on: %i[create update],
+               if: :should_notify_indexnow?
 
   scope :published,    -> { where.not(published_at: nil).where('published_at <= ?', Time.current) }
   scope :recent,       -> { order(published_at: :desc) }
@@ -203,11 +208,16 @@ class Article < ApplicationRecord
   end
 
   def notify_indexnow_on_publish
-    url = Rails.application.routes.url_helpers.article_url(
-      self,
-      host: 'victory62.org',
-      protocol: 'https'
+    Seo::IndexNowNotifyJob.perform_later(url: public_url)
+  end
+
+  def notify_yandex_recrawl_on_publish
+    Yandex::RecrawlUrlJob.perform_later(url: public_url)
+  end
+
+  def public_url
+    Rails.application.routes.url_helpers.article_url(
+      self, host: 'victory62.org', protocol: 'https'
     )
-    Seo::IndexNowNotifyJob.perform_later(url: url)
   end
 end
