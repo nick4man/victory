@@ -50,10 +50,28 @@ module Telegram
 
       private
 
+      # Phase 12 Iter 35 — stage_history audit-trail в metadata.
+      # До этого фикса /stage никак не записывал «кто перевёл лид в показ».
+      # Manager A пишет /stage показ, через час Manager B видит лид в стадии
+      # «показ» — никакой visibility кто/когда. Иterа 39 капает на 20 entries
+      # последних для anti-bloat.
       def apply_local!
+        prev = @lead.current_stage
         attrs = { current_stage: @new }
         attrs[:first_contact_at] = Time.current if @new == 'first_contact' && @lead.first_contact_at.nil?
         attrs[:closed_at]        = Time.current if @new.start_with?('closed_')
+
+        # Append stage_history entry (capped at 20 в Iter 39).
+        history = Array(@lead.metadata['stage_history'])
+        history << {
+          'at' => Time.current.iso8601,
+          'from' => prev,
+          'to' => @new,
+          'by' => @actor&.mention || 'system'
+        }
+        history = history.last(20) # safety cap
+        attrs[:metadata] = @lead.metadata.merge('stage_history' => history)
+
         @lead.update!(attrs)
       end
 
