@@ -37,6 +37,8 @@ module Telegram
           ['/assign',       :manager,  'Назначить агента (reply на якорь): <code>/assign @username</code>'],
           ['/stage',        :manager,  'Сменить стадию лида: <code>/stage показ</code>'],
           ['/note',         :manager,  'Заметка в CRM по лиду (reply на якорь): <code>/note текст</code>'],
+          ['/doc',          :staff,
+           'Документы (reply на якорь): <code>/doc passport+ snils?</code> или <code>/doc</code> для status'],
           ['/task',         :manager,  'Одиночная задача: <code>/task dd.MM.yy текст</code>'],
           ['/close',        :manager,
            'Закрыть лид: <code>/close выиграно</code> или <code>/close проиграно причина:цена</code>'],

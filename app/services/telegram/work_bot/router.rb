@@ -32,6 +32,7 @@ module Telegram
         '/assign' => Commands::Assign,
         '/stage' => Commands::Stage,
         '/note' => Commands::Note,
+        '/doc' => Commands::Doc,
         '/close' => Commands::Close,
         '/task' => Commands::Task,
         '/done' => Commands::Done,
