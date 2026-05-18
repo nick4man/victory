@@ -72,6 +72,7 @@ module Topnlab
           property.update_columns(owner_user_id: user.id)
           linked        += 1
           created_users += 1 if was_created
+          send_cabinet_invitation(user, property)
         else
           skipped += 1
           Rails.logger.info(
@@ -121,6 +122,32 @@ module Topnlab
       # Race condition — another process created the same user between find and create.
       user = find_existing_user(email, phone)
       [user, false]
+    end
+
+    # D3 — Send «вам привязан объект» invitation email with magic-link.
+    #
+    # Idempotency:
+    #   - Only sends if user.email.present? (magic-link login requires email)
+    #   - Only sends if user.invited_at.nil? (no retroactive spam to existing
+    #     14 from-CRM users — their invited_at remains NULL forever)
+    #
+    # Failure-isolation: rescue StandardError so a mailer failure (SMTP down,
+    # template bug) never breaks the outer property sync loop. The outer loop
+    # already rescues at line 82, but we want a more granular catch so a
+    # single bad email doesn't abort the property linkage itself.
+    def send_cabinet_invitation(user, property)
+      return unless user.respond_to?(:invited_at)
+      return unless user.email.present?
+      return unless user.invited_at.nil?
+
+      CabinetInvitationMailer.invite(user, property).deliver_later
+      user.update_columns(invited_at: Time.current)
+      Rails.logger.info(
+        "[OwnerSync] invitation queued user=#{user.id} email=#{user.email[0..2]}*** " \
+        "property=#{property.id}"
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
     end
 
     # Find existing User for matching Topnlab client. Critical safety rules:
