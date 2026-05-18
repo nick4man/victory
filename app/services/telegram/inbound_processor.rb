@@ -26,6 +26,11 @@ module Telegram
     end
 
     def call
+      # Phase 9 Iter 8 — Webhook dedup на update_id. Telegram retries на
+      # HTTP 5xx, без guard'а один update обработался бы дважды. RecordNotUnique
+      # → :duplicate без side-effects.
+      return :duplicate if duplicate_update?
+
       # Phase 2 — callback_query от inline-кнопок маршрутизации/назначения/спама.
       # Должен сработать ДО разбора message — это отдельный тип апдейта без message.
       if (cb = @update['callback_query'])
@@ -119,6 +124,29 @@ module Telegram
     end
 
     private
+
+    # Phase 9 Iter 8 — Idempotency через unique update_id.
+    # Возвращает true если уже видели этот update (duplicate webhook retry).
+    # Ловим оба пути: ActiveRecord::RecordInvalid (uniqueness validator) +
+    # ActiveRecord::RecordNotUnique (DB-level race на параллельных webhook'ах).
+    def duplicate_update?
+      update_id = @update['update_id']
+      return false if update_id.blank?
+
+      TelegramWebhookAck.create!(update_id: update_id, processed_at: Time.current)
+      false
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+      # RecordInvalid fires если уже есть запись (uniqueness validation, локаль-нейтрально).
+      # RecordNotUnique fires только при race (DB-level unique constraint).
+      if e.is_a?(ActiveRecord::RecordInvalid) && !e.record.errors.of_kind?(:update_id, :taken)
+        raise # прочая ошибка валидации — не dedup
+      end
+      Rails.logger.info("[InboundProcessor] duplicate update_id=#{update_id} skipped")
+      true
+    rescue StandardError => e
+      Rails.logger.warn("[InboundProcessor#duplicate_update?] #{e.class}: #{e.message}")
+      false
+    end
 
     # @return [Boolean] true если запись TelegramUser нашлась и была обновлена
     def touch_known_user_meta(msg)

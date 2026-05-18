@@ -73,3 +73,9 @@ voice_archive_cleanup:
   class: "Nextcloud::VoiceArchiveCleanupJob"
   queue: scheduled
   description: "Phase 7.8b — soft-delete voice-archive DocumentUpload > 90 дней (NC файлы остаются)"
+
+telegram_webhook_acks_cleanup:
+  cron: "30 4 * * SUN"     # weekly Sunday 04:30 Moscow
+  class: "Telegram::WebhookAcksCleanupJob"
+  queue: scheduled
+  description: "Phase 9 Iter 8 — delete TelegramWebhookAck rows > 7 дней"
