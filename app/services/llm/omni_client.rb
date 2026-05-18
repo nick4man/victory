@@ -156,18 +156,38 @@ module Llm
       {}
     end
 
-    # Cost-analytics: counter per chain/model. Best-effort — never breaks
-    # the request if Redis is unavailable.
+    # Phase 9 Iter 10 — Tier weights для cost-tracking. Целые числа —
+    # эстимация относительной стоимости (free=0, cheap=1, paid=10) НЕ
+    # реальные деньги. Для USD/RUB трекинга нужен отдельный mapping.
+    TIER_WEIGHTS = {
+      'free' => 0,
+      'cheap' => 1,    # gemini-flash, groq llama, cerebras, gemini pro
+      'paid' => 5,     # haiku
+      'premium' => 50  # sonnet, gpt-4o-class
+    }.freeze
+
+    # Cost-analytics: per-chain/model counter + weighted total. Best-effort.
     def increment_metric(chain, model)
       return unless defined?(Rails) && Rails.application
 
       redis = redis_connection
       return unless redis
 
-      key = "omni:#{chain}:#{model}"
-      redis.incr(key)
+      redis.incr("omni:#{chain}:#{model}")
+      redis.incrby("omni:cost:#{chain}", tier_weight(model))
     rescue StandardError => e
       Rails.logger.debug("[Llm::OmniClient] metric increment skipped: #{e.message}")
+    end
+
+    # Возвращает relative cost weight для модели. Free models = 0 (no cost).
+    # Paid Haiku = 5, Sonnet = 50 (10× ratio). Точные cost-эстимации НЕ цель.
+    def tier_weight(model)
+      m = model.to_s
+      return TIER_WEIGHTS['free']    if m.include?(':free')
+      return TIER_WEIGHTS['premium'] if m.match?(/sonnet|gpt-4o|claude-opus/i)
+      return TIER_WEIGHTS['paid']    if m.match?(/haiku|deepseek-v4-flash/i)
+
+      TIER_WEIGHTS['cheap']
     end
 
     def redis_connection

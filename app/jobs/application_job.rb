@@ -29,15 +29,45 @@ class ApplicationJob < ActiveJob::Base
     Rails.logger.info "Completed job: #{job.class.name}"
   end
   
+  # Phase 9 Iter 10 — Critical job classes which warrant DM Оксане on failure.
+  # Не для всех jobs (например cleanup tasks — noise) — только для тех что
+  # затрагивают live customer/staff flow.
+  CRITICAL_JOB_CLASSES = %w[
+    DocumentIntake::ParserJob
+    Kpi::StaffSnapshotJob
+    Kpi::AgencyDigestJob
+    DispatcherDigestRefreshJob
+    TaskBatchExpiryJob
+  ].freeze
+
   rescue_from(StandardError) do |exception|
     Rails.logger.error "Job failed: #{self.class.name}"
     Rails.logger.error "Error: #{exception.message}"
     Rails.logger.error exception.backtrace.join("\n")
-    
-    # Send error notification if needed
-    # ErrorNotificationService.new(exception, job: self).notify
-    
+
+    notify_directors_on_critical_failure(exception) if CRITICAL_JOB_CLASSES.include?(self.class.name)
+
     raise exception
+  end
+
+  private
+
+  def notify_directors_on_critical_failure(exception)
+    text = "⚠️ <b>Background job failed</b>\n" \
+           "Class: <code>#{self.class.name}</code>\n" \
+           "Args: <code>#{arguments.inspect.to_s.truncate(200)}</code>\n" \
+           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>\n\n" \
+           '<i>Phase 9 Iter 10 — automatic alert.</i>'
+
+    client = Telegram::Client.new
+    TelegramUser.directors.active.find_each do |director|
+      chat_id = director.dm_chat_id || director.tg_user_id
+      next if chat_id.blank?
+
+      client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+    rescue StandardError => e
+      Rails.logger.warn("[ApplicationJob#notify_critical_failure] DM to #{director.mention}: #{e.message}")
+    end
   end
 end
 
