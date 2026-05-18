@@ -46,7 +46,9 @@ module Telegram
           ['/learn_topic',  :manager, 'Привязать thread_id к ключу топика: <code>/learn_topic apartments</code>'],
 
           # Director (Phase 7.2+) — для voice-distribution
-          ['🎙 Voice DM', :director, 'Запиши голосовое в DM боту — бот распарсит и предложит подтвердить пакет задач']
+          ['🎙 Voice DM', :director, 'Запиши голосовое в DM боту — бот распарсит и предложит подтвердить пакет задач'],
+          ['/resume_batch', :director,
+           'Переоткрыть expired/cancelled пакет: <code>/resume_batch 42</code> (окно 24ч)']
         ].freeze
 
         def handle
