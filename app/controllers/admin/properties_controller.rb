@@ -46,6 +46,24 @@ module Admin
       redirect_back fallback_location: admin_properties_path
     end
 
+    # Visibility-decoupling Layer 4 — admin explicit hide (force_archive).
+    # Симметричный к force_publish: TRUE → property снимается с сайта
+    # независимо от CRM state. Используется для жалоб клиентов / спорных
+    # сделок / любого manual reason скрыть от посетителей.
+    def toggle_force_archive
+      property = Property.unscoped.find(params[:id])
+      new_value = !property.force_archive
+      property.update_columns(force_archive: new_value, updated_at: Time.current)
+      property.publish_if_ready!
+
+      flash[:notice] = if new_value
+                         "##{property.id}: СКРЫТ с сайта (force_archive)"
+                       else
+                         "##{property.id}: показан на сайте"
+                       end
+      redirect_back fallback_location: admin_properties_path
+    end
+
     # A7 Phase 3 trigger UI: admin requests client signature on agency contract.
     # GET — form view; POST — invoke Cabinet::ConsentRequester + auto-create
     # client User by email if not found.

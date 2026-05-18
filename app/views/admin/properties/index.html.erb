@@ -45,7 +45,8 @@
               <th class="text-left p-3">Тип / Сделка</th>
               <th class="text-left p-3">Адрес</th>
               <th class="text-right p-3">Цена</th>
-              <th class="text-left p-3">Статус</th>
+              <th class="text-left p-3">Сайт</th>
+              <th class="text-left p-3">Внешн. реклама</th>
               <th class="text-left p-3">Причина</th>
               <th class="text-right p-3">Действия</th>
             </tr>
@@ -62,14 +63,29 @@
                 </td>
                 <td class="p-3 text-foreground"><%= p.address.to_s.truncate(50) %></td>
                 <td class="p-3 text-right"><%= number_with_delimiter(p.price.to_i, delimiter: ' ') %> ₽</td>
-                <td class="p-3">
-                  <% if p.status_active? && p.published_at %>
-                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">ОНЛАЙН</span>
+                <td class="p-3 whitespace-nowrap">
+                  <% if p.force_archive %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/50">🚫 СКРЫТ</span>
+                  <% elsif p.status_active? && p.published_at %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">🟢 ОНЛАЙН</span>
                   <% elsif p.force_publish %>
-                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">FORCE</span>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">⚡ FORCE</span>
                   <% else %>
-                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-rose-500/10 text-rose-300 border border-rose-500/30"><%= p.status.upcase %></span>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-zinc-500/10 text-zinc-400 border border-zinc-500/30">⚪ <%= p.status.upcase %></span>
                   <% end %>
+                </td>
+                <td class="p-3 whitespace-nowrap text-[11px]">
+                  <%# CRM outbound state — informational, не блокер для сайта %>
+                  <% if p.in_ad? %>
+                    <span class="px-1.5 py-0.5 bg-blue-500/10 text-blue-300 border border-blue-500/30">Avito/Cian</span>
+                  <% end %>
+                  <% if p.in_mls? %>
+                    <span class="px-1.5 py-0.5 bg-purple-500/10 text-purple-300 border border-purple-500/30">MLS</span>
+                  <% end %>
+                  <% unless p.in_ad? || p.in_mls? %>
+                    <span class="text-muted-foreground/60">— (только сайт)</span>
+                  <% end %>
+                  <div class="text-muted-foreground/50 mt-1 text-[9px]">deal: <code><%= p.deal_state || 'nil' %></code></div>
                 </td>
                 <td class="p-3 text-muted-foreground text-[11px] max-w-md">
                   <% if blockers.empty? %>
@@ -79,16 +95,27 @@
                   <% end %>
                 </td>
                 <td class="p-3 text-right space-x-2 whitespace-nowrap">
-                  <% if p.force_publish %>
-                    <%= button_to 'Выключить force', toggle_force_publish_admin_property_path(p),
+                  <% if p.force_archive %>
+                    <%= button_to 'Показать на сайте', toggle_force_archive_admin_property_path(p),
                           method: :post,
-                          data: { turbo_confirm: 'Выключить принудительную публикацию?' },
-                          class: 'text-[11px] text-amber-300 hover:opacity-80 inline-block' %>
+                          data: { turbo_confirm: "Снять force_archive с «#{p.address.to_s.truncate(40)}»?" },
+                          class: 'text-[11px] text-rose-300 hover:opacity-80 inline-block' %>
                   <% else %>
-                    <%= button_to 'Force publish →', toggle_force_publish_admin_property_path(p),
+                    <% if p.force_publish %>
+                      <%= button_to 'Выключить force', toggle_force_publish_admin_property_path(p),
+                            method: :post,
+                            data: { turbo_confirm: 'Выключить принудительную публикацию?' },
+                            class: 'text-[11px] text-amber-300 hover:opacity-80 inline-block' %>
+                    <% else %>
+                      <%= button_to 'Force publish →', toggle_force_publish_admin_property_path(p),
+                            method: :post,
+                            data: { turbo_confirm: blockers.any? ? "Опубликовать «#{p.address.to_s.truncate(40)}» в обход CRM (#{blockers.join(', ')})?" : nil },
+                            class: 'text-[11px] text-foreground hover:opacity-80 inline-block' %>
+                    <% end %>
+                    <%= button_to 'Скрыть с сайта', toggle_force_archive_admin_property_path(p),
                           method: :post,
-                          data: { turbo_confirm: blockers.any? ? "Опубликовать «#{p.address.to_s.truncate(40)}» в обход CRM (#{blockers.join(', ')})?" : nil },
-                          class: 'text-[11px] text-foreground hover:opacity-80 inline-block' %>
+                          data: { turbo_confirm: "Скрыть «#{p.address.to_s.truncate(40)}» с сайта (force_archive)?" },
+                          class: 'text-[11px] text-rose-400 hover:opacity-80 inline-block' %>
                   <% end %>
                   <% if p.external_id && (crm_url = ENV['TOPNLAB_CRM_URL']).present? %>
                     <a href="<%= crm_url.chomp('/') %>/realty/<%= p.external_id %>" target="_blank" rel="noopener" class="text-[11px] text-muted-foreground hover:text-foreground">CRM →</a>
