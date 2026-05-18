@@ -213,6 +213,12 @@ class Property < ApplicationRecord
   validates :address, presence: true
   validates :deal_type, presence: true
   validates :status, presence: true
+  # Defensive: после фикса Topnlab rooms encoding (commit 89b92b6) studio = 0,
+  # max документированный enum-id = 205 («20+ ком.») → cap at 20. Без этого
+  # cap garage/commerce mis-mapping мог бы записать rooms=999 (rare, но
+  # observed случай rooms=20 от 'rooms_for_room' edge).
+  validates :rooms, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 20 },
+                     allow_nil: true
 
   validate :floor_must_be_valid
   validate :areas_must_be_consistent
