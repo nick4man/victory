@@ -123,14 +123,29 @@ module Topnlab
       [user, false]
     end
 
+    # Find existing User for matching Topnlab client. Critical safety rules:
+    #
+    # 1. Exclude soft-deleted: `User.unscoped` (default_scope filter bypass)
+    #    приводил к match'у на deleted users → broken cabinet linkage.
+    #    Используем `User.where(deleted_at: nil)` explicit.
+    #
+    # 2. Role filter: phone-last-10 collision — admin/agent users могут иметь
+    #    placeholder phones (+79991234567 etc.). Без role-filter sync будет
+    #    линковать Property к admin User вместо нового client. Ограничиваем
+    #    phone-lookup до `role IN (client, agent)`. Email-match безопаснее —
+    #    real клиент не должен иметь admin@ email, но даже там фильтруем.
     def find_existing_user(email, phone)
+      scope = User.where(deleted_at: nil, active: true)
       if email.present?
-        user = User.unscoped.find_by('LOWER(email) = ?', email.downcase)
+        user = scope.find_by('LOWER(email) = ?', email.downcase)
         return user if user
       end
       if phone.present?
         digits = phone.gsub(/\D/, '').last(10)
-        return User.unscoped.where('phone LIKE ?', "%#{digits}").first if digits.length >= 10
+        return nil if digits.length < 10
+        # Phone match — только среди real clients/agents, не admin'ов.
+        return scope.where(role: %i[client agent])
+                    .where('phone LIKE ?', "%#{digits}").first
       end
       nil
     end
