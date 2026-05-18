@@ -435,6 +435,15 @@ class PropertiesController < ApplicationController
   
   def set_property
     @property = Property.friendly.find(params[:id])
+    # SEO: 301 на канонический slug если зашли через старый (history) slug.
+    # friendly_id `:history` обеспечивает 200-resolve по старым URL, но
+    # Yandex/Google ожидают rel=canonical или явный 301. Делаем 301 чтобы
+    # crawler обновил индекс на новый URL после rooms-mapping fix 18.05.26.
+    if (request.get? || request.head?) &&
+       params[:id].to_s != @property.slug.to_s &&
+       @property.slug.present?
+      redirect_to(url_for(action: action_name, id: @property.slug, only_path: false), status: :moved_permanently)
+    end
   rescue ActiveRecord::RecordNotFound
     redirect_to properties_path, alert: 'Объект недвижимости не найден'
   end
