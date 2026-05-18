@@ -30,6 +30,13 @@ module Admin
   class HealthController < ApplicationController
     include AdminTokenAuth
 
+    # Phase 12 Iter 37 — JSON 401 на auth fail вместо HTML 302 redirect.
+    # AdminTokenAuth#require_admin_access по умолчанию redirect_to new_user_session_path,
+    # что monitoring/curl-клиентам приходит как 302 + Location header — они не
+    # понимают что это auth fail. Для JSON health endpoint должны вернуть 401 JSON.
+    skip_before_action :require_admin_access
+    before_action :require_admin_or_json_401
+
     def show
       checks      = run_checks
       bot         = bot_state
@@ -49,6 +56,17 @@ module Admin
     end
 
     private
+
+    # Phase 12 Iter 37 — auth gate подходящий monitoring-клиентам.
+    # Если token/cookie ОК — пропускаем; иначе 401 JSON со внятным error.
+    def require_admin_or_json_401
+      return if admin_authenticated?
+
+      render json: {
+        status: 'unauthorized',
+        error: 'admin token required — pass ?token=... or login via /admin/login'
+      }, status: :unauthorized
+    end
 
     def run_checks
       {
