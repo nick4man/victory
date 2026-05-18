@@ -27,6 +27,13 @@ module Telegram
           return skip('no assignee')             if @lead.assigned_to.blank?
           return skip('lead closed')             if @lead.closed_at.present?
 
+          # Phase 11 Iter 21 — Stale assignee guard. Если assignee стал inactive
+          # (offboard / leave) — DM ему отправляется effectively in void.
+          # Skip DM + escalate в #ДИСПЕТЧЕРСКУЮ с просьбой manager reassign.
+          if @lead.assigned_to.status != 'active'
+            return skip("assignee #{@lead.assigned_to.mention} status=#{@lead.assigned_to.status} → escalate to manager")
+          end
+
           post_in_dispatcher
           dm_assignee
           mark_pinged!
