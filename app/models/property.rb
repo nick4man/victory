@@ -633,8 +633,15 @@ class Property < ApplicationRecord
     # Admin explicit hide — highest priority.
     return false if respond_to?(:force_archive) && force_archive
 
-    # Admin explicit show — bypasses gate, для misaligned CRM cases.
+    # Admin explicit show — bypasses gate, для misaligned CRM cases
+    # (включая отсутствие подписанного договора — admin принимает риск).
     return true if respond_to?(:force_publish) && force_publish
+
+    # D5 gate — agency contract должен быть signed. Existing 26 published
+    # properties grandfather'ed через migration (signed_agency_contract_at
+    # = published_at). New properties — требуется client sign через
+    # /cabinet/listings/:id/consent.
+    return false unless respond_to?(:signed_agency_contract_at) && signed_agency_contract_at.present?
 
     # Site visibility = deal lifecycle + content quality. `in_ad` НЕ
     # включён здесь — outbound advertising state не должен скрывать
@@ -658,6 +665,9 @@ class Property < ApplicationRecord
     return [] if ready_for_site?
 
     reasons = []
+    if respond_to?(:signed_agency_contract_at) && signed_agency_contract_at.blank?
+      reasons << 'нет подписанного договора с владельцем (нужен ConsentRequester flow)'
+    end
     unless PUBLISHABLE_DEAL_STATES.include?(deal_state.to_s)
       reasons << "deal_state=#{deal_state.inspect} (нужно: #{PUBLISHABLE_DEAL_STATES.join('/')} — agent должен пометить «в рекламе»)"
     end

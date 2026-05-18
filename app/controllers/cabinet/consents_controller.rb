@@ -67,7 +67,13 @@ class Cabinet::ConsentsController < ApplicationController
 
     ActiveRecord::Base.transaction do
       consent.save!
-      @property.update!(status: :active, published_at: Time.current)
+      # D5 gate: signed_agency_contract_at — required для ready_for_site?
+      # Set вместе с status:active чтобы publish_if_ready? проходил.
+      @property.update!(
+        status: :active,
+        published_at: Time.current,
+        signed_agency_contract_at: consent.signed_at
+      )
     end
 
     # Side-effects (after-commit to ensure they fire even if email/TG fails)
