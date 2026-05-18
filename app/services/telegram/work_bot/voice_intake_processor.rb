@@ -47,7 +47,10 @@ module Telegram
       private
 
       def process_voice(tg_user, file_id)
-        reply('🎙 Слушаю и парсю…') # quick ack — Whisper занимает 5-15 сек
+        # Phase 10 Iter 15 — store ack message_id чтобы edit-in-place, не
+        # плодить «Слушаю» + «error» как два отдельных reply.
+        ack_msg = reply('🎙 Слушаю и парсю…') # ~5-15s до transcribe done
+        @ack_message_id = ack_msg&.dig('message_id')
 
         transcription = Telegram::WorkBot::VoiceTranscriber.call(file_id: file_id)
         return transcription_failed(transcription) unless transcription.success?
@@ -128,6 +131,23 @@ module Telegram
                              parse_mode: 'HTML')
       end
 
+      # Phase 10 Iter 15 — edit-in-place вместо нового reply. Если ack_message_id
+      # есть — обновляем «🎙 Слушаю…» на result. Иначе fallback на reply.
+      # Используется ТОЛЬКО для error paths (transcription_failed/hallucinated/
+      # low_confidence/extract_failed/no_tasks). Success path уже отрабатывает
+      # через TaskBatchConfirmer preview — отдельное сообщение.
+      def edit_ack(text)
+        return reply(text) if @ack_message_id.blank?
+
+        @client.edit_message_text(text,
+                                  chat_id: @msg.dig('chat', 'id'),
+                                  message_id: @ack_message_id,
+                                  parse_mode: 'HTML')
+      rescue Telegram::Client::Error => e
+        Rails.logger.warn("[VoiceIntakeProcessor] edit_ack failed, fallback to reply: #{e.message}")
+        reply(text)
+      end
+
       def refuse_unregistered(from_id)
         reply('🚫 Голосовое распределение доступно только сотрудникам АН. ' \
               'Напиши /whoami email@victory.ru.')
@@ -142,36 +162,36 @@ module Telegram
       end
 
       def transcription_failed(t)
-        reply("⚠️ Не удалось распознать голос: #{t.error.to_s.truncate(120)}")
+        edit_ack("⚠️ Не удалось распознать голос: #{t.error.to_s.truncate(120)}")
         :transcribe_failed
       end
 
       def hallucinated
-        reply('⚠️ Распознанный текст похож на шум/тишину (типовая Whisper-галлюцинация). ' \
-              'Попробуй ещё раз, держи микрофон ближе.')
+        edit_ack('⚠️ Распознанный текст похож на шум/тишину (типовая Whisper-галлюцинация). ' \
+                 'Попробуй ещё раз, держи микрофон ближе.')
         :hallucinated
       end
 
       def too_short
-        reply('⚠️ Сообщение слишком короткое для распределения. Произнеси задачи целиком.')
+        edit_ack('⚠️ Сообщение слишком короткое для распределения. Произнеси задачи целиком.')
         :transcript_too_short
       end
 
       def low_confidence(t)
-        reply("⚠️ Низкая уверенность распознавания (confidence=#{t.confidence.to_s.truncate(8)}). " \
-              'Повтори чётче или напиши текстом.')
+        edit_ack("⚠️ Низкая уверенность распознавания (confidence=#{t.confidence.to_s.truncate(8)}). " \
+                 'Повтори чётче или напиши текстом.')
         :low_confidence
       end
 
       def extract_failed(e)
-        reply("⚠️ Не удалось распарсить задачи: #{e.error.to_s.truncate(120)}")
+        edit_ack("⚠️ Не удалось распарсить задачи: #{e.error.to_s.truncate(120)}")
         :extract_failed
       end
 
       def no_tasks(e)
         msg = '⚠️ LLM не нашёл задач в сообщении.'
         msg += "\nУточнения: #{e.uncertainties.join('; ')}" if e.uncertainties.any?
-        reply(msg)
+        edit_ack(msg)
         :no_tasks
       end
     end
