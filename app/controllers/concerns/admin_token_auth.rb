@@ -44,12 +44,17 @@ module AdminTokenAuth
     return if admin_authenticated?
 
     # Devise user signed in but lacks the admin role → forbidden, not login.
-    if respond_to?(:user_signed_in?) && user_signed_in?
+    # Phase 14 Iter 55 — explicit Devise-feature check (раньше respond_to?
+    # без guard на defined?(Devise) — хрупко если Devise полностью выпилен).
+    if devise_present? && user_signed_in?
       flash[:alert] = 'Доступ только для администраторов.'
       redirect_to dashboard_root_path and return
     end
 
-    redirect_to new_user_session_path, alert: 'Нужен вход с правами администратора.'
+    # Phase 14 Iter 55 — fallback path: если Devise off (нет new_user_session_path),
+    # redirect на /admin/login (наш token-cookie вход через AdminTokenAuth).
+    sign_in_path = devise_present? && respond_to?(:new_user_session_path) ? new_user_session_path : '/admin/login'
+    redirect_to sign_in_path, alert: 'Нужен вход с правами администратора.'
   end
 
   # Two acceptance paths kept side-by-side so server-to-server callers
@@ -63,8 +68,18 @@ module AdminTokenAuth
     false
   end
 
+  # Phase 14 Iter 55 — single source of truth для Devise feature-flag.
+  # Используется в require_admin_access + devise_admin? чтобы избегать
+  # nil-deref если Devise частично выпилен. CLAUDE.md фиксирует «Devise
+  # отключен» — concern должен gracefully работать с обеих сторон.
+  def devise_present?
+    defined?(Devise) && respond_to?(:user_signed_in?)
+  end
+
   def devise_admin?
-    respond_to?(:current_user) && current_user.respond_to?(:admin?) && current_user.admin?
+    return false unless devise_present?
+
+    current_user.respond_to?(:admin?) && current_user&.admin?
   end
 
   def token_admin?
