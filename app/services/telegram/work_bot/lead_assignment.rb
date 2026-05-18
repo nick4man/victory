@@ -28,10 +28,14 @@ module Telegram
       end
 
       def call
+        # Phase 11 Iter 22 — capture previous assignee для notification (reassignment).
+        prev_assignee = @lead.assigned_to
+
         @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
         push_to_crm                    # internally gated by linked_to_crm? + crm_id
         update_anchor_card!
-        notify_assignee                # DM сотруднику всегда, независимо от CRM
+        notify_assignee                # DM new сотруднику всегда
+        notify_previous_assignee(prev_assignee) if prev_assignee && prev_assignee.id != @assignee.id
 
         warn = @assignee.linked_to_crm? ? nil : 'без CRM sync (нет topnlab_user_id)'
         Result.new(true, warn)
@@ -91,6 +95,25 @@ module Telegram
           )
           notify_crm_failure!
         end
+      end
+
+      # Phase 11 Iter 22 — DM previous assignee при reassignment.
+      def notify_previous_assignee(prev)
+        chat_id = prev.dm_chat_id || prev.tg_user_id
+        return if chat_id.blank?
+
+        title = Telegram::TopicRegistry.title(@lead.anchor_topic_key) || @lead.anchor_topic_key
+        meta  = @lead.metadata || {}
+        name  = meta['name'].to_s.presence || 'клиент'
+
+        text = "🔄 <b>Лид передан</b> · #{escape(name)}\n" \
+               "Топик: ##{escape(title)}\n" \
+               "Новый ответственный: #{@assignee.mention}\n" \
+               "Передал: #{@actor.mention} в #{Formatters::DateFormat.fmt_dt(Time.current)}"
+
+        @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+      rescue Telegram::Client::Error => e
+        Rails.logger.warn("[LeadAssignment] DM previous #{prev.mention} failed: #{e.message}")
       end
 
       def notify_crm_failure!
