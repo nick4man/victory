@@ -153,9 +153,11 @@ JOBS: tuple[JobSpec, ...] = (
     ),
     JobSpec(
         name="fetch_bank_offers",
-        trigger=CronTrigger(day_of_week="mon,wed,fri", hour=4, minute=0, timezone="UTC"),
+        # Option C Track 3 — daily refresh (was Mon/Wed/Fri). User mandate:
+        # «Важна актуальность данных каждый день» для /services/mortgage.
+        trigger=CronTrigger(hour=4, minute=0, timezone="UTC"),  # 07:00 МСК daily
         runner=_run_fetch_bank_offers,
-        description="Ипотечные ставки топ-банков (Mon/Wed/Fri)",
+        description="Ипотечные ставки топ-банков (daily 07:00 МСК)",
     ),
     JobSpec(
         name="competitor_refresh",
