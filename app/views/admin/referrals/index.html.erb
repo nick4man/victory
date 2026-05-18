@@ -1,0 +1,133 @@
+<% content_for :title, 'Реферралы партнёрам — Админ — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">АДМИН</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      Рефералы партнёрам
+    </h1>
+    <p class="text-sm text-muted-foreground mb-8 max-w-2xl">
+      Лиды на чужие объекты (показанные через /external-listings/). Pending — ждёт ручного review.
+      После forward → партнёр работает с клиентом. Closed_won — мы получаем commission.
+    </p>
+
+    <%# Counts strip %>
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-10">
+      <% [
+        [:all,         'Всего',       'border-border bg-card'],
+        [:pending,     '⏳ В ожидании', 'border-amber-500/40 bg-amber-500/5'],
+        [:forwarded,   '↗ Передано',   'border-blue-500/40 bg-blue-500/5'],
+        [:in_progress, '⚙ В работе',  'border-blue-500/40 bg-blue-500/5'],
+        [:closed_won,  '✓ Закрыто',   'border-emerald-500/40 bg-emerald-500/5'],
+        [:closed_lost, '✗ Отказ',     'border-rose-500/40 bg-rose-500/5']
+      ].each do |key, label, css| %>
+        <div class="border px-4 py-3 <%= css %>">
+          <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground"><%= label %></p>
+          <p class="text-2xl font-light text-foreground mt-1"><%= @counts[key] %></p>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Filters %>
+    <nav class="mb-6 flex flex-wrap gap-2 text-xs tracking-[0.3em]">
+      <%
+        active_status = params[:status]
+        active_agency = params[:agency_id].to_i
+      %>
+      <%= link_to 'ВСЕ', admin_referrals_path,
+            class: "px-4 py-2 border #{active_status.blank? && active_agency.zero? ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <% Referral::STATUSES.each do |st| %>
+        <%= link_to st.upcase, admin_referrals_path(status: st),
+              class: "px-4 py-2 border #{active_status == st ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <% end %>
+      <span class="px-2 self-center text-muted-foreground">·</span>
+      <%= link_to 'Расчёты по агентствам →', settlements_admin_referrals_path,
+            class: 'px-4 py-2 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/10 transition-colors' %>
+    </nav>
+
+    <% if @agencies.any? %>
+      <nav class="mb-8 flex flex-wrap gap-2 text-[11px] tracking-[0.2em] uppercase">
+        <span class="self-center text-muted-foreground/70 mr-2">Агентство:</span>
+        <% @agencies.each do |ag| %>
+          <%= link_to "#{ag.name} (#{ag.referrals.count})",
+                      admin_referrals_path(agency_id: ag.id, status: params[:status]),
+                      class: "px-3 py-1 border #{active_agency == ag.id ? 'bg-foreground text-background' : 'border-border/60 text-muted-foreground hover:text-foreground'} transition-colors" %>
+        <% end %>
+      </nav>
+    <% end %>
+
+    <% if @referrals.empty? %>
+      <p class="text-sm text-muted-foreground tracking-wide">
+        Реферралов в этой выборке нет.
+      </p>
+    <% else %>
+      <div class="space-y-3">
+        <% @referrals.each do |r| %>
+          <%
+            inq = r.inquiry
+            el  = r.external_listing
+            ag  = r.partner_agency
+            status_css = case r.status
+                        when 'pending'     then 'border-amber-500/40 bg-amber-500/5 text-amber-200'
+                        when 'forwarded',
+                             'in_progress' then 'border-blue-500/40 bg-blue-500/5 text-blue-200'
+                        when 'closed_won'  then 'border-emerald-500/40 bg-emerald-500/5 text-emerald-200'
+                        when 'closed_lost' then 'border-rose-500/40 bg-rose-500/5 text-rose-200'
+                        else 'border-border bg-card text-muted-foreground'
+                        end
+          %>
+          <article class="border border-border bg-card p-5 grid grid-cols-1 lg:grid-cols-[140px_2fr_1fr_auto] gap-4 items-start">
+            <div>
+              <span class="inline-block px-2 py-1 text-[10px] tracking-[0.2em] uppercase border <%= status_css %>">
+                <%= r.status %>
+              </span>
+              <p class="text-[10px] tracking-[0.2em] text-muted-foreground/70 uppercase mt-2">
+                <%= I18n.l(r.created_at, format: '%d.%m.%y %H:%M') rescue r.created_at %>
+              </p>
+            </div>
+
+            <div>
+              <p class="text-sm font-medium text-foreground mb-1">
+                <% if inq %><%= inq.name.presence || 'Клиент' %><% else %>—<% end %>
+                <% if inq&.phone.present? %>
+                  <span class="text-xs text-muted-foreground">· <%= inq.phone %></span>
+                <% end %>
+              </p>
+              <% if el %>
+                <p class="text-xs text-muted-foreground truncate">
+                  <%= link_to el.title.to_s.truncate(80), external_listing_path(el),
+                              class: 'underline hover:text-foreground', target: '_blank', rel: 'noopener' %>
+                </p>
+                <p class="text-[11px] text-muted-foreground/70 mt-0.5">
+                  <%= el.address.to_s.truncate(80) %>
+                </p>
+              <% end %>
+            </div>
+
+            <div>
+              <p class="text-[11px] tracking-[0.2em] uppercase text-muted-foreground">Агентство</p>
+              <p class="text-sm text-foreground"><%= ag.name %></p>
+              <p class="text-[11px] text-muted-foreground/80 mt-1">
+                <% if r.commission_rate.present? %>ставка: <%= (r.commission_rate * 100).to_i %>%<% end %>
+                <% if r.estimated_commission.to_f.positive? %>
+                  · ≈ <%= number_with_delimiter(r.estimated_commission.to_i, delimiter: ' ') %> ₽
+                <% end %>
+              </p>
+            </div>
+
+            <div>
+              <%= link_to 'Открыть →', admin_referral_path(r),
+                          class: 'text-xs tracking-[0.3em] uppercase text-foreground hover:text-muted-foreground transition-colors whitespace-nowrap' %>
+            </div>
+          </article>
+        <% end %>
+      </div>
+
+      <% if @referrals.respond_to?(:total_pages) && @referrals.total_pages > 1 %>
+        <div class="mt-10 flex justify-center">
+          <%= paginate @referrals, theme: 'plain' rescue nil %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</section>

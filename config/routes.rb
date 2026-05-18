@@ -644,6 +644,18 @@ Rails.application.routes.draw do
     # Bank-rates scraper dashboard — last snapshot + diff vs previous.
     get  'bank_rates',         to: 'bank_rates#index',   as: :bank_rates
     post 'bank_rates/refresh', to: 'bank_rates#refresh', as: :refresh_bank_rates
+
+    # Phase 3 MLS/YRL — referral lifecycle management.
+    resources :referrals, only: %i[index show] do
+      member do
+        post :forward
+        post :close_won
+        post :close_lost
+      end
+      collection do
+        get :settlements
+      end
+    end
   end
 
   # ============================================

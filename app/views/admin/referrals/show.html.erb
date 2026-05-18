@@ -1,0 +1,229 @@
+<% content_for :title, "Реферал ##{@referral.id} — Админ — АН Виктори" %>
+
+<%
+  r   = @referral
+  inq = r.inquiry
+  el  = r.external_listing
+  ag  = r.partner_agency
+  meta = r.metadata || {}
+%>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <%= link_to '← Все рефералы', admin_referrals_path,
+          class: 'text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors uppercase mb-4 inline-block' %>
+
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3 mt-4">РЕФЕРАЛ #<%= r.id %></p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2">
+      <% if inq %><%= inq.name.presence || 'Клиент' %><% else %>—<% end %>
+      <span class="text-muted-foreground/70 text-2xl">→</span>
+      <%= ag.name %>
+    </h1>
+
+    <%
+      status_css = case r.status
+                   when 'pending'     then 'border-amber-500/50 bg-amber-500/10 text-amber-200'
+                   when 'forwarded',
+                        'in_progress' then 'border-blue-500/50 bg-blue-500/10 text-blue-200'
+                   when 'closed_won'  then 'border-emerald-500/50 bg-emerald-500/10 text-emerald-200'
+                   when 'closed_lost' then 'border-rose-500/50 bg-rose-500/10 text-rose-200'
+                   else 'border-border bg-card text-muted-foreground'
+                   end
+    %>
+    <span class="inline-block px-3 py-1.5 text-xs tracking-[0.3em] uppercase border <%= status_css %> mb-10">
+      <%= r.status %>
+    </span>
+
+    <%# Two-column: facts + actions %>
+    <div class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-12">
+      <%# LEFT: facts %>
+      <div class="space-y-8">
+        <%# Client %>
+        <section class="border border-border bg-card p-6">
+          <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Клиент</h2>
+          <% if inq %>
+            <dl class="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+              <dt class="text-muted-foreground">Имя</dt>
+              <dd class="text-foreground"><%= inq.name.presence || '—' %></dd>
+              <dt class="text-muted-foreground">Телефон</dt>
+              <dd class="text-foreground">
+                <% if inq.phone.present? %>
+                  <%= link_to inq.phone, "tel:#{inq.phone.gsub(/\D/, '')}",
+                              class: 'underline hover:text-muted-foreground' %>
+                <% else %>—<% end %>
+              </dd>
+              <dt class="text-muted-foreground">Email</dt>
+              <dd class="text-foreground"><%= inq.email.presence || '—' %></dd>
+              <dt class="text-muted-foreground">Сообщение</dt>
+              <dd class="text-foreground whitespace-pre-wrap"><%= inq.message.presence || '—' %></dd>
+              <dt class="text-muted-foreground">Получено</dt>
+              <dd class="text-foreground"><%= I18n.l(inq.created_at, format: '%d.%m.%y %H:%M') rescue inq.created_at %></dd>
+            </dl>
+          <% else %>
+            <p class="text-sm text-muted-foreground">Inquiry удалён (soft-deleted).</p>
+          <% end %>
+        </section>
+
+        <%# Объект (external) %>
+        <% if el %>
+          <section class="border border-border bg-card p-6">
+            <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Объект (источник)</h2>
+            <dl class="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+              <dt class="text-muted-foreground">Название</dt>
+              <dd class="text-foreground">
+                <%= link_to el.title.to_s.truncate(120), external_listing_path(el),
+                            class: 'underline hover:text-muted-foreground', target: '_blank', rel: 'noopener' %>
+              </dd>
+              <dt class="text-muted-foreground">Адрес</dt>
+              <dd class="text-foreground"><%= el.address.to_s.truncate(120) %></dd>
+              <dt class="text-muted-foreground">Цена</dt>
+              <dd class="text-foreground">
+                <%= el.price.to_f.positive? ? "#{number_with_delimiter(el.price.to_i, delimiter: ' ')} ₽" : '—' %>
+              </dd>
+              <dt class="text-muted-foreground">Источник</dt>
+              <dd class="text-foreground"><%= el.source %> · <%= el.source_id %></dd>
+              <% if el.url.present? %>
+                <dt class="text-muted-foreground">Originating URL</dt>
+                <dd class="text-foreground truncate">
+                  <%= link_to el.url, el.url, class: 'underline text-xs hover:text-muted-foreground',
+                              target: '_blank', rel: 'noopener nofollow' %>
+                </dd>
+              <% end %>
+            </dl>
+          </section>
+        <% end %>
+
+        <%# Партнёрское агентство %>
+        <section class="border border-border bg-card p-6">
+          <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Партнёр</h2>
+          <dl class="grid grid-cols-[140px_1fr] gap-y-2 text-sm">
+            <dt class="text-muted-foreground">Агентство</dt>
+            <dd class="text-foreground"><%= ag.name %> <span class="text-muted-foreground/60">(<%= ag.slug %>)</span></dd>
+            <dt class="text-muted-foreground">Статус</dt>
+            <dd class="text-foreground"><%= ag.status %></dd>
+            <dt class="text-muted-foreground">Контакт</dt>
+            <dd class="text-foreground">
+              <%= ag.contact_person.presence || '—' %>
+              <% if ag.contact_phone.present? %>
+                · <%= link_to ag.contact_phone, "tel:#{ag.contact_phone.gsub(/\D/, '')}",
+                              class: 'underline hover:text-muted-foreground' %>
+              <% end %>
+              <% if ag.contact_email.present? %>
+                · <%= mail_to ag.contact_email, class: 'underline hover:text-muted-foreground' %>
+              <% end %>
+            </dd>
+            <dt class="text-muted-foreground">Базовая ставка</dt>
+            <dd class="text-foreground">
+              <% if ag.default_commission_rate.present? %><%= (ag.default_commission_rate * 100).to_i %>%<% else %>—<% end %>
+            </dd>
+            <dt class="text-muted-foreground">Settlement</dt>
+            <dd class="text-foreground"><%= ag.settlement_terms.presence || '—' %></dd>
+            <% if ag.notes.present? %>
+              <dt class="text-muted-foreground">Заметка</dt>
+              <dd class="text-foreground/80 text-xs"><%= ag.notes %></dd>
+            <% end %>
+          </dl>
+        </section>
+
+        <%# Финансы %>
+        <section class="border border-border bg-card p-6">
+          <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Комиссия</h2>
+          <dl class="grid grid-cols-[200px_1fr] gap-y-2 text-sm">
+            <dt class="text-muted-foreground">Ставка по этому реф.</dt>
+            <dd class="text-foreground">
+              <% if r.commission_rate.present? %><%= (r.commission_rate * 100).to_i %>%<% else %>—<% end %>
+            </dd>
+            <dt class="text-muted-foreground">Ожидаемая (estimate)</dt>
+            <dd class="text-foreground">
+              <% if r.estimated_commission.to_f.positive? %>
+                ≈ <%= number_with_delimiter(r.estimated_commission.to_i, delimiter: ' ') %> ₽
+              <% else %>—<% end %>
+            </dd>
+            <dt class="text-muted-foreground">Финальная (factual)</dt>
+            <dd class="text-foreground">
+              <% if r.final_commission_amount.present? %>
+                <strong><%= number_with_delimiter(r.final_commission_amount.to_i, delimiter: ' ') %> ₽</strong>
+              <% else %>—<% end %>
+            </dd>
+          </dl>
+        </section>
+
+        <%# Audit / timeline %>
+        <section class="border border-border bg-card p-6">
+          <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">История</h2>
+          <ul class="text-xs space-y-2 text-muted-foreground">
+            <li>• <strong class="text-foreground"><%= I18n.l(r.created_at, format: '%d.%m.%y %H:%M') rescue r.created_at %></strong> — создано (auto)</li>
+            <% if r.forwarded_at %>
+              <li>• <strong class="text-foreground"><%= I18n.l(r.forwarded_at, format: '%d.%m.%y %H:%M') rescue r.forwarded_at %></strong>
+                — передано <span class="text-foreground/70">(<%= meta['forward_channel'] || '?' %>)</span></li>
+            <% end %>
+            <% if r.closed_at %>
+              <li>• <strong class="text-foreground"><%= I18n.l(r.closed_at, format: '%d.%m.%y %H:%M') rescue r.closed_at %></strong>
+                — закрыто <span class="text-foreground/70">(<%= r.status %><% if meta['lost_reason'] %>: <%= meta['lost_reason'] %><% end %>)</span></li>
+            <% end %>
+          </ul>
+          <% if r.agent_notes.present? %>
+            <p class="mt-4 text-xs text-foreground whitespace-pre-wrap border-t border-border pt-3">
+              <%= r.agent_notes %>
+            </p>
+          <% end %>
+        </section>
+      </div>
+
+      <%# RIGHT: actions (sticky) %>
+      <aside class="lg:sticky lg:top-24 self-start space-y-4">
+        <% if r.status == 'pending' %>
+          <%# Forward — выбрать канал %>
+          <div class="border border-blue-500/40 bg-blue-500/5 p-5">
+            <p class="text-xs tracking-[0.3em] text-blue-200 uppercase mb-3">Передать партнёру</p>
+            <%= form_with url: forward_admin_referral_path(r), method: :post, local: true, class: 'space-y-3' do %>
+              <select name="channel" class="w-full bg-transparent border border-border text-foreground px-3 py-2 text-sm">
+                <option value="email">Email</option>
+                <option value="telegram">Telegram</option>
+                <option value="call">Звонок</option>
+                <option value="whatsapp">WhatsApp</option>
+                <option value="other">Другое</option>
+              </select>
+              <%= submit_tag 'Передать', class: 'w-full px-4 py-2.5 bg-blue-500/30 text-blue-100 text-xs tracking-[0.3em] uppercase hover:bg-blue-500/40 transition-colors cursor-pointer' %>
+            <% end %>
+          </div>
+        <% end %>
+
+        <% if r.open? %>
+          <%# Close won %>
+          <div class="border border-emerald-500/40 bg-emerald-500/5 p-5">
+            <p class="text-xs tracking-[0.3em] text-emerald-200 uppercase mb-3">Сделка успешна</p>
+            <%= form_with url: close_won_admin_referral_path(r), method: :post, local: true, class: 'space-y-3' do %>
+              <label class="text-[10px] tracking-[0.2em] text-muted-foreground uppercase block">Финальная комиссия, ₽</label>
+              <%= number_field_tag :final_commission_amount, r.estimated_commission.to_i,
+                    min: 0, required: true,
+                    class: 'w-full bg-transparent border border-border text-foreground px-3 py-2 text-sm' %>
+              <%= submit_tag 'Закрыть won', class: 'w-full px-4 py-2.5 bg-emerald-500/30 text-emerald-100 text-xs tracking-[0.3em] uppercase hover:bg-emerald-500/40 transition-colors cursor-pointer',
+                    data: { confirm: 'Подтверждаешь сумму?' } %>
+            <% end %>
+          </div>
+
+          <%# Close lost %>
+          <div class="border border-rose-500/40 bg-rose-500/5 p-5">
+            <p class="text-xs tracking-[0.3em] text-rose-200 uppercase mb-3">Закрыть lost</p>
+            <%= form_with url: close_lost_admin_referral_path(r), method: :post, local: true, class: 'space-y-3' do %>
+              <%= text_field_tag :reason, nil,
+                    placeholder: 'Причина (бюджет / передумал / etc.)',
+                    class: 'w-full bg-transparent border border-border text-foreground px-3 py-2 text-sm' %>
+              <%= submit_tag 'Закрыть lost', class: 'w-full px-4 py-2.5 bg-rose-500/30 text-rose-100 text-xs tracking-[0.3em] uppercase hover:bg-rose-500/40 transition-colors cursor-pointer' %>
+            <% end %>
+          </div>
+        <% end %>
+
+        <% unless r.open? %>
+          <div class="border border-border bg-card p-5">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-2">Реферал закрыт</p>
+            <p class="text-sm text-foreground">
+              Статус «<%= r.status %>». Дальнейшие изменения — только через rails console (manual override).
+            </p>
+          </div>
+        <% end %>
+      </aside>
+    </div>
+  </div>
+</section>

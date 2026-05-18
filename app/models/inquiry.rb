@@ -51,6 +51,9 @@ class Inquiry < ApplicationRecord
   # Phase 2 MLS/YRL: client interested в чужом объекте (показывается через
   # /external-listings/:id). Используется в Phase 3 для auto-create Referral.
   belongs_to :external_listing, optional: true
+  # Phase 3: auto-created при Inquiry с external_listing_id через
+  # Referrals::AutoCreator (after_commit hook).
+  has_one :referral, dependent: :destroy
 
   has_many :messages, dependent: :nullify
   # NOTE: `has_many :activities, as: :trackable` removed — Activity model
@@ -115,6 +118,10 @@ class Inquiry < ApplicationRecord
   after_create :send_notifications
   after_create :sync_to_crm
   after_create_commit :push_to_work_bot
+  # Phase 3 MLS/YRL — если Inquiry на чужой объект, заводим pending
+  # Referral для commission tracking. Service сам решает что делать
+  # если PartnerAgency не найдена (логирует, не падает).
+  after_create_commit :auto_create_referral
   after_update :notify_status_change, if: :saved_change_to_status?
 
   # ============================================
@@ -426,6 +433,17 @@ class Inquiry < ApplicationRecord
   end
 
   private
+
+  # Phase 3: auto-create Referral если Inquiry на чужой объект.
+  # Service-level — Inquiry не должен знать business logic matching
+  # ExternalListing → PartnerAgency. Failure isolation: не ломаем
+  # save flow если service падает.
+  def auto_create_referral
+    return if external_listing_id.blank?
+    Referrals::AutoCreator.call(self)
+  rescue StandardError => e
+    Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+  end
 
   # Callbacks
   def normalize_phone

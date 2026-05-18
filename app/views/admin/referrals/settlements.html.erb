@@ -1,0 +1,96 @@
+<% content_for :title, 'Расчёты с партнёрами — Админ — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-7xl mx-auto">
+    <%= link_to '← Все рефералы', admin_referrals_path,
+          class: 'text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors uppercase inline-block mb-6' %>
+
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">АДМИН</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      Расчёты с партнёрами
+    </h1>
+    <p class="text-sm text-muted-foreground mb-10 max-w-2xl">
+      Сводка по агентствам — сколько лидов передали, сколько закрыто won/lost, сколько денег
+      реально получили vs ожидаем. Используй для reconciliation в конце месяца.
+    </p>
+
+    <%
+      total_earned   = @settlements.sum { |s| s[:earned_total].to_f }
+      total_pending  = @settlements.sum { |s| s[:pending_estimate].to_f }
+      total_open     = @settlements.sum { |s| s[:pending] + s[:forwarded] + s[:in_progress] }
+      total_closed   = @settlements.sum { |s| s[:closed_won] + s[:closed_lost] }
+    %>
+
+    <%# Top-line aggregates %>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+      <div class="border border-emerald-500/40 bg-emerald-500/5 px-4 py-3">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Получено</p>
+        <p class="text-2xl font-light text-foreground mt-1"><%= number_with_delimiter(total_earned.to_i, delimiter: ' ') %> ₽</p>
+      </div>
+      <div class="border border-amber-500/40 bg-amber-500/5 px-4 py-3">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">В ожидании</p>
+        <p class="text-2xl font-light text-foreground mt-1">≈ <%= number_with_delimiter(total_pending.to_i, delimiter: ' ') %> ₽</p>
+      </div>
+      <div class="border border-border bg-card px-4 py-3">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Открытых</p>
+        <p class="text-2xl font-light text-foreground mt-1"><%= total_open %></p>
+      </div>
+      <div class="border border-border bg-card px-4 py-3">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Закрытых</p>
+        <p class="text-2xl font-light text-foreground mt-1"><%= total_closed %></p>
+      </div>
+    </div>
+
+    <%# Per-agency table %>
+    <% if @settlements.empty? || @settlements.all? { |s| (s[:pending] + s[:forwarded] + s[:in_progress] + s[:closed_won] + s[:closed_lost]).zero? } %>
+      <p class="text-sm text-muted-foreground tracking-wide">
+        Реферралов ещё нет — статистика появится после первого Inquiry на /external-listings/*.
+      </p>
+    <% else %>
+      <div class="border border-border bg-card overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+            <tr class="border-b border-border">
+              <th class="text-left px-4 py-3">Агентство</th>
+              <th class="text-right px-4 py-3">⏳</th>
+              <th class="text-right px-4 py-3">↗</th>
+              <th class="text-right px-4 py-3">⚙</th>
+              <th class="text-right px-4 py-3 text-emerald-300">✓ won</th>
+              <th class="text-right px-4 py-3 text-rose-300">✗ lost</th>
+              <th class="text-right px-4 py-3 text-emerald-300">Получено</th>
+              <th class="text-right px-4 py-3 text-amber-300">Ожидаем</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @settlements.each do |s| %>
+              <% next if (s[:pending] + s[:forwarded] + s[:in_progress] + s[:closed_won] + s[:closed_lost]).zero? %>
+              <tr class="border-b border-border/40 text-foreground">
+                <td class="px-4 py-3">
+                  <%= link_to s[:agency].name, admin_referrals_path(agency_id: s[:agency].id),
+                              class: 'underline hover:text-muted-foreground' %>
+                  <span class="text-xs text-muted-foreground/60 ml-1">(<%= s[:agency].slug %>)</span>
+                </td>
+                <td class="px-4 py-3 text-right text-muted-foreground"><%= s[:pending] %></td>
+                <td class="px-4 py-3 text-right text-muted-foreground"><%= s[:forwarded] %></td>
+                <td class="px-4 py-3 text-right text-muted-foreground"><%= s[:in_progress] %></td>
+                <td class="px-4 py-3 text-right text-emerald-300 font-medium"><%= s[:closed_won] %></td>
+                <td class="px-4 py-3 text-right text-rose-300/80"><%= s[:closed_lost] %></td>
+                <td class="px-4 py-3 text-right text-foreground font-medium">
+                  <%= s[:earned_total].positive? ? "#{number_with_delimiter(s[:earned_total].to_i, delimiter: ' ')} ₽" : '—' %>
+                </td>
+                <td class="px-4 py-3 text-right text-amber-300/80">
+                  <%= s[:pending_estimate].positive? ? "≈ #{number_with_delimiter(s[:pending_estimate].to_i, delimiter: ' ')} ₽" : '—' %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="mt-6 text-xs text-muted-foreground leading-relaxed">
+        ⏳ pending · ↗ forwarded · ⚙ in_progress · «Ожидаем» — estimate из (listing.price × rate)
+        по open referrals. Точные суммы появляются после `close_won` с фактической комиссией.
+      </p>
+    <% end %>
+  </div>
+</section>
