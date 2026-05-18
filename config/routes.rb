@@ -573,6 +573,9 @@ Rails.application.routes.draw do
       end
     end
 
+    # Phase 11 Iter 30 — operational health JSON для oncall / monitoring.
+    get :health, to: 'health#show'
+
     # Article moderation + manual creation. Token-guarded via AdminTokenAuth.
     resources :articles do
       member do
