@@ -61,6 +61,29 @@ RSpec.describe Topnlab::PropertyMapper do
     end
   end
 
+  describe '#sane_rooms — area_room fallback' do
+    it 'derives 3 from "19.1+6.7+6.6" when rooms enum is nil' do
+      expect(attrs_for('rooms' => nil, 'area_room' => '19.1+6.7+6.6')[:rooms]).to eq(3)
+    end
+
+    it 'derives 2 from "15.3+12"' do
+      expect(attrs_for('rooms' => nil, 'area_room' => '15.3+12')[:rooms]).to eq(2)
+    end
+
+    it 'returns nil when area_room blank' do
+      expect(attrs_for('rooms' => nil, 'area_room' => '')[:rooms]).to be_nil
+    end
+
+    it 'ignores fallback for realty_type=room' do
+      expect(attrs_for('realty_type' => 'room', 'rooms' => nil, 'area_room' => '15+10')[:rooms]).to be_nil
+    end
+
+    it 'prefers explicit enum over fallback' do
+      # rooms=30 means «2-комн.» — should win over a 3-piece area_room
+      expect(attrs_for('rooms' => 30, 'area_room' => '5+5+5')[:rooms]).to eq(2)
+    end
+  end
+
   describe '#build_title (через :title attribute)' do
     it 'titles студию как "Студия, …"' do
       title = attrs_for('rooms' => 10)[:title]

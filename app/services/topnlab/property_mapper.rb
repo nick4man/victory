@@ -219,15 +219,34 @@ module Topnlab
 
     # Convert Topnlab `rooms` enum-id → literal room count.
     # Returns nil если значение неизвестно / type='room' (см. ROOMS_ENUM_TO_COUNT).
+    #
+    # Fallback: если Topnlab прислал `rooms: null` (часто бывает при ручном
+    # ленивом заполнении карточки), но `area_room` содержит площади-через-плюс
+    # (`"19.1+6.7+6.6"`) — count parts. Это надёжный proxy для flat/house:
+    # сами агенты в Topnlab пишут площадь каждой комнаты отдельно.
     def sane_rooms
+      type = @p['realty_type'].to_s
+      return nil if type == 'room'                         # см. комментарий ниже
       n = to_int(@p['rooms'])
-      return nil if n.nil?
-      return nil if n == ROOMS_FREE_PLANNING_CODE        # свободная планировка
-      # Для type='room' (комната в общежитии) `rooms` означает размер
-      # квартиры-родителя, не число комнат в листинге. Сам listing — 1 ком.
-      # Сохраняем nil — title формируется через room_type.
-      return nil if @p['realty_type'].to_s == 'room'
-      ROOMS_ENUM_TO_COUNT[n]
+      if n
+        return nil if n == ROOMS_FREE_PLANNING_CODE        # свободная планировка
+        mapped = ROOMS_ENUM_TO_COUNT[n]
+        return mapped if mapped
+      end
+      derive_rooms_from_area_room
+    end
+
+    # Heuristic fallback: "19.1+6.7+6.6" → 3 комнаты.
+    # Применяется только к flat/house где `rooms` enum пустой.
+    def derive_rooms_from_area_room
+      type = @p['realty_type'].to_s
+      return nil unless %w[flat house].include?(type)
+      raw = @p['area_room'].to_s.strip
+      return nil if raw.empty?
+      # Split по '+', оставляем только нумерические части (filter '0', '' etc).
+      parts = raw.split('+').map(&:strip).reject(&:blank?).select { |s| s.to_f.positive? }
+      return nil if parts.empty?
+      [parts.size, 20].min  # cap at 20 — sanity
     end
 
     def map_condition
@@ -282,17 +301,18 @@ module Topnlab
     # но возвращает строку для human-readable title.
     def rooms_title_part
       type = @p['realty_type'].to_s
-      raw  = to_int(@p['rooms'])
 
       # realty_type='room' — отдельная ветка через room_type.
       if type == 'room'
         return ROOM_TYPE_TITLES[to_int(@p['room_type'])] || 'Комната'
       end
 
-      return nil if raw.nil?
+      raw = to_int(@p['rooms'])
       return 'Свободная планировка' if raw == ROOMS_FREE_PLANNING_CODE
 
-      count = ROOMS_ENUM_TO_COUNT[raw]
+      # Reuses sane_rooms logic — includes area_room fallback для пустых
+      # CRM-карточек. Источник истины один.
+      count = sane_rooms
       return nil if count.nil?
       return 'Студия' if count.zero?
       "#{count}-комн."
