@@ -124,28 +124,39 @@ module Topnlab
       [user, false]
     end
 
-    # D3 — Send «вам привязан объект» invitation email with magic-link.
+    # D3 — Send «вам привязан объект» invitation: email first, SMS fallback.
     #
-    # Idempotency:
-    #   - Only sends if user.email.present? (magic-link login requires email)
-    #   - Only sends if user.invited_at.nil? (no retroactive spam to existing
-    #     14 from-CRM users — their invited_at remains NULL forever)
+    # Channel priority:
+    #   1. user.email.present? → CabinetInvitationMailer (delivered + sync
+    #      update_columns(invited_at)). Most reliable, free, has rich HTML.
+    #   2. else if user.phone.present? → CabinetInvitationSmsService (Topnlab
+    #      clients are often phone-only — без этого fallback'a они отрезаны).
     #
-    # Failure-isolation: rescue StandardError so a mailer failure (SMTP down,
-    # template bug) never breaks the outer property sync loop. The outer loop
-    # already rescues at line 82, but we want a more granular catch so a
-    # single bad email doesn't abort the property linkage itself.
+    # Idempotency: gated on `user.invited_at.nil?` — каждый channel сам
+    # выставляет invited_at on success, mailer через update_columns ниже,
+    # SMS service сам update'ит после API success.
+    #
+    # Failure-isolation: rescue StandardError так что неуспех mailer/SMS
+    # не сломает outer property sync loop.
     def send_cabinet_invitation(user, property)
       return unless user.respond_to?(:invited_at)
-      return unless user.email.present?
       return unless user.invited_at.nil?
 
-      CabinetInvitationMailer.invite(user, property).deliver_later
-      user.update_columns(invited_at: Time.current)
-      Rails.logger.info(
-        "[OwnerSync] invitation queued user=#{user.id} email=#{user.email[0..2]}*** " \
-        "property=#{property.id}"
-      )
+      if user.email.present?
+        CabinetInvitationMailer.invite(user, property).deliver_later
+        user.update_columns(invited_at: Time.current)
+        Rails.logger.info(
+          "[OwnerSync] email invitation queued user=#{user.id} " \
+          "email=#{user.email[0..2]}*** property=#{property.id}"
+        )
+      elsif user.phone.present?
+        # SMS service handles invited_at update внутри (только при API success).
+        CabinetInvitationSmsService.call(user, property)
+      else
+        Rails.logger.info(
+          "[OwnerSync] user=#{user.id} no email AND no phone — invitation skipped"
+        )
+      end
     rescue StandardError => e
       Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
     end
