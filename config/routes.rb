@@ -90,7 +90,10 @@ Rails.application.routes.draw do
 
   # Visibility-decoupling Layer 5 — «Мои объекты» dashboard (clients
   # see their owner_user_id-linked properties с lifecycle badges).
-  get    'cabinet/properties',          to: 'cabinet/properties#index',  as: :cabinet_properties
+  get    'cabinet/properties',                to: 'cabinet/properties#index',  as: :cabinet_properties
+  # Self-hide / unhide — client может временно скрыть свой объект с сайта.
+  post   'cabinet/properties/:id/hide',       to: 'cabinet/properties#hide',   as: :hide_cabinet_property
+  post   'cabinet/properties/:id/unhide',     to: 'cabinet/properties#unhide', as: :unhide_cabinet_property
 
   # A7 Phase 2: избранное
   get    'cabinet/favorites',           to: 'cabinet/favorites#index',   as: :cabinet_favorites

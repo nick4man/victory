@@ -20,6 +20,7 @@
 # + sale lifecycle.
 class Cabinet::PropertiesController < ApplicationController
   before_action :require_client_cabinet_user
+  before_action :set_own_property, only: %i[hide unhide]
 
   def index
     @properties = Property.unscoped
@@ -39,7 +40,38 @@ class Cabinet::PropertiesController < ApplicationController
     @stage_pipeline = build_stage_pipeline(@properties)
   end
 
+  # POST /cabinet/properties/:id/hide — client скрывает свой объект с сайта.
+  # Optional reason (params[:reason]) → audit-log в Rails.logger.
+  def hide
+    reason = params[:reason].to_s.strip
+    @property.update_columns(force_archive: true, updated_at: Time.current)
+    Rails.logger.info(
+      "[Cabinet#hide] user=#{@cabinet_user.id} property=#{@property.id} " \
+      "reason=#{reason.truncate(80).inspect}"
+    )
+    redirect_to cabinet_properties_path,
+                notice: 'Объект скрыт с сайта. Чтобы вернуть — кнопка «Вернуть на сайт».'
+  end
+
+  # POST /cabinet/properties/:id/unhide — обратное действие.
+  def unhide
+    @property.update_columns(force_archive: false, updated_at: Time.current)
+    Rails.logger.info("[Cabinet#unhide] user=#{@cabinet_user.id} property=#{@property.id}")
+    redirect_to cabinet_properties_path, notice: 'Объект снова виден на сайте (с учётом готовности).'
+  end
+
   private
+
+  # Только owner может hide/unhide свой объект. unscoped — потому что
+  # force_archive properties могут быть в archived статусе и default scope
+  # их фильтрует.
+  def set_own_property
+    @property = Property.unscoped.find_by(id: params[:id], owner_user_id: @cabinet_user.id)
+    return if @property
+
+    redirect_to cabinet_properties_path,
+                alert: 'Объект не найден среди ваших или не привязан к вашему кабинету.'
+  end
 
   # Priority order matters — каждый предыдущий case стрипает кандидата.
   def ui_status_group(p)

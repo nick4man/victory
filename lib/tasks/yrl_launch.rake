@@ -135,11 +135,13 @@ namespace :yrl do
       base = ENV.fetch('APP_URL', 'https://victory62.org')
       premium_districts = %w[Канищево Центр Солотча]
 
-      hi_value = ExternalListing.published
-                                .where('price >= ?', 10_000_000)
-                                .or(ExternalListing.published.where(district: premium_districts))
-                                .order(price: :desc)
-                                .limit(20)
+      # ExternalListing scopes: .active (closed_at IS NULL), .priced (price > 0),
+      # .recent (fetched_at > N.days.ago). Combine для quality filter.
+      base_scope = ExternalListing.active.priced
+      hi_value = base_scope.where('price >= ?', 10_000_000)
+                           .or(base_scope.where(district: premium_districts))
+                           .order(price: :desc)
+                           .limit(20)
 
       if hi_value.empty?
         puts '(no high-value ExternalListing yet — populate ENV["YRL_FEED_URLS"] and let cron sync)'

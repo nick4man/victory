@@ -126,6 +126,25 @@
                     Обновлён: <%= I18n.l(p.updated_at.to_date) rescue p.updated_at.to_date %>
                   </span>
                 </div>
+
+                <%# Self-hide toggle — client controls force_archive. Скрытие
+                    не удаляет объект из CRM, просто прячет с victory62.org. %>
+                <% if p.force_archive %>
+                  <%= button_to unhide_cabinet_property_path(p),
+                        method: :post,
+                        class: 'w-full mt-2 px-3 py-2 text-[10px] tracking-[0.3em] uppercase border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 transition-colors',
+                        data: { turbo_confirm: 'Вернуть объект на сайт?' } do %>
+                    🟢 Вернуть на сайт
+                  <% end %>
+                <% else %>
+                  <%= button_to hide_cabinet_property_path(p),
+                        method: :post,
+                        params: { reason: '' },
+                        class: 'w-full mt-2 px-3 py-2 text-[10px] tracking-[0.3em] uppercase border border-border bg-card text-muted-foreground hover:border-rose-500/40 hover:text-rose-200 transition-colors',
+                        data: { turbo_confirm: 'Скрыть объект с сайта? Объект останется в CRM, но не будет виден посетителям.' } do %>
+                    🚫 Скрыть с сайта
+                  <% end %>
+                <% end %>
               </article>
             <% end %>
           </div>

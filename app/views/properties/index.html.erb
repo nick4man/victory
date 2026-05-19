@@ -178,7 +178,13 @@
       </div>
       <div class="bg-card p-4">
         <label class="text-xs tracking-[0.3em] text-muted-foreground mb-2 block">КОМНАТ</label>
-        <%= f.search_field :rooms_eq, class: "w-full bg-transparent text-foreground tracking-wider focus:outline-none", placeholder: "Любое" %>
+        <%# rooms convention: 0 = студия, 1..N = комнаты. Select даёт user'у
+            понятный выбор + правильный rooms=0 для студий (раньше пустое
+            поле требовало числа, студии не отфильтровывались). %>
+        <%= f.select :rooms_eq,
+              [['Любое', ''], ['Студия', 0], ['1', 1], ['2', 2], ['3', 3], ['4', 4]],
+              {},
+              class: 'w-full bg-transparent text-foreground tracking-wider focus:outline-none' %>
       </div>
       <div class="bg-card flex">
         <%= f.submit "ИСКАТЬ", class: "w-full text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer" %>
