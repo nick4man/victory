@@ -559,6 +559,17 @@ Rails.application.routes.draw do
   resources :external_listings, only: %i[show], path: 'external-listings'
 
   # ============================================
+  # PARTNERS PORTAL (Phase 3b MLS/YRL)
+  # ============================================
+  # Magic-link auth → dashboard with read-only view of own referrals.
+  # Separate session key (session[:partner_agency_id]) from cabinet_user_id.
+  get    'partners/login',         to: 'partners/auth#new',       as: :partners_login
+  post   'partners/login',         to: 'partners/auth#create',    as: :partners_request_link
+  get    'partners/verify/:token', to: 'partners/auth#verify',    as: :partners_verify
+  delete 'partners/logout',        to: 'partners/auth#destroy',   as: :partners_logout
+  get    'partners',               to: 'partners/dashboard#index', as: :partners
+
+  # ============================================
   # REVIEWS
   # ============================================
   resources :reviews, only: [:index, :new, :create] do
