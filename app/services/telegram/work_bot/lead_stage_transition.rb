@@ -160,15 +160,33 @@ module Telegram
       def notify_client_owner!(prev_stage)
         return unless ENV['ENABLE_LEAD_STAGE_BROADCAST'] == 'true'
 
-        client = resolve_client_user
-        return if client.nil?
-
         label = self.class.stage_label(@new)
 
-        # 1. WebSocket → live update в /cabinet (нет reload)
+        buyer  = resolve_client_user
+        seller = resolve_seller_user
+
+        # Avoid double-pushing когда buyer == seller (rare, но возможно
+        # для агентств-internal тестов / семейных сделок).
+        recipients = [
+          [buyer,  :buyer],
+          [seller, :seller]
+        ].uniq { |u, _| u&.id }.reject { |u, _| u.nil? }
+
+        recipients.each do |user, perspective|
+          dispatch_notifications(user, perspective, label, prev_stage)
+        end
+      end
+
+      # Per-recipient fan-out (WS + Notification + email). Каждый transport
+      # в отдельном rescue.
+      def dispatch_notifications(user, perspective, label, prev_stage)
+        title, body = compose_message(perspective, label, prev_stage)
+
+        # 1. WebSocket
         begin
-          CabinetChannel.broadcast_to(client, {
+          CabinetChannel.broadcast_to(user, {
             type:          'lead_stage_changed',
+            perspective:   perspective,
             lead_event_id: @lead.id,
             stage:         @new,
             prev_stage:    prev_stage,
@@ -176,34 +194,51 @@ module Telegram
             changed_at:    Time.current.iso8601
           })
         rescue StandardError => e
-          Rails.logger.warn("[LeadStageTransition] CabinetChannel.broadcast failed: #{e.class} #{e.message}")
+          Rails.logger.warn("[LeadStageTransition] CabinetChannel.broadcast failed (#{perspective}): #{e.class} #{e.message}")
         end
 
-        # 2. Persistent Notification — bell-badge на /dashboard
+        # 2. Persistent Notification
         begin
           Notification.notify!(
-            client,
+            user,
             kind:       'lead_stage',
-            title:      "Статус сделки: #{label}",
-            body:       "Этап обновлён с «#{self.class.stage_label(prev_stage)}» на «#{label}».",
+            title:      title,
+            body:       body,
             notifiable: @lead
           )
         rescue StandardError => e
-          Rails.logger.warn("[LeadStageTransition] Notification.notify! failed: #{e.class} #{e.message}")
+          Rails.logger.warn("[LeadStageTransition] Notification.notify! failed (#{perspective}): #{e.class} #{e.message}")
         end
 
-        # 3. Email — основной канал для клиента вне сайта
+        # 3. Email
         begin
-          if client.email.present?
-            CabinetMailer.stage_update(client, @lead, prev_stage).deliver_later
+          if user.email.present?
+            CabinetMailer.stage_update(user, @lead, prev_stage).deliver_later
           end
         rescue StandardError => e
-          Rails.logger.warn("[LeadStageTransition] CabinetMailer.stage_update failed: #{e.class} #{e.message}")
+          Rails.logger.warn("[LeadStageTransition] CabinetMailer.stage_update failed (#{perspective}): #{e.class} #{e.message}")
+        end
+      end
+
+      # Buyer видит «ваша заявка», seller видит «по вашему объекту».
+      def compose_message(perspective, label, prev_stage)
+        prev_label = self.class.stage_label(prev_stage)
+        case perspective
+        when :seller
+          [
+            "Активность по вашему объекту: #{label}",
+            "Покупатель прошёл этап «#{prev_label}» → «#{label}». Подробности в кабинете."
+          ]
+        else  # :buyer
+          [
+            "Статус сделки: #{label}",
+            "Этап обновлён с «#{prev_label}» на «#{label}»."
+          ]
         end
       end
 
       # lead_ref polymorphic — может быть Inquiry, PropertyValuation,
-      # MortgageRequest etc. Resolve client User по:
+      # MortgageRequest etc. Resolve client (BUYER) User по:
       #   1. lead_ref.user (если адаптер уже linked в Lead::Intake)
       #   2. lead_ref.email → User.find_by(LOWER(email)=...)
       #
@@ -227,6 +262,22 @@ module Telegram
         end
 
         nil
+      end
+
+      # CRIT-2 (D4 seller-side): Property.owner_user_id для seller-нотификаций.
+      # Триггерится только если lead_ref → Property linkage existing
+      # (Inquiry#property_id, PropertyValuation#property_id, etc.).
+      def resolve_seller_user
+        ref = @lead.lead_ref
+        return nil if ref.nil?
+        return nil unless ref.respond_to?(:property_id) && ref.property_id.present?
+
+        property = Property.unscoped.find_by(id: ref.property_id)
+        return nil if property.nil? || property.owner_user_id.blank?
+
+        u = User.where(active: true, deleted_at: nil).find_by(id: property.owner_user_id)
+        return nil unless u && u.respond_to?(:role_client?) && u.role_client?
+        u
       end
     end
   end
