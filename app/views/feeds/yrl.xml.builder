@@ -25,6 +25,9 @@ xml.tag!('realty-feed', xmlns: 'http://webmaster.yandex.ru/schemas/feed/realty/2
       xml.type             offer[:type]
       xml.tag!('property-type', offer[:property_type])
       xml.category         offer[:category]
+      # YRL обязательный <commercial-type> для category=коммерческая.
+      # Mapper эмитирует default 'свободного назначения' когда type=commerce.
+      xml.tag!('commercial-type', offer[:commercial_type]) if offer[:commercial_type]
       xml.url              offer[:url]
       xml.tag!('creation-date',    offer[:creation_date])
       xml.tag!('last-update-date', offer[:last_update_date])
@@ -64,6 +67,15 @@ xml.tag!('realty-feed', xmlns: 'http://webmaster.yandex.ru/schemas/feed/realty/2
         xml.area do
           xml.value area[:value]
           xml.unit  area[:unit]
+        end
+      end
+
+      # YRL <lot-area> — площадь участка. Обязателен для category=участок,
+      # рекомендуется для category=дом (когда есть отдельный участок).
+      if (lot_area = offer[:lot_area])
+        xml.tag!('lot-area') do
+          xml.value lot_area[:value]
+          xml.unit  lot_area[:unit]
         end
       end
 

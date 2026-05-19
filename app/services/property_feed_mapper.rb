@@ -46,12 +46,19 @@ class PropertyFeedMapper
   end
 
   def to_h
-    cat_info = CATEGORY_MAP[@p.property_type&.slug] || CATEGORY_MAP['flat']
+    type_slug = @p.property_type&.slug
+    cat_info = CATEGORY_MAP[type_slug] || CATEGORY_MAP['flat']
     {
       internal_id:      @p.external_id.presence || "victory-#{@p.id}",
       type:             DEAL_TYPE_MAP[@p.deal_type] || 'продажа',
       property_type:    cat_info[:property_type],
       category:         cat_info[:category],
+      # YRL обязательный <commercial-type> для category=коммерческая.
+      # Без него Я.Realty валидатор: «Пропущен тег commercial-type».
+      # Property model не имеет commercial_type column → default
+      # «свободного назначения» (catch-all), upgrade когда добавим
+      # явное поле или AI-extractor из description.
+      commercial_type:  (type_slug == 'commerce' ? 'свободного назначения' : nil),
       url:              property_full_url,
       creation_date:    @p.created_at.iso8601,
       last_update_date: @p.updated_at.iso8601,
@@ -59,6 +66,11 @@ class PropertyFeedMapper
       sales_agent:      sales_agent_hash,
       price:            price_hash,
       area:             area_hash(@p.area),
+      # YRL <lot-area> — обязателен для участков и домов.
+      # Land: @p.area уже хранит m² участка → используем то же.
+      # House: используем @p.land_area_m2 если задано.
+      # Прочие types: nil → tag skipped.
+      lot_area:         lot_area_hash(type_slug),
       living_space:     area_hash(@p.living_area),
       kitchen_space:    area_hash(@p.kitchen_area),
       rooms:            (@p.rooms if @p.rooms.to_i.positive?),
@@ -117,6 +129,22 @@ class PropertyFeedMapper
   def area_hash(value)
     return nil unless value.to_f.positive?
     { value: format_number(value), unit: 'кв. м' }
+  end
+
+  # YRL <lot-area> — площадь участка. Spec ожидает unit="сотка" для land
+  # (земельные участки в России традиционно измеряются в сотках); для
+  # домов — unit="кв. м" если land_area_m2 задано в m².
+  def lot_area_hash(type_slug)
+    case type_slug
+    when 'land'
+      value_m2 = @p.area.to_f
+      return nil unless value_m2.positive?
+      { value: format_number(value_m2 / 100.0), unit: 'сотка' }
+    when 'house'
+      value_m2 = @p.land_area_m2.to_f
+      return nil unless value_m2.positive?
+      { value: format_number(value_m2 / 100.0), unit: 'сотка' }
+    end
   end
 
   def balcony_value
