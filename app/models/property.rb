@@ -242,6 +242,12 @@ class Property < ApplicationRecord
   after_commit :bust_agency_metrics_cache
   after_commit :notify_indexnow_on_publish, on: %i[create update],
                if: :should_notify_indexnow?
+  # AI-классификатор commercial_type для YRL feed (Я.Realty
+  # требует <commercial-type> для category=коммерческая). Триггерится
+  # на новых commerce объявлениях OR когда description значительно
+  # изменился — переклассифицируем.
+  after_commit :enqueue_commercial_type_classification, on: %i[create update],
+               if: :should_classify_commercial_type?
 
   # ============================================
   # GEOCODING
@@ -1003,5 +1009,22 @@ class Property < ApplicationRecord
       protocol: 'https'
     )
     Seo::IndexNowNotifyJob.perform_later(url: url)
+  end
+
+  # Classify commercial_type только когда:
+  # - type=commerce
+  # - либо commercial_type ещё не задан, либо description значимо изменился
+  # - не soft-deleted
+  def should_classify_commercial_type?
+    return false if deleted_at.present?
+    return false unless property_type&.slug == 'commerce'
+
+    return true if previously_new_record? && commercial_type.blank?
+
+    saved_change_to_description? || (commercial_type.blank? && (saved_change_to_title? || saved_change_to_status?))
+  end
+
+  def enqueue_commercial_type_classification
+    Property::ClassifyCommercialTypeJob.perform_later(id)
   end
 end

@@ -54,11 +54,11 @@ class PropertyFeedMapper
       property_type:    cat_info[:property_type],
       category:         cat_info[:category],
       # YRL обязательный <commercial-type> для category=коммерческая.
-      # Без него Я.Realty валидатор: «Пропущен тег commercial-type».
-      # Property model не имеет commercial_type column → default
-      # «свободного назначения» (catch-all), upgrade когда добавим
-      # явное поле или AI-extractor из description.
-      commercial_type:  (type_slug == 'commerce' ? 'свободного назначения' : nil),
+      # Значение из @p.commercial_type (AI-classified через
+      # Property::CommercialTypeClassifier, on_save hook) или default
+      # 'свободного назначения' для unprocessed/blank records. Admin
+      # may override через будущий UI selector.
+      commercial_type:  commercial_type_value(type_slug),
       url:              property_full_url,
       creation_date:    @p.created_at.iso8601,
       last_update_date: @p.updated_at.iso8601,
@@ -129,6 +129,13 @@ class PropertyFeedMapper
   def area_hash(value)
     return nil unless value.to_f.positive?
     { value: format_number(value), unit: 'кв. м' }
+  end
+
+  def commercial_type_value(type_slug)
+    return nil unless type_slug == 'commerce'
+
+    classified = @p.respond_to?(:commercial_type) ? @p.commercial_type.to_s.strip : ''
+    classified.presence || 'свободного назначения'
   end
 
   # YRL <lot-area> — площадь участка. Spec ожидает unit="сотка" для land
