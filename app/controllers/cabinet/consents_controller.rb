@@ -88,6 +88,30 @@ class Cabinet::ConsentsController < ApplicationController
                 alert: "Не удалось подписать: #{e.message}"
   end
 
+  # GET /cabinet/listings/:id/consent.pdf
+  # Download PDF version of signed agency contract. Generates через
+  # AgencyContractPdfService — gold-accent layout с QR-кодом верификации.
+  # Owner-only: @cabinet_user должен быть signer.
+  def pdf
+    return redirect_to_pending if @property.nil?
+
+    consent = @property.listing_consents.where(user: @cabinet_user).order(signed_at: :desc).first
+    if consent.nil?
+      redirect_to cabinet_listing_consent_path(@property),
+                  alert: 'Подписанный договор не найден. Сначала подпишите.' and return
+    end
+
+    pdf_bytes = AgencyContractPdfService.new(consent).call
+    filename = "agency-contract-#{@property.id}-#{consent.signed_at.strftime('%Y%m%d')}.pdf"
+    send_data pdf_bytes,
+              filename:    filename,
+              type:        'application/pdf',
+              disposition: 'inline'
+  rescue StandardError => e
+    Rails.logger.error("[Cabinet::ConsentsController#pdf] failed: #{e.class}: #{e.message}")
+    redirect_to cabinet_listing_consent_path(@property), alert: 'Не удалось сгенерировать PDF.'
+  end
+
   # DELETE /cabinet/listings/:id/consent
   # Revoke (только до публикации = до того, как объект увидел трафик).
   # Soft via revoked_at + Property → pending_consent.

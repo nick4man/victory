@@ -105,6 +105,8 @@ Rails.application.routes.draw do
   get    'cabinet/listings/:id/consent', to: 'cabinet/consents#show',    as: :cabinet_listing_consent
   post   'cabinet/listings/:id/consent', to: 'cabinet/consents#create',  as: :cabinet_sign_consent
   delete 'cabinet/listings/:id/consent', to: 'cabinet/consents#destroy', as: :cabinet_revoke_consent
+  # PDF download — signed agency contract. ListingConsent → AgencyContractPdfService.
+  get    'cabinet/listings/:id/consent.pdf', to: 'cabinet/consents#pdf', as: :cabinet_listing_consent_pdf
   # Public verification (QR-target) — no auth, shows consent metadata only (no PII)
   get    'verify-contract/:token',       to: 'public_consents#show',     as: :verify_contract
 

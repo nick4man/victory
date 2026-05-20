@@ -53,9 +53,19 @@
       <section class="border border-border bg-foreground/5 p-6">
         <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-2">Статус</p>
         <p class="text-sm text-foreground mb-1">✅ Согласие уже подписано</p>
-        <p class="text-xs text-muted-foreground">
+        <p class="text-xs text-muted-foreground mb-4">
           <%= @existing_consent.signature_summary %> ·
           Договор № <%= @existing_consent.id %>
+        </p>
+        <%# PDF download — открывается inline в браузере, можно сохранить. %>
+        <%= link_to cabinet_listing_consent_pdf_path(@property),
+              target: '_blank', rel: 'noopener',
+              class: 'inline-flex items-center gap-2 px-5 py-2.5 text-xs tracking-[0.3em] uppercase bg-foreground text-background hover:bg-foreground/90 transition-colors' do %>
+          📄 Скачать PDF договора
+        <% end %>
+        <p class="text-[10px] text-muted-foreground/70 mt-3 leading-relaxed">
+          PDF содержит QR-код для верификации подписи по публичной ссылке
+          (без раскрытия персональных данных).
         </p>
       </section>
     <% else %>
