@@ -37,7 +37,9 @@ class CabinetInvitationSmsService
     link = "#{ENV.fetch('APP_URL', 'https://victory62.org')}/cabinet/verify/#{token.token}"
 
     message = build_message(link)
-    result  = Sms::SmscClient.send(phone: @user.phone, message: message)
+    # Provider-agnostic router (ENV['SMS_PROVIDER']: smsru / smsc).
+    # Default 'smsru' — ~40-50% дешевле SMSC при том же coverage.
+    result  = Sms::Client.send(phone: @user.phone, message: message)
 
     if result.success?
       @user.update_columns(invited_at: Time.current)
@@ -53,7 +55,7 @@ class CabinetInvitationSmsService
       )
       Result.new(success?: false, user: @user, error: result.error)
     end
-  rescue Sms::SmscClient::ConfigError => e
+  rescue Sms::SmscClient::ConfigError, Sms::SmsRuClient::ConfigError => e
     Rails.logger.warn("[CabinetInvitationSms] config error — SMS skipped: #{e.message}")
     Result.new(success?: false, user: @user, error: 'sms not configured')
   rescue StandardError => e
