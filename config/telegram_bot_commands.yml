@@ -1,0 +1,42 @@
+# Native TG /-меню — source of truth для setMyCommands.
+# Загружается Telegram::WorkBot::CommandsMenuSync.
+#
+# Поля:
+#   cmd   — имя без `/` (TG-валид: a-z 0-9 _, 1-32 chars)
+#   tier  — public | staff | manager | director (cumulative по ролям)
+#   group — true если команда показывается в рабочем group-чате
+#           (BotCommandScopeAllGroupChats)
+#   desc  — короткое описание для меню (≤256 chars, рекомендую ≤80)
+#
+# Лимит TG: 100 команд per scope per language_code. У нас 21, запас огромный.
+
+commands:
+  # === Public — доступны всем (включая незарегистрированных) ===
+  - { cmd: help,         tier: public,   group: true,  desc: 'Список доступных команд' }
+  - { cmd: whoami,       tier: public,   group: false, desc: 'Регистрация: /whoami email@victory.ru' }
+  - { cmd: start,        tier: public,   group: false, desc: 'Активировать DM-нотификации от бота' }
+
+  # === Staff — для зарегистрированных сотрудников ===
+  - { cmd: done,         tier: staff,    group: true,  desc: 'Выполнить задачу: /done <id>' }
+  - { cmd: cancel,       tier: staff,    group: true,  desc: 'Отменить задачу: /cancel <id> [причина]' }
+  - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen <id>' }
+  - { cmd: doc,          tier: staff,    group: false, desc: 'Документы по лиду (reply на якорь)' }
+
+  # === Manager — pipeline-командование и onboarding сотрудников ===
+  - { cmd: assign,       tier: manager,  group: true,  desc: 'Назначить агента (reply на якорь)' }
+  - { cmd: route,        tier: manager,  group: true,  desc: 'Маршрутизировать лид в спец-топик' }
+  - { cmd: stage,        tier: manager,  group: true,  desc: 'Сменить стадию лида' }
+  - { cmd: note,         tier: manager,  group: true,  desc: 'Заметка в CRM (reply на якорь)' }
+  - { cmd: lead,         tier: manager,  group: true,  desc: 'Создать лид вручную' }
+  - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close выиграно|проиграно' }
+  - { cmd: task,         tier: manager,  group: true,  desc: 'Задача с дедлайном: /task dd.MM.yy текст' }
+  - { cmd: reassign,     tier: manager,  group: false, desc: 'Передать задачу: /reassign <id> @user' }
+  - { cmd: promote,      tier: manager,  group: false, desc: 'Активировать сотрудника' }
+  - { cmd: demote,       tier: manager,  group: false, desc: 'Снять manager-привилегии' }
+  - { cmd: link,         tier: manager,  group: false, desc: 'Связать TG-юзера с Topnlab CRM' }
+  - { cmd: whoami_force, tier: manager,  group: false, desc: 'Регистрация без email-кода' }
+  - { cmd: deactivate,   tier: manager,  group: false, desc: 'Offboarding сотрудника' }
+  - { cmd: learn_topic,  tier: manager,  group: false, desc: 'Привязать thread_id к ключу топика' }
+
+  # === Director — voice-distribution и admin ===
+  - { cmd: resume_batch, tier: director, group: false, desc: 'Переоткрыть voice batch (окно 24ч)' }

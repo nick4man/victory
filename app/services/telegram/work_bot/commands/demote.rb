@@ -53,6 +53,13 @@ module Telegram
             "[Demote] #{target.mention} demoted by #{tg_user.mention} (is_manager → false, role → #{target.role})"
           )
 
+          # Iter 58 — refresh native /-меню в DM (manager extras исчезают).
+          begin
+            Telegram::WorkBot::CommandsMenuSync.new.sync_for_user!(target.reload)
+          rescue StandardError => e
+            Rails.logger.warn("[CommandsMenuSync] /demote sync skip for tg_user=#{target.id}: #{e.class} #{e.message}")
+          end
+
           notify_target(target)
           notify_other_managers(target)
 

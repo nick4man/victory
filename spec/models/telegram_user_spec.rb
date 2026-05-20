@@ -42,6 +42,41 @@ RSpec.describe TelegramUser do
     end
   end
 
+  describe '.resolve_identifier' do
+    let!(:with_uname)    { described_class.create!(tg_user_id: 100, tg_username: 'IvanPetrov', first_name: 'Иван') }
+    let!(:without_uname) { described_class.create!(tg_user_id: 200, first_name: 'Надежда') }
+
+    it 'резолвит @username (case-insensitive, с @-префиксом)' do
+      expect(described_class.resolve_identifier('@ivanpetrov')).to eq(with_uname)
+      expect(described_class.resolve_identifier('IVANPETROV')).to eq(with_uname)
+    end
+
+    it 'резолвит id:N формат для staff без tg_username' do
+      expect(described_class.resolve_identifier("id:#{without_uname.id}")).to eq(without_uname)
+    end
+
+    it 'id-формат case-insensitive по префиксу' do
+      expect(described_class.resolve_identifier("ID:#{without_uname.id}")).to eq(without_uname)
+    end
+
+    it 'возвращает nil для blank' do
+      expect(described_class.resolve_identifier(nil)).to be_nil
+      expect(described_class.resolve_identifier('')).to be_nil
+      expect(described_class.resolve_identifier('   ')).to be_nil
+    end
+
+    it 'возвращает nil для несуществующего username / id' do
+      expect(described_class.resolve_identifier('ghost_user')).to be_nil
+      expect(described_class.resolve_identifier('id:999999')).to be_nil
+    end
+
+    it 'не путает id:14 с литеральным username' do
+      # литеральный username "id" сам по себе не может существовать в TG
+      # (минимум 5 chars), но проверяем что префикс распознаётся приоритетно
+      expect(described_class.resolve_identifier('id:abc')).to be_nil
+    end
+  end
+
   describe '#mention' do
     it 'возвращает @username если есть' do
       u = described_class.new(tg_user_id: 1, tg_username: 'ivan')

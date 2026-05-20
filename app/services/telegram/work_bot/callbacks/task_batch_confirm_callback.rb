@@ -199,9 +199,9 @@ module Telegram
         def lookup_assignee(username)
           return nil if username.blank?
 
-          # rubocop:disable Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
-          TelegramUser.find_by_username(username)
-          # rubocop:enable Rails/DynamicFindBy
+          # Iter 57 — resolve_identifier: `@username` ИЛИ `id:N` для staff
+          # без tg_username (см. TelegramUser.resolve_identifier).
+          TelegramUser.resolve_identifier(username)
         end
 
         def parse_time(raw)

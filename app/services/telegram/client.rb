@@ -171,6 +171,34 @@ module Telegram
       api_call('getWebhookInfo')
     end
 
+    # setMyCommands — регистрирует список команд в native TG /-меню.
+    # @param commands [Array<{command:, description:}>] до 100 entries per scope per language
+    # @param scope [Hash, nil] BotCommandScope* объект, например:
+    #   { type: 'default' }
+    #   { type: 'all_private_chats' }
+    #   { type: 'all_group_chats' }
+    #   { type: 'all_chat_administrators' }
+    #   { type: 'chat', chat_id: <chat_id> }
+    #   nil → default scope
+    # @param language_code [String, nil] ISO 639-1 ('ru' / 'en'), nil → все языки
+    # См. https://core.telegram.org/bots/api#setmycommands
+    def set_my_commands(commands:, scope: nil, language_code: nil)
+      body = { commands: commands }
+      body[:scope] = scope if scope
+      body[:language_code] = language_code if language_code
+      api_call('setMyCommands', body)
+    end
+
+    # deleteMyCommands — удалить commands для конкретного scope (откатывает на parent scope).
+    # Используется при offboarding: после /deactivate user'a меню в его DM очищается
+    # и TG-клиент показывает default-scope (public commands).
+    def delete_my_commands(scope: nil, language_code: nil)
+      body = {}
+      body[:scope] = scope if scope
+      body[:language_code] = language_code if language_code
+      api_call('deleteMyCommands', body)
+    end
+
     # getFile → metadata about a file uploaded to TG (voice/photo/document).
     # Returns Hash { file_id, file_unique_id, file_size, file_path } или nil.
     # file_path валиден ~1 час; для долгосрочного хранения файл надо скачать.

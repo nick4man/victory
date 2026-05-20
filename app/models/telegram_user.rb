@@ -44,6 +44,26 @@ class TelegramUser < ApplicationRecord
     where('LOWER(tg_username) = ?', tg_username.to_s.downcase.sub(/\A@/, '')).first
   end
 
+  # Phase 14 Iter 57 — резолвер identifier'а из voice-intake / LLM payload.
+  # Поддерживает два формата:
+  #   • "@username" / "username" — обычный TG handle (case-insensitive)
+  #   • "id:14" — internal DB id для сотрудников без tg_username
+  #     (приватная настройка профиля в TG; мы её не можем изменить).
+  # До этого фикса staff без tg_username были невидимы LLM в TaskExtractor
+  # → задачи на них уходили в uncertainties.
+  ID_TOKEN_RE = /\Aid:(\d+)\z/i
+
+  def self.resolve_identifier(token)
+    return nil if token.blank?
+
+    s = token.to_s.strip
+    if (m = s.match(ID_TOKEN_RE))
+      find_by(id: m[1].to_i)
+    else
+      find_by_username(s)
+    end
+  end
+
   # @param email [String]
   def self.find_by_topnlab_email(email)
     return nil if email.blank?
@@ -108,6 +128,7 @@ class TelegramUser < ApplicationRecord
     # На hot path (каждое TG-сообщение) — но lock pessimistic per-row, не
     # блокирует other users. Trade-off OK для correctness.
     result = false
+    dm_chat_id_just_set = false
     with_lock do
       reload
       changes = {}
@@ -115,6 +136,9 @@ class TelegramUser < ApplicationRecord
       changes[:first_name]  = from['first_name'] if from['first_name'].present? && first_name.blank?
       changes[:last_name]   = from['last_name']  if from['last_name'].present?  && last_name.blank?
       if chat['type'] == 'private' && chat['id'].present? && chat['id'] != dm_chat_id
+        # Iter 58 — флаг для post-lock sync TG-меню. Только переход
+        # blank→present триггерит sync (а не каждый DM-апдейт).
+        dm_chat_id_just_set = dm_chat_id.blank?
         changes[:dm_chat_id] = chat['id']
       end
       changes[:last_seen_at] = Time.current
@@ -125,6 +149,18 @@ class TelegramUser < ApplicationRecord
       update_columns(changes) # rubocop:disable Rails/SkipsModelValidations
       result = true
     end
+
+    # Iter 58 — после lock release: первый /start от сотрудника даёт нам
+    # dm_chat_id → сразу регистрируем native /-меню в его DM по его role-tier.
+    # Soft-fail: sync issue не должна ломать InboundProcessor flow.
+    if dm_chat_id_just_set
+      begin
+        Telegram::WorkBot::CommandsMenuSync.new.sync_for_user!(self)
+      rescue StandardError => e
+        Rails.logger.warn("[CommandsMenuSync] touch_from_message! sync skip for tg_user=#{id}: #{e.class} #{e.message}")
+      end
+    end
+
     result
   end
 end

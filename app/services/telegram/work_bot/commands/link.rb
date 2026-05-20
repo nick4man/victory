@@ -60,6 +60,16 @@ module Telegram
                          "<code>TelegramUser.find_by(topnlab_user_id: #{crm_user['id']}).update!(topnlab_user_id: nil)</code>")
           end
 
+          # Iter 58 — если /link одновременно повышает до manager, refresh
+          # native TG-меню в DM этого юзера. Soft-fail.
+          if !was_manager && role == 'manager'
+            begin
+              Telegram::WorkBot::CommandsMenuSync.new.sync_for_user!(tu.reload)
+            rescue StandardError => e
+              Rails.logger.warn("[CommandsMenuSync] /link sync skip for tg_user=#{tu.id}: #{e.class} #{e.message}")
+            end
+          end
+
           role_msg  = !was_manager && role == 'manager' ? ' и повышен до <b>manager</b>' : ''
           crm_name  = [crm_user['firstname'], crm_user['lastname']].compact_blank.join(' ').presence
           crm_label = crm_name ? "#{crm_name} (Topnlab id=#{crm_user['id']})" : "Topnlab id=#{crm_user['id']}"

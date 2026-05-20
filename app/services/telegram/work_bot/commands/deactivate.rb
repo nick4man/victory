@@ -86,6 +86,15 @@ module Telegram
             "open_tasks=#{open_tasks.pluck(:id).inspect} open_leads=#{open_leads.pluck(:id).inspect}"
           )
 
+          # Iter 58 — очищаем native TG /-меню в DM деактивированного
+          # (sync_for_user! ↦ deleteMyCommands при status!=active).
+          # Меню откатывается к default-scope (public commands).
+          begin
+            Telegram::WorkBot::CommandsMenuSync.new.sync_for_user!(target.reload)
+          rescue StandardError => e
+            Rails.logger.warn("[CommandsMenuSync] /deactivate sync skip for tg_user=#{target.id}: #{e.class} #{e.message}")
+          end
+
           notify_target(target)
           notify_other_managers(target, open_tasks.count, open_leads.count)
 

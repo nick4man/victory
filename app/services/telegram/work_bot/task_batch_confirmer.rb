@@ -90,12 +90,13 @@ module Telegram
       def assignee_header(assignee)
         return '👤 <b>(нет получателя)</b>' if assignee.blank?
 
-        user = TelegramUser.find_by_username(assignee) # rubocop:disable Rails/DynamicFindBy
+        # Iter 57 — resolve_identifier поддерживает оба формата (`@username`
+        # и `id:N`). Без префикса `@` в branch ошибки — `id:14` без `@`.
+        user = TelegramUser.resolve_identifier(assignee)
         if user
-          mention = user.tg_username.present? ? "@#{user.tg_username}" : user.display_name
-          "👤 <b>#{escape(mention)}</b> (#{escape(user.first_name.to_s)})"
+          "👤 <b>#{escape(user.mention)}</b> (#{escape(user.first_name.to_s)})"
         else
-          "👤 <b>@#{escape(assignee)}</b> ⚠️ <i>не найден в staff</i>"
+          "👤 <b>#{escape(assignee)}</b> ⚠️ <i>не найден в staff</i>"
         end
       end
 

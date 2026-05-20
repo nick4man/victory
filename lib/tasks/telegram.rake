@@ -33,4 +33,24 @@ namespace :telegram do
     result = Telegram::Client.new.send_message(text, chat_id: chat_id)
     puts "Sent message_id=#{result['message_id']} to chat_id=#{result.dig('chat', 'id')}"
   end
+
+  # Phase 14 Iter 58 — sync native /-меню (setMyCommands).
+  # Запускать после: deploy с изменением каталога команд, добавлением нового staff,
+  # промоут/демоут существующего staff (на случай если реактивный hook не отработал).
+  desc 'Sync native TG /-меню: global scopes + per-user (BotCommandScopeChat) для всех staff с dm_chat_id'
+  task sync_commands: :environment do
+    sync = Telegram::WorkBot::CommandsMenuSync.new
+    sync.sync_global!
+    puts '[OK] global scopes synced (default + all_group_chats)'
+
+    count = 0
+    TelegramUser.where.not(dm_chat_id: nil).find_each do |u|
+      sync.sync_for_user!(u)
+      count += 1
+      puts "[OK] user##{u.id} #{u.display_name.ljust(25)} role=#{u.role} status=#{u.status}"
+    rescue StandardError => e
+      puts "[FAIL] user##{u.id} #{u.display_name}: #{e.class} #{e.message}"
+    end
+    puts "Done. #{count} users synced."
+  end
 end

@@ -46,6 +46,14 @@ module Telegram
 
           tu.update!(changes)
 
+          # Iter 58 — реактивный refresh native TG /-меню в DM этого юзера.
+          # Soft-fail: sync issue не должна ломать promote flow.
+          begin
+            Telegram::WorkBot::CommandsMenuSync.new.sync_for_user!(tu.reload)
+          rescue StandardError => e
+            Rails.logger.warn("[CommandsMenuSync] /promote sync skip for tg_user=#{tu.id}: #{e.class} #{e.message}")
+          end
+
           role_msg = changes[:is_manager] ? ' и повышен до <b>manager</b>' : ''
           reply("✅ #{tu.mention} активирован#{role_msg} (role=<code>#{tu.reload.role}</code>). " \
                 'Доступен для [👤 Назначить] и <code>/assign</code>.')

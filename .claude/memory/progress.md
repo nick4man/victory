@@ -75,6 +75,8 @@
 | 12 | 31-40 | `/promote+/link` sync role enum, `/demote`, TaskBatch partial dispatch alert, stale inline buttons after `/reassign`, `/stage` history audit, `/help` DM redirect in groups, JSON 401 for health, TopicRegistry drift surfacing, `metadata` pruning helper, TaskExtractor dedup | — |
 | 13 | 41-50 | Director auth gate (`manager_or_director?`), `/assign` reject closed lead, voice batch concurrency guard, `LeadAssignment.with_lock` race, orphan tasks surface, TG 429 retry_after, `crm_sync_error_history`, AlertThrottle counters in health, CriticalRecipients tier visibility, Topnlab API in health | `phase-13-final` |
 | 14 | 51-56 | `/stage` reject re-open closed, `BotCommandLog.error_message`, anchor edit lock (LeadStageTransition/SpamCallback/HashtagHandler), TelegramUser touch race, AdminTokenAuth Devise decoupling, voice batch one-click cancel | `phase-14-final` |
+| 14 | 57 | `TelegramUser.resolve_identifier(token)` — `@username` ИЛИ `id:N` для staff без `tg_username` (Надежда unblock в voice-intake) | — |
+| 14 | 58 | Native TG /-меню через `setMyCommands` + per-user `BotCommandScopeChat` (role-tier) + group-scope (pipeline subset). Source: `config/telegram_bot_commands.yml`. Bulk: `rake telegram:sync_commands`. Реактивно — в `touch_from_message!` (первый /start) + `/promote /demote /link /deactivate`. | — |
 
 ## TG work-bot — product layer (Phase 4 MVP, 18.05.26)
 

@@ -93,15 +93,18 @@ module Telegram
           диктует список задач для сотрудников АН. Твоя задача — извлечь структурированные
           задачи в JSON.
 
-          Активные сотрудники (используй ТОЛЬКО их @username при назначении):
+          Активные сотрудники (используй ТОЛЬКО их identifier при назначении —
+          формат `@username` ИЛИ `id:<N>` для сотрудников без TG-username):
           #{staff_block}
 
           Текущее время: #{@now.strftime('%d.%m.%y %H:%M')} (Moscow time).
 
           Правила извлечения:
           1. Каждая отдельная задача — отдельный объект в `tasks` массиве.
-          2. assignee_username — ОБЯЗАТЕЛЬНО match с одним из @username выше (case-insensitive,
-             "Васе/Ваське/Василий" → @vasya_petrov). Если не уверен — пиши в uncertainties.
+          2. assignee_username — ОБЯЗАТЕЛЬНО match с одним из identifier'ов выше:
+             case-insensitive для `@username` ("Васе/Ваське/Василий" → `vasya_petrov`);
+             точное соответствие для `id:N` (сотрудник без TG-username — "Надежде" → `id:14`).
+             Если не уверен — пиши в uncertainties, оставляй assignee_username=null.
           3. due_at — ISO8601 datetime (YYYY-MM-DDTHH:MM:SS). Парси относительные «до 16:00»
              (сегодня 16:00), «завтра в 14:00», «к пятнице», «до конца недели» (пятница 18:00).
              Если дедлайн не указан — null.
@@ -122,6 +125,14 @@ module Telegram
                 "priority": "normal",
                 "kind": "call",
                 "related_property_address": null
+              },
+              {
+                "assignee_username": "id:14",
+                "title": "подготовить документы по объекту на Есенина 12",
+                "due_at": null,
+                "priority": "normal",
+                "kind": "document",
+                "related_property_address": "Есенина 12"
               }
             ],
             "uncertainties": []
@@ -136,12 +147,15 @@ module Telegram
       def staff_block
         return '(нет активных сотрудников)' if @staff.empty?
 
-        @staff.filter_map do |s|
-          uname = s.tg_username
-          next if uname.blank?
-
-          full = [s.first_name, s.last_name].compact_blank.join(' ').presence || uname
-          "  • @#{uname} — #{full}"
+        # Phase 14 Iter 57 — staff без tg_username (приватный TG-профиль)
+        # больше не вырезаются: идентифицируются через `id:<N>`. Иначе
+        # LLM не видит их в списке и не может назначать задачи
+        # (см. TelegramUser.resolve_identifier).
+        @staff.map do |s|
+          full       = [s.first_name, s.last_name].compact_blank.join(' ').presence
+          identifier = s.tg_username.present? ? "@#{s.tg_username}" : "id:#{s.id}"
+          label      = full || s.tg_username.presence || "сотрудник #{identifier}"
+          "  • #{identifier} — #{label}"
         end.join("\n")
       end
 
