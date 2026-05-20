@@ -369,6 +369,15 @@ GEM
       ffi (~> 1.12)
       logger
     securerandom (0.4.1)
+    sentry-rails (5.28.1)
+      railties (>= 5.0)
+      sentry-ruby (~> 5.28.1)
+    sentry-ruby (5.28.1)
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+    sentry-sidekiq (5.28.1)
+      sentry-ruby (~> 5.28.1)
+      sidekiq (>= 3.0)
     shoulda-matchers (6.5.0)
       activesupport (>= 5.2.0)
     sidekiq (7.3.10)
@@ -464,6 +473,9 @@ DEPENDENCIES
   rubocop-rspec (~> 3.0)
   ruby-lsp (~> 0.26)
   ruby-lsp-rails
+  sentry-rails (~> 5.20)
+  sentry-ruby (~> 5.20)
+  sentry-sidekiq (~> 5.20)
   shoulda-matchers (~> 6.0)
   sidekiq (~> 7.2)
   sidekiq-cron (~> 1.12)

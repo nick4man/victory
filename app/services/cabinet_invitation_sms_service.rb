@@ -60,6 +60,7 @@ class CabinetInvitationSmsService
     Result.new(success?: false, user: @user, error: 'sms not configured')
   rescue StandardError => e
     Rails.logger.warn("[CabinetInvitationSms] unexpected: #{e.class}: #{e.message.truncate(200)}")
+    Sentry.capture_exception(e, extra: { user_id: @user&.id }) if defined?(Sentry)
     Result.new(success?: false, user: @user, error: e.message.truncate(160))
   end
 

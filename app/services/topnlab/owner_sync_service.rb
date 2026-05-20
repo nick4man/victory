@@ -83,6 +83,7 @@ module Topnlab
       rescue StandardError => e
         errors << "property #{property.id}: #{e.class}: #{e.message.truncate(200)}"
         Rails.logger.error("[OwnerSync] #{errors.last}")
+        Sentry.capture_exception(e, extra: { property_id: property.id, topnlab_id: topnlab_id }) if defined?(Sentry)
       end
 
       summary = { processed: processed, linked: linked, created_users: created_users,
@@ -159,6 +160,7 @@ module Topnlab
       end
     rescue StandardError => e
       Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
+      Sentry.capture_exception(e, extra: { user_id: user.id, property_id: property&.id }) if defined?(Sentry)
     end
 
     # Find existing User for matching Topnlab client. Critical safety rules:

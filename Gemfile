@@ -96,6 +96,15 @@ gem 'faraday', '~> 2.9'
 gem 'faraday-retry', '~> 2.2'
 gem 'stoplight', '~> 4.1'
 
+# === Observability ===
+# Sentry — error tracking + (optionally) performance monitoring. Gated на
+# SENTRY_DSN env: если не задан → Sentry.init вообще не вызывается
+# (sentry-ruby молчит, не ходит в Sentry servers). PII strip через
+# before_send hook в config/initializers/sentry.rb.
+gem 'sentry-ruby',     '~> 5.20', require: false
+gem 'sentry-rails',    '~> 5.20', require: false
+gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
+
 # === Development tooling ===
 # ruby-lsp нужен Serena MCP / IDE для navigation-by-symbol (find_definition,
 # find_referencing_symbols, rename, etc) в Ruby-файлах проекта. `ruby-lsp-rails`

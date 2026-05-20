@@ -443,6 +443,7 @@ class Inquiry < ApplicationRecord
     Referrals::AutoCreator.call(self)
   rescue StandardError => e
     Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+    Sentry.capture_exception(e, extra: { inquiry_id: id, external_listing_id: external_listing_id }) if defined?(Sentry)
   end
 
   # Callbacks
