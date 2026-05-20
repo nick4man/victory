@@ -115,3 +115,16 @@ group :development do
   gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
   gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
 end
+
+# === Test framework ===
+# RSpec + supporting gems. Required by spec/rails_helper.rb для запуска
+# unit / request / model specs локально и в CI. Группа :development добавлена
+# чтобы `bin/rails generate model …` рендерил RSpec stubs вместо minitest.
+group :development, :test do
+  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
+  gem 'factory_bot_rails',   '~> 6.4'    # fixtures replacement
+  gem 'faker',               '~> 3.4'    # realistic test data (Ru locale в rails_helper)
+  gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
+  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
+  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
+end
