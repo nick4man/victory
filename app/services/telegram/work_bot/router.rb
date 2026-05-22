@@ -31,6 +31,7 @@ module Telegram
         '/route' => Commands::Route,
         '/assign' => Commands::Assign,
         '/stage' => Commands::Stage,
+        '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,
         '/close' => Commands::Close,
