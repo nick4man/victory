@@ -81,6 +81,13 @@ RSpec.describe Referral, type: :model do
         referral.final_commission_amount = 200_000
         expect(referral).to be_valid
       end
+
+      it 'is invalid when closed_won and amount is exactly 0' do
+        referral.status = 'closed_won'
+        referral.final_commission_amount = 0
+        expect(referral).not_to be_valid
+        expect(referral.errors[:final_commission_amount]).to be_present
+      end
     end
   end
 

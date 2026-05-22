@@ -106,10 +106,13 @@ class Referral < ApplicationRecord
 
   private
 
+  # closed_won без фактической ненулевой суммы — бессмысленно для
+  # commission reconciliation (settlement → 0₽ нечего settle'ить).
+  # Если сделка закрылась без комиссии — это closed_lost, не won.
   def final_amount_required_when_won
     return unless status == 'closed_won'
-    return if final_commission_amount.present? && final_commission_amount.to_f >= 0
+    return if final_commission_amount.present? && final_commission_amount.to_f.positive?
 
-    errors.add(:final_commission_amount, 'обязательна при closed_won (укажите фактическую сумму комиссии)')
+    errors.add(:final_commission_amount, 'обязательна и > 0 при closed_won (если 0 ₽ — это closed_lost)')
   end
 end
