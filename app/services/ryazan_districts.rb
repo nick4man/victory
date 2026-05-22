@@ -23,7 +23,7 @@ module RyazanDistricts
     'ptitsevod'     => { name: 'пос. Птицевод',      admin: %w[Московский], aliases: ['пос. Птицевод', 'Птицевод'] },
     'nedostoevo'    => { name: 'Недостоево',         admin: %w[Московский], aliases: ['Недостоево'] },
     'semchino'      => { name: 'Семчино',            admin: %w[Московский], aliases: ['Семчино'] },
-    'moskovskiy-mr' => { name: 'Московское шоссе',   admin: %w[Московский], aliases: ['Московский', 'Московский (народный)', 'Московское шоссе'] },
+    'moskovskiy-mr' => { name: 'Московское шоссе',   admin: %w[Московский], aliases: ['Московский', 'Московское шоссе'] },
     'dyagilevo'     => { name: 'Дягилево',           admin: %w[Московский], aliases: ['Дягилево'] },
 
     # === Железнодорожный (4) ===
@@ -69,7 +69,7 @@ module RyazanDistricts
     'moskovskiy' => {
       name: 'Московский',
       children: %w[kanishchevo priokskiy ptitsevod nedostoevo semchino moskovskiy-mr dyagilevo],
-      aliases: ['Московский', 'Московский (народный)']
+      aliases: ['Московский']
     }
   }.freeze
 
@@ -81,6 +81,21 @@ module RyazanDistricts
       aliases: ['Рязанская область', 'Рязанский', 'Турлатово', 'Стенькино']
     }
   }.freeze
+
+  # Normalize district/address strings из Topnlab: убирает «(народный)»
+  # суффикс. Topnlab отдаёт `folk_district_name = "Московский (народный)"`,
+  # но user-facing canonical — просто «Московский». Применять при импорте
+  # ко всем полям где появляется folk-имя (Property#district, #address).
+  #
+  # Pattern: `<имя> (народный)` или `<имя> ( народный )` — Cyrillic case-
+  # insensitive (Ruby Regexp /i работает и для Кириллицы в UTF-8 mode).
+  # Whitespace tolerant.
+  FOLK_SUFFIX_PATTERN = /\s*\(\s*народный\s*\)\s*/i.freeze
+
+  def self.strip_folk_suffix(value)
+    return value if value.nil?
+    value.to_s.gsub(FOLK_SUFFIX_PATTERN, '').strip
+  end
 
   # Returns the array of strings that Property#district can hold for this
   # slug. Caller does `Property.where(district: aliases)`. nil if unknown.

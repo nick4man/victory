@@ -43,7 +43,7 @@ module MlsSync
         condition:       condition,
         address:         build_address,
         city:            @p['city_name'].presence,
-        district:        @p['folk_district_name'].presence || @p['district_name'].presence,
+        district:        RyazanDistricts.strip_folk_suffix(@p['folk_district_name'].presence || @p['district_name'].presence),
         latitude:        @p['latitude'],
         longitude:       @p['longitude'],
         metro_station:   extract_metro_name(@p['metro']),
@@ -112,7 +112,8 @@ module MlsSync
     end
 
     def build_address
-      [@p['city_name'], @p['folk_district_name'].presence || @p['district_name'],
+      folk = RyazanDistricts.strip_folk_suffix(@p['folk_district_name'].presence || @p['district_name'])
+      [@p['city_name'], folk,
        [@p['street_type'].to_s.strip, @p['street_name']].reject(&:blank?).join(' '),
        (@p['house'].present? ? "д. #{@p['house']}" : nil)
       ].compact.reject(&:blank?).join(', ')

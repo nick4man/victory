@@ -66,7 +66,7 @@ module Topnlab
         title:           build_title,
         description:     build_description,
         address:         build_address,
-        district:        @p['folk_district_name'].presence || @p['district_name'],
+        district:        RyazanDistricts.strip_folk_suffix(@p['folk_district_name'].presence || @p['district_name']),
         metro_station:   extract_metro_name(@p['metro']),
         latitude:        @p['latitude'],
         longitude:       @p['longitude'],
@@ -265,7 +265,9 @@ module Topnlab
     def build_title
       rooms_label = rooms_title_part
       area_value  = derive_area
-      district    = @p['folk_district_name'].presence || @p['district_name'].presence
+      district    = RyazanDistricts.strip_folk_suffix(
+        @p['folk_district_name'].presence || @p['district_name'].presence
+      ).presence
       city        = @p['city_name'].presence || @p['region_name'].presence
       street      = build_street_phrase
 
@@ -365,7 +367,10 @@ module Topnlab
       parts = []
       parts << "#{@p['region_name']} #{@p['region_type']}".strip if @p['region_name'].present?
       parts << "#{@p['city_type']} #{@p['city_name']}".strip if @p['city_name'].present?
-      parts << @p['folk_district_name'] if @p['folk_district_name'].present?
+      # Topnlab отдаёт «Московский (народный)» — stripping «(народный)»
+      # для consistent display (см. RyazanDistricts#strip_folk_suffix).
+      folk = RyazanDistricts.strip_folk_suffix(@p['folk_district_name'])
+      parts << folk if folk.present?
       street = ["#{@p['street_type']}".strip, @p['street_name']].compact.reject(&:blank?).join(' ')
       parts << street if street.present?
       house_part = ["д. #{@p['house']}".strip]

@@ -83,7 +83,10 @@ module Topnlab
       metros = raw.flat_map { |t| t.is_a?(Hash) ? Array(t['metro']) : [] }
       districts = raw.flat_map do |t|
         next [] unless t.is_a?(Hash)
-        Array(t['folk_district_name']) + Array(t['district_name'])
+        # Strip "(народный)" suffix — canonical district matching ожидает
+        # «Московский», не «Московский (народный)».
+        names = Array(t['folk_district_name']) + Array(t['district_name'])
+        names.map { |n| RyazanDistricts.strip_folk_suffix(n) }
       end
 
       {
