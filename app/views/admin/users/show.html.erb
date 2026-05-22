@@ -36,6 +36,30 @@
     <%# Activation panel %>
     <%= render 'activation_panel', active_token: @active_token, bot_username: @bot_username %>
 
+    <%# SMS fallback — last-resort. ПЛАТНО. %>
+    <% if @user.phone.present? && @user.tg_user_id.blank? %>
+      <div class="border border-amber-500/30 bg-amber-500/5 p-6 mt-6">
+        <h2 class="text-xs tracking-[0.3em] text-amber-700 uppercase mb-3">
+          ⚠️ SMS-резерв (платно)
+        </h2>
+        <p class="text-sm text-foreground/80 leading-relaxed mb-4">
+          Если клиент не отвечает на email и не активирует через Telegram —
+          можно отправить ссылку magic-link через SMS.
+          <strong>Стоимость ~1.5 ₽</strong> (SMS.ru) или ~3 ₽ (SMSC).
+        </p>
+        <p class="text-[11px] text-muted-foreground/80 mb-4">
+          Действие переотправит invitation: при наличии invited_at — сбросит
+          и отправит заново. Если номер в стоп-листе (152-ФЗ) — действие
+          заблокировано.
+        </p>
+        <%= button_to '📱 Отправить SMS с magic-link',
+              send_sms_fallback_admin_user_path(@user),
+              method: :post,
+              data: { confirm: "Отправить платный SMS на #{@user.phone}? Спишется ~1.5 ₽." },
+              class: 'h-11 px-6 inline-flex items-center text-xs tracking-[0.2em] uppercase border border-amber-500/60 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors cursor-pointer' %>
+      </div>
+    <% end %>
+
     <%# Owned properties %>
     <% if @owned_properties.any? %>
       <div class="border border-border bg-card p-6 mt-6">

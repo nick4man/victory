@@ -24,7 +24,7 @@ module Admin
     include AdminTokenAuth
     layout 'application'
 
-    before_action :set_user, only: %i[show generate_activation revoke_activation_tokens]
+    before_action :set_user, only: %i[show generate_activation revoke_activation_tokens send_sms_fallback]
 
     # Status filters (UI):
     #   linked       — tg_user_id present
@@ -67,6 +67,39 @@ module Admin
       n = @user.tg_link_tokens.valid.update_all(consumed_at: Time.current)
       flash[:notice] = n.positive? ? "Отозвано токенов: #{n}." : 'Активных токенов нет.'
       redirect_to admin_user_path(@user)
+    end
+
+    # POST /admin/users/:id/send_sms_fallback
+    # ⚠️ ПЛАТНО (~1.5₽ через SMS.ru / ~3₽ SMSC). Используем когда клиент
+    # не отвечает на email/TG и нужно достучаться. CabinetInvitationDispatcher
+    # с channels: [:sms] override — игнорирует email/TG path.
+    #
+    # Idempotency: dispatcher НЕ short-circuit'ит по invited_at (admin
+    # знает что делает — re-send приглашений legitimate use-case).
+    def send_sms_fallback
+      if @user.phone.blank?
+        redirect_to admin_user_path(@user), alert: 'У клиента нет телефона — SMS отправить нельзя.'
+        return
+      end
+      if PhoneStopList.blocked?(@user.phone)
+        redirect_to admin_user_path(@user),
+                    alert: 'Номер в стоп-листе (152-ФЗ). SMS отправлять нельзя.'
+        return
+      end
+
+      # Force-reset invited_at чтобы CabinetInvitationSmsService не short-
+      # circuit'ил «already invited». Это намеренный admin re-send.
+      @user.update_columns(invited_at: nil) if @user.invited_at.present?
+
+      result = CabinetInvitationDispatcher.call(@user, nil, channels: [:sms])
+
+      if result.channels_succeeded.include?(:sms)
+        Rails.logger.info("[Admin::Users] SMS fallback by #{request.remote_ip} for user=#{@user.id}")
+        redirect_to admin_user_path(@user), notice: 'SMS с magic-link отправлен.'
+      else
+        err = result.errors.first || 'unknown'
+        redirect_to admin_user_path(@user), alert: "SMS не отправлен: #{err}"
+      end
     end
 
     private

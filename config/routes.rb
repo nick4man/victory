@@ -679,6 +679,7 @@ Rails.application.routes.draw do
       member do
         post :generate_activation
         post :revoke_activation_tokens
+        post :send_sms_fallback
       end
     end
 
