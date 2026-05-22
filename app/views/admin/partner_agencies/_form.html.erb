@@ -1,0 +1,107 @@
+<%# Shared form для admin/partner_agencies new + edit. %>
+<%= form_with model: [:admin, @partner_agency],
+              local: true,
+              class: "space-y-6" do |f| %>
+  <% if @partner_agency.errors.any? %>
+    <div class="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <ul class="list-disc pl-5">
+        <% @partner_agency.errors.full_messages.each do |m| %><li><%= m %></li><% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <%= f.label :name, 'Название агентства *',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :name, required: true, autofocus: true,
+            placeholder: 'ЦАН Рязань',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+    <div>
+      <%= f.label :slug, 'Slug (lowercase, -/_ only) *',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :slug, required: true,
+            placeholder: 'cian-ryazan',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+    <div>
+      <%= f.label :status, 'Статус',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.select :status,
+            PartnerAgency::STATUSES.map { |s| [{ 'active' => 'Активно (принимает лиды)',
+                                                  'inactive' => 'Не активно (временно)',
+                                                  'blocked' => 'Заблокировано (disputed)' }[s], s] },
+            {}, class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+    <div>
+      <%= f.label :default_commission_rate_percent, 'Комиссия по умолчанию (%)',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <% current_pct = @partner_agency.default_commission_rate.present? ? (@partner_agency.default_commission_rate * 100).round(2) : nil %>
+      <%= number_field_tag 'partner_agency[default_commission_rate_percent]', current_pct,
+            step: 0.01, min: 0, max: 100,
+            placeholder: '30',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      <p class="text-[10px] text-muted-foreground mt-1">Стандартный референс — 30%. 50% для co-brokerage.</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div>
+      <%= f.label :contact_person, 'Контактное лицо',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :contact_person, placeholder: 'Иван Иванов',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+    <div>
+      <%= f.label :contact_email, 'Email',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.email_field :contact_email, placeholder: 'leads@agency.ru',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+    <div>
+      <%= f.label :contact_phone, 'Телефон',
+            class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :contact_phone, placeholder: '+7 (4912) ...',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+  </div>
+
+  <div>
+    <%= f.label :feed_source_key, 'Feed source key (для auto-match с ExternalListing)',
+          class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_field :feed_source_key, placeholder: 'cian_961, agency_sitemap_961-961.ru',
+          class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    <p class="text-[10px] text-muted-foreground mt-1">
+      Когда Inquiry приходит на /external-listings/, Referrals::AutoCreator ищет PartnerAgency
+      по этому ключу. Для agency_sitemap — prefix source_id (e.g. <code>agency_sitemap_961-961.ru</code>).
+      Для YRL — host (e.g. <code>961-961.ru</code>).
+    </p>
+  </div>
+
+  <div>
+    <%= f.label :settlement_terms, 'Условия расчёта',
+          class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_field :settlement_terms,
+          placeholder: 'В течение 30 дней после закрытия сделки',
+          class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+  </div>
+
+  <div>
+    <%= f.label :notes, 'Заметки (для admin)',
+          class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_area :notes, rows: 3,
+          placeholder: 'Free-text. Например — кто менеджер, какие listings часто пересекаются с нашими.',
+          class: 'w-full px-4 py-3 bg-background border border-border text-foreground' %>
+  </div>
+
+  <div class="flex items-center gap-4 pt-4 border-t border-border">
+    <%= f.submit (@partner_agency.persisted? ? 'Сохранить' : 'Создать'),
+          class: 'h-12 px-8 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 transition-colors cursor-pointer' %>
+    <%= link_to 'Отмена', admin_partner_agencies_path,
+          class: 'h-12 px-6 flex items-center text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' %>
+  </div>
+<% end %>

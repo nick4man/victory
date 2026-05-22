@@ -661,6 +661,12 @@ Rails.application.routes.draw do
     get  'bank_rates',         to: 'bank_rates#index',   as: :bank_rates
     post 'bank_rates/refresh', to: 'bank_rates#refresh', as: :refresh_bank_rates
 
+    # Phase 3 MLS/YRL — управление партнёрскими агентствами.
+    # CRUD для commission counterparties. `feed_source_key` матчится с
+    # ExternalListing.source_id для auto-creation Referral'ов.
+    # `show` намеренно опущен — admin tool, всё видно в edit (index → edit).
+    resources :partner_agencies, except: :show
+
     # Phase 3 MLS/YRL — referral lifecycle management.
     resources :referrals, only: %i[index show] do
       member do
