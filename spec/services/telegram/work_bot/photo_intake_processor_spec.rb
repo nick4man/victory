@@ -84,7 +84,11 @@ RSpec.describe Telegram::WorkBot::PhotoIntakeProcessor do
       expect(tg_client).to have_received(:send_message) do |_text, **kwargs|
         markup = kwargs[:reply_markup]
         callbacks = markup[:inline_keyboard].flatten.map { |b| b[:callback_data] }
-        expect(callbacks).to include('photo:dispose:cloud', 'photo:dispose:staff', 'photo:dispose:cancel')
+        # Iter 61 — 4 кнопки: cloud / share (NEW без задачи) / task (renamed) / cancel
+        expect(callbacks).to include('photo:dispose:cloud',
+                                     'photo:dispose:share',
+                                     'photo:dispose:task',
+                                     'photo:dispose:cancel')
       end
     end
 

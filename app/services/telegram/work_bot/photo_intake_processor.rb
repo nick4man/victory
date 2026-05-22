@@ -97,14 +97,23 @@ module Telegram
       end
 
       def keyboard_choose_destination
+        # Iter 61 — три top-level пути:
+        #   • cloud  — архив в Nextcloud (общая папка или папка лида)
+        #   • share  — переслать сотруднику БЕЗ задачи (фото в DM + caption)
+        #   • task   — переслать с формальной задачей (создаётся Task запись)
+        # Iter 60 имел путь 'staff' который значил «with task»; переименовали
+        # в 'task' для ясности. Legacy 'staff' остаётся как alias (back-compat).
         {
           inline_keyboard: [
             [
-              { text: '☁️ В облако',    callback_data: 'photo:dispose:cloud' },
-              { text: '📤 Сотрудникам', callback_data: 'photo:dispose:staff' }
+              { text: '☁️ В облако',     callback_data: 'photo:dispose:cloud' },
+              { text: '📤 Сотруднику',   callback_data: 'photo:dispose:share' }
             ],
             [
-              { text: '❌ Отмена', callback_data: 'photo:dispose:cancel' }
+              { text: '✅ С задачей',    callback_data: 'photo:dispose:task' }
+            ],
+            [
+              { text: '❌ Отмена',       callback_data: 'photo:dispose:cancel' }
             ]
           ]
         }

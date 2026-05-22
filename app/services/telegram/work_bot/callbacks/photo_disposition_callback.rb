@@ -39,10 +39,12 @@ module Telegram
           end
 
           case subcmd
-          when 'dispose' then handle_dispose(rest[0].to_s, pa)
-          when 'target'  then handle_target_step(rest[0].to_s, pa)
-          when 'lead'    then handle_upload_for_lead(rest[0].to_i, pa)
-          when 'staff'   then handle_upload_for_staff(rest[0].to_i, pa)
+          when 'dispose'  then handle_dispose(rest[0].to_s, pa)
+          when 'target'   then handle_target_step(rest[0].to_s, pa)
+          when 'lead'     then handle_upload_for_lead(rest[0].to_i, pa)
+          when 'staff'    then handle_upload_for_staff(rest[0].to_i, pa)
+          # Iter 61 — share-flow: переслать фото сотруднику БЕЗ задачи.
+          when 'share_to' then handle_share_to(rest[0].to_i, pa)
           else
             ack('⚠️ Неизвестный шаг.', alert: true)
           end
@@ -50,12 +52,22 @@ module Telegram
 
         private
 
-        # =============== Step 1: dispose:cloud|staff|cancel ===============
-
+        # =============== Step 1: dispose ===============
+        #
+        # Iter 60 имел dispose:cloud / dispose:staff / dispose:cancel.
+        # Iter 61 ввёл:
+        #   cloud   — архив в NC (general/lead; staff target убран как redundant)
+        #   share   — переслать сотруднику без задачи (фото + opt caption)
+        #   task    — переслать с формальной задачей (renamed from 'staff')
+        #   cancel  — отмена (без изменений)
+        # 'staff' остаётся alias для 'task' — back-compat для cached
+        # callback_data в TG-клиенте (TTL pending_action 10 мин).
         def handle_dispose(action, pa)
           case action
           when 'cloud'  then prompt_choose_cloud_target(pa)
-          when 'staff'  then prompt_describe_task(pa)
+          when 'share'  then prompt_choose_share_staff(pa)
+          when 'task'   then prompt_describe_task(pa)
+          when 'staff'  then prompt_describe_task(pa) # Iter 60 legacy → task
           when 'cancel' then cancel_pending(pa)
           else ack('⚠️ Неизвестный выбор.', alert: true)
           end
@@ -68,15 +80,41 @@ module Telegram
             data: pa['data'].to_h
           )
 
+          # Iter 61 — staff sub-option удалён (дублирует новый dispose:share).
           markup = {
             inline_keyboard: [
-              [{ text: '📂 Общая папка',   callback_data: 'photo:target:general' }],
-              [{ text: '🎯 К лиду',         callback_data: 'photo:target:lead' }],
-              [{ text: '👤 К сотруднику',   callback_data: 'photo:target:staff' }],
-              [{ text: '⬅️ Назад',          callback_data: 'photo:dispose:cancel' }]
+              [{ text: '📂 Общая папка', callback_data: 'photo:target:general' }],
+              [{ text: '🎯 К лиду',       callback_data: 'photo:target:lead' }],
+              [{ text: '⬅️ Назад',        callback_data: 'photo:dispose:cancel' }]
             ]
           }
           edit_keyboard_with_text('☁️ Куда сохранить?', markup)
+          ack
+        end
+
+        # Iter 61 — share-flow Step 2: выбор сотрудника (без создания задачи).
+        # После выбора → step=share_caption, ждём opt-caption или /skip.
+        def prompt_choose_share_staff(pa)
+          tg_user.set_pending_action!(
+            type: 'photo_disposition',
+            step: 'choose_share_staff',
+            data: pa['data'].to_h
+          )
+
+          staff = active_staff_for_picker
+          if staff.empty?
+            return ack_and_text('⚠️ Нет активных сотрудников для пересылки.', alert: true)
+          end
+
+          buttons = staff.map do |s|
+            [{ text: staff_button_text(s), callback_data: "photo:share_to:#{s.id}" }]
+          end
+          buttons << [{ text: '⬅️ Назад', callback_data: 'photo:dispose:cancel' }]
+
+          edit_keyboard_with_text(
+            '📤 Кому переслать фото (без создания задачи)?',
+            { inline_keyboard: buttons }
+          )
           ack
         end
 
@@ -91,6 +129,31 @@ module Telegram
             "📝 Опиши задание и укажи получателя:\n" \
             "Например: <code>@irina проверь паспорт клиента сегодня до 18:00</code>\n\n" \
             'Отправь обычным текстовым сообщением — фото будет приложено к задаче.',
+            { inline_keyboard: [[{ text: '⬅️ Отмена', callback_data: 'photo:dispose:cancel' }]] }
+          )
+          ack
+        end
+
+        # =============== Iter 61 share-flow Step 3: target selected ===============
+        #
+        # Director выбрал сотрудника из picker'а (callback_data: photo:share_to:<id>).
+        # Сохраняем target_staff_id в pending_action.data + step=share_caption,
+        # просим опциональную подпись или /skip.
+        def handle_share_to(staff_id, pa)
+          target = ::TelegramUser.find_by(id: staff_id)
+          return ack('⚠️ Сотрудник не найден.', alert: true) if target.nil?
+
+          tg_user.set_pending_action!(
+            type: 'photo_disposition',
+            step: 'share_caption',
+            data: pa['data'].to_h.merge('target_staff_id' => staff_id)
+          )
+
+          edit_keyboard_with_text(
+            "📤 Получатель: <b>#{target.mention}</b>\n\n" \
+            "Опционально добавь подпись (контекст для сотрудника) или жми <code>/skip</code>.\n" \
+            "Например: <i>«глянь, такого вида паспорт не принимаем»</i>.\n\n" \
+            'Отправь следующим сообщением.',
             { inline_keyboard: [[{ text: '⬅️ Отмена', callback_data: 'photo:dispose:cancel' }]] }
           )
           ack

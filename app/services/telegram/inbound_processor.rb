@@ -276,9 +276,12 @@ module Telegram
       true
     end
 
-    # Iter 60 — photo disposition «📤 Сотрудникам» step: после нажатия кнопки
-    # pending_action.step='describe_task'. Текст в DM от manager+ интерпретируется
-    # как описание задания + @username получатель; создаём Task с attached фото.
+    # Iter 60-61 — photo disposition text-continuation router.
+    # После inline-кнопок step может быть:
+    #   • describe_task   (Iter 60, photo→staff WITH task) → PhotoTaskContinuation
+    #   • share_caption   (Iter 61, photo→staff WITHOUT task) → PhotoShareContinuation
+    # ВАЖНО: `/skip` для share_caption — допустимый ввод (юзер шлёт фото без
+    # подписи). Не блокируем slash-команды для этого step'а.
     #
     # @return [Symbol, nil] :handled | :error если перехвачено; nil — пропускаем
     #   ниже по pipeline (не наш кейс).
@@ -286,16 +289,26 @@ module Telegram
       return nil unless msg.dig('chat', 'type') == 'private'
 
       text = msg['text'].to_s.strip
-      return nil if text.empty? || text.start_with?('/')
+      return nil if text.empty?
 
       from_id = msg.dig('from', 'id')
       tg_user = ::TelegramUser.find_by(tg_user_id: from_id)
       return nil if tg_user.nil?
 
       pa = tg_user.pending_action
-      return nil unless pa.is_a?(Hash) && pa['type'] == 'photo_disposition' && pa['step'] == 'describe_task'
+      return nil unless pa.is_a?(Hash) && pa['type'] == 'photo_disposition'
 
-      Telegram::WorkBot::PhotoTaskContinuation.new(msg: msg, tg_user: tg_user, pending_action: pa).call
+      step = pa['step'].to_s
+      case step
+      when 'describe_task'
+        return nil if text.start_with?('/') # не /skip case — задача-режим не принимает команды
+        Telegram::WorkBot::PhotoTaskContinuation.new(msg: msg, tg_user: tg_user, pending_action: pa).call
+      when 'share_caption'
+        # `/skip` валиден; любая slash-команда кроме /skip — пропускаем
+        # (юзер передумал и пишет команду — она пойдёт в Router нормально).
+        return nil if text.start_with?('/') && !text.casecmp?('/skip')
+        Telegram::WorkBot::PhotoShareContinuation.new(msg: msg, tg_user: tg_user, pending_action: pa).call
+      end
     rescue StandardError => e
       Rails.logger.warn("[InboundProcessor#workbot_photo_text_continuation] #{e.class}: #{e.message}")
       nil
