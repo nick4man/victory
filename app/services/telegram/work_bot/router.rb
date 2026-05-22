@@ -44,7 +44,11 @@ module Telegram
         '/resume_batch' => Commands::ResumeBatch,
         # Phase 15 — control panel snapshot для директора в DM (manager+).
         '/dashboard' => Commands::Dashboard,
-        '/panel' => Commands::Dashboard # alias
+        '/panel' => Commands::Dashboard, # alias
+        # Phase 15 — reference card (cheat-sheet) для DM. Public (renderer
+        # сам фильтрует секции по role). User закрепит сообщение в DM.
+        '/cheatsheet' => Commands::Cheatsheet,
+        '/shortcuts' => Commands::Cheatsheet # alias
       }.freeze
 
       def initialize(message, client: Telegram::Client.new)
