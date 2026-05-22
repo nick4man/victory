@@ -69,6 +69,10 @@ module ChatTools
       end
 
       def self.call(args = {}, asked_by: nil)
+        # Phase 16.5 — reset semantic state per-call. @semantic_distances
+        # хранится между semantic_scope и serialize чтобы surface scores.
+        @semantic_distances = nil
+
         caller = resolve_caller(args[:caller_tg_user_id], asked_by)
         return { error: 'caller_unknown' } if caller.nil?
 
@@ -124,16 +128,33 @@ module ChatTools
       end
 
       # Phase 16.5 — semantic search через cosine distance на pgvector.
-      # Возвращает scope TelegramGroupMessage ranked by similarity, или nil
-      # если query embed fail (caller сделает fallback на FTS).
+      # Гайки:
+      # • SIMILARITY_THRESHOLD — cosine_distance < 0.55 = empirical sweet-spot
+      #   для русского gemini-embedding-001 на real estate. Выше — шум,
+      #   ниже — пропуски парафразов.
+      # • Preserve ranking — neighbor gem возвращает ordered by distance,
+      #   но `where(id: ids)` теряет порядок. array_position восстанавливает.
+      SIMILARITY_THRESHOLD = 0.50 # cosine_distance < 0.50 = достаточно близко для real-estate context
+      SEMANTIC_INITIAL_LIMIT = 50
+
       def self.semantic_scope(query)
         vec = ::Embedding::GoogleClient.new.embed(query)
         return nil if vec.blank?
 
-        nearest = TelegramGroupMessageEmbedding.nearest_neighbors(:embedding, vec, distance: :cosine).limit(100)
-        return nil if nearest.empty?
+        ranked = TelegramGroupMessageEmbedding
+                 .nearest_neighbors(:embedding, vec, distance: :cosine)
+                 .limit(SEMANTIC_INITIAL_LIMIT)
+                 .to_a
+                 .select { |r| r.neighbor_distance < SIMILARITY_THRESHOLD }
 
-        TelegramGroupMessage.where(id: nearest.pluck(:telegram_group_message_id))
+        return nil if ranked.empty?
+
+        # Сохраняем distance scores в thread-local для serialize (используется в items output)
+        @semantic_distances = ranked.to_h { |r| [r.telegram_group_message_id, r.neighbor_distance] }
+
+        ids = ranked.map(&:telegram_group_message_id)
+        order_sql = Arel.sql("array_position(ARRAY[#{ids.join(',')}]::bigint[], id)")
+        TelegramGroupMessage.where(id: ids).order(order_sql)
       rescue ::Embedding::GoogleClient::Error, StandardError => e
         Rails.logger.warn("[SearchGroupMessages#semantic_scope] #{e.class} #{e.message}")
         nil
@@ -183,7 +204,7 @@ module ChatTools
       end
 
       def self.serialize(msg)
-        {
+        out = {
           sender: msg.sender_label,
           body_excerpt: msg.body_excerpt(max_chars: BODY_EXCERPT_CHARS),
           payload_kind: msg.payload_kind,
@@ -191,6 +212,12 @@ module ChatTools
           sent_str: msg.sent_at.strftime('%d.%m.%y %H:%M'),
           tg_link: msg.tg_link
         }
+        # Phase 16.5 — surface semantic similarity score когда mode=semantic.
+        # similarity_score = 1 - cosine_distance → 1.0 = identical, 0.5 = relevant, 0.0 = orthogonal.
+        if @semantic_distances && (dist = @semantic_distances[msg.id])
+          out[:similarity] = (1.0 - dist).round(3)
+        end
+        out
       end
     end
   end
