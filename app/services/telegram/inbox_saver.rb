@@ -140,7 +140,7 @@ module Telegram
       chat_type = @msg.dig('chat', 'type').to_s
       return unless chat_type.in?(%w[group supergroup])
 
-      TelegramGroupMessage.upsert(
+      result = TelegramGroupMessage.upsert(
         {
           tg_chat_id: chat_id,
           tg_message_id: @msg['message_id'].to_i,
@@ -158,6 +158,13 @@ module Telegram
         },
         unique_by: %i[tg_chat_id tg_message_id]
       )
+
+      # Phase 16.5 — upsert skip'ает after_commit callbacks (ActiveRecord gotcha),
+      # поэтому enqueue embed job вручную если text present. id из upsert result.
+      return if text.to_s.strip.empty?
+
+      msg_id = result.rows.first&.first
+      EmbedTelegramGroupMessageJob.perform_later(msg_id) if msg_id
     rescue StandardError => e
       Rails.logger.warn("[Telegram::InboxSaver#persist_to_db] #{e.class}: #{e.message}")
     end

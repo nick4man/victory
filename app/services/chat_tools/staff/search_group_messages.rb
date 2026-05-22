@@ -50,6 +50,14 @@ module ChatTools
                 },
                 from_date: { type: 'string', description: 'для period=custom, dd.MM.yy' },
                 to_date:   { type: 'string', description: 'для period=custom, dd.MM.yy' },
+                mode: {
+                  type: 'string',
+                  enum: %w[keyword semantic],
+                  description: 'keyword (default) — точный текстовый поиск через tsvector. ' \
+                               'semantic — векторный поиск по смыслу (Phase 16.5, gemini-embedding). ' \
+                               'Используй semantic когда query описывает понятие («трудности подписи», ' \
+                               '«недовольство клиента») а не точное слово.'
+                },
                 limit: {
                   type: 'integer',
                   description: "1-#{MAX_LIMIT}, default #{DEFAULT_LIMIT}"
@@ -70,7 +78,15 @@ module ChatTools
         query = args[:query].to_s.strip
         return { error: 'empty_query' } if query.empty?
 
-        scope = TelegramGroupMessage.fts(query)
+        # Phase 16.5 — semantic mode через TelegramGroupMessageEmbedding.
+        # Falls back на keyword (FTS) если embedding unavailable (no API key /
+        # query embed fail / pending backfill). Hybrid robustness.
+        scope =
+          if args[:mode].to_s == 'semantic'
+            semantic_scope(query) || TelegramGroupMessage.fts(query)
+          else
+            TelegramGroupMessage.fts(query)
+          end
 
         if args[:sender_username].present?
           uname = args[:sender_username].to_s.strip.sub(/\A@/, '').downcase
@@ -104,6 +120,22 @@ module ChatTools
         return asked_by if asked_by.is_a?(::TelegramUser)
         return ::TelegramUser.find_by(id: caller_id) if caller_id.present?
 
+        nil
+      end
+
+      # Phase 16.5 — semantic search через cosine distance на pgvector.
+      # Возвращает scope TelegramGroupMessage ranked by similarity, или nil
+      # если query embed fail (caller сделает fallback на FTS).
+      def self.semantic_scope(query)
+        vec = ::Embedding::GoogleClient.new.embed(query)
+        return nil if vec.blank?
+
+        nearest = TelegramGroupMessageEmbedding.nearest_neighbors(:embedding, vec, distance: :cosine).limit(100)
+        return nil if nearest.empty?
+
+        TelegramGroupMessage.where(id: nearest.pluck(:telegram_group_message_id))
+      rescue ::Embedding::GoogleClient::Error, StandardError => e
+        Rails.logger.warn("[SearchGroupMessages#semantic_scope] #{e.class} #{e.message}")
         nil
       end
 

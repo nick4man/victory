@@ -15,9 +15,26 @@
 #   • body может быть пустым для photo без caption — индекс есть, но match
 #     не сработает (что OK, search не должен находить «пустые» фото)
 class TelegramGroupMessage < ApplicationRecord
+  # Phase 16.5 — semantic embeddings (one-to-one). Опциональная связь —
+  # backfill / async embed может ещё не завершиться.
+  has_one :embedding_record, class_name: 'TelegramGroupMessageEmbedding', dependent: :destroy
+
   # === Validations ===
   validates :tg_chat_id, :tg_message_id, :sent_at, presence: true
   validates :tg_message_id, uniqueness: { scope: :tg_chat_id }
+
+  # Phase 16.5 — enqueue embed job когда body present и изменился.
+  # Skip-if-unchanged логика на стороне самого job'а (content_hash).
+  after_commit :enqueue_embed_if_changed, on: %i[create update]
+
+  def enqueue_embed_if_changed
+    return if body.to_s.strip.empty?
+    return unless saved_change_to_body? || saved_change_to_tg_thread_id? || saved_change_to_sender_username? || destroyed?
+
+    EmbedTelegramGroupMessageJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("[TelegramGroupMessage##{id}#enqueue_embed_if_changed] #{e.class} #{e.message}")
+  end
 
   # === Scopes ===
   scope :by_sender, ->(tg_user_id_or_username) {

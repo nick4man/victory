@@ -194,4 +194,33 @@ namespace :telegram do
     puts ''
     puts 'Done. KPI snapshot теперь скрывает их по умолчанию (rake kpi:phase_a).'
   end
+
+  # Phase 16.5 — backfill embeddings для TelegramGroupMessage rows которые
+  # ещё не embed'нуты (нет embedding_record). Per-enqueue delay уважает
+  # Google free tier 100 rpm.
+  desc 'Phase 16.5 — backfill semantic embeddings для group messages'
+  task :backfill_group_message_embeddings, [:delay] => :environment do |_t, args|
+    delay = (args[:delay] || 0.7).to_f.clamp(0.5, 5.0)
+
+    scope = TelegramGroupMessage.where.not(body: [nil, ''])
+                                .left_joins(:embedding_record)
+                                .where(telegram_group_message_embeddings: { id: nil })
+    total = scope.count
+    puts "Embedding backfill: #{total} pending (delay=#{delay}s per enqueue)"
+
+    if total.zero?
+      puts 'Nothing to do — все relevant messages embedded.'
+      next
+    end
+
+    scope.find_each do |m|
+      EmbedTelegramGroupMessageJob.perform_later(m.id)
+      print '.'
+      sleep delay
+    end
+
+    puts ''
+    puts "Enqueued #{total} jobs в :low_priority. Watch:"
+    puts '  docker logs --since 5m victory-sidekiq-1 | grep EmbedTelegramGroupMessageJob'
+  end
 end
