@@ -62,6 +62,13 @@ module Telegram
         return Telegram::ClientBot::LinkProcessor.call(msg)
       end
 
+      # #413f — inbound activation flow (bare /start ИЛИ contact-share).
+      # Должен идти ПОСЛЕ LinkProcessor (он handle'ит /start с token) и ДО
+      # photo/text intake (служебный flow, не контент клиента).
+      if Telegram::ClientBot::ActivationRequestProcessor.applies?(msg)
+        return Telegram::ClientBot::ActivationRequestProcessor.call(msg)
+      end
+
       # A6 Phase 1 — client photo intake (DM + photo array).
       # Клиент фотографирует паспорт/ИНН/ЕГРН в личке — направляем в pipeline.
       # Проверяем ДО WorkBot flow: клиентские DM не должны попадать в staff-bot логику.
