@@ -48,6 +48,10 @@ module Telegram
       download_photo!(base) if photo.present?
       download_document!(base) if document.present?
 
+      # Phase 15 — параллельно с file save кладём в БД для FTS.
+      # Soft-fail: ошибка БД не должна ломать file-save flow.
+      persist_to_db
+
       Rails.logger.info("[Telegram::InboxSaver] saved #{base}")
       :saved
     rescue StandardError => e
@@ -127,6 +131,51 @@ module Telegram
 
     def client
       @client ||= Telegram::Client.new
+    end
+
+    # Phase 15 — upsert message в telegram_group_messages для FTS поиска.
+    # Только supergroup/group (private DM не индексируем — privacy + объём не
+    # оправдан). Idempotent через unique key (chat_id, message_id).
+    def persist_to_db
+      chat_type = @msg.dig('chat', 'type').to_s
+      return unless chat_type.in?(%w[group supergroup])
+
+      TelegramGroupMessage.upsert(
+        {
+          tg_chat_id: chat_id,
+          tg_message_id: @msg['message_id'].to_i,
+          tg_thread_id: @msg['message_thread_id'],
+          tg_user_id: from_id,
+          sender_username: @msg.dig('from', 'username'),
+          sender_first_name: @msg.dig('from', 'first_name'),
+          body: text.to_s,
+          payload_kind: detect_payload_kind,
+          has_attachment: photo.present? || document.present?,
+          reply_to_tg_message_id: @msg.dig('reply_to_message', 'message_id'),
+          sent_at: parse_sent_at,
+          created_at: Time.current,
+          updated_at: Time.current
+        },
+        unique_by: %i[tg_chat_id tg_message_id]
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[Telegram::InboxSaver#persist_to_db] #{e.class}: #{e.message}")
+    end
+
+    def detect_payload_kind
+      return 'photo'    if photo.present?
+      return 'document' if document.present?
+      return 'voice'    if @msg['voice'].present?
+      return 'sticker'  if @msg['sticker'].present?
+      return 'video'    if @msg['video'].present?
+      return 'system'   if @msg['forum_topic_created'] || @msg['new_chat_members'] || @msg['left_chat_member']
+
+      'text'
+    end
+
+    def parse_sent_at
+      epoch = @msg['date'].to_i
+      epoch.positive? ? Time.zone.at(epoch) : Time.current
     end
   end
 end

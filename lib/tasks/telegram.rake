@@ -53,4 +53,95 @@ namespace :telegram do
     end
     puts "Done. #{count} users synced."
   end
+
+  # Phase 15 — backfill /app/inbox/<date>/*.json в telegram_group_messages.
+  # InboxSaver сохранял group messages в файлы до того как мы добавили
+  # параллельную DB-запись (Phase 15). Эта задача парсит существующие JSON
+  # и upsert'ит их в БД для FTS-поиска. Idempotent через unique key.
+  #
+  # Запуск:
+  #   bundle exec rake telegram:backfill_group_messages
+  #   bundle exec rake telegram:backfill_group_messages[2026-05-01]  # с даты
+  #
+  # Метрики: количество parsed / skipped / errors.
+  desc 'Backfill /app/inbox/<date>/*.json в telegram_group_messages (Phase 15 FTS)'
+  task :backfill_group_messages, [:since_date] => :environment do |_, args|
+    inbox_dir = Rails.root.join('inbox')
+    unless inbox_dir.directory?
+      puts "[WARN] #{inbox_dir} не существует — backfill пропущен."
+      next
+    end
+
+    since = args[:since_date].presence ? Date.strptime(args[:since_date], '%Y-%m-%d') : nil
+    parsed = skipped = errors = 0
+
+    Dir.glob(inbox_dir.join('*.json')).sort.each do |path|
+      basename = File.basename(path)
+
+      # filename format: 2026-05-22_18-30-15_id-1003779115845_msg1092.json
+      if since && (m = basename.match(/\A(\d{4}-\d{2}-\d{2})_/))
+        file_date = Date.strptime(m[1], '%Y-%m-%d') rescue nil
+        if file_date && file_date < since
+          skipped += 1
+          next
+        end
+      end
+
+      begin
+        meta = JSON.parse(File.read(path))
+      rescue JSON::ParserError => e
+        puts "[ERR] #{basename}: parse #{e.message}"
+        errors += 1
+        next
+      end
+
+      chat = meta['chat'] || {}
+      chat_type = chat['type'].to_s
+      unless chat_type.in?(%w[group supergroup])
+        skipped += 1
+        next
+      end
+
+      body = meta['text'].to_s.presence || meta['caption'].to_s
+      from = meta['from'] || {}
+      payload_kind = if meta['photo_meta'] then 'photo'
+                     elsif meta['document_meta'] then 'document'
+                     else 'text'
+                     end
+
+      begin
+        TelegramGroupMessage.upsert(
+          {
+            tg_chat_id: chat['id'].to_i,
+            tg_message_id: meta['message_id'].to_i,
+            tg_thread_id: meta['message_thread_id'],
+            tg_user_id: from['id'],
+            sender_username: from['username'],
+            sender_first_name: from['first_name'],
+            body: body,
+            payload_kind: payload_kind,
+            has_attachment: meta['photo_meta'].present? || meta['document_meta'].present?,
+            reply_to_tg_message_id: nil, # старые JSON не сохраняли reply_to_message_id
+            sent_at: meta['date'].present? ? Time.zone.at(meta['date'].to_i) : Time.parse(meta['ingested_at'].to_s),
+            created_at: Time.current,
+            updated_at: Time.current
+          },
+          unique_by: %i[tg_chat_id tg_message_id]
+        )
+        parsed += 1
+      rescue StandardError => e
+        puts "[ERR] #{basename}: upsert #{e.class} #{e.message}"
+        errors += 1
+      end
+
+      puts "[#{parsed}] processed" if (parsed % 100).zero? && parsed.positive?
+    end
+
+    puts ''
+    puts '=== Backfill summary ==='
+    puts "  parsed:  #{parsed}"
+    puts "  skipped: #{skipped} (non-group или вне диапазона дат)"
+    puts "  errors:  #{errors}"
+    puts "  total in DB: #{TelegramGroupMessage.count}"
+  end
 end
