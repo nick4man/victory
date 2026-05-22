@@ -6,8 +6,15 @@ class ApplicationMailer < ActionMailer::Base
   # MAIL_FROM accepts "Name <addr@example.com>" формат; DEFAULT_FROM_EMAIL
   # — legacy var, fallback. Mail.ru SMTP требует, чтобы From-адрес совпадал
   # с SMTP_USERNAME (или входил в alias-список).
+  #
+  # 22.05.26 — fallback теперь включает читабельное имя
+  # `АН «Виктори» <noreply@victory62.org>` (раньше был голый адрес,
+  # выглядел технически в inbox получателя). reply_to → AgencyInfo::EMAIL
+  # (oks07@yandex.ru) чтобы клиент при ответе писал в реальную почту.
   default from: ENV.fetch('MAIL_FROM',
-                          ENV.fetch('DEFAULT_FROM_EMAIL', 'noreply@victory62.org'))
+                          ENV.fetch('DEFAULT_FROM_EMAIL',
+                                    "#{AgencyInfo::NAME} <noreply@victory62.org>"))
+  default reply_to: AgencyInfo::EMAIL
   layout 'mailer'
   
   # Helper method to attach company logo

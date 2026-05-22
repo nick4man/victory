@@ -224,24 +224,25 @@
             </td>
           </tr>
           
-          <!-- Footer -->
+          <!-- Footer — contacts из AgencyInfo (single source of truth, как на сайте) -->
           <tr>
             <td class="email-footer">
               <p style="margin: 0 0 10px 0;">
-                <strong>АН "Виктори"</strong><br>
-                Ваш надежный партнер в мире недвижимости
+                <strong><%= AgencyInfo::NAME %></strong><br>
+                <%= AgencyInfo::TAGLINE %>
               </p>
-              
+
               <div class="social-links">
-                <a href="<%= ENV.fetch('VK_URL', '#') %>">ВКонтакте</a> |
-                <a href="<%= ENV.fetch('TELEGRAM_URL', '#') %>">Telegram</a> |
-                <a href="<%= ENV.fetch('WHATSAPP_URL', '#') %>">WhatsApp</a>
+                <a href="https://t.me/rznvictory">Telegram-канал</a> |
+                <a href="https://t.me/anvictorybot">Бот @anvictorybot</a> |
+                <a href="<%= AgencyInfo::MAP_URL %>">Я.Карты</a>
               </div>
-              
+
               <p style="margin: 15px 0; font-size: 13px; color: #a0aec0;">
-                📞 <%= ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67') %><br>
-                📧 <%= ENV.fetch('CONTACT_EMAIL', 'info@viktory-realty.ru') %><br>
-                🏢 <%= ENV.fetch('OFFICE_ADDRESS', 'г. Москва, ул. Примерная, д. 1') %>
+                📞 <%= AgencyInfo::PHONE_PRIMARY %> · <%= AgencyInfo::PHONE_BACKUP %><br>
+                📧 <a href="mailto:<%= AgencyInfo::EMAIL %>" style="color: #a0aec0;"><%= AgencyInfo::EMAIL %></a><br>
+                🏢 г. <%= AgencyInfo::ADDRESS_CITY %>, <%= AgencyInfo::ADDRESS_STREET %><br>
+                🕐 <%= AgencyInfo::HOURS_HUMAN %>
               </p>
               
               <p style="margin: 20px 0 0 0; font-size: 12px; color: #718096;">

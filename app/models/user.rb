@@ -197,7 +197,13 @@ class User < ApplicationRecord
   # ============================================
   before_validation :normalize_phone
   before_save :set_default_preferences, if: :new_record?
-  after_create :send_welcome_notification
+  # `send_welcome_notification` отключён — Topnlab owner_sync создавал
+  # десятки User за раз через User.save(validate: false), и каждый юзер
+  # тригерил welcome_email на oks07@yandex.ru (директор). Это шум —
+  # клиенты получают релевантные emails отдельно: magic-link от
+  # cabinet/auth, invitation от CabinetInvitationMailer, deal events от
+  # specialized mailers. Generic welcome не нужен.
+  # after_create :send_welcome_notification    # disabled 22.05.26
   after_create_commit :link_existing_records
 
   # ============================================
