@@ -20,7 +20,8 @@ module ChatTools
               properties: {
                 assignee_username: {
                   type: 'string',
-                  description: 'TG @username сотрудника (без @). Для self-query — username caller-а.'
+                  description: 'TG @username сотрудника (без @) ИЛИ id:N для staff без username (Iter 57). ' \
+                               'Для self-query — username caller-а.'
                 },
                 only_today: {
                   type: 'boolean',
@@ -33,16 +34,22 @@ module ChatTools
       end
 
       def self.call(args = {})
-        username = args[:assignee_username].to_s.strip.sub(/\A@/, '').downcase
-        user = TelegramUser.find_by('LOWER(tg_username) = ?', username)
-        return { error: 'user_not_found', username: username } if user.nil?
+        token = args[:assignee_username].to_s.strip
+        # Phase 15 follow-up to Iter 57 — поддержка `id:N` для staff без
+        # tg_username (например Надежда id:14). resolve_identifier работает
+        # с обоими форматами + case-insensitive @username.
+        user = TelegramUser.resolve_identifier(token)
+        return { error: 'user_not_found', username: token } if user.nil?
 
         scope = ::Task.where(assignee_id: user.id, status: 'open').order(:priority, :due_at)
         scope = scope.where(due_at: Time.current.all_day) if args[:only_today]
         tasks = scope.limit(20).to_a
 
         {
+          # Возвращаем mention (полное представление staff'а) — лучше для
+          # рендеринга в LLM-ответе чем raw username (Надежда даст 'id:14').
           assignee_username: user.tg_username,
+          assignee_mention: user.mention,
           count: tasks.size,
           tasks: tasks.map { |t| serialize(t) }
         }
