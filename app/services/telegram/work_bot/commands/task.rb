@@ -11,31 +11,27 @@ module Telegram
       # Формат даты — строго dd.MM.yy (см. Formatters::DateFormat).
       class Task < Base
         def handle
-          parts = args.to_s.strip.split(/\s+/, 2)
+          # Phase 15 — resolve_lead! «съест» lead_id ЕСЛИ 1-й arg число.
+          # После resolve_lead! @args = «dd.MM.yy <текст>» (как и было в group).
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('task 15.05.26 текст')) unless lead
+
+          parts = @args.to_s.strip.split(/\s+/, 2)
           date_token = parts[0]
           title = parts[1].to_s.strip
-          return reply('Формат: <code>/task &lt;dd.MM.yy&gt; &lt;текст задачи&gt;</code> (reply на якорную карточку).') if date_token.blank? || title.blank?
+          return reply('Формат: <code>/task &lt;dd.MM.yy&gt; &lt;текст&gt;</code> (reply) ИЛИ ' \
+                       '<code>/task &lt;lead_id&gt; &lt;dd.MM.yy&gt; &lt;текст&gt;</code> (DM).') if date_token.blank? || title.blank?
 
           due_date = Formatters::DateFormat.parse(date_token)
           return reply("⚠️ Не понимаю дату <code>#{date_token}</code>. Формат: <code>dd.MM.yy</code> (например, 15.05.26).") unless due_date
 
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
-
           build_task!(lead, due_date, title)
           push_due_to_crm(lead, due_date)
 
-          reply("📅 Задача создана: <b>#{escape(title)}</b> · до #{Formatters::DateFormat.fmt(due_date)}")
+          reply("📅 Задача создана для лида ##{lead.id}: <b>#{escape(title)}</b> · до #{Formatters::DateFormat.fmt(due_date)}")
         end
 
         private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
-        end
 
         def build_task!(lead, due_date, title)
           ::Task.create!(

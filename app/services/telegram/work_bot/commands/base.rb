@@ -116,6 +116,39 @@ module Telegram
           Rails.logger.warn("[WorkBot] DM failed for #{to&.mention}: #{e.message}")
           false
         end
+
+        # Phase 15 — Universal LeadEvent resolver для DM/group dual-context.
+        # В group: reply-to-anchor (как было исторически).
+        # В DM: explicit lead_id как 1-й arg.
+        #
+        # Если 1-й токен @args — положительное целое, считаем его lead_id и
+        # КОНСУМИМ из @args (команда дальше получает остаток без lead_id).
+        # Иначе fallback на find_lead_via_reply.
+        #
+        # @return [LeadEvent, nil] resolved лид или nil
+        def resolve_lead!
+          parts = @args.to_s.split(/\s+/, 2)
+          if (id = Integer(parts[0].to_s, exception: false)) && id.positive?
+            @args = parts[1].to_s.strip # consume lead_id, оставляем rest
+            return ::LeadEvent.find_by(id: id)
+          end
+          find_lead_via_reply
+        end
+
+        # Reply-to-anchor lookup (legacy way). Возвращает LeadEvent или nil.
+        # Использует message['reply_to_message']['message_id'] → LeadEvent.anchor_message_id.
+        def find_lead_via_reply
+          reply_to = @message['reply_to_message']
+          return nil unless reply_to
+
+          ::LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
+        end
+
+        # Hint-сообщение «лид не найден» — единый текст для всех команд.
+        def lead_not_found_hint(cmd)
+          "⚠️ Лид не найден. В group — reply на якорь лида. " \
+            "В DM — укажи lead_id первым аргументом: <code>/#{cmd} 87 …</code>"
+        end
       end
     end
   end

@@ -22,14 +22,15 @@ module Telegram
         }.freeze
 
         def handle
+          # Phase 15 — resolve_lead! «съест» lead_id из @args если есть.
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('close выиграно')) unless lead
+
           outcome_key, reason = parse_args
           new_stage = OUTCOME_MAP[outcome_key.to_s.downcase]
           unless new_stage
-            return reply('Формат: <code>/close выиграно</code> или <code>/close проиграно причина:цена</code>')
+            return reply('Формат: <code>/close выиграно</code> или <code>/close &lt;lead_id&gt; проиграно причина:цена</code>')
           end
-
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
 
           # Записать причину в metadata до перехода (чтобы карточка перерисовалась с этой инфой)
           persist_reason_to_metadata!(lead, reason) if reason.present?
@@ -42,7 +43,7 @@ module Telegram
           push_close_note(lead, new_stage, reason)
 
           icon = new_stage == 'closed_won' ? '✅' : '❌'
-          msg  = "#{icon} Закрыто: <b>#{new_stage}</b>"
+          msg  = "#{icon} Лид ##{lead.id} закрыт: <b>#{new_stage}</b>"
           msg += " (#{reason})" if reason.present?
           reply(msg)
         end
@@ -50,15 +51,8 @@ module Telegram
         private
 
         def parse_args
-          parts = args.to_s.strip.split(/\s+/, 2)
+          parts = @args.to_s.strip.split(/\s+/, 2)
           [parts[0], parts[1].to_s.sub(/\A(причина|reason)\s*:\s*/i, '').presence]
-        end
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
 
         def persist_reason_to_metadata!(lead, reason)

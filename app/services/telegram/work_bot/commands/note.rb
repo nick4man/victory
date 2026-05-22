@@ -8,27 +8,22 @@ module Telegram
       # Если у лида нет crm_id (no_crm-режим) — нота остаётся только локально.
       class Note < Base
         def handle
-          text = args.to_s.strip
-          return reply('Формат: <code>/note &lt;текст&gt;</code> (reply на якорную карточку).') if text.blank?
+          # Phase 15 — resolve_lead! сначала consume lead_id если в DM.
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('note <текст>')) unless lead
 
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
+          text = @args.to_s.strip
+          return reply('Формат: <code>/note &lt;текст&gt;</code> (reply) ИЛИ <code>/note &lt;lead_id&gt; &lt;текст&gt;</code> (DM).') if text.blank?
+
           return reply("🚫 Заметку добавляет только assignee (#{lead.assigned_to&.mention || 'не назначен'}) или manager.") unless assignee_or_manager?(lead)
 
           push_to_crm(lead, text)
           persist_to_metadata(lead, text)
 
-          reply('Записал в CRM ✅')
+          reply("Лид ##{lead.id}: записал в CRM ✅")
         end
 
         private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
-        end
 
         def push_to_crm(lead, text)
           crm_id = lead.lead_ref.try(:crm_id)

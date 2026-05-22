@@ -3,42 +3,36 @@
 module Telegram
   module WorkBot
     module Commands
-      # Текстовое назначение лида агенту: `/assign @ivan_petrov` reply на якорную карточку.
-      # Альтернатива inline-кнопке [👤 Назначить] (см. Callbacks::AssignCallback).
-      #
-      # Manager-only — назначать может только руководитель.
+      # Назначение лида агенту.
+      #   • В group: `/assign @user` reply на якорную карточку
+      #   • В DM (Phase 15): `/assign <lead_id> @user` — explicit lead_id первым
+      # Manager-only.
       class Assign < Base
         manager_only
 
         def handle
-          username = args.to_s.strip
-          return reply('Формат: <code>/assign @username</code> (reply на якорную карточку лида).') if username.blank?
+          # Phase 15 — resolve_lead! сначала «съест» lead_id если он есть в @args.
+          # После этого @args содержит только username.
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('assign')) unless lead
 
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
+          username = @args.to_s.strip
+          return reply('Формат: <code>/assign @username</code> (reply на якорь) ИЛИ ' \
+                       '<code>/assign &lt;lead_id&gt; @username</code> в DM.') if username.blank?
 
-          # rubocop:disable Rails/DynamicFindBy -- это наш custom class method, не Rails dynamic finder
+          # rubocop:disable Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
           assignee = TelegramUser.find_by_username(username)
           # rubocop:enable Rails/DynamicFindBy
           return reply("⚠️ Сотрудник #{username} не зарегистрирован. Попроси его написать /whoami.") unless assignee
 
           result = Telegram::WorkBot::LeadAssignment.new(lead, assignee: assignee, actor: tg_user, client: client).call
           if result.success?
-            msg = "✅ Назначен: #{assignee.mention}"
+            msg = "✅ Лид ##{lead.id} → #{assignee.mention}"
             msg += " <i>(#{result.error_message})</i>" if result.error_message
             reply(msg)
           else
             reply("⚠️ #{result.error_message}")
           end
-        end
-
-        private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
       end
     end

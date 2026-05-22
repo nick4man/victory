@@ -25,30 +25,23 @@ module Telegram
         }.freeze
 
         def handle
-          new_stage = STAGE_MAP[args.downcase.strip]
+          # Phase 15 — resolve_lead! сначала «съест» lead_id из @args если есть.
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('stage показ')) unless lead
+
+          new_stage = STAGE_MAP[@args.downcase.strip]
           unless new_stage
             return reply("Неизвестная стадия. Доступно: <code>#{STAGE_MAP.keys.join(', ')}</code>")
           end
 
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
           return reply("🚫 Стадию меняет только assignee (#{lead.assigned_to&.mention || 'не назначен'}) или manager.") unless assignee_or_manager?(lead)
 
           result = Telegram::WorkBot::LeadStageTransition.new(lead, new_stage, actor: tg_user, client: client).call
           if result.success?
-            reply("✅ #{result.prev_stage} → <b>#{result.new_stage}</b>")
+            reply("Лид ##{lead.id}: #{result.prev_stage} → <b>#{result.new_stage}</b> ✅")
           else
             reply("⚠️ #{result.message}")
           end
-        end
-
-        private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
       end
     end

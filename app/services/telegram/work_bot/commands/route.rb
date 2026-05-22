@@ -14,32 +14,25 @@ module Telegram
         manager_only
 
         def handle
-          target_key = args.strip.downcase
-          return reply("Формат: <code>/route apartments</code>. Доступно: #{Telegram::TopicRegistry.routing_buttons.join(', ')}") if target_key.blank?
+          # Phase 15 — resolve_lead! сначала «съест» lead_id если он есть в @args.
+          lead = resolve_lead!
+          return reply(lead_not_found_hint('route apartments')) unless lead
+
+          target_key = @args.to_s.strip.downcase
+          return reply("Формат: <code>/route apartments</code> (reply) ИЛИ <code>/route &lt;lead_id&gt; apartments</code> (DM). " \
+                       "Доступно: #{Telegram::TopicRegistry.routing_buttons.join(', ')}") if target_key.blank?
 
           unless Telegram::TopicRegistry.valid_key?(target_key)
             return reply("⚠️ Неизвестный топик: <code>#{target_key}</code>")
           end
 
-          lead = find_lead_via_reply
-          return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
-
           migrated = Telegram::WorkBot::AnchorMigrator.new(lead, target_key, actor: tg_user, client: client).call
           if migrated
             title = Telegram::TopicRegistry.title(target_key)
-            reply("→ ##{title} ✅")
+            reply("Лид ##{lead.id} → ##{title} ✅")
           else
             reply('⚠️ Маршрутизация пропущена (см. логи).')
           end
-        end
-
-        private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
       end
     end
