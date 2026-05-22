@@ -51,10 +51,11 @@ module Telegram
         # callback_data `assign_to:<lead_id>:<user_id>`), но триггерится
         # из command-context (без callback_query).
         def render_picker(lead)
+          # NULL-safe ordering — staff без tg_username (Надежда) в конец списка.
           users = TelegramUser.assignable
                               .where.not(id: lead.assigned_to_id)
+                              .order(Arel.sql('CASE WHEN tg_username IS NULL THEN 1 ELSE 0 END'), :tg_username, :id)
                               .limit(PICKER_MAX_USERS)
-                              .order(:tg_username)
           return reply('⚠️ Нет активных сотрудников для назначения.') if users.empty?
 
           buttons = users.map do |u|

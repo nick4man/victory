@@ -18,7 +18,12 @@ module Telegram
 
         def handle
           lead = lead_event
-          users = TelegramUser.assignable.where.not(id: lead.assigned_to_id).limit(MAX_USERS).order(:tg_username)
+          # Iter 57 follow-up — NULL-safe ordering. Staff без tg_username (Надежда)
+          # ставим в конец списка через CASE, потом сорт по username, tie-break по id.
+          users = TelegramUser.assignable
+                              .where.not(id: lead.assigned_to_id)
+                              .order(Arel.sql('CASE WHEN tg_username IS NULL THEN 1 ELSE 0 END'), :tg_username, :id)
+                              .limit(MAX_USERS)
           return ack('Нет активных сотрудников для назначения.', alert: true) if users.empty?
 
           msg = callback_query['message'] || {}
