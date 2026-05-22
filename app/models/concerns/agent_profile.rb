@@ -20,8 +20,10 @@ module AgentProfile
 
     # Agents that should appear at /agents/:slug and in sitemap. Filters out
     # system accounts (Topnlab Import, "удалён Пользователь"), users without
-    # a CRM department, and blocked CRM statuses. Used by AgentsController
-    # and SitemapController; kept as a scope so DB does the filtering.
+    # a CRM department, blocked CRM statuses, и тех кто явно запросил «убрать
+    # с сайта» (152-ФЗ — `public_profile_hidden_at` timestamp). Used by
+    # AgentsController и SitemapController; kept as a scope so DB does the
+    # filtering.
     scope :publicly_listable_agents, lambda {
       # Phone is preferred but not required — some agents work email-only.
       # crm_status + department_id together filter out the system accounts
@@ -31,6 +33,7 @@ module AgentProfile
         .where.not(agent_slug: [nil, ''])
         .where.not(department_id: nil)
         .where('LOWER(last_name) != ?', 'пользователь')
+        .where(public_profile_hidden_at: nil)
     }
   end
 
@@ -51,7 +54,8 @@ module AgentProfile
   end
 
   # True iff this user passes the same gate as `publicly_listable_agents`.
-  # Used by views (team card link) without an extra DB query.
+  # Used by views (team card link, property show «КОНТАКТ АГЕНТА» block)
+  # без extra DB query.
   def has_agent_profile?
     role_agent? &&
       active? &&
@@ -59,7 +63,15 @@ module AgentProfile
       agent_slug.present? &&
       crm_status == 'active' &&
       department_id.present? &&
-      last_name.to_s.downcase != 'пользователь'
+      last_name.to_s.downcase != 'пользователь' &&
+      !public_profile_hidden_from_site?
+  end
+
+  # 152-ФЗ — true когда агент попросил снять публичный профиль с сайта.
+  # `respond_to?` guard для безопасной работы до миграции (production rollout
+  # с feature-flag pattern).
+  def public_profile_hidden_from_site?
+    respond_to?(:public_profile_hidden_at) && public_profile_hidden_at.present?
   end
 
   private

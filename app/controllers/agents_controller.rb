@@ -12,7 +12,13 @@
 class AgentsController < ApplicationController
   def show
     @agent = agent_query.find_by(agent_slug: params[:slug])
-    return render_not_found unless @agent
+    unless @agent
+      # Различаем «exists в DB, но снят с публики» (410 — Я. de-index
+      # быстро, особенно важно для 152-ФЗ removal requests) и
+      # «slug никогда не существовал» (404 — typo / never indexed).
+      return render_410 if User.unscoped.where(agent_slug: params[:slug]).exists?
+      return render_404
+    end
 
     # Property listings this agent owns / is responsible for in CRM.
     @active_properties = @agent.properties
@@ -46,7 +52,4 @@ class AgentsController < ApplicationController
     parts.join(' · ')
   end
 
-  def render_not_found
-    render template: 'errors/not_found', status: :not_found, formats: [:html]
-  end
 end
