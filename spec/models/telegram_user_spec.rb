@@ -105,4 +105,44 @@ RSpec.describe TelegramUser do
       expect(described_class.new(tg_user_id: 1, email: 'a@b.ru').linked_to_crm?).to be(false)
     end
   end
+
+  # Iter 60 — multi-turn conversation state в DM
+  describe '#set_pending_action! / #pending_action / #clear_pending_action!' do
+    let(:user) { described_class.create!(tg_user_id: 21_001, first_name: 'Test', status: 'active') }
+
+    it 'set_pending_action! сохраняет type/data/expires_at в jsonb' do
+      user.set_pending_action!(type: 'photo_disposition', data: { file_id: 'abc' }, step: 'choose_destination')
+      pa = user.reload.dm_pending_action
+      expect(pa['type']).to eq('photo_disposition')
+      expect(pa['step']).to eq('choose_destination')
+      expect(pa['data']['file_id']).to eq('abc')
+      expect(pa['expires_at']).to be_present
+    end
+
+    it 'pending_action возвращает Hash with indifferent access для active state' do
+      user.set_pending_action!(type: :photo_disposition, data: { file_id: 'xyz' })
+      pa = user.pending_action
+      expect(pa[:type]).to eq('photo_disposition')
+      expect(pa['type']).to eq('photo_disposition')
+      expect(pa['data']['file_id']).to eq('xyz')
+    end
+
+    it 'pending_action возвращает nil и очищает state после TTL' do
+      user.set_pending_action!(type: 'photo_disposition', data: {}, ttl: 1.second)
+      travel_to(2.seconds.from_now) do
+        expect(user.pending_action).to be_nil
+        expect(user.reload.dm_pending_action).to eq({})
+      end
+    end
+
+    it 'clear_pending_action! сбрасывает в пустой hash' do
+      user.set_pending_action!(type: 'x', data: {})
+      user.clear_pending_action!
+      expect(user.reload.dm_pending_action).to eq({})
+    end
+
+    it 'pending_action возвращает nil при пустом state' do
+      expect(user.pending_action).to be_nil
+    end
+  end
 end

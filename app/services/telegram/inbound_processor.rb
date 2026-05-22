@@ -69,6 +69,21 @@ module Telegram
         return Telegram::ClientBot::ActivationRequestProcessor.call(msg)
       end
 
+      # Iter 60 — manager+ photo в DM → WorkBot photo disposition flow.
+      # Должен проверяться РАНЬШЕ client_photo_intake (это перехватывает
+      # только staff с manager_or_director?, agents падают дальше в client path).
+      if Telegram::WorkBot::PhotoIntakeProcessor.applies?(msg)
+        return Telegram::WorkBot::PhotoIntakeProcessor.call(msg)
+      end
+
+      # Iter 60 — text-continuation после «📤 Сотрудникам с задачей» в photo
+      # flow. Сотрудник нажал кнопку → бот попросил описать задание →
+      # сотрудник пишет текстовое сообщение. Перехватываем ДО client text intake
+      # и DmQnaHandler, иначе текст уйдёт в LLM-Q&A как обычный вопрос.
+      if (rt = workbot_photo_text_continuation(msg))
+        return rt
+      end
+
       # A6 Phase 1 — client photo intake (DM + photo array).
       # Клиент фотографирует паспорт/ИНН/ЕГРН в личке — направляем в pipeline.
       # Проверяем ДО WorkBot flow: клиентские DM не должны попадать в staff-bot логику.
@@ -259,6 +274,31 @@ module Telegram
       return false unless msg.dig('chat', 'type') == 'private'
 
       true
+    end
+
+    # Iter 60 — photo disposition «📤 Сотрудникам» step: после нажатия кнопки
+    # pending_action.step='describe_task'. Текст в DM от manager+ интерпретируется
+    # как описание задания + @username получатель; создаём Task с attached фото.
+    #
+    # @return [Symbol, nil] :handled | :error если перехвачено; nil — пропускаем
+    #   ниже по pipeline (не наш кейс).
+    def workbot_photo_text_continuation(msg)
+      return nil unless msg.dig('chat', 'type') == 'private'
+
+      text = msg['text'].to_s.strip
+      return nil if text.empty? || text.start_with?('/')
+
+      from_id = msg.dig('from', 'id')
+      tg_user = ::TelegramUser.find_by(tg_user_id: from_id)
+      return nil if tg_user.nil?
+
+      pa = tg_user.pending_action
+      return nil unless pa.is_a?(Hash) && pa['type'] == 'photo_disposition' && pa['step'] == 'describe_task'
+
+      Telegram::WorkBot::PhotoTaskContinuation.new(msg: msg, tg_user: tg_user, pending_action: pa).call
+    rescue StandardError => e
+      Rails.logger.warn("[InboundProcessor#workbot_photo_text_continuation] #{e.class}: #{e.message}")
+      nil
     end
   end
 end

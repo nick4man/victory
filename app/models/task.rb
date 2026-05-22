@@ -79,6 +79,20 @@ class Task < ApplicationRecord
   scope :created_by_tg, ->(tg_user) { where(created_by_id: tg_user.id) }
   scope :created_in,    ->(range)   { where(created_at: range) }
 
+  # === Iter 60 — attachments (photo/document refs) ===
+  # JSONB array: [{ tg_file_id:, nc_url:, kind:, uploaded_at:, uploaded_by: }]
+  # Используем хелпер чтобы не дублировать deep_stringify_keys + last(20) cap.
+  def append_attachment!(tg_file_id:, nc_url:, kind: 'image', uploaded_by: nil)
+    entry = {
+      'tg_file_id' => tg_file_id.to_s,
+      'nc_url' => nc_url.to_s,
+      'kind' => kind.to_s,
+      'uploaded_at' => Time.current.iso8601,
+      'uploaded_by' => uploaded_by
+    }.compact
+    update!(attachments: (Array(attachments) + [entry]).last(20))
+  end
+
   # === Phase 7.3 — multi-modal completion ack ===
   # Phase 9 Iter 3: idempotent через transaction + reload check —
   # параллельные button/command/reaction вызовы → single completion.

@@ -78,6 +78,7 @@
 | 14 | 57 | `TelegramUser.resolve_identifier(token)` — `@username` ИЛИ `id:N` для staff без `tg_username` (Надежда unblock в voice-intake) | — |
 | 14 | 58 | Native TG /-меню через `setMyCommands` + per-user `BotCommandScopeChat` (role-tier) + group-scope (pipeline subset). Source: `config/telegram_bot_commands.yml`. Bulk: `rake telegram:sync_commands`. Реактивно — в `touch_from_message!` (первый /start) + `/promote /demote /link /deactivate`. | — |
 | 14 | 59 | **Director self-audit**: голос/текст в DM → query path вместо task_batch. `Telegram::WorkBot::VoiceIntentBranch` (LLM-classifier перед TaskExtractor) + `ChatTools::Staff::DirectorSelfAudit` (новый tool в Registry). Authorship: миграция `lead_events.assigned_by_id/routed_by_id` FK + `Task.created_by_tg/created_in` + `LeadEvent.assigned_by_tg/routed_by_tg/updated_in` scopes. /assign + /route fill originator (FK + metadata history). | — |
+| 14 | 60 | **Photo disposition в DM**: manager+ шлёт фото → `WorkBot::PhotoIntakeProcessor` сохраняет `dm_pending_action` (jsonb на TelegramUser) + 3-кнопочный prompt. Callback `PhotoDispositionCallback` дальше: ☁️ облако → 3 цели (общая/лид/сотрудник) → Nextcloud upload + share-link. 📤 staff → text-continuation в `PhotoTaskContinuation` → `Task` с `attachments` jsonb + DM ассайни. TTL 10 мин. | — |
 
 ## TG work-bot — product layer (Phase 4 MVP, 18.05.26)
 

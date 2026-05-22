@@ -24,7 +24,9 @@ module Telegram
         'assign_cancel' => 'Telegram::WorkBot::Callbacks::AssignCancelCallback',
         'spam' => 'Telegram::WorkBot::Callbacks::SpamCallback',
         'batch_confirm' => 'Telegram::WorkBot::Callbacks::TaskBatchConfirmCallback',
-        'task' => 'Telegram::WorkBot::Callbacks::TaskActionCallback'
+        'task' => 'Telegram::WorkBot::Callbacks::TaskActionCallback',
+        # Iter 60 — manager+ photo disposition (cloud upload / staff dispatch).
+        'photo' => 'Telegram::WorkBot::Callbacks::PhotoDispositionCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

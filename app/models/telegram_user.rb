@@ -163,4 +163,61 @@ class TelegramUser < ApplicationRecord
 
     result
   end
+
+  # ============================================================
+  # Iter 60 — dm_pending_action (multi-turn conversation state)
+  # ============================================================
+  #
+  # Generic mechanism для удержания state между TG-сообщениями в DM.
+  # Применяется когда бот отвечает на photo «что с ним сделать?» и ждёт callback
+  # или follow-up текстовое сообщение от того же сотрудника.
+  #
+  # Schema:
+  #   { "type" => "photo_disposition",
+  #     "expires_at" => "2026-05-22T18:00:00Z",
+  #     "step" => "choose_destination|choose_cloud_target|describe_task",
+  #     "data" => { "file_id" => ..., "target_kind" => ..., ... } }
+  #
+  # TTL default 10 мин. Expired state читается → автоматически clear'ится →
+  # caller получает nil (как будто state'а не было). Это защищает от stuck-flow
+  # «забыл нажать кнопку».
+
+  # @param type [String, Symbol] категория состояния (например :photo_disposition)
+  # @param data [Hash] произвольные key-value для callback handler'а
+  # @param step [String, Symbol, nil] текущий шаг в multi-step flow
+  # @param ttl  [ActiveSupport::Duration] срок жизни (default 10.minutes)
+  def set_pending_action!(type:, data: {}, step: nil, ttl: 10.minutes)
+    payload = {
+      'type' => type.to_s,
+      'expires_at' => ttl.from_now.iso8601,
+      'data' => data.deep_stringify_keys
+    }
+    payload['step'] = step.to_s if step
+    update_column(:dm_pending_action, payload) # rubocop:disable Rails/SkipsModelValidations
+  end
+
+  # @return [Hash, nil] active pending_action или nil (если empty / expired).
+  #   Expired state side-effect'ом очищается (set to {}).
+  def pending_action
+    pa = dm_pending_action
+    return nil if pa.blank?
+
+    expires_at = pa['expires_at'] || pa[:expires_at]
+    expired = expires_at.present? && Time.iso8601(expires_at.to_s) < Time.current
+    if expired
+      clear_pending_action!
+      return nil
+    end
+
+    pa.is_a?(Hash) ? pa.with_indifferent_access : nil
+  rescue ArgumentError, TypeError
+    # Malformed expires_at — treat as expired для safety.
+    clear_pending_action!
+    nil
+  end
+
+  def clear_pending_action!
+    update_column(:dm_pending_action, {}) # rubocop:disable Rails/SkipsModelValidations
+    nil
+  end
 end

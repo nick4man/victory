@@ -53,6 +53,11 @@ RSpec.configure do |config|
   # Include FactoryBot methods
   config.include FactoryBot::Syntax::Methods
 
+  # Iter 61 — TimeHelpers project-wide (travel_to / travel / freeze_time).
+  # Rails 7 не auto-include для RSpec; нужно явно. Используется в любых
+  # specs где тестируется TTL / scheduled-at / expires_at / etc.
+  config.include ActiveSupport::Testing::TimeHelpers
+
   # Include Devise test helpers
   config.include Devise::Test::ControllerHelpers, type: :controller
   config.include Devise::Test::IntegrationHelpers, type: :request
