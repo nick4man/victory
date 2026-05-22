@@ -125,16 +125,24 @@ module Topnlab
       [user, false]
     end
 
-    # D3 — Send «вам привязан объект» invitation через channel-priority chain.
-    # Логика делегирована CabinetInvitationDispatcher: email → TG → SMS
-    # (cheapest reliable channel first).
+    # D3 — Send «вам привязан объект» invitation через channels: %i[email tg].
+    # SMS НАМЕРЕННО отключён — после #413f phone-only клиенты активируются
+    # одним из двух путей:
+    #   1. Inbound trigger: клиент сам пишет @anvictorybot (sales script /
+    #      QR / email-подпись агента) → ActivationRequestProcessor.
+    #   2. Admin-shared link: агент в /admin/users генерирует QR/URL
+    #      и делится с клиентом через любой канал (WhatsApp / в офисе /
+    #      email / печать).
     #
-    # См. `app/services/cabinet_invitation_dispatcher.rb` для деталей про
-    # idempotency, failure-isolation, и mask_email.
+    # SMS-fallback в CabinetInvitationDispatcher остаётся в коде, но
+    # доступен ТОЛЬКО как admin-triggered action (не реализован в этом
+    # commit'е — defer). Auto-sync больше не жжёт SMS на phone-only.
+    #
+    # См. `app/services/cabinet_invitation_dispatcher.rb` для idempotency.
     def send_cabinet_invitation(user, property)
       return unless user.respond_to?(:invited_at)
 
-      CabinetInvitationDispatcher.call(user, property)
+      CabinetInvitationDispatcher.call(user, property, channels: %i[email tg])
     rescue StandardError => e
       Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
       Sentry.capture_exception(e, extra: { user_id: user.id, property_id: property&.id }) if defined?(Sentry)

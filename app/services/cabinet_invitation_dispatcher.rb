@@ -11,8 +11,12 @@
 #   2. TELEGRAM — CabinetInvitationTgService (FREE, link preview)
 #   3. SMS      — Sms::Client through CabinetInvitationSmsService (~1.5 ₽)
 #
-# Email и TG могут запускаться оба — email мог попасть в спам, TG point-of-
-# notification более reliable когда linked. SMS — fallback last-resort.
+# #413f update: OwnerSyncService теперь вызывает с channels: %i[email tg]
+# (БЕЗ sms) — auto-onboarding только через бесплатные channels. SMS-branch
+# остаётся в коде ТОЛЬКО для admin manual triggers (defer to future).
+# Phone-only клиенты Topnlab активируются через inbound trigger
+# (ClientBot::ActivationRequestProcessor) или admin-shared QR/link
+# (/admin/users/:id).
 #
 # Idempotency: gate на user.invited_at.nil? — каждый channel сам выставит
 # invited_at on success (или дисптачер пометит сам после email queue).

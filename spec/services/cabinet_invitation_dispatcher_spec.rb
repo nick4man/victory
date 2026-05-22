@@ -110,6 +110,24 @@ RSpec.describe CabinetInvitationDispatcher do
     end
   end
 
+  describe 'auto-onboarding override (channels: %i[email tg])' do
+    let(:user) do
+      u = create(:user, phone: '+79091234567', invited_at: nil)
+      allow(u).to receive(:email).and_return(nil) # phone-only client (Topnlab pattern)
+      u
+    end
+
+    it 'НЕ отправляет SMS при channels: [:email, :tg] и phone-only user' do
+      allow(CabinetInvitationSmsService).to receive(:call)
+
+      result = described_class.call(user, property, channels: %i[email tg])
+      expect(result.channels_attempted).to be_empty # ни email ни tg недоступны
+      expect(result.channels_succeeded).to be_empty
+      expect(CabinetInvitationSmsService).not_to have_received(:call)
+      expect(user.reload.invited_at).to be_nil # НЕ помечен invited (это правильно — никакой канал не сработал)
+    end
+  end
+
   describe 'stop-list pre-flight (152-ФЗ)' do
     let(:user) do
       create(:user, :tg_linked, email: 'a@b.com', phone: '+79009694844', invited_at: nil)
