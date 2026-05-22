@@ -125,39 +125,16 @@ module Topnlab
       [user, false]
     end
 
-    # D3 — Send «вам привязан объект» invitation: email first, SMS fallback.
+    # D3 — Send «вам привязан объект» invitation через channel-priority chain.
+    # Логика делегирована CabinetInvitationDispatcher: email → TG → SMS
+    # (cheapest reliable channel first).
     #
-    # Channel priority:
-    #   1. user.email.present? → CabinetInvitationMailer (delivered + sync
-    #      update_columns(invited_at)). Most reliable, free, has rich HTML.
-    #   2. else if user.phone.present? → CabinetInvitationSmsService (Topnlab
-    #      clients are often phone-only — без этого fallback'a они отрезаны).
-    #
-    # Idempotency: gated on `user.invited_at.nil?` — каждый channel сам
-    # выставляет invited_at on success, mailer через update_columns ниже,
-    # SMS service сам update'ит после API success.
-    #
-    # Failure-isolation: rescue StandardError так что неуспех mailer/SMS
-    # не сломает outer property sync loop.
+    # См. `app/services/cabinet_invitation_dispatcher.rb` для деталей про
+    # idempotency, failure-isolation, и mask_email.
     def send_cabinet_invitation(user, property)
       return unless user.respond_to?(:invited_at)
-      return unless user.invited_at.nil?
 
-      if user.email.present?
-        CabinetInvitationMailer.invite(user, property).deliver_later
-        user.update_columns(invited_at: Time.current)
-        Rails.logger.info(
-          "[OwnerSync] email invitation queued user=#{user.id} " \
-          "email=#{user.email[0..2]}*** property=#{property.id}"
-        )
-      elsif user.phone.present?
-        # SMS service handles invited_at update внутри (только при API success).
-        CabinetInvitationSmsService.call(user, property)
-      else
-        Rails.logger.info(
-          "[OwnerSync] user=#{user.id} no email AND no phone — invitation skipped"
-        )
-      end
+      CabinetInvitationDispatcher.call(user, property)
     rescue StandardError => e
       Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
       Sentry.capture_exception(e, extra: { user_id: user.id, property_id: property&.id }) if defined?(Sentry)
