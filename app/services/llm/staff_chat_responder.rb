@@ -243,6 +243,17 @@ module Llm
             на этой неделе», «что Оксана раздала вчера». period обязателен; agent
             видит только себя (silent fallback). Возвращает структуру с counts и
             items — затем рендери human-readable список с dd.MM.yy датами.
+          • search_group_messages — FTS-поиск по сообщениям рабочего чата (русский
+            dict, морфология). Применяй: «что писали про Канищево», «что Ирина
+            писала за неделю», «обсуждение в #КВАРТИРЫ». Возвращает items с
+            sender/excerpt/tg_link. Manager+ only. Phase 15.
+          • search_all_tasks — поиск задач cross-staff с фильтрами (assignee,
+            status, priority, kind, period). Применяй: «какие задачи overdue»,
+            «задачи Ирины», «high-priority открытые». Agent видит свои. Phase 15.
+          • search_all_leads — поиск лидов cross-staff с FTS по metadata
+            + фильтры (stage, topic, assignee, period). Применяй: «найди лиды
+            по Солотче», «открытые лиды на стадии показа», «лиды направленные
+            Серёгой за вчера». Phase 15.
       PROMPT
     end
 

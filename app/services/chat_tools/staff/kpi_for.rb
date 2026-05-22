@@ -69,13 +69,53 @@ module ChatTools
         return { period: period_key, no_data: true } if metrics.empty?
 
         aggregated = aggregate(metrics)
-        top = metrics.group_by(&:staff_id).max_by { |_, ms| ms.sum(&:tasks_completed) }
-        top_staff = top ? TelegramUser.find_by(id: top.first) : nil
-        aggregated.merge(period: period_key, staff_count: metrics.map(&:staff_id).uniq.size,
-                         top_performer: if top_staff
-                                          { mention: top_staff.mention,
-                                            tasks_completed: top.last.sum(&:tasks_completed) }
-                                        end)
+        per_staff_groups = metrics.group_by(&:staff_id)
+
+        # Phase 15 — top + bottom performers по tasks_completed
+        ranked = per_staff_groups.map { |staff_id, ms|
+          [staff_id, ms.sum(&:tasks_completed), ms.sum(&:tasks_overdue)]
+        }.sort_by { |_, completed, _| -completed }
+
+        top_id, top_completed, _ = ranked.first
+        bottom_id, bottom_completed, bottom_overdue = ranked.last
+
+        top_staff = top_id ? TelegramUser.find_by(id: top_id) : nil
+        bottom_staff = bottom_id ? TelegramUser.find_by(id: bottom_id) : nil
+
+        # Phase 15 — anomalies: staff с tasks_overdue > 2σ от среднего.
+        # Сигнализирует «у кого внезапно куча overdue — глянь».
+        anomalies = detect_overdue_anomalies(per_staff_groups)
+
+        aggregated.merge(
+          period: period_key,
+          staff_count: per_staff_groups.size,
+          top_performer: top_staff && { mention: top_staff.mention, tasks_completed: top_completed },
+          bottom_performer: bottom_staff && {
+            mention: bottom_staff.mention,
+            tasks_completed: bottom_completed,
+            tasks_overdue: bottom_overdue
+          },
+          overdue_anomalies: anomalies
+        )
+      end
+
+      # Возвращает массив сотрудников с tasks_overdue >2σ от среднего по агентству.
+      # Если N < 3 или std-dev = 0 — пустой массив (статистика бесполезна).
+      def self.detect_overdue_anomalies(per_staff_groups)
+        overdue_per_staff = per_staff_groups.map { |staff_id, ms| [staff_id, ms.sum(&:tasks_overdue)] }
+        values = overdue_per_staff.map(&:last)
+        return [] if values.size < 3
+
+        mean = values.sum.to_f / values.size
+        variance = values.sum { |v| (v - mean)**2 } / values.size
+        stddev = Math.sqrt(variance)
+        return [] if stddev <= 0
+
+        threshold = mean + (2 * stddev)
+        overdue_per_staff.select { |_id, v| v > threshold && v.positive? }.map do |staff_id, v|
+          u = TelegramUser.find_by(id: staff_id)
+          { mention: u&.mention || "id:#{staff_id}", overdue: v, deviation: ((v - mean) / stddev).round(1) }
+        end
       end
 
       def self.aggregate(metrics)

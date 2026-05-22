@@ -90,5 +90,28 @@ RSpec.describe ChatTools::Staff::DirectorSelfAudit do
         expect(res[:error]).to eq('caller_unknown')
       end
     end
+
+    # Phase 15 — agency_wide mode для director DM control panel
+    context 'mode=agency_wide (manager+)' do
+      before do
+        # Задача от agent (не director'a) — должна попасть в agency-wide view
+        Task.create!(title: 'agent task', assignee_id: agent.id, created_by_id: agent.id,
+                     status: 'open', kind: 'admin', priority: 'normal', assigned_at: Time.current)
+      end
+
+      it 'возвращает агрегаты ВСЕХ staff (без фильтра по конкретному user)' do
+        res = described_class.call({ period: 'today', mode: 'agency_wide', category: 'tasks_created' }, asked_by: director)
+        expect(res[:mode]).to eq('agency_wide')
+        expect(res[:target_mention]).to eq('АН Виктори (все сотрудники)')
+        expect(res[:tasks_created][:count]).to eq(1)
+        # Item должен иметь creator (кто создал) — это новый ключ для agency mode
+        expect(res[:tasks_created][:items].first[:creator]).to eq(agent.mention)
+      end
+
+      it 'agent → error forbidden (mode=agency_wide manager+ only)' do
+        res = described_class.call({ period: 'today', mode: 'agency_wide' }, asked_by: agent)
+        expect(res[:error]).to eq('forbidden')
+      end
+    end
   end
 end

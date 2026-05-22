@@ -17,7 +17,11 @@ module ChatTools
         # Phase 5.1 — DocumentRequirement checklist status
         'document_checklist_status' => ChatTools::Staff::DocumentChecklistStatus,
         # Iter 59 — director self-audit: «какие лиды я направил», «какие задания я давал»
-        'director_self_audit' => ChatTools::Staff::DirectorSelfAudit
+        'director_self_audit' => ChatTools::Staff::DirectorSelfAudit,
+        # Phase 15 — control panel tools
+        'search_group_messages' => ChatTools::Staff::SearchGroupMessages,
+        'search_all_tasks'      => ChatTools::Staff::SearchAllTasks,
+        'search_all_leads'      => ChatTools::Staff::SearchAllLeads
       }.freeze
 
       module_function

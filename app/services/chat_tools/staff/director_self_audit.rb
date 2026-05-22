@@ -60,6 +60,12 @@ module ChatTools
                 staff_username: {
                   type: 'string',
                   description: 'TG @username сотрудника (без @). Пустой = caller. Игнорируется если caller=agent.'
+                },
+                mode: {
+                  type: 'string',
+                  enum: %w[per_staff agency_wide],
+                  description: 'Phase 15 — agency_wide агрегирует ВСЕХ staff (только manager+). ' \
+                               'per_staff (default) — один сотрудник (caller или staff_username).'
                 }
               }
             }
@@ -76,16 +82,65 @@ module ChatTools
         caller = resolve_caller(args[:caller_tg_user_id], asked_by)
         return { error: 'caller_unknown', message: 'не могу определить кто спрашивает' } if caller.nil?
 
-        target = resolve_target(args, caller)
-        return { error: 'forbidden', message: 'agent видит аудит только по себе' } if target.nil?
-
         range = resolve_range(args)
         return { error: 'bad_period', message: 'неизвестный период или некорректные даты' } if range.nil?
 
         category = args[:category].to_s.presence || 'all'
         category = 'all' unless ALLOWED_CATEGORIES.include?(category)
 
+        # Phase 15 — agency-wide mode (только manager+).
+        if args[:mode].to_s == 'agency_wide'
+          return { error: 'forbidden', message: 'agency_wide доступно только manager+' } unless caller.manager_or_director?
+
+          return build_agency_response(range: range, category: category, args: args)
+        end
+
+        target = resolve_target(args, caller)
+        return { error: 'forbidden', message: 'agent видит аудит только по себе' } if target.nil?
+
         build_response(target: target, range: range, category: category, args: args)
+      end
+
+      # Phase 15 — agency-wide aggregation (без фильтра по конкретному staff).
+      # Возвращает агрегаты across all staff с per-staff breakdown в items.
+      def self.build_agency_response(range:, category:, args:)
+        response = {
+          target_mention: 'АН Виктори (все сотрудники)',
+          period_label: period_label(range, args),
+          category: category,
+          mode: 'agency_wide'
+        }
+
+        if %w[tasks_created all].include?(category)
+          tasks = ::Task.created_in(range).includes(:created_by, :assignee)
+                        .order(created_at: :desc).limit(MAX_RESULTS_PER_LIST).to_a
+          response[:tasks_created] = {
+            count: ::Task.created_in(range).count,
+            items: tasks.map { |t| serialize_task(t).merge(creator: t.created_by&.mention) }
+          }
+        end
+
+        if %w[leads_routed all].include?(category)
+          leads = ::LeadEvent.where.not(routed_by_id: nil).updated_in(range)
+                             .order(updated_at: :desc).limit(MAX_RESULTS_PER_LIST)
+                             .includes(:routed_by).to_a
+          response[:leads_routed] = {
+            count: ::LeadEvent.where.not(routed_by_id: nil).updated_in(range).count,
+            items: leads.map { |le| serialize_lead(le, with_assignee: false).merge(routed_by: le.routed_by&.mention) }
+          }
+        end
+
+        if %w[leads_assigned all].include?(category)
+          leads = ::LeadEvent.where.not(assigned_by_id: nil).updated_in(range)
+                             .order(updated_at: :desc).limit(MAX_RESULTS_PER_LIST)
+                             .includes(:assigned_to, :assigned_by).to_a
+          response[:leads_assigned] = {
+            count: ::LeadEvent.where.not(assigned_by_id: nil).updated_in(range).count,
+            items: leads.map { |le| serialize_lead(le, with_assignee: true).merge(assigned_by: le.assigned_by&.mention) }
+          }
+        end
+
+        response
       end
 
       def self.resolve_caller(caller_id, asked_by)
