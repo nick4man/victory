@@ -78,6 +78,16 @@ module Telegram
           reply(ERROR_MESSAGES[err] || 'Не получилось подключить. Попробуйте ещё раз через кабинет.')
         else
           Rails.logger.info("[ClientBot::LinkProcessor] linked user=#{user.id} tg=#{from_id}")
+          # #413f Шаг 5 — track activation channel. Token.source выставляется
+          # при generate! (cabinet_profile/admin_panel/bulk_pdf). Fallback
+          # 'cabinet_profile' для legacy токенов без source (pre-#413f).
+          consumed_token = TgLinkToken.find_by(token: token)
+          channel = consumed_token&.source.presence || 'cabinet_profile'
+          ActivationEvent.log!(
+            user:     user,
+            channel:  channel,
+            metadata: { tg_user_id: from_id, token_id: consumed_token&.id }
+          )
           reply(success_message(user))
         end
 

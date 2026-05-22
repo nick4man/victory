@@ -54,7 +54,7 @@ module Admin
       if (existing = @user.tg_link_tokens.valid.order(created_at: :desc).first)
         flash[:notice] = "Используется существующий токен (истекает через #{minutes_until(existing.expires_at)} мин)."
       else
-        TgLinkToken.generate!(user: @user, request: request)
+        TgLinkToken.generate!(user: @user, request: request, source: 'admin_panel')
         flash[:notice] = 'Активационная ссылка сгенерирована (срок 30 минут).'
       end
       redirect_to admin_user_path(@user)

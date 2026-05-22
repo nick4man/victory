@@ -27,7 +27,7 @@ module Cabinet
         return
       end
 
-      token = TgLinkToken.generate!(user: @cabinet_user, request: request)
+      token = TgLinkToken.generate!(user: @cabinet_user, request: request, source: 'cabinet_profile')
       bot_username = (ENV['TELEGRAM_BOT_USERNAME'].presence || 'anvictorybot').downcase
 
       Rails.logger.info("[Cabinet::Profile] tg_link initiated user=#{@cabinet_user.id}")

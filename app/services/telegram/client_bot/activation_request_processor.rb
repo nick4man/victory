@@ -127,6 +127,12 @@ module Telegram
         case link_result[:status]
         when :linked
           user = link_result[:user]
+          # #413f Шаг 5 — channel='inbound' (клиент сам пришёл, no token).
+          ActivationEvent.log!(
+            user:     user,
+            channel:  'inbound',
+            metadata: { tg_user_id: from_id, tg_username: username }
+          )
           login_url = generate_login_link(user)
           reply(<<~MSG.strip)
             ✅ <b>Здравствуйте, #{user.first_name.presence || 'клиент АН Виктори'}!</b>

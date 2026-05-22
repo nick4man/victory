@@ -47,6 +47,41 @@ namespace :tg do
       puts '   Печатайте сразу после run. Если задержка >24ч — перегенерируйте через повторный rake.'
     end
 
+    desc 'Weekly digest по каналам активации (за период, default 7 дней)'
+    task :report, [:days] => :environment do |_t, args|
+      days = (args[:days] || 7).to_i
+      range = days.days.ago..Time.current
+      breakdown = ActivationEvent.channel_breakdown(range: range)
+      total = breakdown['total']
+
+      puts "📊 Активации за #{days} #{days == 1 ? 'день' : 'дней'} " \
+           "(#{range.begin.strftime('%d.%m.%y')} — #{range.end.strftime('%d.%m.%y')}):"
+      puts ''
+      puts "   Всего: #{total}"
+      puts ''
+      if total.zero?
+        puts '   Нет активаций за период. Проверьте awareness mechanisms.'
+        exit 0
+      end
+
+      labels = {
+        'inbound'         => '🟢 Inbound (клиент сам пришёл)',
+        'cabinet_profile' => '🔵 Cabinet profile (opt-in после email-login)',
+        'admin_panel'     => '🟡 Admin panel (агент 1-в-1)',
+        'bulk_pdf'        => '⚫ Bulk PDF (печатные QR)'
+      }
+      ActivationEvent::CHANNELS.each do |ch|
+        n = breakdown[ch].to_i
+        pct = total.positive? ? ((n.to_f / total) * 100).round(1) : 0.0
+        bar = '█' * (pct / 5).round
+        puts "   #{labels[ch].ljust(45)} #{n.to_s.rjust(4)}  #{pct.to_s.rjust(5)}%  #{bar}"
+      end
+      puts ''
+      puts "   💡 Низкий inbound (<10%)? Усиль awareness: sales script, email-подпись, QR-постер."
+      puts "   💡 Низкий cabinet_profile? Email-приглашения работают плохо или клиенты сами не возвращаются."
+      puts "   💡 Высокий admin_panel — агенты вовлечены 1-в-1 (хорошо, но не масштабируется)."
+    end
+
     desc 'Показать кандидатов для bulk_generate без token generation (dry-run)'
     task list: :environment do
       users = candidate_users.to_a

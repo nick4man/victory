@@ -42,7 +42,7 @@ class BulkActivationQrPdfService
 
     @users.each_with_index do |user, i|
       pdf.start_new_page if i.positive?
-      token = TgLinkToken.generate!(user: user)
+      token = TgLinkToken.generate!(user: user, source: 'bulk_pdf')
       @generated_count += 1
       render_page(pdf, user, token)
     end

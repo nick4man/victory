@@ -29,13 +29,17 @@ class TgLinkToken < ApplicationRecord
 
   scope :valid, -> { where(consumed_at: nil).where('expires_at > ?', Time.current) }
 
-  def self.generate!(user:, request: nil)
+  # @param source [String, nil] откуда генерируется token — для analytics
+  #   (см. ActivationEvent::CHANNELS). LinkProcessor использует это как
+  #   channel для ActivationEvent log when token consumed.
+  def self.generate!(user:, request: nil, source: nil)
     create!(
       user:       user,
       token:      SecureRandom.urlsafe_base64(32),
       expires_at: TTL.from_now,
       ip_address: request&.remote_ip,
-      user_agent: request&.user_agent.to_s.first(255).presence
+      user_agent: request&.user_agent.to_s.first(255).presence,
+      source:     source
     )
   end
 
