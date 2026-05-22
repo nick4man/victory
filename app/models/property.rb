@@ -242,6 +242,12 @@ class Property < ApplicationRecord
   after_commit :bust_agency_metrics_cache
   after_commit :notify_indexnow_on_publish, on: %i[create update],
                if: :should_notify_indexnow?
+  # Yandex.Webmaster recrawl — параллельно с IndexNow. recrawl быстрее
+  # заходит в Я.indexer чем IndexNow в их pipeline; тот же should_notify
+  # guard (status=active + материальные изменения). Quota 150/день — при
+  # ~10 publish-событий в день её хватит с запасом.
+  after_commit :notify_yandex_recrawl_on_publish, on: %i[create update],
+               if: :should_notify_indexnow?
   # AI-классификатор commercial_type для YRL feed (Я.Realty
   # требует <commercial-type> для category=коммерческая). Триггерится
   # на новых commerce объявлениях OR когда description значительно
@@ -1003,12 +1009,19 @@ class Property < ApplicationRecord
   end
 
   def notify_indexnow_on_publish
-    url = Rails.application.routes.url_helpers.property_url(
+    Seo::IndexNowNotifyJob.perform_later(url: public_url)
+  end
+
+  def notify_yandex_recrawl_on_publish
+    Yandex::RecrawlUrlJob.perform_later(url: public_url)
+  end
+
+  def public_url
+    Rails.application.routes.url_helpers.property_url(
       self,
       host: 'victory62.org',
       protocol: 'https'
     )
-    Seo::IndexNowNotifyJob.perform_later(url: url)
   end
 
   # Classify commercial_type только когда:
