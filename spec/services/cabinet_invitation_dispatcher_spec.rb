@@ -110,6 +110,27 @@ RSpec.describe CabinetInvitationDispatcher do
     end
   end
 
+  describe 'stop-list pre-flight (152-ФЗ)' do
+    let(:user) do
+      create(:user, :tg_linked, email: 'a@b.com', phone: '+79009694844', invited_at: nil)
+    end
+
+    before { PhoneStopList.add!(phone: '+79009694844', reason: 'spam complaint') }
+
+    it 'short-circuits ALL channels when phone is in stop-list' do
+      allow(CabinetInvitationMailer).to receive(:invite)
+      allow(CabinetInvitationTgService).to receive(:call)
+      allow(CabinetInvitationSmsService).to receive(:call)
+
+      result = described_class.call(user, property)
+      expect(result.channels_attempted).to be_empty
+      expect(result.errors.first).to include('stop-list')
+      expect(CabinetInvitationMailer).not_to have_received(:invite)
+      expect(CabinetInvitationTgService).not_to have_received(:call)
+      expect(CabinetInvitationSmsService).not_to have_received(:call)
+    end
+  end
+
   describe 'channel override (channels:)' do
     let(:user) do
       create(:user, :tg_linked, email: 'a@b.com', phone: '+79091234567', invited_at: nil)

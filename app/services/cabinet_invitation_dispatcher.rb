@@ -43,6 +43,7 @@ class CabinetInvitationDispatcher
   def call
     return short_circuit('user nil') if @user.nil?
     return short_circuit('already invited') if @user.invited_at.present?
+    return short_circuit('phone in stop-list') if blocked_phone?
 
     @channels.each do |channel|
       case channel
@@ -115,6 +116,14 @@ class CabinetInvitationDispatcher
   def short_circuit(reason)
     Rails.logger.info("[InvitationDispatcher] short-circuit: #{reason}")
     Result.new(channels_attempted: [], channels_succeeded: [], errors: [reason])
+  end
+
+  # 152-ФЗ stop-list pre-flight: проверяет user.phone против PhoneStopList.
+  # Если phone в registry — НЕ инициируем НИКАКОЙ outbound channel (даже
+  # email — клиент мог отозвать ВСЯКОЕ согласие, не только SMS).
+  def blocked_phone?
+    return false if @user.phone.blank?
+    PhoneStopList.blocked?(@user.phone)
   end
 
   def mask_email(email)
