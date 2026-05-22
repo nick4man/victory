@@ -54,9 +54,11 @@ class CabinetMailer < ApplicationMailer
     @new_stage_label  = Telegram::WorkBot::LeadStageTransition.stage_label(lead_event.current_stage)
     @cabinet_url      = "#{ENV.fetch('APP_URL', 'https://victory62.org')}/cabinet"
 
-    mail(
+    msg = mail(
       to:      user.email,
       subject: "Статус сделки обновлён: #{@new_stage_label} — #{AgencyInfo::NAME}"
     )
+    gate_notify!(msg, user, category: 'inquiry_status', channel: 'email')
+    msg
   end
 end

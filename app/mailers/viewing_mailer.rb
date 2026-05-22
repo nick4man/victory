@@ -24,104 +24,114 @@ class ViewingMailer < ApplicationMailer
   # @param viewing [ViewingSchedule]
   def viewing_confirmation(viewing)
     return unless viewing.email.present?
-    
+
     @viewing = viewing
     @property = viewing.property
     @date_time = format_datetime(viewing.preferred_date, viewing.preferred_time)
     @property_url = property_url(viewing.property)
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
+
     attach_logo
     track_email("viewing_#{viewing.id}")
-    
-    mail(
+
+    msg = mail(
       to: viewing.email,
       subject: 'Запись на показ принята',
       template_name: 'viewing_confirmation'
     )
+    gate_notify!(msg, viewing.user, category: 'inquiry_status', channel: 'email') if viewing.user.present?
+    msg
   end
   
   # Send viewing confirmation (after manager approval)
   # @param viewing [ViewingSchedule]
   def viewing_confirmed(viewing)
     return unless viewing.email.present?
-    
+
     @viewing = viewing
     @property = viewing.property
     @agent = viewing.agent
     @date_time = format_datetime(viewing.preferred_date, viewing.preferred_time)
     @property_url = property_url(viewing.property)
-    
+
     # Add to calendar attachment
     add_calendar_attachment(viewing)
-    
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: viewing.email,
       subject: 'Показ подтвержден - ждем вас!',
       template_name: 'viewing_confirmed'
     )
+    gate_notify!(msg, viewing.user, category: 'inquiry_status', channel: 'email') if viewing.user.present?
+    msg
   end
   
   # Send viewing cancellation
   # @param viewing [ViewingSchedule]
   def viewing_cancelled(viewing)
     return unless viewing.email.present?
-    
+
     @viewing = viewing
     @property = viewing.property
     @cancellation_reason = viewing.cancellation_reason || 'Не указана'
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
     @property_url = property_url(viewing.property)
-    
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: viewing.email,
       subject: 'Показ отменен',
       template_name: 'viewing_cancelled'
     )
+    gate_notify!(msg, viewing.user, category: 'inquiry_status', channel: 'email') if viewing.user.present?
+    msg
   end
   
   # Send reminder before viewing
   # @param viewing [ViewingSchedule]
   def viewing_reminder(viewing)
     return unless viewing.email.present?
-    
+
     @viewing = viewing
     @property = viewing.property
     @agent = viewing.agent
     @date_time = format_datetime(viewing.preferred_date, viewing.preferred_time)
     @property_url = property_url(viewing.property)
-    @contact_phone = viewing.agent&.phone || ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    
+    @contact_phone = viewing.agent&.phone.presence || AgencyInfo::PHONE_PRIMARY
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: viewing.email,
       subject: 'Напоминание: показ завтра в ' + viewing.preferred_time,
       template_name: 'viewing_reminder'
     )
+    gate_notify!(msg, viewing.user, category: 'inquiry_status', channel: 'email') if viewing.user.present?
+    msg
   end
   
   # Send thank you after viewing
   # @param viewing [ViewingSchedule]
   def viewing_completed(viewing)
     return unless viewing.email.present?
-    
+
     @viewing = viewing
     @property = viewing.property
     @feedback_url = new_review_url(property_id: viewing.property_id)
     @similar_properties = find_similar_properties(viewing.property)
-    
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: viewing.email,
       subject: 'Спасибо за визит! Что вы думаете об объекте?',
       template_name: 'viewing_completed'
     )
+    gate_notify!(msg, viewing.user, category: 'inquiry_status', channel: 'email') if viewing.user.present?
+    msg
   end
   
   # Notify agent about viewing assignment

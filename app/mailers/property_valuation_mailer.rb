@@ -34,11 +34,13 @@ class PropertyValuationMailer < ApplicationMailer
     attach_logo
     track_email("valuation_#{valuation.id}")
     
-    mail(
+    msg = mail(
       to: valuation.email,
       subject: "Результат оценки недвижимости - #{number_to_currency(valuation.estimated_price, precision: 0)}",
       template_name: 'valuation_completed'
     )
+    gate_notify!(msg, valuation.user, category: 'deal_events', channel: 'email') if valuation.user.present?
+    msg
   end
   
   # Notify managers about new valuation
@@ -78,35 +80,40 @@ class PropertyValuationMailer < ApplicationMailer
   # @param valuation [PropertyValuation]
   def callback_confirmation(valuation)
     return unless valuation.email.present?
-    
+
     @valuation = valuation
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: valuation.email,
       subject: 'Мы получили вашу заявку на звонок',
       template_name: 'callback_confirmation'
     )
+    gate_notify!(msg, valuation.user, category: 'deal_events', channel: 'email') if valuation.user.present?
+    msg
   end
   
   # Send follow-up email after valuation
   # @param valuation [PropertyValuation]
   def follow_up(valuation)
     return unless valuation.email.present?
-    
+
     @valuation = valuation
     @result_url = property_valuation_result_url(valuation.token)
     @contact_url = contacts_url
-    
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: valuation.email,
       subject: 'Как продвигается продажа вашей недвижимости?',
       template_name: 'follow_up'
     )
+    # Follow-up — marketing touchpoint (NOT transactional), gated через market_news.
+    gate_notify!(msg, valuation.user, category: 'market_news', channel: 'email') if valuation.user.present?
+    msg
   end
   
   private

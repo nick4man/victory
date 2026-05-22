@@ -21,10 +21,12 @@ class ListingConsentMailer < ApplicationMailer
     @login_url = cabinet_verify_url(token: token.token)
     @consent_url = cabinet_listing_consent_url(property)
 
-    mail(
+    msg = mail(
       to:      user.email,
       subject: "Требуется ваше согласие на публикацию — #{AgencyInfo::NAME}"
     )
+    gate_notify!(msg, user, category: 'document_requests', channel: 'email')
+    msg
   end
 
   # Triggered после успешного signing
@@ -35,9 +37,11 @@ class ListingConsentMailer < ApplicationMailer
     @user = consent.user
     @verify_url = verify_contract_url(token: consent.token)
 
-    mail(
+    msg = mail(
       to:      @user.email,
       subject: "Договор № #{consent.id} подписан — #{AgencyInfo::NAME}"
     )
+    gate_notify!(msg, @user, category: 'deal_events', channel: 'email')
+    msg
   end
 end
