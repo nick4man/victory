@@ -110,6 +110,85 @@
       <% end %>
     </div>
 
+    <%# ============ УВЕДОМЛЕНИЯ (per-channel matrix) ============ %>
+    <div class="border border-border bg-card p-6 mb-6" id="notifications">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-2">
+        Уведомления
+      </h2>
+      <p class="text-sm text-muted-foreground mb-5">
+        Выберите по каждой категории, в какие каналы отправлять уведомления.
+        <% unless @cabinet_user.tg_user_id.present? %>
+          <span class="text-amber-700">Подключите Telegram, чтобы открыть бесплатный канал TG.</span>
+        <% end %>
+      </p>
+
+      <%= form_with url: cabinet_update_notifications_path, method: :post, local: true do %>
+        <%
+          category_labels = {
+            'inquiry_status'    => { name: 'Этапы заявок',     hint: 'Новая → показ → договор' },
+            'deal_events'       => { name: 'События сделок',   hint: 'Документы готовы, подпись, закрытие' },
+            'document_requests' => { name: 'Запрос документов', hint: 'Нужно прислать паспорт / ИНН / выписку' },
+            'market_news'       => { name: 'Обзоры рынка',     hint: 'Еженедельный digest по выбранным районам' },
+            'agency_news'       => { name: 'Новости агентства', hint: 'Общая рассылка, акции, события' }
+          }
+          channel_labels = { 'email' => 'Email', 'tg' => 'Telegram', 'sms' => 'SMS (платно)' }
+        %>
+
+        <div class="overflow-x-auto border border-border">
+          <table class="w-full text-sm">
+            <thead class="bg-muted/40">
+              <tr class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+                <th class="text-left px-4 py-3">Категория</th>
+                <% User::NOTIFICATION_CHANNELS.each do |ch| %>
+                  <th class="text-center px-4 py-3 w-24">
+                    <%= channel_labels[ch] %>
+                    <% if ch == 'tg' && @cabinet_user.tg_user_id.blank? %>
+                      <span class="block text-[8px] text-amber-700 normal-case mt-1">не подключён</span>
+                    <% end %>
+                  </th>
+                <% end %>
+              </tr>
+            </thead>
+            <tbody>
+              <% User::NOTIFICATION_CATEGORIES.each do |cat| %>
+                <tr class="border-t border-border">
+                  <td class="px-4 py-3 align-top">
+                    <p class="text-foreground"><%= category_labels[cat][:name] %></p>
+                    <p class="text-[11px] text-muted-foreground mt-0.5"><%= category_labels[cat][:hint] %></p>
+                  </td>
+                  <% User::NOTIFICATION_CHANNELS.each do |ch| %>
+                    <%
+                      current = (@cabinet_user.notification_settings || {})[cat]
+                      current = User::DEFAULT_NOTIFICATION_PREFS[cat] if current.nil? || !current.is_a?(Hash)
+                      checked = current[ch] == true
+                      channel_disabled = (ch == 'tg' && @cabinet_user.tg_user_id.blank?) ||
+                                         (ch == 'sms' && @cabinet_user.phone.blank?) ||
+                                         (ch == 'email' && @cabinet_user.email.blank?)
+                    %>
+                    <td class="px-4 py-3 text-center">
+                      <%= check_box_tag "notifications[#{cat}][#{ch}]", '1', checked && !channel_disabled,
+                            disabled: channel_disabled,
+                            class: 'w-5 h-5 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed' %>
+                    </td>
+                  <% end %>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="text-[11px] text-muted-foreground mt-4 leading-relaxed">
+          <strong>SMS — платный канал (~1.5 ₽ за сообщение)</strong>, оплачивает агентство.
+          Используется только для критичных событий — выключать можно везде, кроме «События сделок» если хотите быть на связи.
+        </p>
+
+        <div class="mt-4">
+          <%= submit_tag 'Сохранить настройки',
+                class: 'h-12 px-6 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+        </div>
+      <% end %>
+    </div>
+
     <%# ============ УДАЛЕНИЕ АККАУНТА ============ %>
     <div class="border border-red-500/30 bg-red-500/[0.03] p-6">
       <h2 class="text-xs tracking-[0.3em] text-red-700 uppercase mb-2">

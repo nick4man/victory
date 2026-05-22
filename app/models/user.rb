@@ -389,7 +389,8 @@ class User < ApplicationRecord
     save
   end
 
-  # Notification settings
+  # Notification settings — legacy scalar interface (всё ещё используется
+  # старыми mailers): returns true unless explicitly disabled.
   def notification_enabled?(type)
     notification_settings&.dig(type.to_s) != false
   end
@@ -403,6 +404,63 @@ class User < ApplicationRecord
   def disable_notification(type)
     self.notification_settings ||= {}
     self.notification_settings[type.to_s] = false
+    save
+  end
+
+  # #435 — per-channel notification preferences. Категории:
+  #   inquiry_status     — этапы заявок (новая→показ→договор)
+  #   deal_events        — события сделок (документы готовы, подпись)
+  #   document_requests  — «нужно от вас доки» (passport request etc.)
+  #   market_news        — обзоры рынка, новые объекты в районе
+  #   agency_news        — общие рассылки агентства
+  # Channels: email | tg | sms.
+  #
+  # Хранение в notification_settings jsonb: для новых categories — nested
+  # hash {channel: bool}. Для legacy scalar keys (new_properties etc.) —
+  # старая структура остаётся, не трогаем.
+  NOTIFICATION_CATEGORIES = %w[inquiry_status deal_events document_requests market_news agency_news].freeze
+  NOTIFICATION_CHANNELS   = %w[email tg sms].freeze
+
+  # Дефолты — что отправляем НОВОМУ user'у который ещё не настраивал.
+  # market_news / agency_news — OFF (opt-in, не спам).
+  # sms почти везде OFF (платно, только critical-pings включён по deal_events).
+  DEFAULT_NOTIFICATION_PREFS = {
+    'inquiry_status'    => { 'email' => true,  'tg' => true,  'sms' => false },
+    'deal_events'       => { 'email' => true,  'tg' => true,  'sms' => true },
+    'document_requests' => { 'email' => true,  'tg' => true,  'sms' => false },
+    'market_news'       => { 'email' => false, 'tg' => false, 'sms' => false },
+    'agency_news'       => { 'email' => false, 'tg' => false, 'sms' => false }
+  }.freeze
+
+  # @param category [String, Symbol] one of NOTIFICATION_CATEGORIES
+  # @param channel  [String, Symbol] one of NOTIFICATION_CHANNELS
+  # @return [Boolean] true если можно отправлять, false если выключено OR
+  #   channel недоступен (e.g. tg без tg_user_id).
+  def notify?(category:, channel:)
+    cat = category.to_s
+    ch  = channel.to_s
+    return false unless NOTIFICATION_CATEGORIES.include?(cat) && NOTIFICATION_CHANNELS.include?(ch)
+    return false if ch == 'tg' && tg_user_id.blank? # нет TG → нет push
+    return false if ch == 'sms' && phone.blank?
+    return false if ch == 'email' && email.blank?
+
+    settings = (notification_settings || {})[cat]
+    settings = DEFAULT_NOTIFICATION_PREFS[cat] if settings.nil? || !settings.is_a?(Hash)
+    settings[ch] == true
+  end
+
+  # @param category [String]
+  # @param channel  [String]
+  # @param enabled  [Boolean]
+  def update_notification_pref(category:, channel:, enabled:)
+    cat = category.to_s
+    ch  = channel.to_s
+    return false unless NOTIFICATION_CATEGORIES.include?(cat) && NOTIFICATION_CHANNELS.include?(ch)
+
+    self.notification_settings ||= {}
+    current = (notification_settings[cat] || DEFAULT_NOTIFICATION_PREFS[cat] || {}).dup
+    current[ch] = !!enabled
+    notification_settings[cat] = current
     save
   end
 

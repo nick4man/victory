@@ -70,6 +70,9 @@ class CabinetInvitationDispatcher
 
   def try_email
     return unless @user.email.present?
+    # #435 — respect user preferences. Cabinet invitation = deal_events
+    # (это onboarding в сделку через property linkage).
+    return unless @user.notify?(category: 'deal_events', channel: 'email')
 
     @attempted << :email
     CabinetInvitationMailer.invite(@user, @property).deliver_later
@@ -87,6 +90,7 @@ class CabinetInvitationDispatcher
 
   def try_telegram
     return unless @user.tg_user_id.present?
+    return unless @user.notify?(category: 'deal_events', channel: 'tg')
 
     @attempted << :tg
     result = CabinetInvitationTgService.call(@user, @property)
@@ -103,6 +107,7 @@ class CabinetInvitationDispatcher
 
   def try_sms
     return unless @user.phone.present?
+    return unless @user.notify?(category: 'deal_events', channel: 'sms')
 
     @attempted << :sms
     result = CabinetInvitationSmsService.call(@user, @property)

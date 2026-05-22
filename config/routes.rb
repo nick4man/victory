@@ -92,6 +92,8 @@ Rails.application.routes.draw do
                                      to: 'cabinet/profile#confirm_phone_change',
                                      as: :cabinet_confirm_phone_change
   delete 'cabinet/profile/account',  to: 'cabinet/profile#destroy_account', as: :cabinet_destroy_account
+  # #435 — notification preferences (per category × channel matrix)
+  post   'cabinet/profile/notifications', to: 'cabinet/profile#update_notifications', as: :cabinet_update_notifications
   # TG opt-in (Phase #413d)
   post   'cabinet/profile/tg/link',  to: 'cabinet/profile#link_telegram',   as: :cabinet_link_telegram
   delete 'cabinet/profile/tg/link',  to: 'cabinet/profile#unlink_telegram', as: :cabinet_unlink_telegram

@@ -212,6 +212,25 @@ module Cabinet
       redirect_to cabinet_profile_path, notice: 'Телефон обновлён.'
     end
 
+    # POST /cabinet/profile/notifications
+    # Bulk update per-channel preferences matrix. params[:notifications]
+    # has shape { category_str => { channel_str => '1' or absent } }
+    # Unchecked checkboxes не отправляются — это означает false.
+    def update_notifications
+      raw = params[:notifications] || {}
+      User::NOTIFICATION_CATEGORIES.each do |cat|
+        cat_params = raw[cat].is_a?(ActionController::Parameters) ? raw[cat].to_unsafe_h : (raw[cat] || {})
+        @cabinet_user.notification_settings ||= {}
+        @cabinet_user.notification_settings[cat] = User::NOTIFICATION_CHANNELS.each_with_object({}) do |ch, h|
+          h[ch] = cat_params[ch].to_s == '1'
+        end
+      end
+      @cabinet_user.save(validate: false)
+      Rails.logger.info("[Cabinet::Profile] notification_prefs updated user=#{@cabinet_user.id}")
+      redirect_to edit_cabinet_profile_path(anchor: 'notifications'),
+                  notice: 'Настройки уведомлений сохранены.'
+    end
+
     # DELETE /cabinet/profile/account
     # 152-ФЗ §21 — soft-delete + anonymize PII + revoke all tokens.
     # Audit-trail (User.id + deleted_at) сохраняется — нельзя hard-delete,
