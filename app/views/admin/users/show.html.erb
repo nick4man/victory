@@ -1,0 +1,68 @@
+<% content_for :title, "#{[@user.first_name, @user.last_name].compact_blank.join(' ').presence || @user.email || '@' + @user.id.to_s} — Клиенты — Админ" %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">
+      <%= link_to 'АДМИН', admin_root_path, class: 'hover:text-foreground' %> →
+      <%= link_to 'КЛИЕНТЫ', admin_users_path, class: 'hover:text-foreground' %>
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      <%= [@user.first_name, @user.last_name].compact_blank.join(' ').presence || 'Без имени' %>
+    </h1>
+    <p class="text-xs text-muted-foreground mb-8">
+      ID #<%= @user.id %> · создан <%= l(@user.created_at, format: '%d.%m.%y') %>
+      <% if @user.crm_user_id.present? %> · Topnlab id #<%= @user.crm_user_id %><% end %>
+    </p>
+
+    <%# Contact details %>
+    <div class="border border-border bg-card p-6 mb-6">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Контакты</h2>
+      <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Email</dt>
+          <dd class="text-foreground break-all"><%= @user.email.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Телефон</dt>
+          <dd class="text-foreground"><%= @user.phone.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Роль</dt>
+          <dd class="text-foreground"><%= @user.role.to_s.humanize %></dd>
+        </div>
+      </dl>
+    </div>
+
+    <%# Activation panel %>
+    <%= render 'activation_panel', active_token: @active_token, bot_username: @bot_username %>
+
+    <%# Owned properties %>
+    <% if @owned_properties.any? %>
+      <div class="border border-border bg-card p-6 mt-6">
+        <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">
+          Объекты владельца (<%= @owned_properties.size %>)
+        </h2>
+        <ul class="divide-y divide-border text-sm">
+          <% @owned_properties.each do |p| %>
+            <li class="py-3 flex items-center justify-between gap-4">
+              <div>
+                <p class="text-foreground"><%= p.address.to_s.truncate(60) %></p>
+                <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+                  <%= p.status %> · <%= p.deal_state %>
+                  <% if p.price.present? %> · <%= number_with_delimiter(p.price.to_i) %> ₽<% end %>
+                </p>
+              </div>
+              <%= link_to 'Открыть', "/properties/#{p.slug.presence || p.id}",
+                    target: '_blank', class: 'text-xs tracking-[0.1em] uppercase text-muted-foreground hover:text-foreground' %>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="mt-8 text-center">
+      <%= link_to '← Список клиентов', admin_users_path,
+            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground' %>
+    </div>
+  </div>
+</section>

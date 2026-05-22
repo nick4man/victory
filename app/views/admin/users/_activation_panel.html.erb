@@ -1,0 +1,95 @@
+<%# Activation panel — показывает статус TG-привязки + действия. %>
+<%
+  bot_username = local_assigns[:bot_username] || ENV.fetch('TELEGRAM_BOT_USERNAME', 'anvictorybot').downcase
+  active_token = local_assigns[:active_token]
+%>
+
+<div class="border border-border bg-card p-6">
+  <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">
+    Активация Telegram
+  </h2>
+
+  <% if @user.tg_user_id.present? %>
+    <%# Уже активирован %>
+    <p class="text-base font-light text-foreground mb-2">
+      🟢 Активирован
+      <% if @user.tg_username.present? %>
+        как <span class="text-foreground/80">@<%= @user.tg_username %></span>
+      <% else %>
+        (TG id: <%= @user.tg_user_id %>)
+      <% end %>
+    </p>
+    <% if @user.tg_linked_at.present? %>
+      <p class="text-[10px] text-muted-foreground mb-4">
+        с <%= l(@user.tg_linked_at, format: '%d.%m.%y') %>
+      </p>
+    <% end %>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+      Уведомления приходят клиенту в TG (FREE). Если клиент потерял доступ к Telegram, можно разорвать связь — он сможет re-activate через тот же flow.
+    </p>
+    <%= button_to 'Разорвать связь TG', revoke_activation_tokens_admin_user_path(@user),
+          method: :post,
+          data: { confirm: "Разорвать связь TG для #{@user.email.presence || @user.phone}? Активные токены будут отозваны (tg_user_id НЕ очищается — клиент должен пройти flow заново)." },
+          class: 'h-11 px-5 inline-flex items-center text-xs tracking-[0.2em] uppercase border border-rose-500/40 text-rose-600 hover:bg-rose-500/5 transition-colors cursor-pointer' %>
+
+  <% elsif active_token.present? %>
+    <%# Есть активный токен — показать QR + URL %>
+    <p class="text-base font-light text-foreground mb-2">
+      🟡 Сгенерирован код активации
+    </p>
+    <% expires_in_min = [((active_token.expires_at - Time.current) / 60).ceil, 0].max %>
+    <p class="text-[10px] text-muted-foreground mb-4">
+      Истекает через <%= expires_in_min %> мин (создан <%= l(active_token.created_at, format: '%d.%m.%y %H:%M') %>)
+    </p>
+
+    <% url = "https://t.me/#{bot_username}?start=#{active_token.token}" %>
+
+    <div class="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 mb-6">
+      <div class="bg-white p-3 border border-border">
+        <%= RQRCode::QRCode.new(url, level: :m).as_svg(module_size: 4, standalone: true, color: '000', viewbox: true, svg_attributes: { 'class' => 'w-full h-auto' }).html_safe %>
+      </div>
+      <div class="space-y-3">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">Ссылка для отправки клиенту</p>
+        <div class="font-mono text-xs text-foreground bg-muted/30 p-3 border border-border break-all select-all"><%= url %></div>
+        <p class="text-sm text-muted-foreground leading-relaxed">
+          Отправьте клиенту по любому каналу — WhatsApp, email-подпись, sms из личного телефона, прислать ссылку. Если в офисе — покажите QR-код, клиент сканирует камерой и попадает в бота.
+        </p>
+        <p class="text-[12px] text-muted-foreground">
+          После клика клиент откроет @<%= bot_username %>, нажмёт <strong>Start</strong> — мы автоматически свяжем TG с его аккаунтом и пришлём ссылку на кабинет.
+        </p>
+      </div>
+    </div>
+
+    <div class="flex gap-3 pt-4 border-t border-border">
+      <%= button_to 'Сгенерировать новый (отменит текущий)', generate_activation_admin_user_path(@user),
+            method: :post,
+            data: { confirm: 'Создать новый токен? Старый перестанет работать.' },
+            class: 'h-11 px-5 inline-flex items-center text-xs tracking-[0.2em] uppercase border border-border text-foreground hover:bg-muted/40 cursor-pointer' %>
+      <%= button_to 'Отозвать', revoke_activation_tokens_admin_user_path(@user),
+            method: :post,
+            data: { confirm: 'Отозвать все активные токены этого клиента?' },
+            class: 'h-11 px-5 inline-flex items-center text-xs tracking-[0.2em] uppercase border border-rose-500/40 text-rose-600 hover:bg-rose-500/5 transition-colors cursor-pointer' %>
+    </div>
+
+  <% else %>
+    <%# Ни активирован, ни сгенерирован %>
+    <p class="text-base font-light text-foreground mb-2">
+      ⚪ Не активирован
+    </p>
+    <% if @user.invited_at.present? %>
+      <p class="text-[10px] text-muted-foreground mb-4">
+        Приглашение отправлено <%= l(@user.invited_at, format: '%d.%m.%y') %> (email/SMS), но клиент не активировал TG.
+      </p>
+    <% else %>
+      <p class="text-[10px] text-muted-foreground mb-4">
+        Никаких приглашений не отправляли.
+      </p>
+    <% end %>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+      Сгенерируйте активационную ссылку и поделитесь с клиентом любым удобным каналом (WhatsApp, email, в офисе, QR на договоре).
+    </p>
+    <%= button_to 'Сгенерировать активацию', generate_activation_admin_user_path(@user),
+          method: :post,
+          class: 'h-11 px-6 inline-flex items-center bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+  <% end %>
+</div>

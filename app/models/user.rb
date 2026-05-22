@@ -81,7 +81,11 @@ class User < ApplicationRecord
 
   # Inquiries
   has_many :inquiries, dependent: :destroy
-  
+
+  # #413a — TG-linking state tokens. valid scope в TgLinkToken filter'ит
+  # consumed/expired для UX вычислений активных токенов.
+  has_many :tg_link_tokens, dependent: :destroy
+
   # Saved Searches
   has_many :saved_searches, dependent: :destroy
   has_many :active_saved_searches, -> { active }, class_name: 'SavedSearch'

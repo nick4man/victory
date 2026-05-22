@@ -1,0 +1,102 @@
+<% content_for :title, 'Клиенты — Админ — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">АДМИН</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      Клиенты
+    </h1>
+    <p class="text-sm text-muted-foreground mb-8 max-w-2xl">
+      Список клиентов (Topnlab + site signups). Активация через Telegram — кнопка «Сгенерировать активацию» на странице клиента создаёт QR + ссылку для share через любой канал.
+    </p>
+
+    <%# Status filter strip %>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+      <% [
+        [nil,             'Всего',                @counts[:all],           'border-border bg-card'],
+        ['linked',        '🟢 Активирован TG',    @counts[:linked],        'border-emerald-500/40 bg-emerald-500/5'],
+        ['invited_no_tg', '🟡 Приглашён',         @counts[:invited_no_tg], 'border-amber-500/40 bg-amber-500/5'],
+        ['not_invited',   '⚪ Не контактировали', @counts[:not_invited],   'border-zinc-500/40 bg-zinc-500/5']
+      ].each do |key, label, count, css| %>
+        <%= link_to admin_users_path(status: key),
+              class: "border px-4 py-3 transition-colors hover:bg-muted/40 #{css} #{'ring-1 ring-foreground' if @status == key}" do %>
+          <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground"><%= label %></p>
+          <p class="text-2xl font-light text-foreground mt-1"><%= count %></p>
+        <% end %>
+      <% end %>
+    </div>
+
+    <%# Search %>
+    <%= form_with url: admin_users_path, method: :get, local: true, class: 'mb-6 flex gap-3' do %>
+      <%= hidden_field_tag :status, @status if @status %>
+      <%= text_field_tag :q, params[:q],
+            placeholder: 'Поиск: имя, email, телефон',
+            class: 'flex-1 h-11 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      <%= submit_tag 'Найти',
+            class: 'h-11 px-6 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+      <% if params[:q].present? %>
+        <%= link_to 'Сбросить', admin_users_path(status: @status),
+              class: 'h-11 px-4 flex items-center text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground' %>
+      <% end %>
+    <% end %>
+
+    <% if @users.empty? %>
+      <div class="border border-border bg-card p-8 text-center text-muted-foreground">
+        Нет клиентов с такими параметрами.
+      </div>
+    <% else %>
+      <div class="overflow-x-auto border border-border">
+        <table class="w-full text-sm">
+          <thead class="bg-muted/40">
+            <tr class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+              <th class="text-left px-4 py-3">Имя</th>
+              <th class="text-left px-4 py-3">Контакты</th>
+              <th class="text-left px-4 py-3">Статус</th>
+              <th class="text-left px-4 py-3">TG</th>
+              <th class="text-right px-4 py-3">Создан</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @users.each do |u| %>
+              <tr class="border-t border-border hover:bg-muted/20">
+                <td class="px-4 py-3 text-foreground">
+                  <%= [u.first_name, u.last_name].compact_blank.join(' ').presence || '—' %>
+                </td>
+                <td class="px-4 py-3 text-muted-foreground text-xs">
+                  <% if u.email.present? %><%= u.email %><br><% end %>
+                  <% if u.phone.present? %><%= u.phone %><% end %>
+                </td>
+                <td class="px-4 py-3">
+                  <% if u.tg_user_id.present? %>
+                    <span class="text-xs tracking-[0.1em] uppercase text-emerald-600">🟢 Активирован</span>
+                  <% elsif u.invited_at.present? %>
+                    <span class="text-xs tracking-[0.1em] uppercase text-amber-600">🟡 Приглашён</span>
+                  <% else %>
+                    <span class="text-xs tracking-[0.1em] uppercase text-muted-foreground">⚪ —</span>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3 text-muted-foreground text-xs">
+                  <%= u.tg_username.present? ? "@#{u.tg_username}" : (u.tg_user_id.present? ? "id:#{u.tg_user_id}" : '—') %>
+                </td>
+                <td class="px-4 py-3 text-right text-muted-foreground text-xs whitespace-nowrap">
+                  <%= l(u.created_at, format: '%d.%m.%y') %>
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <%= link_to 'Открыть →', admin_user_path(u),
+                        class: 'text-xs tracking-[0.1em] uppercase text-muted-foreground hover:text-foreground' %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if @users.respond_to?(:total_pages) && @users.total_pages > 1 %>
+        <div class="mt-6 text-center text-sm text-muted-foreground">
+          <%= paginate @users rescue "Страница #{@users.current_page} из #{@users.total_pages}" %>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</section>

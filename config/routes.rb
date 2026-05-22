@@ -672,6 +672,16 @@ Rails.application.routes.draw do
     # `show` намеренно опущен — admin tool, всё видно в edit (index → edit).
     resources :partner_agencies, except: :show
 
+    # #413f Шаг 2 — управление клиентскими user записями + activation
+    # generator. index фильтрует по TG-linkage status; show показывает
+    # QR + URL для генерации и share активационной ссылки.
+    resources :users, only: %i[index show] do
+      member do
+        post :generate_activation
+        post :revoke_activation_tokens
+      end
+    end
+
     # Phase 3 MLS/YRL — referral lifecycle management.
     resources :referrals, only: %i[index show] do
       member do
