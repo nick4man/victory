@@ -54,6 +54,14 @@ module Telegram
       # инициировать DM (TG требует «user first contacted bot»).
       touch_known_user_meta(msg)
 
+      # #413 — client TG linking deep-link (`/start <token>`).
+      # Должен сработать ДО любых других ClientBot processors (intent classifier
+      # не должен видеть служебный токен — это утечка PII в LLM логи и
+      # бессмысленный classification).
+      if Telegram::ClientBot::LinkProcessor.applies?(msg)
+        return Telegram::ClientBot::LinkProcessor.call(msg)
+      end
+
       # A6 Phase 1 — client photo intake (DM + photo array).
       # Клиент фотографирует паспорт/ИНН/ЕГРН в личке — направляем в pipeline.
       # Проверяем ДО WorkBot flow: клиентские DM не должны попадать в staff-bot логику.
