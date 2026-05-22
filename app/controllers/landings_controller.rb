@@ -94,6 +94,7 @@ class LandingsController < ApplicationController
 
     @properties  = build_scope.order(created_at: :desc).limit(48)
     @total_count = build_scope.count
+    @min_price   = min_price_for_meta
 
     @h1               = build_h1
     @meta_title       = "#{@h1} | АН «Виктори»"
@@ -181,19 +182,26 @@ class LandingsController < ApplicationController
                else
                  "в #{declination_in(city_name)} и #{declination_region_prep(region)}"
                end
-    # Avg price/m² — динамический live signal в meta description для CTR-boost.
-    # Я. читает meta description при ranking и часто использует как SERP snippet
-    # → конкретные цифры > generic «подбор». Computed только если N≥5
-    # (иначе число шумное и звучит подозрительно низко/высоко).
-    price_clause = avg_price_clause_for_meta
+    # Min price — CTR-signal: «от X ₽» в SERP snippet конвертирует лучше
+    # абстрактного «актуальные предложения». Computed только если N≥5.
+    # Avg price/m² сохраняется для premium, где диапазон менее важен.
+    price_from = @min_price.present? ? " от #{@min_price} ₽" : ''
+    price_clause_avg = avg_price_clause_for_meta
     if @modifier == 'premium'
       "#{@h1}. Премиум-сегмент от АН «Виктори»: #{@total_count} актуальных " \
-        "#{@type_def[:plural_genitive]} #{location}#{price_clause}, объекты от 15 млн ₽, " \
+        "#{@type_def[:plural_genitive]} #{location}#{price_clause_avg}, объекты от 15 млн ₽, " \
         'банки-партнёры, юридическое сопровождение, конфиденциальность. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+    elsif @district_aliases
+      # District landings: добавляем «вторичка и новостройки» — прямое попадание
+      # в запрос «квартиры в рязани вторичка дашково-песочня и новостройки»
+      # (pos 11.0, Я.Webmaster 22.05.26). Оба термина в snippet = CTR-boost.
+      "#{@h1}: #{@total_count} предложений — вторичка и новостройки#{price_from}. " \
+        'Реальные фото, выезд агента, сопровождение сделки. АН «Виктори», ' \
+        "#{city_name}. Звоните: " + AgencyInfo::PHONE_PRIMARY
     else
-      "#{@h1}. Подбор #{@type_def[:plural_genitive]} #{location} от АН «Виктори» — " \
-        "#{@total_count} актуальных предложений#{price_clause}, реальные фото, выезд агента, " \
-        'сопровождение сделки. Звоните: ' + AgencyInfo::PHONE_PRIMARY
+      "#{@h1}: #{@total_count} актуальных предложений#{price_from}. " \
+        'Реальные фото, выезд агента, сопровождение сделки. АН «Виктори», ' \
+        "#{city_name}. Звоните: " + AgencyInfo::PHONE_PRIMARY
     end
   end
 
@@ -209,6 +217,23 @@ class LandingsController < ApplicationController
   rescue StandardError => e
     Rails.logger.warn("[LandingsController] avg_price_clause failed: #{e.class}: #{e.message}")
     ''
+  end
+
+  # Минимальная цена листинга для SERP snippet «от X ₽» — CTR-сигнал сильнее
+  # средней цены за м², т.к. совпадает с поисковым намерением «купить от ...».
+  # Computed только если N≥5 (иначе min может быть аномальным).
+  # Округляем вниз до 100 тыс (не выглядит как спам-число).
+  def min_price_for_meta
+    return nil if @total_count.to_i < 5
+
+    min = build_scope.where('price > 0').minimum(:price)
+    return nil if min.blank? || min <= 0
+
+    formatted = ActionController::Base.helpers.number_with_delimiter((min / 100_000).floor * 100_000, delimiter: ' ')
+    formatted
+  rescue StandardError => e
+    Rails.logger.warn("[LandingsController] min_price_for_meta failed: #{e.class}: #{e.message}")
+    nil
   end
 
   # «Рязань» → «Рязани», «Москва» → «Москве», «Санкт-Петербург» →
