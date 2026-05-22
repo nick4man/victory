@@ -71,7 +71,21 @@ namespace :kpi do
 
     puts ''
     puts '### Strategic vector alignment (Phase A pillars)'
-    puts "  Pillar 1 (frictionless): personal cabinet — TODO"
+
+    # Phase 15 — Pillar 1 reality. Cabinet shipped в A7 + Phase 15 polish:
+    # magic-link auth, profile/TG opt-in, password reset, properties, favorites,
+    # consents+contracts PDF, inquiry list со status timeline. Считаем live:
+    # сколько уникальных клиентов login'илось / TG-linked / имеют active inquiries.
+    pillar1_label = begin
+      clients_total = User.where(role: :client, active: true, deleted_at: nil).count
+      clients_tg = User.where(role: :client, active: true, deleted_at: nil).where.not(tg_user_id: nil).count
+      tg_pct = clients_total.positive? ? (clients_tg * 100.0 / clients_total).round : 0
+      "client TG-linked #{clients_tg}/#{clients_total} (#{tg_pct}%)"
+    rescue StandardError
+      'n/a'
+    end
+    puts "  Pillar 1 (frictionless): cabinet shipped (A7+P15); #{pillar1_label}"
+
     cs_label = if defined?(CaseStudy)
                  total = CaseStudy.count
                  public_n = CaseStudy.respond_to?(:public_facing) ? CaseStudy.public_facing.count : total
@@ -80,7 +94,13 @@ namespace :kpi do
                  'n/a (no CaseStudy model)'
                end
     puts "  Pillar 2 (deep expertise): case studies count = #{cs_label}"
-    puts "  Pillar 3 (AI×human): LLM-generated meta = #{with_seo} properties"
+
+    # Phase 15 — Pillar 3 reality. Считаем active properties с seo_title
+    # (не total — inactive не индексируются).
+    active_total = Property.where(status: :active).count
+    active_with_seo = Property.where(status: :active).where.not(seo_title: [nil, '']).count
+    active_pct = active_total.positive? ? (active_with_seo * 100.0 / active_total).round : 0
+    puts "  Pillar 3 (AI×human): active LLM-meta #{active_with_seo}/#{active_total} (#{active_pct}%)"
 
     puts ''
     puts '### Yandex SEO'

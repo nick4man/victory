@@ -73,6 +73,23 @@
           <span class="text-xs tracking-wider text-muted-foreground"><%= inquiries.length %> всего</span>
         </div>
       </div>
+
+      <%# Phase 15 polish (Pillar 1 frictionless) — CTA «подключи TG» для unlinked
+          клиентов с активными заявками. Status changes в TG приходят за секунды
+          (cron not required), email — за минуты + spam-filtered. Скрываем для уже-
+          linked пользователей и для пустых inquiries (не push для empty cabinet). %>
+      <% if cabinet_user.tg_user_id.blank? && inquiries.any? %>
+        <div class="border border-foreground/20 bg-foreground/[0.02] p-4 mb-4 flex items-center justify-between gap-4">
+          <div class="text-sm text-foreground">
+            <span class="font-medium">📲 Подключи Telegram</span> —
+            <span class="text-muted-foreground">получай уведомления о смене статуса заявки за секунды, не за часы по почте.</span>
+          </div>
+          <%= link_to cabinet_profile_path,
+                class: 'shrink-0 text-xs tracking-[0.2em] uppercase text-foreground border border-foreground px-3 py-2 hover:bg-foreground hover:text-background transition-colors' do %>
+            Подключить →
+          <% end %>
+        </div>
+      <% end %>
       <% if inquiries.empty? %>
         <div class="border border-border p-6 text-sm text-muted-foreground">
           У вас пока нет активных заявок. Оставьте заявку через
