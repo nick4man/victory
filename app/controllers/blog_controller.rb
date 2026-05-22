@@ -38,7 +38,7 @@ class BlogController < ApplicationController
   }.freeze
 
   def index
-    @articles = Article.published
+    @articles = Article.published.visible
                        .in_category(params[:category])
                        .recent
                        .page(params[:page])
@@ -49,8 +49,11 @@ class BlogController < ApplicationController
   end
 
   def show
-    @article = Article.friendly.find(params[:slug])
-    @related = Article.published
+    # .visible — admin-hidden articles НЕ должны быть доступны через direct URL.
+    # Раньше Article.friendly.find игнорировал hidden_at → hide! из admin
+    # снимал статью с index, но прямая ссылка возвращала 200 (SEO leak).
+    @article = Article.published.visible.friendly.find(params[:slug])
+    @related = Article.published.visible
                       .in_category(@article.category)
                       .where.not(id: @article.id)
                       .recent

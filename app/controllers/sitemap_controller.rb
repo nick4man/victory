@@ -34,7 +34,7 @@ class SitemapController < ApplicationController
   # change bucket. Articles add content weekly, agents change rarely,
   # case-studies — when закрытая сделка публикуется.
   def blog
-    @articles     = Article.published.recent.limit(500)
+    @articles     = Article.published.visible.recent.limit(500)
     @agents       = User.publicly_listable_agents.limit(200)
     @case_studies = CaseStudy.public_facing.limit(500)
     respond_to(&:xml)

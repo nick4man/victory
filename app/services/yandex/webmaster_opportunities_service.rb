@@ -33,12 +33,17 @@ module Yandex
       1..3 => 0.10,   # already excellent — opportunity here is rare
       4..5 => 0.07,
       6..10 => 0.05,
-      11..15 => 0.025
+      11..15 => 0.025,
+      16..30 => 0.015 # page 2 — show-pollination, all opportunity is to climb
     }.freeze
 
-    DEFAULT_MIN_IMPRESSIONS = 50
-    DEFAULT_MAX_CTR = 0.03
-    DEFAULT_POSITION_RANGE = (4..15).freeze
+    # Defaults откалиброваны под Phase-A reality (22.05.26 audit): 47 уникальных
+    # запросов / 64 показа / 4 клика в API window — НИ ОДИН query не имел >=5
+    # показов. Дефолт min_impressions=50 → 0 opportunities никогда. После SQI
+    # >50 и среднего >10 показов на запрос — поднять обратно к 50/4..15.
+    DEFAULT_MIN_IMPRESSIONS = 3
+    DEFAULT_MAX_CTR = 0.05
+    DEFAULT_POSITION_RANGE = (3..30).freeze
 
     class ConfigError < StandardError; end
 
