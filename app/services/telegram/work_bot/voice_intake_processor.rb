@@ -64,6 +64,14 @@ module Telegram
         return too_short    if transcription.text.length < MIN_TRANSCRIPT_LENGTH
         return low_confidence(transcription) if transcription.low_confidence?
 
+        # Iter 59 — split: query (self-audit) vs task_batch (распределение).
+        # Раньше любой голос шёл через TaskExtractor — теперь вопросы про
+        # себя/отчёты роутятся в StaffChatResponder (tool-loop).
+        intent = Telegram::WorkBot::VoiceIntentBranch.call(transcription.text)
+        if intent == :query
+          return handle_query(tg_user, transcription)
+        end
+
         extraction = Telegram::WorkBot::TaskExtractor.call(
           transcript: transcription.raw['text'].to_s, # raw для LLM (PII нужны для names)
           staff: TelegramUser.assignable.to_a,        # active + assignable=true (опт-аут админов)
@@ -81,6 +89,29 @@ module Telegram
         # confirmer чтобы preview отобразился без задержки на upload.
         archive_voice_to_nc(tg_user, transcription.text, batch.id)
         :dispatched
+      end
+
+      # Iter 59 — voice → query branch. Транскрипт уходит в StaffChatResponder
+      # (он сам решает classify → tool-call → final answer). Edit-in-place
+      # ack-сообщение «🎙 Слушаю…» на финальный ответ (UX consistency с task path).
+      def handle_query(tg_user, transcription)
+        result = Llm::StaffChatResponder.call(
+          question: transcription.text,
+          asked_by: tg_user,
+          msg: @msg
+        )
+        text = if result.respond_to?(:success?) && result.success?
+                 prefix = '🎙 ➜ 💬 '
+                 suffix = result.used_tools.present? ? "\n\n<i>(#{result.used_tools.join(', ')})</i>" : ''
+                 "#{prefix}#{result.answer}#{suffix}"
+               else
+                 "⚠️ Не удалось обработать запрос: #{result&.error.to_s.truncate(120)}"
+               end
+        edit_ack(text)
+
+        # Архивируем voice-query так же как task-batch — для аудита и обучения.
+        archive_voice_to_nc(tg_user, transcription.text, nil)
+        :query
       end
 
       def archive_voice_to_nc(tg_user, redacted_transcript, task_batch_id)

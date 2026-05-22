@@ -33,6 +33,10 @@ module Telegram
             anchor_thread_id: Telegram::TopicRegistry.thread_id(@target_key),
             anchor_message_id: new_msg['message_id'],
             anchor_topic_key: @target_key,
+            # Iter 59 — FK routed_by для query-индексов self-audit.
+            # metadata['routing_history'] остаётся как было — audit-trail
+            # с подробностями from/to. FK = "last router", history = full trail.
+            routed_by: @actor,
             metadata: merged_metadata
           )
         end
@@ -70,7 +74,10 @@ module Telegram
             'at' => Time.current.iso8601,
             'from' => @lead.anchor_topic_key,
             'to' => @target_key,
-            'by' => @actor.tg_username
+            # Iter 59 — добавил id (для FK-equivalent в JSON-аудите) рядом с
+            # tg_username (back-compat для существующих историй).
+            'by' => @actor.tg_username,
+            'by_id' => @actor.id
           }
         )
         meta

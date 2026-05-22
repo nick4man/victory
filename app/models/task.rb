@@ -75,6 +75,9 @@ class Task < ApplicationRecord
   scope :for_lead,  ->(lead_event) { where(lead_event: lead_event) }
   scope :for_assignee, ->(tg_user) { where(assignee_id: tg_user.id) }
   scope :suspicious,   -> { where(suspicious_flag: true) }
+  # Iter 59 — director self-audit: «какие задания я создал сегодня/на неделе»
+  scope :created_by_tg, ->(tg_user) { where(created_by_id: tg_user.id) }
+  scope :created_in,    ->(range)   { where(created_at: range) }
 
   # === Phase 7.3 — multi-modal completion ack ===
   # Phase 9 Iter 3: idempotent через transaction + reload check —

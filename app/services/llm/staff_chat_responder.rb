@@ -145,7 +145,10 @@ module Llm
 
       tool_calls.each do |tc|
         used_tools << tc[:name]
-        result = ChatTools::Staff::Registry.call(tc[:name], tc[:arguments] || {})
+        # Iter 59 — пробрасываем asked_by для tools которым нужен caller-context
+        # (например director_self_audit для role-check). Registry sniff'ит сигнатуру
+        # и подаёт kwarg только если handler его принимает.
+        result = ChatTools::Staff::Registry.call(tc[:name], tc[:arguments] || {}, asked_by: @asked_by)
         messages << {
           role: 'tool',
           tool_call_id: tc[:id],
@@ -235,6 +238,11 @@ module Llm
           • kpi_for — KPI snapshot по сотруднику или агентству за период
           • nextcloud_lookup_deal — папка сделки + share-link
           • nextcloud_list_templates — шаблоны договоров
+          • director_self_audit — какие лиды/задания manager+ роль раздал за период.
+            Применяй на запросы «какие задания я давала сегодня», «лиды я направила
+            на этой неделе», «что Оксана раздала вчера». period обязателен; agent
+            видит только себя (silent fallback). Возвращает структуру с counts и
+            items — затем рендери human-readable список с dd.MM.yy датами.
       PROMPT
     end
 

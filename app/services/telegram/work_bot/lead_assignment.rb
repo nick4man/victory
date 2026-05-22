@@ -57,7 +57,24 @@ module Telegram
             next
           end
 
-          @lead.update!(assigned_to: @assignee, assigned_at: Time.current)
+          # Iter 59 — фиксируем originator: FK assigned_by_id для query-индексов
+          # + metadata['assign_history'] для аудит-трейла (belt-and-suspenders).
+          assign_history_entry = {
+            'at' => Time.current.iso8601,
+            'by' => @actor.id,
+            'by_mention' => @actor.mention,
+            'to' => @assignee.id,
+            'to_mention' => @assignee.mention,
+            'from' => prev_assignee&.mention
+          }.compact
+          assign_history = @lead.append_history(key: 'assign_history', entry: assign_history_entry, cap: 20)
+
+          @lead.update!(
+            assigned_to: @assignee,
+            assigned_at: Time.current,
+            assigned_by: @actor,
+            metadata: @lead.metadata.merge('assign_history' => assign_history)
+          )
           push_to_crm                    # internally gated by linked_to_crm? + crm_id
           update_anchor_card!
           notify_assignee                # DM new сотруднику всегда

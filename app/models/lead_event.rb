@@ -30,6 +30,10 @@ class LeadEvent < ApplicationRecord
 
   belongs_to :lead_ref, polymorphic: true
   belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
+  # Iter 59 — кто из staff выполнил действие. assigned_to vs assigned_by:
+  # «assigned_to» — кому назначили, «assigned_by» — кто назначил.
+  belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
+  belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
 
   validates :source,           inclusion: { in: SOURCES }
   validates :current_stage,    inclusion: { in: STAGES }
@@ -45,6 +49,13 @@ class LeadEvent < ApplicationRecord
       .where.not(current_stage: ['closed_won', 'closed_lost'])
   }
   scope :in_topic, ->(key) { where(anchor_topic_key: key) }
+  # Iter 59 — director self-audit: «какие лиды я назначил / направил за период»
+  scope :assigned_by_tg, ->(tg_user) { where(assigned_by_id: tg_user.id) }
+  scope :routed_by_tg,   ->(tg_user) { where(routed_by_id: tg_user.id) }
+  # Aggregation окно: используем updated_at — фактически последняя mutation
+  # (route/assign/stage переход). created_at не годится: лид создан днём назад,
+  # routed сегодня — попадёт в today.
+  scope :updated_in, ->(range) { where(updated_at: range) }
 
   def open?
     !closed?

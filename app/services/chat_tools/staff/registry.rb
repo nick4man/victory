@@ -15,7 +15,9 @@ module ChatTools
         'nextcloud_list_templates' => ChatTools::Staff::NextcloudListTemplates,
         'kpi_for' => ChatTools::Staff::KpiFor,
         # Phase 5.1 — DocumentRequirement checklist status
-        'document_checklist_status' => ChatTools::Staff::DocumentChecklistStatus
+        'document_checklist_status' => ChatTools::Staff::DocumentChecklistStatus,
+        # Iter 59 — director self-audit: «какие лиды я направил», «какие задания я давал»
+        'director_self_audit' => ChatTools::Staff::DirectorSelfAudit
       }.freeze
 
       module_function
@@ -24,11 +26,21 @@ module ChatTools
         HANDLERS.values.map(&:schema)
       end
 
-      def call(name, args)
+      # @param name    [String] имя tool'а из HANDLERS
+      # @param args    [Hash]   аргументы от LLM
+      # @param asked_by [TelegramUser, nil] caller-context (для security проверок
+      #   в tools которые принимают этот kwarg, например director_self_audit).
+      #   Tools которые arity=1 — игнорируют (kwarg dropped Ruby-side).
+      def call(name, args, asked_by: nil)
         handler = HANDLERS[name.to_s]
         return { error: 'unknown_tool', tool: name } unless handler
 
-        handler.call(deep_symbolize(args))
+        symbolised = deep_symbolize(args)
+        if handler.method(:call).parameters.any? { |type, n| %i[key keyreq].include?(type) && n == :asked_by }
+          handler.call(symbolised, asked_by: asked_by)
+        else
+          handler.call(symbolised)
+        end
       rescue StandardError => e
         Rails.logger.warn("[ChatTools::Staff] #{name} failed: #{e.class} #{e.message}")
         { error: 'tool_failed', tool: name, message: e.message.to_s.truncate(180) }
