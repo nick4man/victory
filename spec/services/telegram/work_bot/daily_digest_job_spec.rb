@@ -20,6 +20,14 @@ RSpec.describe Telegram::WorkBot::DailyDigestJob do
 
   before { allow(Telegram::Client).to receive(:new).and_return(tg_client) }
 
+  # Phase 15.5 — DailyDigestJob теперь композирует SummarizeGroupMessages.
+  # Stub'аем чтобы spec не дёргал real LLM на каждом run.
+  before do
+    allow(::ChatTools::Staff::SummarizeGroupMessages).to receive(:call).and_return(
+      { summary: '📌 Stub summary content', model: 'stub', count: 5 }
+    )
+  end
+
   describe '#perform' do
     it 'шлёт digest только директорам с dm_chat_id' do
       travel_to(Time.zone.local(2026, 5, 22, 10, 0)) do # не quiet hours
@@ -45,6 +53,33 @@ RSpec.describe Telegram::WorkBot::DailyDigestJob do
         described_class.new.perform
       end
       expect(tg_client).not_to have_received(:send_message).with(anything, hash_including(chat_id: 100_003))
+    end
+
+    # Phase 15.5 — LLM-summary в digest
+    it 'включает 💬 секцию с LLM-summary вчерашних обсуждений' do
+      travel_to(Time.zone.local(2026, 5, 22, 10, 0)) do
+        described_class.new.perform
+      end
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Обсуждалось в рабочем чате.*Stub summary/m),
+        hash_including(chat_id: 100_001)
+      )
+      expect(::ChatTools::Staff::SummarizeGroupMessages).to have_received(:call).with(
+        hash_including(period: 'yesterday'), hash_including(asked_by: director_with_dm)
+      )
+    end
+
+    it 'graceful fail — digest шлётся даже если SummarizeGroupMessages вернул error' do
+      allow(::ChatTools::Staff::SummarizeGroupMessages).to receive(:call).and_return(
+        { error: 'tool_failed', message: 'LLM down' }
+      )
+      travel_to(Time.zone.local(2026, 5, 22, 10, 0)) do
+        described_class.new.perform
+      end
+      # Digest всё равно ушёл, просто без секции «Обсуждалось»
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Доброе утро/), hash_including(chat_id: 100_001)
+      )
     end
   end
 end

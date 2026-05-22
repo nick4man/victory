@@ -54,7 +54,7 @@ module Telegram
         hour >= QUIET_START_HOUR || hour < QUIET_END_HOUR
       end
 
-      def build_digest_for(_director)
+      def build_digest_for(director)
         yesterday = 1.day.ago.beginning_of_day..1.day.ago.end_of_day
 
         leads_yesterday = LeadEvent.where(created_at: yesterday)
@@ -83,10 +83,39 @@ module Telegram
         if sla_breach.positive?
           lines << "⚠️ SLA breach (3+ дня overdue): <b>#{sla_breach}</b>"
         end
+
+        # Phase 15.5 — LLM-summary вчерашних обсуждений в group chat.
+        # Композиция с SummarizeGroupMessages tool. Soft-fail: если LLM down или
+        # < MIN_SOURCES messages — секция skip'ается (digest всё равно уйдёт).
+        summary = group_chat_summary(director)
+        if summary.present?
+          lines << ''
+          lines << '💬 <b>Обсуждалось в рабочем чате</b>'
+          lines << summary
+        end
+
         lines << ''
         lines << '<i>Открой полный dashboard кнопкой ниже или /dashboard</i>'
 
         lines.join("\n")
+      end
+
+      # Композиция: SummarizeGroupMessages tool с period='yesterday'.
+      # Возвращает structured markdown summary или nil если не вышло.
+      def group_chat_summary(director)
+        result = ::ChatTools::Staff::SummarizeGroupMessages.call(
+          { period: 'yesterday' },
+          asked_by: director
+        )
+        return nil if result[:summary].blank?
+        return nil if result[:error].present?
+
+        # Truncate если LLM вернул что-то слишком длинное (TG message limit 4096
+        # chars, и у нас уже есть основные digest-lines выше).
+        result[:summary].to_s.truncate(1500)
+      rescue StandardError => e
+        Rails.logger.warn("[DailyDigestJob#group_chat_summary] #{e.class}: #{e.message}")
+        nil
       end
 
       def send_digest(director, digest_markdown)
