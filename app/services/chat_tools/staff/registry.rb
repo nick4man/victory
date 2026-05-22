@@ -21,7 +21,9 @@ module ChatTools
         # Phase 15 — control panel tools
         'search_group_messages' => ChatTools::Staff::SearchGroupMessages,
         'search_all_tasks'      => ChatTools::Staff::SearchAllTasks,
-        'search_all_leads'      => ChatTools::Staff::SearchAllLeads
+        'search_all_leads'      => ChatTools::Staff::SearchAllLeads,
+        # Phase 15.5 — LLM summarization of group msg threads
+        'summarize_group_messages' => ChatTools::Staff::SummarizeGroupMessages
       }.freeze
 
       module_function
