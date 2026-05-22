@@ -49,6 +49,10 @@
         </p>
       </div>
       <div class="flex items-center gap-6">
+        <%= link_to cabinet_documents_path,
+              class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' do %>
+          Документы
+        <% end %>
         <%= link_to cabinet_profile_path,
               class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' do %>
           Профиль<% if cabinet_user.tg_user_id.present? %> <span class="text-emerald-500">·TG</span><% end %>

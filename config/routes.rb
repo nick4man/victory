@@ -113,6 +113,11 @@ Rails.application.routes.draw do
   post   'cabinet/properties/:id/hide',       to: 'cabinet/properties#hide',   as: :hide_cabinet_property
   post   'cabinet/properties/:id/unhide',     to: 'cabinet/properties#unhide', as: :unhide_cabinet_property
 
+  # Phase 15 polish (Pillar 1) — единое место для всех документов клиента:
+  # ListingConsent PDFs + ClientDocument сканы + PropertyValuation. Один URL
+  # вместо разрозненных /cabinet/listings/:id/consent.pdf links.
+  get    'cabinet/documents',          to: 'cabinet/documents#index', as: :cabinet_documents
+
   # A7 Phase 2: избранное
   get    'cabinet/favorites',           to: 'cabinet/favorites#index',   as: :cabinet_favorites
   post   'cabinet/favorites',           to: 'cabinet/favorites#create',  as: :cabinet_create_favorite
