@@ -41,7 +41,10 @@ module Telegram
         '/reassign' => Commands::Reassign,
         '/reopen' => Commands::Reopen,
         '/deactivate' => Commands::Deactivate,
-        '/resume_batch' => Commands::ResumeBatch
+        '/resume_batch' => Commands::ResumeBatch,
+        # Phase 15 — control panel snapshot для директора в DM (manager+).
+        '/dashboard' => Commands::Dashboard,
+        '/panel' => Commands::Dashboard # alias
       }.freeze
 
       def initialize(message, client: Telegram::Client.new)

@@ -26,7 +26,9 @@ module Telegram
         'batch_confirm' => 'Telegram::WorkBot::Callbacks::TaskBatchConfirmCallback',
         'task' => 'Telegram::WorkBot::Callbacks::TaskActionCallback',
         # Iter 60 — manager+ photo disposition (cloud upload / staff dispatch).
-        'photo' => 'Telegram::WorkBot::Callbacks::PhotoDispositionCallback'
+        'photo' => 'Telegram::WorkBot::Callbacks::PhotoDispositionCallback',
+        # Phase 15 — /dashboard drilldown (cards, refresh, back).
+        'dashboard' => 'Telegram::WorkBot::Callbacks::DashboardDrillCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)
