@@ -239,7 +239,11 @@ module Topnlab
         mapped = ROOMS_ENUM_TO_COUNT[n]
         return mapped if mapped
       end
-      derive_rooms_from_area_room
+      # #1 Шаг 1 — fallback chain: area_room heuristic → description parsing
+      # → nil. PropertyRoomsParser handles freeform Russian («3-комн.»,
+      # «трёхкомнатная», «студия»→0 etc).
+      derive_rooms_from_area_room ||
+        PropertyRoomsParser.parse(@p['mydescription'] || @p['description'])
     end
 
     # Heuristic fallback: "19.1+6.7+6.6" → 3 комнаты.
