@@ -302,6 +302,18 @@ class ApplicationController < ActionController::Base
     end
   end
 
+  # 410 Gone — content existed but was intentionally removed (admin hid
+  # article, property archived/sold). Я./Google de-index 410 URLs faster
+  # than 404 (which they retry) and much faster than 302 (which they treat
+  # as soft-redirect). Used by BlogController#show and PropertiesController#show.
+  def render_410
+    respond_to do |format|
+      format.html { render template: 'errors/gone', status: :gone, layout: 'application' }
+      format.json { render json: { error: 'Gone' }, status: :gone }
+      format.any  { head :gone }
+    end
+  end
+
   def render_500
     respond_to do |format|
       format.html { render template: 'errors/internal_server_error', status: :internal_server_error, layout: 'application' }

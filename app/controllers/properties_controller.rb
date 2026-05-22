@@ -86,6 +86,15 @@ class PropertiesController < ApplicationController
   
   # GET /properties/:id
   def show
+    # Non-active properties (archived/sold/draft/rejected/pending) НЕ должны
+    # ранжироваться в Я.: они leak'ают topical authority + дают пользователю
+    # «купите то чего нет». 410 Gone — Я. de-index такие URLs быстрее чем
+    # 404 (который retry-fetched) или 302 (soft-redirect). set_property
+    # уже нашёл @property without scope, теперь enforce'им SEO-policy здесь
+    # (а не в set_property) чтобы admin edit/update/destroy продолжали
+    # работать для archived объектов.
+    return render_410 unless @property.status_active? && @property.published_at.present?
+
     # Conditional GET — 304 when the bot/browser already has a copy whose
     # ETag matches @property's cache_key_with_version. Big crawl-rate win
     # for Yandex (304 responses cost ~5ms vs 800ms+ full render), and the

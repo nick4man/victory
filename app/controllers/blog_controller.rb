@@ -62,7 +62,13 @@ class BlogController < ApplicationController
     add_breadcrumb 'Блог', blog_path
     add_breadcrumb @article.title
   rescue ActiveRecord::RecordNotFound
-    redirect_to blog_path, alert: 'Статья не найдена'
+    # Различаем «существовала, но снята/в архиве» (410 Gone — Я. de-index
+    # быстро) и «никогда не существовала» (404 — обычный typo/dead link).
+    if Article.unscoped.exists?(slug: params[:slug])
+      render_410
+    else
+      render_404
+    end
   end
 
   def category
