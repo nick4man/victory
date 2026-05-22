@@ -62,6 +62,11 @@ class PropertyValuation < ApplicationRecord
   after_update_commit :broadcast_cabinet_completion, if: :saved_change_to_status?
 
   # Validations
+  # Phase 16 — auto-tag staff/test submissions (Надежда тестирует на проде,
+  # «Тест Клиент», phase-test emails — отделяем от real client data).
+  # Hook идёт до validation чтобы tag persist'нулся даже если valid? fails позже.
+  before_validation :detect_staff_test_submission, on: :create
+
   validates :property_type, presence: true
   validates :deal_type, presence: true
   validates :address, presence: true, length: { minimum: 10 }
@@ -254,6 +259,17 @@ class PropertyValuation < ApplicationRecord
     })
   rescue StandardError => e
     Rails.logger.warn("[PropertyValuation##{id}] CabinetChannel broadcast failed: #{e.class} #{e.message}")
+  end
+
+  # Phase 16 — staff/test detection. Auto-tag без UX friction.
+  def detect_staff_test_submission
+    return if staff_test # уже выставлен (например через factory или admin override)
+
+    result = StaffSubmissionDetector.detect(
+      email: email, phone: phone, name: name, tg_user_id: nil
+    )
+    self.staff_test = result.staff_test
+    self.staff_test_matched_by = result.matched_by
   end
 end
 

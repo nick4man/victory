@@ -114,6 +114,8 @@ class Inquiry < ApplicationRecord
   # ============================================
   before_validation :normalize_phone
   before_validation :set_default_source, on: :create
+  # Phase 16 — auto-tag staff/test submissions без UX friction.
+  before_validation :detect_staff_test_submission, on: :create
   after_create :assign_to_agent
   after_create :send_notifications
   after_create :sync_to_crm
@@ -454,6 +456,22 @@ class Inquiry < ApplicationRecord
 
   def set_default_source
     self.source ||= 'web'
+  end
+
+  # Phase 16 — auto-tag staff/test submissions через эвристики (StaffSubmissionDetector).
+  # Без UX friction: real клиент submit'ит как обычно, staff/test markers получают
+  # staff_test=true → KPI / dashboard фильтруют по умолчанию.
+  def detect_staff_test_submission
+    return if staff_test # уже выставлен (admin override / factory)
+
+    result = StaffSubmissionDetector.detect(
+      email: email,
+      phone: phone,
+      name: name,
+      tg_user_id: client_tg_user_id # Phase 4D — set когда intake идёт из TG DM
+    )
+    self.staff_test = result.staff_test
+    self.staff_test_matched_by = result.matched_by
   end
 
   def assign_to_agent

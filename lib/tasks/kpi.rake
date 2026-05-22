@@ -38,15 +38,27 @@ namespace :kpi do
     puts ''
     puts '### Inquiries (sales pipeline)'
     if defined?(Inquiry)
+      # Phase 16 — фильтруем staff_test=true (Надеждины тесты, «Тест Клиент» и т.д.)
+      # из real-client KPI. Tag показываем отдельной строкой для observability.
+      real_scope = Inquiry.respond_to?(:where) && Inquiry.column_names.include?('staff_test') ?
+                   Inquiry.where(staff_test: false) : Inquiry
       open_states = %w[new contacted in_progress scheduled]
-      open_count  = Inquiry.where(status: open_states).count
-      stale_open  = Inquiry.where(status: open_states).where('updated_at < ?', 7.days.ago).count
-      week_new    = Inquiry.where('created_at > ?', 7.days.ago).count
-      completed_30 = Inquiry.where(status: :completed).where('updated_at > ?', 30.days.ago).count
+      open_count  = real_scope.where(status: open_states).count
+      stale_open  = real_scope.where(status: open_states).where('updated_at < ?', 7.days.ago).count
+      week_new    = real_scope.where('created_at > ?', 7.days.ago).count
+      completed_30 = real_scope.where(status: :completed).where('updated_at > ?', 30.days.ago).count
       puts "  open (new/contacted/in_progress/scheduled): #{open_count}"
       puts "  open + idle > 7 days:                       #{stale_open}"
       puts "  new last 7 days:                            #{week_new}"
       puts "  completed last 30 days:                     #{completed_30}"
+
+      if Inquiry.column_names.include?('staff_test')
+        staff_test_count = Inquiry.where(staff_test: true).count
+        if staff_test_count.positive?
+          breakdown = Inquiry.where(staff_test: true).group(:staff_test_matched_by).count
+          puts "  [tagged staff_test, excluded above]:        #{staff_test_count} (#{breakdown.map { |k, v| "#{k}=#{v}" }.join(', ')})"
+        end
+      end
     else
       puts '  (Inquiry model not loaded — skip)'
     end

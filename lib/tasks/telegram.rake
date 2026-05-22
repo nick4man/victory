@@ -144,4 +144,54 @@ namespace :telegram do
     puts "  errors:  #{errors}"
     puts "  total in DB: #{TelegramGroupMessage.count}"
   end
+
+  # Phase 16 — backfill staff_test tagging для existing Inquiry / LeadEvent /
+  # PropertyValuation. Detector тот же что в create-callbacks. One-shot run
+  # после migration.
+  desc 'Phase 16 — backfill staff_test tagging для existing records'
+  task backfill_staff_test_tagging: :environment do
+    inquiry_tagged = 0
+    Inquiry.where(staff_test: false).find_each do |i|
+      result = StaffSubmissionDetector.detect(
+        email: i.email, phone: i.phone, name: i.name, tg_user_id: i.client_tg_user_id
+      )
+      if result.staff_test
+        i.update_columns(staff_test: true, staff_test_matched_by: result.matched_by) # rubocop:disable Rails/SkipsModelValidations
+        inquiry_tagged += 1
+      end
+    end
+    puts "Inquiries tagged staff_test=true: #{inquiry_tagged}"
+
+    pv_tagged = 0
+    PropertyValuation.where(staff_test: false).find_each do |v|
+      result = StaffSubmissionDetector.detect(
+        email: v.email, phone: v.phone, name: v.name, tg_user_id: nil
+      )
+      if result.staff_test
+        v.update_columns(staff_test: true, staff_test_matched_by: result.matched_by) # rubocop:disable Rails/SkipsModelValidations
+        pv_tagged += 1
+      end
+    end
+    puts "PropertyValuations tagged staff_test=true: #{pv_tagged}"
+
+    le_tagged = 0
+    LeadEvent.where(staff_test: false).find_each do |le|
+      meta = le.metadata || {}
+      result = StaffSubmissionDetector.detect(
+        email: meta['email'], phone: meta['phone'], name: meta['name'], tg_user_id: meta['tg_user_id']
+      )
+      # Также наследуем от parent Inquiry если есть
+      if !result.staff_test && le.lead_ref.is_a?(Inquiry) && le.lead_ref.staff_test
+        le.update_columns(staff_test: true, staff_test_matched_by: "inherited_from_inquiry##{le.lead_ref.id}") # rubocop:disable Rails/SkipsModelValidations
+        le_tagged += 1
+      elsif result.staff_test
+        le.update_columns(staff_test: true, staff_test_matched_by: result.matched_by) # rubocop:disable Rails/SkipsModelValidations
+        le_tagged += 1
+      end
+    end
+    puts "LeadEvents tagged staff_test=true: #{le_tagged}"
+
+    puts ''
+    puts 'Done. KPI snapshot теперь скрывает их по умолчанию (rake kpi:phase_a).'
+  end
 end

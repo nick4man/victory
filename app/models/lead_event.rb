@@ -57,6 +57,15 @@ class LeadEvent < ApplicationRecord
   # routed сегодня — попадёт в today.
   scope :updated_in, ->(range) { where(updated_at: range) }
 
+  # Phase 16 — staff_test scopes (default scope не делаем, чтобы не сломать
+  # admin/debug queries. Caller сам решает .real или .staff_test).
+  scope :real,       -> { where(staff_test: false) }
+  scope :staff_test_only, -> { where(staff_test: true) }
+
+  # Phase 16 — auto-tag через эвристики (StaffSubmissionDetector).
+  # Читаем name/email/phone из metadata (где Lead::Intake их кладёт).
+  before_validation :detect_staff_test_submission, on: :create
+
   def open?
     !closed?
   end
@@ -108,5 +117,31 @@ class LeadEvent < ApplicationRecord
     existing = Array(metadata[key.to_s])
     existing << entry
     existing.last(cap)
+  end
+
+  private
+
+  # Phase 16 — auto-tag через StaffSubmissionDetector. Lead::Intake кладёт
+  # name/email/phone в metadata. Если linked Inquiry уже tag'нут — копируем
+  # его decision (consistency между linked records).
+  def detect_staff_test_submission
+    return if staff_test # уже выставлен manually
+
+    # Если parent Inquiry уже tag'нут — наследуем
+    if lead_ref.is_a?(Inquiry) && lead_ref.staff_test
+      self.staff_test = true
+      self.staff_test_matched_by = "inherited_from_inquiry##{lead_ref.id}"
+      return
+    end
+
+    meta = metadata || {}
+    result = StaffSubmissionDetector.detect(
+      email: meta['email'],
+      phone: meta['phone'],
+      name:  meta['name'],
+      tg_user_id: meta['tg_user_id']
+    )
+    self.staff_test = result.staff_test
+    self.staff_test_matched_by = result.matched_by
   end
 end
