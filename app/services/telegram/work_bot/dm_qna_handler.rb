@@ -55,12 +55,21 @@ module Telegram
         question = @msg['text'].to_s.strip
         return :empty if question.empty?
 
+        # Iter 61 (DM ack UX) — отправляем «💭 Принял, думаю…» ДО LLM-вызова.
+        # StaffChatResponder может занять 5-30s при rate-limit на groq +
+        # fallback chain на gemini-2.5-flash. Без ack пользователь видит
+        # «бот молчит». ack_message_id хранится для edit-in-place финального
+        # ответа (не плодим два сообщения). Pattern идентичен
+        # VoiceIntakeProcessor.edit_ack.
+        ack_msg = send_ack('💭 <i>Принял, думаю…</i>')
+        @ack_message_id = ack_msg&.dig('message_id')
+
         result = Llm::StaffChatResponder.call(question: question, asked_by: tg_user, msg: @msg)
-        reply(format_answer(result))
+        deliver(format_answer(result))
         result
       rescue StandardError => e
         Rails.logger.error("[DmQnaHandler] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
-        reply("⚠️ Внутренняя ошибка: #{e.message.to_s.truncate(120)}")
+        deliver("⚠️ Внутренняя ошибка: #{e.message.to_s.truncate(120)}")
         :error
       end
 
@@ -72,6 +81,32 @@ module Telegram
         suffix = []
         suffix << "<i>(#{result.used_tools.join(', ')})</i>" if result.used_tools&.any?
         [result.answer, *suffix].join("\n")
+      end
+
+      # Initial ack-сообщение (replies to user). Soft-fail — если не ушло,
+      # @ack_message_id остаётся nil, deliver упадёт на fallback reply.
+      def send_ack(text)
+        @client.send_message(text,
+                             chat_id: @msg.dig('chat', 'id'),
+                             reply_to_message_id: @msg['message_id'],
+                             parse_mode: 'HTML')
+      rescue ::Telegram::Client::Error => e
+        Rails.logger.warn("[DmQnaHandler#send_ack] #{e.message}")
+        nil
+      end
+
+      # Финальная доставка: edit ack-сообщения in-place если есть; иначе reply.
+      # Если edit упал (старое сообщение / TG 400) — fallback на reply.
+      def deliver(text)
+        return reply(text) if @ack_message_id.blank?
+
+        @client.edit_message_text(text,
+                                  chat_id: @msg.dig('chat', 'id'),
+                                  message_id: @ack_message_id,
+                                  parse_mode: 'HTML')
+      rescue ::Telegram::Client::Error => e
+        Rails.logger.warn("[DmQnaHandler#deliver] edit failed, fallback to reply: #{e.message}")
+        reply(text)
       end
 
       def reply(text)
