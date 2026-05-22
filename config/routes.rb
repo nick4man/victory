@@ -78,6 +78,11 @@ Rails.application.routes.draw do
   get    'cabinet/verify/:token',  to: 'cabinet/auth#verify',    as: :cabinet_verify
   delete 'cabinet/logout',         to: 'cabinet/auth#destroy',   as: :cabinet_logout
 
+  # /cabinet/profile — Phase #413d. Profile + TG opt-in flow.
+  get    'cabinet/profile',        to: 'cabinet/profile#show',            as: :cabinet_profile
+  post   'cabinet/profile/tg/link',  to: 'cabinet/profile#link_telegram',   as: :cabinet_link_telegram
+  delete 'cabinet/profile/tg/link',  to: 'cabinet/profile#unlink_telegram', as: :cabinet_unlink_telegram
+
   # A7 Phase 4: password reset (re-uses MagicLinkToken scope='password_reset')
   # /cabinet/password/reset       (GET)   → форма "забыли пароль" (passwords#new)
   # /cabinet/password/resets      (POST)  → отправить ссылку (passwords#create)

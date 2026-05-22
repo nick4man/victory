@@ -48,11 +48,17 @@
           Ваши заявки, оценки и история взаимодействий с агентством
         </p>
       </div>
-      <%= button_to cabinet_logout_path, method: :delete,
-            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors',
-            form: { data: { turbo: false } } do %>
-        Выйти →
-      <% end %>
+      <div class="flex items-center gap-6">
+        <%= link_to cabinet_profile_path,
+              class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' do %>
+          Профиль<% if cabinet_user.tg_user_id.present? %> <span class="text-emerald-500">·TG</span><% end %>
+        <% end %>
+        <%= button_to cabinet_logout_path, method: :delete,
+              class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors',
+              form: { data: { turbo: false } } do %>
+          Выйти →
+        <% end %>
+      </div>
     </header>
 
     <!-- INQUIRIES -->
