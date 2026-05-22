@@ -20,7 +20,7 @@ RSpec.describe Telegram::WorkBot::CheatsheetRenderer do
     let(:md) { described_class.call(tg_user: director) }
 
     it 'header показывает role=director' do
-      expect(md).to include('Cheat-sheet @anvictorybot · director')
+      expect(md).to include('Шпаргалка по боту · директор')
     end
 
     it 'включает все секции (panel/search/actions/photo/voice/digest)' do
@@ -44,41 +44,41 @@ RSpec.describe Telegram::WorkBot::CheatsheetRenderer do
       expect(md).to include('топ-performer')
     end
 
-    it 'предлагает закрепить сообщение (long-press → Pin)' do
-      expect(md).to include('Закрепи это сообщение')
+    it 'предлагает закрепить сообщение' do
+      expect(md).to include('Закрепить')
     end
   end
 
   describe '.call для manager (не director)' do
     let(:md) { described_class.call(tg_user: manager) }
 
-    it 'header показывает role=manager' do
-      expect(md).to include('· manager</b>')
+    it 'header показывает role=руководитель' do
+      expect(md).to include('· руководитель</b>')
     end
 
     it 'видит panel/search/actions но НЕ voice и НЕ digest' do
       expect(md).to include('📊 <b>Панель управления</b>')
       expect(md).to include('🔍 <b>Поиск')
       expect(md).to include('⚡ <b>Действия')
-      expect(md).not_to include('🎙 <b>Голос в DM</b>')
-      expect(md).not_to include('📅 <b>Автоматически приходит в DM</b>')
+      expect(md).not_to include('🎙 <b>Голос')
+      expect(md).not_to include('📅 <b>Приходит автоматически')
     end
   end
 
   describe '.call для agent' do
     let(:md) { described_class.call(tg_user: agent) }
 
-    it 'header показывает role=agent' do
-      expect(md).to include('· agent</b>')
+    it 'header показывает role=сотрудник' do
+      expect(md).to include('· сотрудник</b>')
     end
 
     it 'видит ТОЛЬКО photo + footer (без panel/search/actions/voice/digest)' do
       expect(md).not_to include('Панель управления')
       expect(md).not_to include('Поиск')
       expect(md).not_to include('Действия')
-      expect(md).not_to include('Голос в DM')
-      expect(md).not_to include('Автоматически приходит')
-      expect(md).to include('📷 <b>Фото в DM</b>')
+      expect(md).not_to include('Голос')
+      expect(md).not_to include('Приходит автоматически')
+      expect(md).to include('📷 <b>Фото в личные сообщения</b>')
     end
   end
 

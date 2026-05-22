@@ -75,13 +75,13 @@ module Telegram
 
         lines = ["🌅 <b>Доброе утро. Сводка за #{date}</b>"]
         lines << ''
-        lines << "🎯 Лиды: <b>#{leads_yesterday.count}</b> новых, <b>#{leads_won.count}</b> won / <b>#{leads_lost.count}</b> lost"
-        lines << "✅ Задачи: <b>#{tasks_done.count}</b> выполнено, <b>#{tasks_overdue}</b> overdue"
+        lines << "🎯 Лиды: <b>#{leads_yesterday.count}</b> новых, <b>#{leads_won.count}</b> выиграно / <b>#{leads_lost.count}</b> проиграно"
+        lines << "✅ Задачи: <b>#{tasks_done.count}</b> выполнено, <b>#{tasks_overdue}</b> просрочено"
         if top_user && top.last.positive?
-          lines << "🏆 Top performer: #{top_user.mention} (<b>#{top.last}</b> задач)"
+          lines << "🏆 Лучший за вчера: #{top_user.mention} (<b>#{top.last}</b> задач)"
         end
         if sla_breach.positive?
-          lines << "⚠️ SLA breach (3+ дня overdue): <b>#{sla_breach}</b>"
+          lines << "⚠️ Просрочено больше 3 дней: <b>#{sla_breach}</b>"
         end
 
         # Phase 15.5 — LLM-summary вчерашних обсуждений в group chat.
@@ -95,7 +95,7 @@ module Telegram
         end
 
         lines << ''
-        lines << '<i>Открой полный dashboard кнопкой ниже или /dashboard</i>'
+        lines << '<i>Полная панель — нажми кнопку или напиши /dashboard</i>'
 
         lines.join("\n")
       end
@@ -125,7 +125,7 @@ module Telegram
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
-              { text: '📊 Полный dashboard', callback_data: 'dashboard:refresh' }
+              { text: '📊 Открыть панель', callback_data: 'dashboard:refresh' }
             ]]
           }
         )

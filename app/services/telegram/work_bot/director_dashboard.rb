@@ -64,9 +64,9 @@ module Telegram
                               .where('assigned_at < ?', 30.minutes.ago).count
 
         lines = ['🎯 <b>Лиды</b>']
-        lines << "  • Открытых: <b>#{open_scope.count}</b> (новых: #{new_count}, ждут first contact: #{awaiting_fc})"
-        lines << "  • Закрытых за 7 дней: <b>#{won + lost}</b> (won #{won} / lost #{lost})"
-        lines << "  • Overdue first_contact (>30 мин): <b>#{overdue_fc}</b> ⚠️" if overdue_fc.positive?
+        lines << "  • Открытых: <b>#{open_scope.count}</b> (новых: #{new_count}, ждут первого контакта: #{awaiting_fc})"
+        lines << "  • Закрыто за 7 дней: <b>#{won + lost}</b> (выиграно #{won} / проиграно #{lost})"
+        lines << "  • Без первого контакта дольше 30 мин: <b>#{overdue_fc}</b> ⚠️" if overdue_fc.positive?
         lines.join("\n")
       end
 
@@ -80,9 +80,9 @@ module Telegram
         sla_breach = open_scope.where('due_at < ?', 3.days.ago).count
 
         lines = ['✅ <b>Задачи</b>']
-        lines << "  • Открытых: <b>#{open_scope.count}</b> (overdue #{overdue}, due_today #{due_today})"
+        lines << "  • Открытых: <b>#{open_scope.count}</b> (просрочено #{overdue}, со сроком сегодня #{due_today})"
         lines << "  • Завершено сегодня: <b>#{done_today}</b>"
-        lines << "  • SLA breach (3+ дня overdue): <b>#{sla_breach}</b> ⚠️" if sla_breach.positive?
+        lines << "  • Просрочено больше 3 дней: <b>#{sla_breach}</b> ⚠️" if sla_breach.positive?
         lines.join("\n")
       end
 
@@ -98,7 +98,7 @@ module Telegram
           overdue = ::Task.where(assignee_id: s.id, status: 'open').where('due_at < ?', Time.current).count
 
           status_icon = overdue.zero? ? '✅' : '⚠️'
-          lines << "  • #{s.mention}: #{open} откр., #{done_today} done, #{overdue} overdue #{status_icon}"
+          lines << "  • #{s.mention}: #{open} в работе, #{done_today} закрыто сегодня, #{overdue} просрочено #{status_icon}"
         end
 
         lines.join("\n")
@@ -113,9 +113,9 @@ module Telegram
 
         return nil if now[:leads_total].zero? && now[:tasks_total].zero?
 
-        lines = ['📈 <b>KPI неделя</b>']
-        lines << "  • Conversion: <b>#{now[:conversion]}%</b> (vs #{prev[:conversion]}% #{trend(now[:conversion], prev[:conversion])})"
-        lines << "  • SLA on-time: <b>#{now[:on_time]}%</b> (vs #{prev[:on_time]}% #{trend(now[:on_time], prev[:on_time])})"
+        lines = ['📈 <b>Показатели за неделю</b>']
+        lines << "  • Конверсия (выигранных от закрытых): <b>#{now[:conversion]}%</b> (неделю назад #{prev[:conversion]}% #{trend(now[:conversion], prev[:conversion])})"
+        lines << "  • Задач выполнено в срок: <b>#{now[:on_time]}%</b> (неделю назад #{prev[:on_time]}% #{trend(now[:on_time], prev[:on_time])})"
         lines.join("\n")
       end
 
@@ -158,14 +158,14 @@ module Telegram
 
         return nil if alerts.empty? && sla_tasks.empty?
 
-        lines = ['🔔 <b>Алерты (24ч)</b>']
+        lines = ['🔔 <b>Уведомления за сутки</b>']
         alerts.each do |le|
-          name = (le.metadata['name'].presence) || "лид ##{le.id}"
-          lines << "  • #{name} (##{le.id}) — manager_pinged"
+          name = (le.metadata['name'].presence) || "Лид ##{le.id}"
+          lines << "  • #{name} (##{le.id}) — руководитель уведомлён повторно"
         end
         sla_tasks.each do |t|
           days = ((Time.current - t.due_at) / 1.day).round
-          lines << "  • Task ##{t.id} (#{t.title.to_s.truncate(40)}) — SLA breach #{days}d"
+          lines << "  • Задача ##{t.id} (#{t.title.to_s.truncate(40)}) — просрочка #{days} дн."
         end
         lines.join("\n")
       end

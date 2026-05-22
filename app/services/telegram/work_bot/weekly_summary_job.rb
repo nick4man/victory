@@ -42,18 +42,18 @@ module Telegram
         now_kpi = compute(now_range)
         prev_kpi = compute(prev_range)
 
-        lines = ["📊 <b>Недельный отчёт · #{7.days.ago.strftime('%d.%m')}–#{Time.current.strftime('%d.%m.%y')}</b>"]
+        lines = ["📊 <b>Сводка за неделю · #{7.days.ago.strftime('%d.%m')}–#{Time.current.strftime('%d.%m.%y')}</b>"]
         lines << ''
-        lines << "🎯 Лиды: <b>#{now_kpi[:leads_total]}</b> (#{trend(now_kpi[:leads_total], prev_kpi[:leads_total])} #{prev_kpi[:leads_total]})"
-        lines << "  • won: <b>#{now_kpi[:leads_won]}</b> | lost: <b>#{now_kpi[:leads_lost]}</b>"
-        lines << "  • Conversion: <b>#{now_kpi[:conversion]}%</b> (vs #{prev_kpi[:conversion]}% #{trend(now_kpi[:conversion], prev_kpi[:conversion])})"
+        lines << "🎯 Лиды: <b>#{now_kpi[:leads_total]}</b> (на прошлой неделе #{prev_kpi[:leads_total]} #{trend(now_kpi[:leads_total], prev_kpi[:leads_total])})"
+        lines << "  • Выиграно: <b>#{now_kpi[:leads_won]}</b> | Проиграно: <b>#{now_kpi[:leads_lost]}</b>"
+        lines << "  • Конверсия (выигранных от закрытых): <b>#{now_kpi[:conversion]}%</b> (неделю назад #{prev_kpi[:conversion]}% #{trend(now_kpi[:conversion], prev_kpi[:conversion])})"
         lines << ''
-        lines << "✅ Задачи: <b>#{now_kpi[:tasks_done]}</b> done (vs #{prev_kpi[:tasks_done]} #{trend(now_kpi[:tasks_done], prev_kpi[:tasks_done])})"
-        lines << "  • SLA on-time: <b>#{now_kpi[:on_time]}%</b> (vs #{prev_kpi[:on_time]}% #{trend(now_kpi[:on_time], prev_kpi[:on_time])})"
+        lines << "✅ Задачи выполнено: <b>#{now_kpi[:tasks_done]}</b> (на прошлой неделе #{prev_kpi[:tasks_done]} #{trend(now_kpi[:tasks_done], prev_kpi[:tasks_done])})"
+        lines << "  • В срок: <b>#{now_kpi[:on_time]}%</b> (неделю назад #{prev_kpi[:on_time]}% #{trend(now_kpi[:on_time], prev_kpi[:on_time])})"
 
         if (top3 = top_performers(now_range)).any?
           lines << ''
-          lines << '🏆 <b>Top-3 за неделю:</b>'
+          lines << '🏆 <b>Лучшие трое за неделю:</b>'
           top3.each_with_index do |(user, count), i|
             lines << "  #{i + 1}. #{user.mention} — <b>#{count}</b> задач"
           end
@@ -61,15 +61,15 @@ module Telegram
 
         if (anomalies = overdue_anomalies(now_range)).any?
           lines << ''
-          lines << '⚠️ <b>Аномалии overdue (>2σ):</b>'
+          lines << '⚠️ <b>Существенно больше просрочек чем у остальных:</b>'
           anomalies.each do |a|
-            lines << "  • #{a[:mention]} — <b>#{a[:overdue]}</b> overdue (#{a[:deviation]}σ)"
+            lines << "  • #{a[:mention]} — <b>#{a[:overdue]}</b> просрочено (в #{a[:deviation]} раза выше среднего)"
           end
         end
 
         if (cost = llm_cost_report).present?
           lines << ''
-          lines << "💸 LLM cost: #{cost}"
+          lines << "💸 Расход LLM: #{cost}"
         end
 
         lines.join("\n")
@@ -139,8 +139,8 @@ module Telegram
         total = chat_cost + analysis_cost + staff_cost
         return nil if total.zero?
 
-        "weighted=#{total} (chat=#{chat_cost}, analysis=#{analysis_cost}, staff=#{staff_cost}). " \
-          "Веса: free=0, cheap=1, paid=5, premium=50."
+        "взвешенно #{total} условных единиц (чат=#{chat_cost}, анализ=#{analysis_cost}, " \
+          "запросы сотрудников=#{staff_cost}). Веса: бесплатные=0, дешёвые=1, платные=5, премиум=50."
       rescue StandardError
         nil
       end
@@ -152,7 +152,7 @@ module Telegram
           parse_mode: 'HTML',
           reply_markup: {
             inline_keyboard: [[
-              { text: '📊 Текущий dashboard', callback_data: 'dashboard:refresh' }
+              { text: '📊 Открыть панель', callback_data: 'dashboard:refresh' }
             ]]
           }
         )

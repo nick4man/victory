@@ -60,11 +60,11 @@ module Telegram
             end
           end
 
-          # Overdue first contact
+          # Лиды, которые ждут первого контакта дольше 30 минут.
           overdue = LeadEvent.awaiting_first_contact.where('assigned_at < ?', 30.minutes.ago).limit(5)
           if overdue.any?
             lines << ''
-            lines << '<b>⚠️ Overdue first contact:</b>'
+            lines << '<b>⚠️ Ждут первого контакта (более 30 мин):</b>'
             overdue.each do |le|
               lines << "  • Лид ##{le.id} — #{le.assigned_to&.mention} (#{time_ago(le.assigned_at)})"
             end
@@ -79,17 +79,17 @@ module Telegram
 
           overdue = ::Task.status_open.overdue.order(:due_at).limit(10).includes(:assignee)
           if overdue.any?
-            lines << '<b>⚠️ Overdue:</b>'
+            lines << '<b>⚠️ Просроченные:</b>'
             overdue.each do |t|
               days = ((Time.current - t.due_at) / 1.day).round
-              lines << "  • ##{t.id} #{t.title.to_s.truncate(50)} — #{t.assignee&.mention} (#{days}d)"
+              lines << "  • ##{t.id} #{t.title.to_s.truncate(50)} — #{t.assignee&.mention} (#{days} дн.)"
             end
           end
 
           due_today = ::Task.status_open.due_today.order(:due_at).limit(10).includes(:assignee)
           if due_today.any?
             lines << ''
-            lines << '<b>📅 Due today:</b>'
+            lines << '<b>📅 Со сроком сегодня:</b>'
             due_today.each do |t|
               lines << "  • ##{t.id} #{t.title.to_s.truncate(50)} — #{t.assignee&.mention}"
             end
@@ -110,8 +110,8 @@ module Telegram
             leads_open = LeadEvent.where(assigned_to_id: s.id).open.count
 
             lines << "<b>#{s.mention}</b> (#{s.role})"
-            lines << "  • Задач: #{open} откр. / #{done_today} done сегодня / #{overdue} overdue"
-            lines << "  • Лидов открытых: #{leads_open}"
+            lines << "  • Задачи: #{open} в работе / #{done_today} закрыто сегодня / #{overdue} просрочено"
+            lines << "  • Открытых лидов: #{leads_open}"
             lines << ''
           end
 

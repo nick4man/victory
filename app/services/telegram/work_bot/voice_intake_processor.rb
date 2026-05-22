@@ -55,7 +55,7 @@ module Telegram
       def process_voice(tg_user, file_id)
         # Phase 10 Iter 15 — store ack message_id чтобы edit-in-place, не
         # плодить «Слушаю» + «error» как два отдельных reply.
-        ack_msg = reply('🎙 Слушаю и парсю…') # ~5-15s до transcribe done
+        ack_msg = reply('🎙 Слушаю и распознаю…') # ~5-15s до transcribe done
         @ack_message_id = ack_msg&.dig('message_id')
 
         transcription = Telegram::WorkBot::VoiceTranscriber.call(file_id: file_id)
@@ -204,9 +204,9 @@ module Telegram
       # для one-click cancel без скролла истории к preview.
       def refuse_pending_batch(pending)
         age_min = ((Time.current - pending.created_at) / 60).to_i
-        text = "🚫 У вас есть недоподтверждённый пакет <b>##{pending.id}</b> (создан #{age_min}мин назад). " \
-               "Подтверди или отмени его в DM (через inline-кнопки preview), затем повтори голосовое. " \
-               "Если preview потерялся — используй <code>/resume_batch #{pending.id}</code>."
+        text = "🚫 У вас есть неподтверждённый пакет задач <b>##{pending.id}</b> (создан #{age_min} мин назад). " \
+               "Подтвердите или отмените его кнопками в предыдущем сообщении, затем повторите голосовое. " \
+               "Если карточка с кнопками потерялась — напишите <code>/resume_batch #{pending.id}</code>."
 
         # Phase 14 Iter 56 — inline-кнопка для быстрой отмены прежнего batch.
         # callback_data reuses TaskBatchConfirmCallback prefix 'batch_confirm:'
