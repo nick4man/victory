@@ -132,6 +132,31 @@ Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verifi
 - Tags: `phase-13-final` (`0668472`), `phase-13-cleanup` (`4bd7352`), `phase-14-final` (`2f7143a`)
 - Release notes: `.claude/docs/phase-13-release-notes.md`, `phase-14-release-notes.md`
 
+## TG-активация — awareness backlog (#413f, ops, не код)
+
+После #413f (commits 0e5e685..2495330) phone-only клиенты Topnlab больше
+НЕ получают auto-SMS magic-link. Активация работает через 2 пути:
+1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → ActivationRequestProcessor → contact-share → match по phone → linked
+2. **Admin-shared link** — агент в `/admin/users/:id` генерирует QR/URL и share через любой канал
+
+**НО оба зависят от того что клиент УЗНАЁТ о боте.** Ops-backlog
+awareness mechanisms (не код, ответственность маркетинга/sales):
+
+- [ ] **Sales script для агентов**: post-договор / post-показа сказать:
+      «Напишите @anvictorybot — поделитесь контактом, увидите кабинет с
+      объектами и документами. Бесплатно, без SMS.»
+- [ ] **Email-signature** всех агентов: строка «Личный кабинет → @anvictorybot»
+      рядом с phone/email
+- [ ] **QR-постер в офисе** агентства (печать из admin UI activation panel
+      ИЛИ standalone PDF без user-specific token — bot обработает inbound
+      flow с любого /start)
+- [ ] **`/cabinet/login` landing**: добавить badge «Или через Telegram:
+      @anvictorybot» рядом с email/phone форм (low-friction entry point)
+- [ ] **Site footer + 404 page**: упоминание `@anvictorybot` как способа
+      связи / кабинета
+- [ ] **TG-кнопка на property show page**: «Спросить об объекте» → deep-link
+      в бота (отдельный feature, пока не приоритет)
+
 ## Phase 15+ backlog (после Phase 14)
 
 Phase 14 закрыл все 6 known bugs из Phase 13 Explore-агента. Текущий backlog:
