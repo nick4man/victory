@@ -78,8 +78,21 @@ Rails.application.routes.draw do
   get    'cabinet/verify/:token',  to: 'cabinet/auth#verify',    as: :cabinet_verify
   delete 'cabinet/logout',         to: 'cabinet/auth#destroy',   as: :cabinet_logout
 
-  # /cabinet/profile — Phase #413d. Profile + TG opt-in flow.
-  get    'cabinet/profile',        to: 'cabinet/profile#show',            as: :cabinet_profile
+  # /cabinet/profile — Phase #413d + #434 self-service.
+  get    'cabinet/profile',          to: 'cabinet/profile#show',            as: :cabinet_profile
+  get    'cabinet/profile/edit',     to: 'cabinet/profile#edit',            as: :edit_cabinet_profile
+  # #434 self-service flows
+  post   'cabinet/profile/password', to: 'cabinet/profile#update_password', as: :cabinet_update_password
+  post   'cabinet/profile/email',    to: 'cabinet/profile#request_email_change', as: :cabinet_request_email_change
+  get    'cabinet/profile/email/verify/:token',
+                                     to: 'cabinet/profile#confirm_email_change',
+                                     as: :cabinet_confirm_email_change
+  post   'cabinet/profile/phone',    to: 'cabinet/profile#request_phone_change', as: :cabinet_request_phone_change
+  post   'cabinet/profile/phone/verify',
+                                     to: 'cabinet/profile#confirm_phone_change',
+                                     as: :cabinet_confirm_phone_change
+  delete 'cabinet/profile/account',  to: 'cabinet/profile#destroy_account', as: :cabinet_destroy_account
+  # TG opt-in (Phase #413d)
   post   'cabinet/profile/tg/link',  to: 'cabinet/profile#link_telegram',   as: :cabinet_link_telegram
   delete 'cabinet/profile/tg/link',  to: 'cabinet/profile#unlink_telegram', as: :cabinet_unlink_telegram
 

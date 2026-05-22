@@ -16,6 +16,23 @@ class CabinetMailer < ApplicationMailer
     )
   end
 
+  # #434 — отправляет verify-link на НОВЫЙ email. Click → confirm_email_change
+  # consume'нёт token + update user.email. Если письмо попало случайно
+  # к чужому — обладание inbox'ом ничего не даёт, потому что
+  # confirm проверяет `session[:pending_email_change_user_id]` (т.е.
+  # клиент должен быть logged in С ТОГО ЖЕ устройства).
+  def email_change_confirmation(user, new_email, token)
+    @user = user
+    @new_email = new_email
+    @url = cabinet_confirm_email_change_url(token: token.token)
+    @expires_in_min = MagicLinkToken::TTL.in_minutes.to_i
+
+    mail(
+      to:      new_email,
+      subject: "Подтвердите новый email — #{AgencyInfo::NAME}"
+    )
+  end
+
   def password_reset(user, token)
     @user = user
     @url = edit_cabinet_password_url(token: token.token)

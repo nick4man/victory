@@ -86,9 +86,13 @@
       <% end %>
     </div>
 
-    <div class="mt-8 text-center">
+    <%# #434 — link на полный edit (пароль, email, phone, удаление) %>
+    <div class="mt-8 flex items-center justify-center gap-6">
       <%= link_to '← Назад в кабинет', cabinet_path,
             class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' %>
+      <span class="text-muted-foreground/30">·</span>
+      <%= link_to 'Настройки аккаунта →', edit_cabinet_profile_path,
+            class: 'text-xs tracking-[0.2em] uppercase text-foreground hover:text-foreground/70 transition-colors' %>
     </div>
   </div>
 </section>

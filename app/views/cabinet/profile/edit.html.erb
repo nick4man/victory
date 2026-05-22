@@ -1,0 +1,147 @@
+<% content_for :title, "Настройки аккаунта — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-3">
+      <%= link_to 'Личный кабинет', cabinet_path, class: 'hover:text-foreground' %> →
+      <%= link_to 'Профиль', cabinet_profile_path, class: 'hover:text-foreground' %>
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      Настройки аккаунта
+    </h1>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-10 max-w-2xl">
+      Смена пароля, email, телефона и удаление аккаунта.
+      Все изменения — с подтверждением владения.
+    </p>
+
+    <% if flash[:alert] %>
+      <div class="border border-red-500/40 bg-red-500/5 p-4 text-sm text-red-700 mb-6">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+    <% if flash[:notice] %>
+      <div class="border border-emerald-500/40 bg-emerald-500/5 p-4 text-sm text-emerald-700 mb-6">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+
+    <%# ============ ПАРОЛЬ ============ %>
+    <div class="border border-border bg-card p-6 mb-6">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-2">
+        Пароль
+      </h2>
+      <p class="text-sm text-muted-foreground mb-5">
+        <% if @has_password %>
+          Пароль уже установлен. Здесь можно сменить его на новый.
+        <% else %>
+          Пароля нет — вы входите по magic-link на email. Установите пароль, если хотите классический логин.
+        <% end %>
+      </p>
+      <%= form_with url: cabinet_update_password_path, method: :post, local: true, class: 'space-y-4' do %>
+        <div>
+          <label class="block text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Новый пароль (минимум 8 символов)
+          </label>
+          <%= password_field_tag :password, '', required: true, minlength: 8,
+                class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none' %>
+        </div>
+        <div>
+          <label class="block text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Подтверждение пароля
+          </label>
+          <%= password_field_tag :password_confirmation, '', required: true, minlength: 8,
+                class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none' %>
+        </div>
+        <%= submit_tag (@has_password ? 'Сменить пароль' : 'Установить пароль'),
+              class: 'h-12 px-6 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+      <% end %>
+    </div>
+
+    <%# ============ EMAIL ============ %>
+    <div class="border border-border bg-card p-6 mb-6">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-2">
+        Email
+      </h2>
+      <p class="text-sm text-muted-foreground mb-2">
+        Текущий: <strong class="text-foreground"><%= @cabinet_user.email.presence || '—' %></strong>
+      </p>
+      <p class="text-[11px] text-muted-foreground/70 mb-5">
+        На новый email отправим ссылку подтверждения. Email обновится только после клика по ней (срок 30 мин).
+      </p>
+      <%= form_with url: cabinet_request_email_change_path, method: :post, local: true, class: 'space-y-4' do %>
+        <%= email_field_tag :email, '', required: true, placeholder: 'new@example.com',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none' %>
+        <%= submit_tag 'Сменить email',
+              class: 'h-12 px-6 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+      <% end %>
+    </div>
+
+    <%# ============ ТЕЛЕФОН ============ %>
+    <div class="border border-border bg-card p-6 mb-6">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-2">
+        Телефон
+      </h2>
+      <p class="text-sm text-muted-foreground mb-2">
+        Текущий: <strong class="text-foreground"><%= @cabinet_user.phone.presence || '—' %></strong>
+      </p>
+      <p class="text-[11px] text-muted-foreground/70 mb-5">
+        На новый телефон отправим SMS с 6-значным кодом. Подтвердите код ниже (срок 30 мин).
+        <span class="text-amber-700">Цена SMS ~1.5 ₽ — оплачивает агентство.</span>
+      </p>
+      <%= form_with url: cabinet_request_phone_change_path, method: :post, local: true, class: 'space-y-4' do %>
+        <%= telephone_field_tag :phone, '', placeholder: '+7 (___) ___-__-__',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none' %>
+        <%= submit_tag 'Отправить код',
+              class: 'h-11 px-5 border border-foreground text-foreground text-xs tracking-[0.2em] uppercase hover:bg-foreground hover:text-background transition-colors cursor-pointer' %>
+      <% end %>
+      <% if session[:phone_change_token_id].present? %>
+        <div class="mt-6 pt-6 border-t border-border">
+          <p class="text-[11px] tracking-[0.2em] uppercase text-muted-foreground mb-3">
+            Введите код из SMS
+          </p>
+          <%= form_with url: cabinet_confirm_phone_change_path, method: :post, local: true, class: 'flex gap-3' do %>
+            <%= text_field_tag :code, '', required: true, maxlength: 6, autocomplete: 'one-time-code',
+                  placeholder: '000000', pattern: '\d{6}',
+                  class: 'h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none font-mono text-center w-32' %>
+            <%= submit_tag 'Подтвердить',
+                  class: 'h-12 px-6 bg-foreground text-background text-xs tracking-[0.2em] uppercase hover:bg-foreground/90 cursor-pointer' %>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <%# ============ УДАЛЕНИЕ АККАУНТА ============ %>
+    <div class="border border-red-500/30 bg-red-500/[0.03] p-6">
+      <h2 class="text-xs tracking-[0.3em] text-red-700 uppercase mb-2">
+        ⚠️ Удалить аккаунт
+      </h2>
+      <p class="text-sm text-foreground/80 mb-2">
+        Право на отзыв согласия по 152-ФЗ §21.
+      </p>
+      <p class="text-[12px] text-muted-foreground/80 leading-relaxed mb-5">
+        После удаления: все ваши персональные данные (имя, email, телефон, привязка TG)
+        будут обезличены. История заявок и сделок останется в системе анонимной (для
+        аналитики и юридических требований — хранение 5 лет). Тогда вы больше не получите
+        от нас никаких рассылок.
+      </p>
+      <%= form_with url: cabinet_destroy_account_path, method: :delete, local: true,
+            class: 'space-y-4',
+            data: { turbo_confirm: 'Точно удалить? Это необратимо.' } do %>
+        <div>
+          <label class="block text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Для подтверждения введите слово «удалить»
+          </label>
+          <%= text_field_tag :confirm, '', required: true, placeholder: 'удалить',
+                class: 'w-full h-12 px-4 bg-background border border-red-500/40 text-foreground focus:border-red-500 focus:outline-none' %>
+        </div>
+        <%= submit_tag 'Удалить аккаунт',
+              class: 'h-12 px-6 border border-red-500/60 bg-red-500/10 text-red-700 text-xs tracking-[0.2em] uppercase hover:bg-red-500/20 transition-colors cursor-pointer' %>
+      <% end %>
+    </div>
+
+    <div class="mt-8 text-center">
+      <%= link_to '← Назад в профиль', cabinet_profile_path,
+            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' %>
+    </div>
+  </div>
+</section>
