@@ -81,4 +81,43 @@ RSpec.describe Telegram::WorkBot::Commands::Assign do
       expect(tg_client).to have_received(:send_message).with(a_string_matching(/Лид не найден.*lead_id/m), hash_including(:chat_id))
     end
   end
+
+  # Phase 15 polish — picker для DM `/assign <lead_id>` без username
+  describe 'Phase 15 polish — picker mode (DM /assign <lead_id>)' do
+    before do
+      # сделать assignable хотя бы 1 staff
+      TelegramUser.create!(tg_user_id: 95_010, tg_username: 'masha', first_name: 'Маша',
+                           role: 'agent', is_manager: false, status: 'active',
+                           assignable: true, dm_chat_id: 95_010)
+    end
+
+    let(:dm_picker_msg) do
+      {
+        'message_id' => 1, 'from' => { 'id' => director.tg_user_id },
+        'chat' => { 'id' => director.tg_user_id, 'type' => 'private' },
+        'text' => "/assign #{lead.id}"
+      }
+    end
+
+    it 'показывает inline-picker (assign_to кнопки) когда username пустой после lead_id' do
+      handler = described_class.new(message: dm_picker_msg, args: lead.id.to_s, tg_user: director, client: tg_client)
+      handler.call
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Кому назначить лид ##{lead.id}/),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+    end
+
+    it 'callback_data содержит assign_to:<lead_id>:<user_id> для каждой кнопки' do
+      handler = described_class.new(message: dm_picker_msg, args: lead.id.to_s, tg_user: director, client: tg_client)
+      handler.call
+
+      expect(tg_client).to have_received(:send_message) do |_text, **kwargs|
+        callbacks = kwargs[:reply_markup][:inline_keyboard].flatten.map { |b| b[:callback_data] }
+        expect(callbacks.any? { |c| c.start_with?("assign_to:#{lead.id}:") }).to be(true)
+        expect(callbacks).to include("assign_cancel:#{lead.id}")
+      end
+    end
+  end
 end

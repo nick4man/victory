@@ -6,19 +6,28 @@ module Telegram
       # Назначение лида агенту.
       #   • В group: `/assign @user` reply на якорную карточку
       #   • В DM (Phase 15): `/assign <lead_id> @user` — explicit lead_id первым
+      #     ИЛИ `/assign <lead_id>` (без user) → inline picker с top-10 staff
       # Manager-only.
       class Assign < Base
         manager_only
 
+        PICKER_MAX_USERS = 10
+        PICKER_BUTTONS_PER_ROW = 2
+
         def handle
           # Phase 15 — resolve_lead! сначала «съест» lead_id если он есть в @args.
-          # После этого @args содержит только username.
+          # После этого @args содержит только username (или пусто).
           lead = resolve_lead!
           return reply(lead_not_found_hint('assign')) unless lead
 
           username = @args.to_s.strip
-          return reply('Формат: <code>/assign @username</code> (reply на якорь) ИЛИ ' \
-                       '<code>/assign &lt;lead_id&gt; @username</code> в DM.') if username.blank?
+
+          # Phase 15 polish — если username пустой, показываем inline picker
+          # (как AssignCallback в group). UX-консистенция: DM пользователь
+          # пишет /assign 87 → видит кнопки top-10 staff.
+          if username.blank?
+            return render_picker(lead)
+          end
 
           # rubocop:disable Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
           assignee = TelegramUser.find_by_username(username)
@@ -32,6 +41,39 @@ module Telegram
             reply(msg)
           else
             reply("⚠️ #{result.error_message}")
+          end
+        end
+
+        private
+
+        # Phase 15 polish — picker для DM-mode /assign без username.
+        # Логика идентична Callbacks::AssignCallback#handle (тот же
+        # callback_data `assign_to:<lead_id>:<user_id>`), но триггерится
+        # из command-context (без callback_query).
+        def render_picker(lead)
+          users = TelegramUser.assignable
+                              .where.not(id: lead.assigned_to_id)
+                              .limit(PICKER_MAX_USERS)
+                              .order(:tg_username)
+          return reply('⚠️ Нет активных сотрудников для назначения.') if users.empty?
+
+          buttons = users.map do |u|
+            { text: "👤 #{u.display_name}", callback_data: "assign_to:#{lead.id}:#{u.id}" }
+          end
+          rows = buttons.each_slice(PICKER_BUTTONS_PER_ROW).to_a
+          rows << [{ text: '✖️ Отмена', callback_data: "assign_cancel:#{lead.id}" }]
+
+          picker = @client.send_message(
+            "Кому назначить лид ##{lead.id}?",
+            chat_id: @message.dig('chat', 'id'),
+            reply_to_message_id: @message['message_id'],
+            message_thread_id: @message['message_thread_id'],
+            reply_markup: { inline_keyboard: rows },
+            parse_mode: 'HTML'
+          )
+
+          if picker.is_a?(Hash) && picker['message_id']
+            lead.update!(metadata: lead.metadata.merge('assign_picker_message_id' => picker['message_id']))
           end
         end
       end
