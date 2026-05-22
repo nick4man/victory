@@ -114,3 +114,15 @@ kpi_weekly_report:
   class: "Kpi::WeeklyReportJob"
   queue: scheduled
   description: "Phase 6 — недельный отчёт managers+directors: agency totals, top-3 staff, overdue/suspicious bottom, trends vs prev week"
+
+director_daily_digest:
+  cron: "30 8 * * *"       # daily 08:30 Moscow (за 30 мин до kpi_morning_digest сотрудникам)
+  class: "Telegram::WorkBot::DailyDigestJob"
+  queue: scheduled
+  description: "Phase 15 — director DM control panel: agency-wide daily snapshot (leads/tasks/top-performer/SLA) с inline-кнопкой [📊 Полный dashboard]. Не повторяет kpi_morning_digest (тот per-staff)."
+
+director_weekly_summary:
+  cron: "0 10 * * 1"       # Monday 10:00 Moscow
+  class: "Telegram::WorkBot::WeeklySummaryJob"
+  queue: scheduled
+  description: "Phase 15 — director DM weekly report: trends vs prev week, top-3 performers, overdue anomalies (>2σ), LLM cost. Дополняет kpi_weekly_report (тот для managers+directors)."
