@@ -35,6 +35,15 @@ class LeadEvent < ApplicationRecord
   belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
   belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
 
+  # Phase 16.6 — semantic embedding (one-to-one). Опциональный — backfill
+  # / async embed может быть pending.
+  has_one :embedding_record, class_name: 'LeadEventEmbedding', dependent: :destroy
+
+  # Phase 16.6 — enqueue embed job когда metadata-relevant fields изменились.
+  # current_stage / topic / metadata mutate'ятся часто, поэтому SHA256-based
+  # skip-if-unchanged в EmbedLeadEventJob защищает от redundant API calls.
+  after_commit :enqueue_embed_if_relevant_changed, on: %i[create update]
+
   validates :source,           inclusion: { in: SOURCES }
   validates :current_stage,    inclusion: { in: STAGES }
   validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
@@ -120,6 +129,19 @@ class LeadEvent < ApplicationRecord
   end
 
   private
+
+  # Phase 16.6 — enqueue embed job если semantic-relevant поля изменились.
+  # На create — всегда (всё новое). На update — только если metadata /
+  # current_stage / anchor_topic_key actually изменился.
+  def enqueue_embed_if_relevant_changed
+    return if destroyed?
+
+    if saved_change_to_metadata? || saved_change_to_current_stage? || saved_change_to_anchor_topic_key? || transaction_include_any_action?(%i[create])
+      EmbedLeadEventJob.perform_later(id)
+    end
+  rescue StandardError => e
+    Rails.logger.warn("[LeadEvent##{id}#enqueue_embed] #{e.class} #{e.message}")
+  end
 
   # Phase 16 — auto-tag через StaffSubmissionDetector. Lead::Intake кладёт
   # name/email/phone в metadata. Если linked Inquiry уже tag'нут — копируем

@@ -223,4 +223,30 @@ namespace :telegram do
     puts "Enqueued #{total} jobs в :low_priority. Watch:"
     puts '  docker logs --since 5m victory-sidekiq-1 | grep EmbedTelegramGroupMessageJob'
   end
+
+  # Phase 16.6 — backfill embeddings для LeadEvent.
+  desc 'Phase 16.6 — backfill semantic embeddings для LeadEvent'
+  task :backfill_lead_event_embeddings, [:delay] => :environment do |_t, args|
+    delay = (args[:delay] || 0.7).to_f.clamp(0.5, 5.0)
+
+    scope = LeadEvent.left_joins(:embedding_record)
+                     .where(lead_event_embeddings: { id: nil })
+    total = scope.count
+    puts "LeadEvent embedding backfill: #{total} pending (delay=#{delay}s)"
+
+    if total.zero?
+      puts 'Nothing to do — все leads embedded.'
+      next
+    end
+
+    scope.find_each do |le|
+      EmbedLeadEventJob.perform_later(le.id)
+      print '.'
+      sleep delay
+    end
+
+    puts ''
+    puts "Enqueued #{total} jobs. Verify:"
+    puts '  bundle exec rails runner "puts LeadEventEmbedding.count"'
+  end
 end

@@ -40,7 +40,21 @@ module ChatTools
                 },
                 from_date: { type: 'string', description: 'для period=custom, dd.MM.yy' },
                 to_date:   { type: 'string', description: 'для period=custom, dd.MM.yy' },
-                only_open: { type: 'boolean', description: 'true — не показывать closed_won/closed_lost' }
+                only_open: { type: 'boolean', description: 'true — не показывать closed_won/closed_lost' },
+                include_staff_test: {
+                  type: 'boolean',
+                  description: 'По умолчанию false — Phase 16 staff/test submissions ' \
+                               '(«Тест Клиент», Надеждины оценки) скрываются. true — показать ' \
+                               'весь dataset для debugging / audit.'
+                },
+                mode: {
+                  type: 'string',
+                  enum: %w[keyword semantic],
+                  description: 'keyword (default) — точный поиск по metadata через tsvector. ' \
+                               'semantic — векторный поиск по смыслу (Phase 16.6). ' \
+                               'Применяй semantic для concept queries: «лиды с проблемами по подписи», ' \
+                               '«недовольные клиенты», «лиды похожие на наш самый ценный».'
+                }
               }
             }
           }
@@ -48,10 +62,14 @@ module ChatTools
       end
 
       def self.call(args = {}, asked_by: nil)
+        # Phase 16.6 — reset semantic state per-call (thread-safety).
+        @semantic_distances = nil
+
         caller = resolve_caller(args[:caller_tg_user_id], asked_by)
         return { error: 'caller_unknown' } if caller.nil?
 
-        scope = ::LeadEvent.all
+        # Phase 16 — exclude staff_test=true по умолчанию.
+        scope = args[:include_staff_test] ? ::LeadEvent.all : ::LeadEvent.where(staff_test: false)
 
         # Agent — silent self-only по assigned_to
         unless caller.manager_or_director?
@@ -64,12 +82,15 @@ module ChatTools
 
         if args[:query].present?
           q = args[:query].to_s
-          scope = scope.where(
-            'search_tsv @@ plainto_tsquery(?, ?)',
-            'russian', q
-          ).order(
-            Arel.sql("ts_rank_cd(search_tsv, plainto_tsquery('russian', #{::ActiveRecord::Base.connection.quote(q)})) DESC")
-          )
+          if args[:mode].to_s == 'semantic'
+            # semantic_scope создаёт fresh scope (where(id: ids).order) — нам надо
+            # сохранить уже применённые фильтры (staff_test, assignee, и т.д.).
+            # Merge через scope.merge() сохраняет conditions + applies new order.
+            sem = semantic_scope(q)
+            scope = sem ? scope.merge(sem) : tsvector_scope(scope, q)
+          else
+            scope = tsvector_scope(scope, q)
+          end
         end
 
         scope = scope.where(current_stage: args[:current_stage]) if ALLOWED_STAGES.include?(args[:current_stage].to_s)
@@ -104,6 +125,43 @@ module ChatTools
         return asked_by if asked_by.is_a?(::TelegramUser)
         return ::TelegramUser.find_by(id: caller_id) if caller_id.present?
 
+        nil
+      end
+
+      # Phase 16.6 — tsvector scope (FTS) на lead_events.search_tsv. Был inline'нут,
+      # extract'нул в helper чтобы semantic_scope мог fallback'ить.
+      def self.tsvector_scope(scope, query)
+        scope.where(
+          'search_tsv @@ plainto_tsquery(?, ?)',
+          'russian', query
+        ).order(
+          Arel.sql("ts_rank_cd(search_tsv, plainto_tsquery('russian', #{::ActiveRecord::Base.connection.quote(query)})) DESC")
+        )
+      end
+
+      # Phase 16.6 — semantic search через LeadEventEmbedding (gemini cosine).
+      # Hybrid robustness — на embed_fail caller возвращается к tsvector_scope.
+      SIMILARITY_THRESHOLD = 0.50
+      SEMANTIC_INITIAL_LIMIT = 40
+
+      def self.semantic_scope(query)
+        vec = ::Embedding::GoogleClient.new.embed(query)
+        return nil if vec.blank?
+
+        ranked = LeadEventEmbedding
+                 .nearest_neighbors(:embedding, vec, distance: :cosine)
+                 .limit(SEMANTIC_INITIAL_LIMIT)
+                 .to_a
+                 .select { |r| r.neighbor_distance < SIMILARITY_THRESHOLD }
+
+        return nil if ranked.empty?
+
+        @semantic_distances = ranked.to_h { |r| [r.lead_event_id, r.neighbor_distance] }
+        ids = ranked.map(&:lead_event_id)
+        order_sql = Arel.sql("array_position(ARRAY[#{ids.join(',')}]::bigint[], id)")
+        ::LeadEvent.where(id: ids).order(order_sql)
+      rescue ::Embedding::GoogleClient::Error, StandardError => e
+        Rails.logger.warn("[SearchAllLeads#semantic_scope] #{e.class} #{e.message}")
         nil
       end
 
@@ -152,7 +210,7 @@ module ChatTools
 
       def self.serialize(le)
         meta = le.metadata || {}
-        {
+        out = {
           id: le.id,
           stage: le.current_stage,
           topic: le.anchor_topic_key,
@@ -165,6 +223,10 @@ module ChatTools
           updated_str: le.updated_at.strftime('%d.%m.%y %H:%M'),
           tg_link: le.anchor_url
         }
+        if @semantic_distances && (dist = @semantic_distances[le.id])
+          out[:similarity] = (1.0 - dist).round(3)
+        end
+        out
       end
     end
   end
