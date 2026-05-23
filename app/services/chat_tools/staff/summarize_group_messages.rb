@@ -134,7 +134,10 @@ module ChatTools
           scope = scope.where(tg_thread_id: thread_id)
         end
 
-        range = resolve_range(args) || Time.current.beginning_of_day..Time.current.end_of_day
+        # Ruby precedence gotcha: `a || b..c` парсится как `(a || b)..c`, не
+        # `a || (b..c)`. Без paren resolve_range(args) попадает в start Range,
+        # ArgumentError "bad value for range". 23.05.26 inflight bug fix.
+        range = resolve_range(args) || (Time.current.beginning_of_day..Time.current.end_of_day)
         scope = scope.where(sent_at: range)
 
         scope.limit(MAX_SOURCES).to_a
