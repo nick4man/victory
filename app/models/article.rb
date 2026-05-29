@@ -230,9 +230,16 @@ class Article < ApplicationRecord
     Yandex::RecrawlUrlJob.perform_later(url: public_url)
   end
 
+  # Canonical public URL — must match what's submitted in the sitemap
+  # (see app/views/sitemap/{news,blog}.xml.erb — both use blog_post_url).
+  # Was `article_url(self, ...)` but no route is named `as: :article` →
+  # NoMethodError fired on every after_save callback that satisfied
+  # `should_notify_index_now?`, returning 500 to the chat-host mirror POST
+  # and dropping the news from /news. Bug present since 18.05.26 (eab4e73);
+  # masked for unchanged updates because saved_change_to_* gates the callback.
   def public_url
-    Rails.application.routes.url_helpers.article_url(
-      self, host: 'victory62.org', protocol: 'https'
+    Rails.application.routes.url_helpers.blog_post_url(
+      slug: slug, host: 'victory62.org', protocol: 'https'
     )
   end
 end
