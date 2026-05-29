@@ -126,3 +126,9 @@ director_weekly_summary:
   class: "Telegram::WorkBot::WeeklySummaryJob"
   queue: scheduled
   description: "Phase 15 — director DM weekly report: trends vs prev week, top-3 performers, overdue anomalies (>2σ), LLM cost. Дополняет kpi_weekly_report (тот для managers+directors)."
+
+anomaly_detection:
+  cron: "0 10 * * 1-5"     # weekdays 10:00 Moscow
+  class: "Telegram::WorkBot::AnomalyDetectorJob"
+  queue: scheduled
+  description: "Phase 16.7 — pro-active анализ отклонений: overdue_rate / first_contact_miss / completion_rate_drop у отдельных сотрудников. Modified Z-Score (median + MAD). DM director'у только при отклонении, throttle 24h."
