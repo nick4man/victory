@@ -1,0 +1,29 @@
+<%# Schema.org Review markup for /reviews. Yields nothing if no approved reviews —
+    Google penalises empty AggregateRating, so we never emit it for an empty feed.
+    locals: reviews (collection of Review), aggregate (hash from AgencyMetricsService) %>
+<% if (aggregate[:reviews_count] || 0).positive? %>
+<script type="application/ld+json">
+<%= raw({
+  "@context": "https://schema.org",
+  "@type": "RealEstateAgent",
+  "@id": "#{AgencyInfo::WEBSITE_URL}/#agent",
+  "name": AgencyInfo::NAME,
+  "url": "#{AgencyInfo::WEBSITE_URL}#{reviews_path}",
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": aggregate[:average_rating],
+    "reviewCount": aggregate[:reviews_count],
+    "bestRating": 5
+  },
+  "review": reviews.first(10).map do |r|
+    {
+      "@type": "Review",
+      "author":         { "@type": "Person", "name": r.display_author },
+      "datePublished":  r.created_at.iso8601,
+      "reviewBody":     r.body.to_s.truncate(800),
+      "reviewRating":   { "@type": "Rating", "ratingValue": r.rating, "bestRating": 5 }
+    }
+  end
+}.to_json) %>
+</script>
+<% end %>

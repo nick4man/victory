@@ -55,9 +55,9 @@ class HomeController < ApplicationController
   # Featured properties (premium listings)
   def load_featured_properties
     @featured_properties = Rails.cache.fetch('homepage/featured_properties', expires_in: 30.minutes) do
-      Property.published
+      Property.on_site
               .featured
-              .includes(:property_type, :property_images, :user)
+              .includes(:property_type, :user)
               .limit(6)
               .to_a
     end
@@ -66,9 +66,9 @@ class HomeController < ApplicationController
   # Latest properties (most recent listings)
   def load_latest_properties
     @latest_properties = Rails.cache.fetch('homepage/latest_properties', expires_in: 15.minutes) do
-      Property.published
+      Property.on_site
               .recent
-              .includes(:property_type, :property_images)
+              .includes(:property_type)
               .limit(12)
               .to_a
     end

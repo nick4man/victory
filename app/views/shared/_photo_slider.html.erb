@@ -1,0 +1,125 @@
+<%# Reusable photo slider — auto-rotating frame с opacity-fade, прямыми
+    arrows и counter. Паттерн совместим с hero-slider на property show
+    (см. properties/show.html.erb:206-258). Подходит когда у нас есть
+    2+ фото для статической секции (district landing hero, /about office,
+    etc.) и хочется анимации без full-screen UX.
+
+    Locals (required):
+      slides   — Array<Hash{ src:, alt:, caption: (optional) }>
+
+    Locals (optional):
+      id            — String, уникален на странице. Default 'photo-slider'.
+      interval      — Integer ms между переходами. Default 5000.
+      aspect        — String "W / H" для CSS aspect-ratio. Default '4 / 3'.
+      container_cls — extra Tailwind classes на корневом div.
+
+    Если в slides ≤ 1 элемент — рендерится как обычная <figure> (no
+    timer, no arrows, no counter). Reduced-motion users — анимация
+    отключается, slides показываются статично (первое фото).
+
+    JS — inline `<script type="module">`. Если рендерится несколько
+    instances на одной странице — каждый изолирован через getElementById(id). %>
+<%
+  slider_id       = local_assigns.fetch(:id, 'photo-slider')
+  slider_interval = local_assigns.fetch(:interval, 5000)
+  slider_aspect   = local_assigns.fetch(:aspect, '4 / 3')
+  container_cls   = local_assigns.fetch(:container_cls, '')
+%>
+
+<% if slides.size <= 1 %>
+  <% slide = slides.first %>
+  <% if slide %>
+    <figure class="<%= container_cls %>">
+      <img src="<%= slide[:src] %>"
+           alt="<%= slide[:alt] %>"
+           loading="eager" fetchpriority="high" decoding="async"
+           class="w-full h-auto border border-border" />
+      <% if slide[:caption].present? %>
+        <figcaption class="mt-3 text-[10px] tracking-[0.3em] text-muted-foreground uppercase">
+          <%= slide[:caption] %>
+        </figcaption>
+      <% end %>
+    </figure>
+  <% end %>
+<% else %>
+  <div id="<%= slider_id %>"
+       class="photo-slider relative w-full overflow-hidden border border-border bg-card <%= container_cls %>"
+       style="aspect-ratio: <%= slider_aspect %>;"
+       data-interval="<%= slider_interval %>">
+    <% slides.each_with_index do |slide, i| %>
+      <div data-slide-index="<%= i %>"
+           class="absolute inset-0"
+           style="opacity: <%= i.zero? ? 1 : 0 %>; pointer-events: <%= i.zero? ? 'auto' : 'none' %>; transition: opacity 1200ms ease-in-out;">
+        <img src="<%= slide[:src] %>"
+             alt="<%= slide[:alt] %>"
+             loading="<%= i.zero? ? 'eager' : 'lazy' %>"
+             <%= 'fetchpriority="high"'.html_safe if i.zero? %>
+             decoding="async"
+             class="w-full h-full object-cover" />
+        <% if slide[:caption].present? %>
+          <div class="absolute bottom-0 left-0 right-0 px-5 py-3 bg-background/75 backdrop-blur-sm text-[10px] tracking-[0.3em] text-foreground uppercase">
+            <%= slide[:caption] %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+
+    <button type="button" class="photo-slider-prev absolute left-3 top-1/2 -translate-y-1/2 z-30 w-11 h-14 flex items-center justify-center bg-background/60 hover:bg-background/85 transition-colors"
+            aria-label="Предыдущее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-foreground"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <button type="button" class="photo-slider-next absolute right-3 top-1/2 -translate-y-1/2 z-30 w-11 h-14 flex items-center justify-center bg-background/60 hover:bg-background/85 transition-colors"
+            aria-label="Следующее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-foreground"><polyline points="9 6 15 12 9 18"/></svg>
+    </button>
+
+    <div class="absolute top-3 right-3 z-30 px-3 py-1 bg-background/70 text-xs tracking-wider">
+      <span class="photo-slider-counter text-foreground">01</span>
+      <span class="text-muted-foreground"> / <%= sprintf('%02d', slides.size) %></span>
+    </div>
+  </div>
+
+  <script type="module">
+    (() => {
+      const root = document.getElementById(<%= slider_id.to_json.html_safe %>);
+      if (!root) return;
+      const slides = Array.from(root.querySelectorAll('[data-slide-index]'));
+      if (slides.length <= 1) return;
+
+      const prev    = root.querySelector('.photo-slider-prev');
+      const next    = root.querySelector('.photo-slider-next');
+      const counter = root.querySelector('.photo-slider-counter');
+      const interval = parseInt(root.dataset.interval, 10) || 5000;
+
+      let idx = 0;
+      let timer = null;
+      let paused = false;
+
+      function show(n) {
+        idx = (n + slides.length) % slides.length;
+        slides.forEach((el, i) => {
+          const active = i === idx;
+          el.style.opacity = active ? '1' : '0';
+          el.style.pointerEvents = active ? 'auto' : 'none';
+        });
+        if (counter) counter.textContent = String(idx + 1).padStart(2, '0');
+        reset();
+      }
+
+      function reset() {
+        if (timer) clearInterval(timer);
+        timer = setInterval(() => { if (!paused) show(idx + 1); }, interval);
+      }
+
+      prev?.addEventListener('click', (e) => { e.stopPropagation(); show(idx - 1); });
+      next?.addEventListener('click', (e) => { e.stopPropagation(); show(idx + 1); });
+
+      root.addEventListener('mouseenter', () => { paused = true; });
+      root.addEventListener('mouseleave', () => { paused = false; });
+      document.addEventListener('visibilitychange', () => { paused = document.hidden; });
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      reset();
+    })();
+  </script>
+<% end %>

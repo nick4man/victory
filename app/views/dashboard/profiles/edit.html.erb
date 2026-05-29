@@ -1,0 +1,81 @@
+<% content_for :title, 'Редактирование профиля — АН Виктори' %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto">
+
+    <div class="mb-10 pb-6 border-b border-border">
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">ЛИЧНЫЙ КАБИНЕТ</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Редактирование профиля</h1>
+    </div>
+
+    <% if @user.errors.any? %>
+      <div class="mb-6 px-4 py-3 border border-red-500/40 bg-red-500/5 text-sm text-red-300">
+        <p class="font-medium mb-1">Ошибки:</p>
+        <ul class="list-disc pl-5">
+          <% @user.errors.full_messages.each do |msg| %><li><%= msg %></li><% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <%= form_with model: @user, url: dashboard_profile_path, method: :patch,
+          html: { multipart: true, class: 'space-y-6 bg-card border border-border p-7 lg:p-10' } do |f| %>
+
+      <%# Avatar — current preview + file input %>
+      <div>
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-3">АВАТАР</p>
+        <div class="flex items-center gap-5">
+          <% if @user.avatar.attached? %>
+            <%= image_tag @user.avatar, class: 'w-20 h-20 rounded-full object-cover border border-border' %>
+          <% else %>
+            <div class="w-20 h-20 rounded-full bg-secondary border border-border flex items-center justify-center">
+              <span class="text-foreground text-2xl font-light"><%= @user.avatar_initials %></span>
+            </div>
+          <% end %>
+          <%= f.file_field :avatar, accept: 'image/png,image/jpeg,image/webp',
+                class: 'text-xs text-muted-foreground file:mr-3 file:py-2 file:px-4 file:border file:border-border file:bg-card file:text-foreground file:hover:bg-foreground file:hover:text-background file:transition-colors file:cursor-pointer' %>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <div>
+          <%= f.label :first_name, 'Имя', class: 'block text-[10px] tracking-[0.3em] text-muted-foreground mb-2' %>
+          <%= f.text_field :first_name,
+                class: 'w-full px-4 py-2.5 bg-background border border-border text-foreground focus:border-foreground/60 focus:outline-none transition-colors' %>
+        </div>
+        <div>
+          <%= f.label :last_name, 'Фамилия', class: 'block text-[10px] tracking-[0.3em] text-muted-foreground mb-2' %>
+          <%= f.text_field :last_name,
+                class: 'w-full px-4 py-2.5 bg-background border border-border text-foreground focus:border-foreground/60 focus:outline-none transition-colors' %>
+        </div>
+        <div>
+          <%= f.label :middle_name, 'Отчество', class: 'block text-[10px] tracking-[0.3em] text-muted-foreground mb-2' %>
+          <%= f.text_field :middle_name,
+                class: 'w-full px-4 py-2.5 bg-background border border-border text-foreground focus:border-foreground/60 focus:outline-none transition-colors' %>
+        </div>
+        <div>
+          <%= f.label :phone, 'Телефон', class: 'block text-[10px] tracking-[0.3em] text-muted-foreground mb-2' %>
+          <%= f.telephone_field :phone, placeholder: '+7 (___) ___-__-__',
+                class: 'w-full px-4 py-2.5 bg-background border border-border text-foreground focus:border-foreground/60 focus:outline-none transition-colors font-mono' %>
+        </div>
+      </div>
+
+      <div class="pt-3 border-t border-border">
+        <p class="text-xs text-muted-foreground">
+          Email — <span class="text-foreground"><%= @user.email %></span>.
+          Сменить можно в
+          <%= link_to 'настройках Devise', edit_user_registration_path,
+                class: 'underline hover:text-foreground' %> (потребуется текущий пароль).
+        </p>
+      </div>
+
+      <div class="flex items-center gap-3 pt-2">
+        <%= f.submit 'СОХРАНИТЬ',
+              class: 'px-6 py-3 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors cursor-pointer' %>
+        <%= link_to 'отмена', dashboard_profile_path,
+              class: 'text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground' %>
+      </div>
+    <% end %>
+  </div>
+</section>

@@ -1,0 +1,120 @@
+<%#
+  Per-property JSON-LD. Schema.org @type chosen by property kind.
+  References the global RealEstateAgent via @id so search engines can
+  build a connected entity graph.
+%>
+<%
+  # Property#schema_org_type is the single source of truth used here AND
+  # by the <article itemtype> wrapper in properties/show.html.erb — keeps
+  # microdata and JSON-LD entity types from drifting apart.
+  schema_type = @property.schema_org_type
+
+  description = ChatTools::Format.sanitize_text(@property.description.to_s).to_s.truncate(300)
+  # Google rich-result eligibility wants images ≥1200px on the long side — point
+  # JSON-LD at the :hero variant rather than the raw blob (which may be smaller
+  # or arbitrarily large). property_image_url handles the missing/broken case.
+  images = (@property.images.attached? ? @property.images.map { |i| property_image_url(i, variant: :hero) } : []) rescue []
+
+  # AggregateRating from approved reviews. Drives the star-rating rich
+  # snippet in SERP. Bypasses Property#reviews (associations vary across
+  # CRM-synced vs site-native objects); querying Review directly is robust.
+  approved_reviews = (Review.status_approved.where(property_id: @property.id) rescue Review.none)
+  reviews_count    = approved_reviews.count rescue 0
+  avg_rating       = (approved_reviews.average(:rating).to_f.round(2) if reviews_count.positive?)
+  aggregate_rating = if avg_rating
+                       {
+                         '@type'       => 'AggregateRating',
+                         'ratingValue' => avg_rating,
+                         'reviewCount' => reviews_count,
+                         'bestRating'  => 5,
+                         'worstRating' => 1
+                       }
+                     end
+
+  payload = {
+    "@context" => "https://schema.org",
+    "@type" => schema_type,
+    "url" => property_url(@property),
+    "name" => @property.title,
+    "description" => description.presence,
+    "image" => images.presence,
+    # isPartOf closes the entity graph: Property → WebSite → RealEstateAgent.
+    # WebSite @id is emitted by shared/_jsonld_website_search.html.erb on
+    # the homepage; #agent is on every page via shared/_jsonld_agent.
+    "isPartOf" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#website" },
+    "address" => {
+      "@type" => "PostalAddress",
+      "streetAddress" => @property.address,
+      # addressLocality + addressRegion derived from the property's own
+      # address string (Москва / Санкт-Петербург / Красногорск / Рязань).
+      # Hardcoded "Рязань" previously contradicted MSK/SPB listings and
+      # triggered Google's structured-data quality suppression.
+      "addressLocality" => @property.address_locality,
+      "addressRegion" => @property.address_region,
+      "addressCountry" => "RU"
+    }.compact,
+    "geo" => (@property.latitude.present? && @property.longitude.present? ? {
+      "@type" => "GeoCoordinates",
+      "latitude" => @property.latitude.to_f,
+      "longitude" => @property.longitude.to_f
+    } : nil),
+    "numberOfRooms" => (@property.rooms.presence if @property.rooms.to_i.positive?),
+    "floorSize" => (@property.area.present? ? {
+      "@type" => "QuantitativeValue",
+      "value" => @property.area.to_f,
+      "unitCode" => "MTK"
+    } : nil),
+    "offers" => {
+      "@type" => "Offer",
+      "price" => @property.price.to_i.to_s,
+      "priceCurrency" => "RUB",
+      # availability must reflect the actual lifecycle state — Google/Я.
+      # raise Rich Results warnings when JSON-LD says InStock for a sold or
+      # archived listing, and users call about properties already taken.
+      # active → InStock; sold/rented → SoldOut; everything else (archived,
+      # rejected, draft, pending) → Discontinued so search engines drop the
+      # offer block from rich snippets.
+      "availability" => case @property.status
+                        when "active"          then "https://schema.org/InStock"
+                        when "sold", "rented"  then "https://schema.org/SoldOut"
+                        else                         "https://schema.org/Discontinued"
+                        end,
+      "url" => property_url(@property),
+      "seller" => { "@id" => "#{AgencyInfo::WEBSITE_URL}/#agent" },
+      # priceSpecification with priceHistory — Schema.org extension (Yandex
+      # рекомендует, Google parses without warning). Surfaces past prices
+      # как trust-signal: «продавец снизил X% месяц назад» — buyer-friendly.
+      # Inert когда @price_history empty (most properties до first change).
+      "priceSpecification" => (
+        if @price_history.respond_to?(:any?) && @price_history.any?
+          {
+            "@type" => "PriceSpecification",
+            "price" => @property.price.to_i,
+            "priceCurrency" => "RUB",
+            "priceHistory" => @price_history.first(10).map do |ph|
+              {
+                "@type" => "PriceSpecification",
+                "price" => ph.new_price.to_i,
+                "priceCurrency" => "RUB",
+                "validFrom" => ph.effective_date&.iso8601
+              }.compact
+            end
+          }
+        end
+      )
+    }.compact,
+    "aggregateRating" => aggregate_rating
+  }.compact
+%>
+<script type="application/ld+json">
+<%= raw payload.to_json %>
+</script>
+
+<%# BreadcrumbList — same partial doubles as breadcrumbs for the show page %>
+<script type="application/ld+json">
+<%= breadcrumb_jsonld([
+  ['Главная', root_url],
+  ['Каталог', properties_url],
+  [@property.title, property_url(@property)]
+]) %>
+</script>

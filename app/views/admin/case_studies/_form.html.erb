@@ -1,0 +1,155 @@
+<%# Shared form для admin/case_studies new + edit. %>
+<%= form_with model: [:admin, @case_study],
+              url: @case_study.persisted? ? admin_case_study_path(@case_study) : admin_case_studies_path(),
+              local: true,
+              class: 'space-y-6' do |f| %>
+  <% if @case_study.errors.any? %>
+    <div class="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <ul class="list-disc pl-5">
+        <% @case_study.errors.full_messages.each do |m| %><li><%= m %></li><% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div>
+    <%= f.label :title, 'Заголовок (Hook) *', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_field :title, required: true,
+          placeholder: 'Семья из Подмосковья переехала в Солотчу — дом за 25 млн ₽ за 11 дней',
+          class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+  </div>
+
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div>
+      <%= f.label :status, 'Статус', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.select :status,
+            CaseStudy.statuses.map { |k, _| [{ 'draft' => 'Черновик', 'published' => 'Опубликован', 'archived' => 'Архив' }[k], k] },
+            {}, class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+    <div>
+      <%= f.label :property_type, 'Тип объекта', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.select :property_type,
+            CaseStudy.property_types.map { |k, _| [{ 'flat' => 'Квартира', 'house' => 'Дом', 'commercial' => 'Коммерческая', 'land' => 'Участок' }[k], k] },
+            {}, class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+    <div>
+      <%= f.label :district, 'Район *', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :district, required: true, placeholder: 'Солотча',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+  </div>
+
+  <div>
+    <%= f.label :slug, 'Slug (опц., авто из заголовка)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_field :slug,
+          class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+  </div>
+
+  <div>
+    <%= f.label :excerpt, 'Lede / краткое описание (1-2 строки)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_area :excerpt, rows: 2,
+          placeholder: 'Что в кейсе уникального — для карточки и meta description.',
+          class: 'w-full px-4 py-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+  </div>
+
+  <div>
+    <%= f.label :body, 'Тело (Markdown) *', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+    <%= f.text_area :body, rows: 18, required: true,
+          placeholder: "## Задача клиента\n\n[2-3 параграфа]\n\n## Что мы сделали\n\n[3-5 шагов]\n\n## Результат\n\n[1-2 параграфа]\n\n## Что это значит для вас\n\n[soft CTA]",
+          class: 'w-full px-4 py-3 bg-background border border-border text-foreground font-mono text-sm focus:border-foreground focus:outline-none transition-colors' %>
+    <p class="text-[10px] text-muted-foreground/70 mt-1">
+      Markdown: ##/###, **bold**, *italic*, [ссылки](url), списки, таблицы. Случается auto-render в body_html на сохранение.
+    </p>
+  </div>
+
+  <%# === Анонимизированный клиент === %>
+  <fieldset class="border border-border p-4 space-y-4">
+    <legend class="text-xs tracking-[0.3em] text-muted-foreground px-2">КЛИЕНТ (АНОНИМИЗИРОВАННО)</legend>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <%= f.label :client_alias, 'Имя (псевдоним)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.text_field :client_alias, placeholder: 'Иван И.',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+      <div>
+        <%= f.label :client_origin, 'Откуда', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.text_field :client_origin, placeholder: 'Подмосковье',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+      <div>
+        <%= f.label :client_profession, 'Профессия (generic)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.text_field :client_profession, placeholder: 'IT-руководитель',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+    </div>
+  </fieldset>
+
+  <%# === Числа сделки === %>
+  <fieldset class="border border-border p-4 space-y-4">
+    <legend class="text-xs tracking-[0.3em] text-muted-foreground px-2">ЧИСЛА (ТОЧНО — ЭТО PROOF)</legend>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div>
+        <%= f.label :area, 'Площадь (м²)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.number_field :area, step: 0.01,
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+      <div>
+        <%= f.label :deal_amount, 'Сумма сделки (₽)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.number_field :deal_amount,
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+      <div>
+        <%= f.label :deal_duration_days, 'Срок (дней)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.number_field :deal_duration_days,
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <%= f.label :bank, 'Банк', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.text_field :bank, placeholder: 'Сбер',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+      <div>
+        <%= f.label :mortgage_program, 'Ипотечная программа', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+        <%= f.text_field :mortgage_program, placeholder: 'IT-ипотека · 5,5%',
+              class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+      </div>
+    </div>
+  </fieldset>
+
+  <%# === SEO override === %>
+  <fieldset class="border border-border p-4 space-y-4">
+    <legend class="text-xs tracking-[0.3em] text-muted-foreground px-2">SEO (ОПЦИОНАЛЬНО)</legend>
+    <div>
+      <%= f.label :meta_title, 'Meta title (опц., fallback на title)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :meta_title,
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+    <div>
+      <%= f.label :meta_description, 'Meta description (опц., fallback на excerpt)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_area :meta_description, rows: 2,
+            class: 'w-full px-4 py-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+    <div>
+      <%= f.label :og_image_url, 'OG image URL (опц.)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.text_field :og_image_url, placeholder: '/storage/...jpg',
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors' %>
+    </div>
+  </fieldset>
+
+  <% if @case_study.persisted? %>
+    <div>
+      <%= f.label :published_at, 'Дата публикации (пустая = черновик)', class: 'block text-xs tracking-[0.2em] text-muted-foreground mb-2' %>
+      <%= f.datetime_local_field :published_at,
+            value: @case_study.published_at&.strftime('%Y-%m-%dT%H:%M'),
+            class: 'w-full h-12 px-4 bg-background border border-border text-foreground' %>
+    </div>
+  <% end %>
+
+  <div class="flex flex-wrap gap-4 pt-2">
+    <%= f.submit (@case_study.persisted? ? 'Сохранить' : 'Создать'),
+          class: 'px-6 py-3 text-xs tracking-[0.3em] uppercase bg-foreground text-background hover:bg-foreground/85 transition-colors cursor-pointer border-0' %>
+    <%= link_to 'Отмена', admin_case_studies_path(),
+          class: 'px-6 py-3 text-xs tracking-[0.3em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors' %>
+  </div>
+<% end %>

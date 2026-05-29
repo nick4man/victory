@@ -1,0 +1,185 @@
+<%# Article modal templates + JS initializer. Renders the per-article body
+    blocks into a <template> (parked DOM, no parse cost) and wires every
+    [data-news-card-slug] / [data-news-open] on the page to open the modal
+    on click. Idempotent across multiple usages (carousel + /news index).
+
+    Locals:
+      articles      — array of Article records to pre-render
+      autoopen_slug — slug to auto-open after mount (from ?article=…), or nil
+%>
+<%
+  articles      = local_assigns.fetch(:articles, [])
+  autoopen_slug = local_assigns[:autoopen_slug].presence
+  category_ru   = {
+    'news' => 'НОВОСТЬ', 'market' => 'РЫНОК', 'mortgage' => 'ИПОТЕКА',
+    'investment' => 'ИНВЕСТИЦИИ', 'guides' => 'ГИД', 'analytics' => 'АНАЛИТИКА'
+  }
+%>
+
+<template data-news-modal-source>
+  <% articles.each_with_index do |a, idx| %>
+    <% cat       = category_ru[a.category.to_s] || a.category.to_s.upcase %>
+    <% date      = a.published_at ? (l(a.published_at.to_date, format: :long) rescue '') : '' %>
+    <% source_url = a.metadata&.dig('source_url') || a.metadata&.dig(:source_url) %>
+    <% hashtags  = a.metadata&.dig('hashtags') || a.metadata&.dig(:hashtags) %>
+    <div data-news-modal="<%= idx %>"
+         data-slug="<%= a.slug %>"
+         data-eyebrow="<%= cat %> · <%= date %>">
+      <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-3"><%= cat %> · <%= date %></p>
+      <h2 class="text-2xl md:text-3xl font-light tracking-tight text-foreground leading-tight mb-5"><%= a.title %></h2>
+      <% if a.excerpt.present? %>
+        <p class="text-base lg:text-lg text-muted-foreground leading-relaxed mb-6"><%= a.excerpt %></p>
+      <% end %>
+      <div class="article-body
+                  [&_p]:text-base [&_p]:text-foreground/90 [&_p]:leading-relaxed [&_p]:mb-4
+                  [&_h2]:text-xl [&_h2]:lg:text-2xl [&_h2]:font-light [&_h2]:text-foreground [&_h2]:tracking-tight [&_h2]:mt-8 [&_h2]:mb-3
+                  [&_h3]:text-lg [&_h3]:font-medium [&_h3]:text-foreground [&_h3]:mt-6 [&_h3]:mb-2
+                  [&_a]:text-foreground [&_a]:underline [&_a]:underline-offset-2 [&_a]:decoration-foreground/40 hover:[&_a]:decoration-foreground
+                  [&_blockquote]:border-l-2 [&_blockquote]:border-foreground/40 [&_blockquote]:pl-5 [&_blockquote]:text-muted-foreground [&_blockquote]:italic [&_blockquote]:my-5
+                  [&_ul]:my-4 [&_ul]:pl-5 [&_ul]:list-disc [&_ul]:text-foreground/90
+                  [&_ol]:my-4 [&_ol]:pl-5 [&_ol]:list-decimal [&_ol]:text-foreground/90
+                  [&_li]:mb-2
+                  [&_strong]:text-foreground [&_strong]:font-medium">
+        <%= a.body_html.to_s.html_safe %>
+      </div>
+      <% if hashtags.present? && hashtags.any? %>
+        <div class="mt-6 pt-5 border-t border-border flex flex-wrap gap-2">
+          <% hashtags.each do |tag| %>
+            <% clean = tag.to_s.delete_prefix('#').strip %>
+            <% next if clean.blank? %>
+            <%= link_to "##{clean}", news_path(tag: clean),
+                  class: "inline-flex items-center px-2.5 py-1 text-xs tracking-wider text-muted-foreground border border-border hover:text-foreground hover:border-foreground/60 transition-colors" %>
+          <% end %>
+        </div>
+      <% end %>
+      <% if source_url.present? %>
+        <p class="mt-4 text-xs text-muted-foreground">
+          Источник: <%= link_to source_url, source_url, class: "underline hover:text-foreground", target: "_blank", rel: "noopener noreferrer nofollow" %>
+        </p>
+      <% end %>
+    </div>
+  <% end %>
+</template>
+
+<% if autoopen_slug %>
+  <meta name="news-autoopen" content="<%= autoopen_slug %>">
+<% end %>
+
+<% content_for :body_end do %>
+  <% unless content_for?(:article_modal_initialized) %>
+    <% content_for :article_modal_initialized, '1' %>
+    <script>
+      (function () {
+        if (window.__articleModalInit) return;
+        window.__articleModalInit = true;
+
+        var modal = document.getElementById('article-modal');
+        if (!modal) return;
+
+        var template = document.querySelector('template[data-news-modal-source]');
+        if (!template) return;
+
+        var newsPath = '<%= news_path %>';
+        var onNewsIndex = window.location.pathname.replace(/\/$/, '') === newsPath.replace(/\/$/, '');
+
+        function findBySlug(slug) {
+          if (!slug) return null;
+          return template.content.querySelector('[data-news-modal][data-slug="' + slug.replace(/"/g, '\\"') + '"]');
+        }
+        function findByIndex(idx) {
+          return template.content.querySelector('[data-news-modal="' + idx + '"]');
+        }
+
+        function open(src, opts) {
+          opts = opts || {};
+          if (!src) return;
+          var body = modal.querySelector('[data-modal-body]');
+          var eye  = modal.querySelector('[data-modal-eyebrow]');
+          var clone = src.cloneNode(true);
+          body.replaceChildren.apply(body, Array.prototype.slice.call(clone.childNodes));
+          eye.textContent = src.getAttribute('data-eyebrow') || '';
+          modal.classList.remove('hidden');
+          modal.setAttribute('aria-hidden', 'false');
+          document.documentElement.style.overflow = 'hidden';
+          var card = modal.querySelector('[data-modal-card]');
+          requestAnimationFrame(function () {
+            card.classList.remove('opacity-0', 'translate-y-4');
+          });
+          // Reflect article in URL — sharable, browser-back returns to /news.
+          if (!opts.skipHistory) {
+            var slug = src.getAttribute('data-slug');
+            if (slug && onNewsIndex) {
+              history.pushState({ articleSlug: slug }, '', newsPath + '?article=' + encodeURIComponent(slug));
+            }
+          }
+          window.dispatchEvent(new CustomEvent('article-modal:open'));
+        }
+
+        function close(opts) {
+          opts = opts || {};
+          if (modal.classList.contains('hidden')) return;
+          var card = modal.querySelector('[data-modal-card]');
+          card.classList.add('opacity-0', 'translate-y-4');
+          setTimeout(function () {
+            modal.classList.add('hidden');
+            modal.setAttribute('aria-hidden', 'true');
+            document.documentElement.style.overflow = '';
+            var body = modal.querySelector('[data-modal-body]');
+            if (body) body.replaceChildren();
+          }, 300);
+          if (!opts.skipHistory && onNewsIndex) {
+            history.pushState({}, '', newsPath);
+          }
+          window.dispatchEvent(new CustomEvent('article-modal:close'));
+        }
+
+        // Click on any card with data-news-card-slug
+        document.addEventListener('click', function (e) {
+          var card = e.target.closest('[data-news-card-slug]');
+          if (card) {
+            // Allow Cmd/Ctrl-click to open fallback URL in new tab
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+            var slug = card.getAttribute('data-news-card-slug');
+            var src = findBySlug(slug);
+            if (src) {
+              e.preventDefault();
+              open(src);
+            }
+            return;
+          }
+          // Legacy carousel slide buttons (still in DOM with data-news-open)
+          var slide = e.target.closest('[data-news-open]');
+          if (slide && !e.target.closest('a')) {
+            e.preventDefault();
+            var idx = parseInt(slide.getAttribute('data-news-open'), 10);
+            open(findByIndex(idx));
+          }
+        });
+
+        // Close handlers
+        modal.querySelectorAll('[data-modal-close]').forEach(function (el) {
+          el.addEventListener('click', function () { close(); });
+        });
+        document.addEventListener('keydown', function (e) {
+          if (e.key === 'Escape' && !modal.classList.contains('hidden')) close();
+        });
+
+        // Browser back/forward
+        window.addEventListener('popstate', function (e) {
+          if (modal.classList.contains('hidden')) return;
+          close({ skipHistory: true });
+        });
+
+        // Auto-open from ?article=… (read from <meta name="news-autoopen">)
+        var autoopen = document.querySelector('meta[name="news-autoopen"]');
+        if (autoopen) {
+          var slug = autoopen.getAttribute('content');
+          requestAnimationFrame(function () {
+            var src = findBySlug(slug);
+            if (src) open(src, { skipHistory: true });
+          });
+        }
+      })();
+    </script>
+  <% end %>
+<% end %>

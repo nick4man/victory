@@ -1,0 +1,124 @@
+<%# Single case-study landing — следует структуре из case-study-writer
+    agent spec: Hook → Lede → Meta-блок → Body (challenge/solution/result/
+    takeaway, agent emits всё это как markdown в body) → CTA → JSON-LD. %>
+<% content_for :title, (@case_study.meta_title.presence || "#{@case_study.title} — кейс АН Виктори") %>
+<% content_for :seo_description, (@case_study.meta_description.presence ||
+   @case_study.excerpt.presence ||
+   "Закрытая сделка АН «Виктори»: #{[@case_study.district, @case_study.property_type, @case_study.area].compact.join(', ')}. Реальная история без раскрытия личных данных.") %>
+<%# OG image — priority chain:
+    1. attached cover_image (admin upload, 1200×630 OG variant)
+    2. og_image_url column (admin-set URL string)
+    3. fall back to layout default (og-default.jpg, also 1200×630). %>
+<% if @case_study.cover_image.attached? %>
+  <% content_for :og_image, url_for(@case_study.cover_image.variant(:og)) %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% elsif @case_study.og_image_url.present? %>
+  <% content_for :og_image, @case_study.og_image_url %>
+<% end %>
+<% content_for :og_type, 'article' %>
+
+<% content_for :head do %>
+  <%= render 'shared/jsonld_case_study', case_study: @case_study %>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Кейсы', cases_path],
+  [@case_study.title, nil]
+] %>
+
+<section class="px-6 lg:px-12 pt-8 pb-12 bg-background">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">
+      <%= link_to 'КЕЙСЫ', cases_path, class: 'hover:text-foreground transition-colors' %>
+      <% if @case_study.district.present? %>· <%= @case_study.district.upcase %><% end %>
+    </p>
+
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground mb-6 leading-tight">
+      <%= @case_study.title %>
+    </h1>
+
+    <% if @case_study.excerpt.present? %>
+      <p class="text-base text-muted-foreground leading-relaxed mb-8 max-w-2xl">
+        <%= @case_study.excerpt %>
+      </p>
+    <% end %>
+
+    <%# Meta-блок: район • тип • площадь • сумма • срок (per agent spec) %>
+    <div class="border-y border-border py-4 mb-12 flex flex-wrap items-baseline gap-x-8 gap-y-2 text-xs tracking-wider text-muted-foreground uppercase">
+      <% if @case_study.district.present? %>
+        <span>Район: <span class="text-foreground"><%= @case_study.district %></span></span>
+      <% end %>
+      <% type_ru = { 'flat' => 'квартира', 'house' => 'дом', 'commercial' => 'коммерция', 'land' => 'участок' }[@case_study.property_type] || @case_study.property_type %>
+      <span>Тип: <span class="text-foreground"><%= type_ru %></span></span>
+      <% if @case_study.area.present? %>
+        <span>Площадь: <span class="text-foreground"><%= @case_study.area.to_i %> м²</span></span>
+      <% end %>
+      <% if @case_study.deal_amount.present? %>
+        <span>Сумма: <span class="text-foreground"><%= @case_study.deal_amount_human %></span></span>
+      <% end %>
+      <% if @case_study.deal_duration_days.present? %>
+        <span>Срок: <span class="text-foreground"><%= @case_study.deal_duration_human %></span></span>
+      <% end %>
+      <% if @case_study.bank.present? %>
+        <span>Банк: <span class="text-foreground"><%= @case_study.bank %></span></span>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<section class="px-6 lg:px-12 pb-16 bg-background">
+  <div class="max-w-3xl mx-auto prose prose-lg text-foreground">
+    <%= @case_study.body_html&.html_safe || simple_format(@case_study.body) %>
+  </div>
+</section>
+
+<%# Author block — visible link на /agents/:slug если кейс ведёт агент.
+    Pillar 2 cross-link: case → agent → other cases. Schema-side связка
+    идёт через author Person в _jsonld_case_study с worksFor → #agent. %>
+<% if @case_study.respond_to?(:author) && (a = @case_study.author).present? && a.respond_to?(:agent_slug) && a.agent_slug.present? %>
+  <section class="px-6 lg:px-12 py-12 bg-background border-t border-border">
+    <div class="max-w-3xl mx-auto">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4 uppercase">Агент сделки</p>
+      <div class="flex items-center gap-4">
+        <% if a.avatar.attached? %>
+          <%= image_tag a.avatar.variant(resize_to_fill: [80, 80]),
+                class: 'w-16 h-16 object-cover', loading: 'lazy', decoding: 'async',
+                alt: "#{a.display_name} — агент АН Виктори" %>
+        <% else %>
+          <div class="w-16 h-16 flex items-center justify-center border border-border text-foreground text-lg tracking-widest">
+            <%= a.try(:avatar_initials) || a.display_name.to_s.split(' ').map { |n| n[0] }.first(2).join.upcase %>
+          </div>
+        <% end %>
+        <div>
+          <%= link_to a.display_name, agent_path(a.agent_slug),
+                class: 'text-foreground text-base underline-offset-4 hover:underline' %>
+          <% if a.try(:crm_role_name).present? %>
+            <p class="text-xs text-muted-foreground mt-1"><%= a.crm_role_name %></p>
+          <% end %>
+        </div>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# CTA footer-block %>
+<section class="px-6 lg:px-12 py-16 bg-card border-t border-border">
+  <div class="max-w-3xl mx-auto text-center">
+    <p class="text-sm tracking-[0.3em] text-muted-foreground mb-4 uppercase">Похожая ситуация?</p>
+    <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-6">
+      Расскажу детали по телефону
+    </h2>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-8 max-w-xl mx-auto">
+      Каждая сделка индивидуальна. Если вы видите параллели с этим кейсом —
+      позвоните, обсудим вашу ситуацию и какие шаги имеют смысл именно для вас.
+    </p>
+    <div class="flex flex-wrap gap-4 justify-center">
+      <a href="<%= agency_phone_tel %>" class="px-6 py-3 text-xs tracking-[0.3em] uppercase border border-foreground bg-foreground text-background hover:bg-foreground/85 transition-colors">
+        <%= agency_phone_primary %>
+      </a>
+      <%= link_to "Все кейсы", cases_path, class: "px-6 py-3 text-xs tracking-[0.3em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors" %>
+    </div>
+  </div>
+</section>

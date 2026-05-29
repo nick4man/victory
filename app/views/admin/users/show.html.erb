@@ -1,0 +1,92 @@
+<% content_for :title, "#{[@user.first_name, @user.last_name].compact_blank.join(' ').presence || @user.email || '@' + @user.id.to_s} — Клиенты — Админ" %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">
+      <%= link_to 'АДМИН', admin_root_path, class: 'hover:text-foreground' %> →
+      <%= link_to 'КЛИЕНТЫ', admin_users_path, class: 'hover:text-foreground' %>
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      <%= [@user.first_name, @user.last_name].compact_blank.join(' ').presence || 'Без имени' %>
+    </h1>
+    <p class="text-xs text-muted-foreground mb-8">
+      ID #<%= @user.id %> · создан <%= l(@user.created_at, format: '%d.%m.%y') %>
+      <% if @user.crm_user_id.present? %> · Topnlab id #<%= @user.crm_user_id %><% end %>
+    </p>
+
+    <%# Contact details %>
+    <div class="border border-border bg-card p-6 mb-6">
+      <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Контакты</h2>
+      <dl class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Email</dt>
+          <dd class="text-foreground break-all"><%= @user.email.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Телефон</dt>
+          <dd class="text-foreground"><%= @user.phone.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground mb-1">Роль</dt>
+          <dd class="text-foreground"><%= @user.role.to_s.humanize %></dd>
+        </div>
+      </dl>
+    </div>
+
+    <%# Activation panel %>
+    <%= render 'activation_panel', active_token: @active_token, bot_username: @bot_username %>
+
+    <%# SMS fallback — last-resort. ПЛАТНО. %>
+    <% if @user.phone.present? && @user.tg_user_id.blank? %>
+      <div class="border border-amber-500/30 bg-amber-500/5 p-6 mt-6">
+        <h2 class="text-xs tracking-[0.3em] text-amber-700 uppercase mb-3">
+          ⚠️ SMS-резерв (платно)
+        </h2>
+        <p class="text-sm text-foreground/80 leading-relaxed mb-4">
+          Если клиент не отвечает на email и не активирует через Telegram —
+          можно отправить ссылку magic-link через SMS.
+          <strong>Стоимость ~1.5 ₽</strong> (SMS.ru) или ~3 ₽ (SMSC).
+        </p>
+        <p class="text-[11px] text-muted-foreground/80 mb-4">
+          Действие переотправит invitation: при наличии invited_at — сбросит
+          и отправит заново. Если номер в стоп-листе (152-ФЗ) — действие
+          заблокировано.
+        </p>
+        <%= button_to '📱 Отправить SMS с magic-link',
+              send_sms_fallback_admin_user_path(@user),
+              method: :post,
+              data: { confirm: "Отправить платный SMS на #{@user.phone}? Спишется ~1.5 ₽." },
+              class: 'h-11 px-6 inline-flex items-center text-xs tracking-[0.2em] uppercase border border-amber-500/60 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 transition-colors cursor-pointer' %>
+      </div>
+    <% end %>
+
+    <%# Owned properties %>
+    <% if @owned_properties.any? %>
+      <div class="border border-border bg-card p-6 mt-6">
+        <h2 class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">
+          Объекты владельца (<%= @owned_properties.size %>)
+        </h2>
+        <ul class="divide-y divide-border text-sm">
+          <% @owned_properties.each do |p| %>
+            <li class="py-3 flex items-center justify-between gap-4">
+              <div>
+                <p class="text-foreground"><%= p.address.to_s.truncate(60) %></p>
+                <p class="text-[10px] tracking-[0.2em] uppercase text-muted-foreground">
+                  <%= p.status %> · <%= p.deal_state %>
+                  <% if p.price.present? %> · <%= number_with_delimiter(p.price.to_i) %> ₽<% end %>
+                </p>
+              </div>
+              <%= link_to 'Открыть', "/properties/#{p.slug.presence || p.id}",
+                    target: '_blank', class: 'text-xs tracking-[0.1em] uppercase text-muted-foreground hover:text-foreground' %>
+            </li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+
+    <div class="mt-8 text-center">
+      <%= link_to '← Список клиентов', admin_users_path,
+            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground' %>
+    </div>
+  </div>
+</section>

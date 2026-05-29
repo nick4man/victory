@@ -1,0 +1,132 @@
+# Карта Telegram-топиков для рабочего чата АН «Виктори».
+#
+# Группа: "🚀 Виктори | Конвейер сделок" (chat_id: -1003779115845).
+# 16 топиков созданы вручную, т.к. у бота нет can_manage_topics.
+# message_thread_id собран в Discovery-режиме 13.05.26 через getUpdates
+# (см. Telegram::WorkBot::TopicDiscovery + ручной record_discovery).
+#
+# anchor_topic_key (используется в LeadEvent.anchor_topic_key enum) — стабильный
+# идентификатор; tg_title — название топика как оно в TG (включая emoji-префиксы).
+# Имена точно соответствуют forum_topic_created.name из webhook events.
+
+chat_id: -1003779115845
+
+topics:
+  # ВХОДНЫЕ И СЛУЖЕБНЫЕ
+  dispatcher:
+    tg_title: "ДИСПЕТЧЕРСКАЯ (General)"
+    role: input             # все новые лиды + SLA-пинги — пишутся в General-топик
+    bot_writes: true
+    bot_reacts: true
+    is_general_topic: true  # отдельного топика нет, используется General (root) — sendMessage без message_thread_id
+    message_thread_id: ~    # для General специально nil; LeadAnnouncer это распознаёт через is_general_topic
+  sla_reports:
+    tg_title: "ОТЧЕТЫ ПО SLA"        # в TG без «Ё»
+    role: analytics
+    bot_writes: true
+    bot_reacts: false
+    message_thread_id: 4
+  qna:
+    tg_title: "❓ ВОПРОС-ОТВЕТ"      # в TG с emoji и дефис без пробелов
+    role: nlp
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 5
+  announcements:
+    tg_title: "📢 ДОСКА ОБЪЯВЛЕНИЙ"
+    role: readonly_for_bot
+    bot_writes: false
+    bot_reacts: false
+    message_thread_id: 3
+  flood:
+    tg_title: "☕ КУРИЛКА / ФЛУД"
+    role: readonly_for_bot
+    bot_writes: false
+    bot_reacts: false
+    message_thread_id: 6
+
+  # СПЕЦИАЛИЗИРОВАННЫЕ (якорные — карточка лида живёт здесь после маршрутизации)
+  apartments:
+    tg_title: "КВАРТИРЫ"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 17
+  houses:
+    tg_title: "ДОМА"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 16
+  lots:
+    tg_title: "УЧАСТКИ"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 18
+  commercial:
+    tg_title: "КОММЕРЦИЯ"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 22
+  rent:
+    tg_title: "АРЕНДА"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 21
+  mortgage:
+    tg_title: "ИПОТЕКА/ЗАЛОГ/КРЕДИТ"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 19
+  appraisal:
+    tg_title: "ОЦЕНКА"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    auto_route_from:        # лиды из этих источников сразу сюда, минуя ДИСПЕТЧЕРСКУЮ
+      - site_valuation
+    message_thread_id: 24
+  taxes:
+    tg_title: "НАЛОГИ"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 20
+  insurance:
+    tg_title: "СТРАХОВКА"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 23
+  escrow:
+    tg_title: "ЗАДАТОК"
+    role: anchor
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 25
+
+  # ФИНАЛЬНАЯ ФАЗА (зеркальный — тизер со ссылкой на якорь при /stage договор|сделка)
+  deal:
+    tg_title: "СДЕЛКА"
+    role: mirror
+    bot_writes: true
+    bot_reacts: true
+    message_thread_id: 26
+
+# inline-кнопки маршрутизации, которые бот вставляет в карточку ДИСПЕТЧЕРСКОЙ
+# (порядок определяет порядок отображения)
+routing_buttons:
+  - apartments
+  - houses
+  - lots
+  - commercial
+  - rent
+  - mortgage
+  - appraisal
+  - taxes
+  - insurance
+  - escrow

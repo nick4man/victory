@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# bin/lock-clean — stale lock cleaner for tmp/claude-locks/
+#
+# Stale = empty file (no metadata) OR mtime older than $TTL_HOURS.
+# Default mode is dry-run: shows candidates without removing.
+# Pass --force to actually rm.
+
+set -e
+
+ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+LOCK_DIR="$ROOT/tmp/claude-locks"
+MODE="dry"
+TTL_HOURS=2
+
+for arg in "$@"; do
+  case "$arg" in
+    --force) MODE="force" ;;
+    --dry)   MODE="dry" ;;
+    --help|-h)
+      cat <<USAGE
+Usage: bin/lock-clean [--dry|--force]
+
+Removes stale locks from tmp/claude-locks/:
+  - empty files (no metadata)
+  - files older than ${TTL_HOURS} hours
+
+Default mode is --dry (show what would be removed without changes).
+Pass --force to actually delete stale locks.
+USAGE
+      exit 0
+      ;;
+    *)
+      echo "Unknown arg: $arg (use --help)" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [ ! -d "$LOCK_DIR" ]; then
+  echo "No lock directory: $LOCK_DIR"
+  exit 0
+fi
+
+stale=0
+active=0
+now=$(date +%s)
+
+shopt -s nullglob
+for lock in "$LOCK_DIR"/*.lock; do
+  size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
+  mtime=$(stat -c%Y "$lock" 2>/dev/null || echo 0)
+  age_sec=$((now - mtime))
+  age_hours=$((age_sec / 3600))
+
+  is_stale=false
+  reason=""
+
+  if [ "$size" -eq 0 ]; then
+    is_stale=true
+    reason="empty"
+  elif [ "$age_hours" -ge "$TTL_HOURS" ]; then
+    is_stale=true
+    reason="${age_hours}h old"
+  fi
+
+  if [ "$is_stale" = true ]; then
+    stale=$((stale + 1))
+    name=$(basename "$lock")
+    if [ "$MODE" = "force" ]; then
+      rm "$lock"
+      printf '✓ removed %s (%s)\n' "$name" "$reason"
+    else
+      printf '  %s (%s)\n' "$name" "$reason"
+    fi
+  else
+    active=$((active + 1))
+  fi
+done
+shopt -u nullglob
+
+echo ""
+if [ "$MODE" = "dry" ]; then
+  echo "Found $stale stale, $active active lock(s)."
+  if [ "$stale" -gt 0 ]; then
+    echo "Run with --force to remove stale locks."
+  fi
+else
+  echo "Removed $stale stale, kept $active active lock(s)."
+fi

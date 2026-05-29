@@ -1,0 +1,168 @@
+<% content_for :title, "Вход в кабинет — #{AgencyInfo::NAME}" %>
+<% content_for :meta_description, 'Личный кабинет клиентов и сотрудников АН «Виктори». Вход по email и паролю — или одноразовой ссылке.' %>
+<%
+  # Default tab — password. Если URL имеет ?via=email или у user была ошибка
+  # с password flow, switch на password tab. Если query =magic — magic-link.
+  default_tab = params[:via] == 'magic' ? 'magic' : 'password'
+  identifier_prefill = @identifier_prefill || params[:identifier]
+%>
+
+<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background min-h-screen">
+  <div class="max-w-md mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-6">Личный кабинет</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      Войти
+    </h1>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-10">
+      Используйте пароль или попросите одноразовую ссылку на email.
+    </p>
+
+    <% if flash[:notice] %>
+      <div class="mb-6 p-4 border border-foreground/20 bg-foreground/5 text-sm text-foreground">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+    <% if flash[:alert] %>
+      <div class="mb-6 p-4 border border-red-700/40 bg-red-700/5 text-sm text-red-700">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+
+    <%# Tab switcher — pure CSS via :target / data-tab. Simple JS toggle. %>
+    <div class="flex border-b border-border mb-8" role="tablist">
+      <button type="button" data-tab="password"
+              class="<%= 'border-b-2 border-foreground text-foreground' if default_tab == 'password' %>
+                     <%= 'text-muted-foreground hover:text-foreground' if default_tab != 'password' %>
+                     flex-1 pb-3 text-xs tracking-[0.25em] uppercase transition-colors"
+              aria-selected="<%= default_tab == 'password' %>"
+              aria-controls="tab-password">
+        Пароль
+      </button>
+      <button type="button" data-tab="magic"
+              class="<%= 'border-b-2 border-foreground text-foreground' if default_tab == 'magic' %>
+                     <%= 'text-muted-foreground hover:text-foreground' if default_tab != 'magic' %>
+                     flex-1 pb-3 text-xs tracking-[0.25em] uppercase transition-colors"
+              aria-selected="<%= default_tab == 'magic' %>"
+              aria-controls="tab-magic">
+        Через email
+      </button>
+    </div>
+
+    <%# Tab: password %>
+    <div id="tab-password" class="<%= 'hidden' if default_tab != 'password' %>" role="tabpanel">
+      <%= form_with url: cabinet_request_link_path, method: :post, local: true, html: { class: 'space-y-5' } do |f| %>
+        <div>
+          <label for="identifier_pw" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Email
+          </label>
+          <%= text_field_tag :identifier, identifier_prefill, required: true,
+                id: 'identifier_pw',
+                type: 'email',
+                autocomplete: 'email',
+                placeholder: 'name@example.com',
+                class: 'w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50' %>
+        </div>
+        <div>
+          <label for="password" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Пароль
+          </label>
+          <%= password_field_tag :password, nil, required: true,
+                autocomplete: 'current-password',
+                placeholder: '••••••••',
+                class: 'w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50' %>
+        </div>
+
+        <button type="submit"
+                class="w-full px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors">
+          Войти
+        </button>
+
+        <div class="flex items-center justify-between text-xs">
+          <%= link_to 'Забыли пароль? →', new_cabinet_password_path,
+                class: 'text-muted-foreground hover:text-foreground tracking-wider' %>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Tab: magic-link %>
+    <div id="tab-magic" class="<%= 'hidden' if default_tab != 'magic' %>" role="tabpanel">
+      <p class="text-xs text-muted-foreground leading-relaxed mb-5">
+        Введите email — мы пришлём одноразовую ссылку (30 минут, работает один раз).
+        Удобно если забыли пароль или не создавали аккаунт.
+      </p>
+      <%= form_with url: cabinet_request_link_path, method: :post, local: true, html: { class: 'space-y-5' } do |f| %>
+        <div>
+          <label for="identifier_magic" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+            Email
+          </label>
+          <%= text_field_tag :identifier, identifier_prefill, required: true,
+                id: 'identifier_magic',
+                type: 'email',
+                autocomplete: 'email',
+                placeholder: 'name@example.com',
+                class: 'w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50' %>
+        </div>
+
+        <button type="submit"
+                class="w-full px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors">
+          Отправить ссылку
+        </button>
+      <% end %>
+    </div>
+
+    <%# #413f Шаг 6 — TG alternative login path %>
+    <% bot_username = ENV.fetch('TELEGRAM_BOT_USERNAME', 'anvictorybot').downcase %>
+    <div class="mt-10 pt-8 border-t border-border">
+      <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-4 text-center">
+        Или через Telegram
+      </p>
+      <a href="https://t.me/<%= bot_username %>"
+         target="_blank" rel="noopener"
+         class="flex items-center justify-center gap-3 w-full px-6 py-3 border border-border bg-card hover:bg-muted/40 transition-colors text-foreground">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" class="text-[#229ED9]">
+          <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.504.504 0 0 1 .171.325c.016.093.036.306.02.473-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+        </svg>
+        <span class="text-xs tracking-[0.3em] uppercase">@<%= bot_username %></span>
+      </a>
+      <p class="mt-3 text-[11px] text-muted-foreground/70 leading-relaxed text-center">
+        Откройте бота → нажмите <strong>Start</strong> → поделитесь телефоном. Мы найдём ваш кабинет автоматически, без SMS.
+      </p>
+    </div>
+
+    <p class="mt-10 text-xs text-muted-foreground/60 leading-relaxed">
+      Без аккаунта? Кабинет создаётся автоматически после первой заявки
+      или оценки на сайте. Вход по email или Telegram — единственные
+      способы для первого захода. Пароль можно установить позже в
+      настройках профиля.
+    </p>
+  </div>
+</section>
+
+<script>
+  (function () {
+    var buttons = document.querySelectorAll('[data-tab]');
+    var panels = {
+      'password': document.getElementById('tab-password'),
+      'magic':    document.getElementById('tab-magic')
+    };
+    function show(target) {
+      Object.keys(panels).forEach(function (key) {
+        if (panels[key]) panels[key].classList.toggle('hidden', key !== target);
+      });
+      buttons.forEach(function (b) {
+        var active = b.getAttribute('data-tab') === target;
+        b.setAttribute('aria-selected', active);
+        if (active) {
+          b.classList.add('border-b-2', 'border-foreground', 'text-foreground');
+          b.classList.remove('text-muted-foreground');
+        } else {
+          b.classList.remove('border-b-2', 'border-foreground', 'text-foreground');
+          b.classList.add('text-muted-foreground');
+        }
+      });
+    }
+    buttons.forEach(function (b) {
+      b.addEventListener('click', function () { show(b.getAttribute('data-tab')); });
+    });
+  })();
+</script>

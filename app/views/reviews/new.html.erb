@@ -1,0 +1,74 @@
+<% content_for :title, 'Оставить отзыв — АН «Виктори»' %>
+<%# Form-only page без полезного контента для индексации. noindex,follow:
+    not indexable (thin-content), но crawler пройдёт по ссылкам в footer/header. %>
+<% content_for :head do %>
+  <meta name="robots" content="noindex,follow">
+<% end %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
+  <div class="max-w-2xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОСТАВИТЬ ОТЗЫВ</p>
+    <h1 class="text-3xl lg:text-5xl font-light tracking-wider text-foreground uppercase mb-8">
+      Расскажите как было
+    </h1>
+    <p class="text-sm text-muted-foreground tracking-wide mb-10 leading-relaxed">
+      Отзывы публикуются после модерации (обычно в течение суток). Имя и отзыв будут видны на сайте; email и телефон используем только для связи и не публикуем.
+    </p>
+
+    <%= form_with model: (@review || Review.new), url: reviews_path, local: true, html: { class: 'space-y-8' } do |f| %>
+      <% if @review&.errors&.any? %>
+        <div class="border border-destructive p-4 text-sm text-destructive">
+          <p class="font-medium mb-2">Не удалось отправить отзыв:</p>
+          <ul class="list-disc pl-5 space-y-1">
+            <% @review.errors.full_messages.each do |msg| %>
+              <li><%= msg %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <div>
+        <%= f.label :rating, 'Оценка', class: 'block text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase' %>
+        <div class="flex gap-2" role="radiogroup">
+          <% (1..5).to_a.reverse.each do |n| %>
+            <label class="cursor-pointer">
+              <%= f.radio_button :rating, n, class: 'sr-only peer', required: true %>
+              <span class="text-3xl text-muted-foreground/30 peer-checked:text-yellow-500 hover:text-yellow-400 transition-colors" data-value="<%= n %>">★</span>
+              <span class="sr-only"><%= n %> из 5</span>
+            </label>
+          <% end %>
+        </div>
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 mt-2 uppercase">5 — лучше всего</p>
+      </div>
+
+      <div>
+        <%= f.label :author_name, 'Ваше имя', class: 'block text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase' %>
+        <%= f.text_field :author_name, required: true, maxlength: 80, class: 'w-full bg-card border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus:border-foreground transition-colors' %>
+      </div>
+
+      <div>
+        <%= f.label :title, 'Заголовок (необязательно)', class: 'block text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase' %>
+        <%= f.text_field :title, maxlength: 100, class: 'w-full bg-card border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus:border-foreground transition-colors' %>
+      </div>
+
+      <div>
+        <%= f.label :body, 'Отзыв', class: 'block text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase' %>
+        <%= f.text_area :body, required: true, rows: 6, minlength: 10, maxlength: 1000,
+              placeholder: 'Расскажите, как прошла сделка, как вам работалось с агентом, что понравилось или что можно улучшить.',
+              class: 'w-full bg-card border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus:border-foreground transition-colors resize-none' %>
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 mt-2 uppercase">Минимум 10 символов, максимум 1000</p>
+      </div>
+
+      <div>
+        <%= f.label :author_email, 'Email (необязательно)', class: 'block text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase' %>
+        <%= f.email_field :author_email, class: 'w-full bg-card border border-border px-4 py-3 text-sm text-foreground focus:outline-none focus:border-foreground transition-colors' %>
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 mt-2 uppercase">Чтобы мы могли связаться с вами по поводу отзыва — на сайте email не публикуется</p>
+      </div>
+
+      <div class="flex flex-wrap gap-4 pt-4">
+        <%= f.submit 'ОТПРАВИТЬ ОТЗЫВ', class: 'px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
+        <%= link_to 'ОТМЕНА', reviews_path, class: 'px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+      </div>
+    <% end %>
+  </div>
+</section>

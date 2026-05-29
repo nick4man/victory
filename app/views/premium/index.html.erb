@@ -1,0 +1,161 @@
+<%# /premium — standalone landing для премиум-сегмента (Phase A1).
+    Brand statement page, отдельная от SEO district pyramid /buy/[type]/premium. %>
+
+<% format_price = ->(p) {
+  return '—' if p.blank? || p.zero?
+  millions = (p.to_f / 1_000_000).round(1)
+  millions == millions.to_i ? "#{millions.to_i} млн" : "#{millions} млн"
+} %>
+
+<% content_for :head do %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'CollectionPage',
+    'name' => 'Премиум-сегмент недвижимости в Рязани — АН «Виктори»',
+    'description' => 'Премиум-квартиры и дома от 15 млн ₽ в Рязани и области.',
+    'url' => premium_url,
+    'isPartOf' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#website" },
+    'mainEntity' => {
+      '@type' => 'ItemList',
+      'numberOfItems' => @stats[:count_active],
+      'itemListElement' => @premium_properties.each_with_index.map { |p, i|
+        { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
+      }
+    }
+  }.to_json) %>
+  </script>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Премиум-сегмент', nil]
+] if lookup_context.exists?('shared/breadcrumb', [], true) %>
+
+<!-- Hero -->
+<section class="px-6 lg:px-12 pt-32 pb-16 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ПРЕМИУМ-СЕГМЕНТ</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6 uppercase">
+      Премиум-недвижимость Рязани
+    </h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl mb-8">
+      Эксклюзивные объекты от 15 млн ₽ — для тех, кто ценит конфиденциальность,
+      индивидуальный подход и профессиональное сопровождение сделки от начала
+      до получения ключей.
+    </p>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl">
+      <div class="border border-border p-5">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">КОНФИДЕНЦИАЛЬНОСТЬ</p>
+        <p class="text-sm text-foreground leading-snug">Закрытый показ, NDA по запросу, без рекламы в открытых источниках.</p>
+      </div>
+      <div class="border border-border p-5">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ЭКСПЕРТИЗА</p>
+        <p class="text-sm text-foreground leading-snug">Инвестиционный аудит объекта, юридическая проверка, рыночная оценка.</p>
+      </div>
+      <div class="border border-border p-5">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">СОПРОВОЖДЕНИЕ</p>
+        <p class="text-sm text-foreground leading-snug">Один контакт от первой встречи до акта приёма-передачи и регистрации.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<%# Stats block %>
+<% if @stats[:count_active].positive? %>
+  <section class="px-6 lg:px-12 pb-12 bg-background">
+    <div class="max-w-6xl mx-auto">
+      <div class="border-y border-border py-6 flex flex-wrap items-baseline gap-x-12 gap-y-3 text-sm">
+        <div>
+          <span class="text-xs tracking-[0.3em] text-muted-foreground uppercase">В продаже</span>
+          <span class="ml-3 text-lg text-foreground"><%= @stats[:count_active] %></span>
+          <span class="text-sm text-muted-foreground"> объектов</span>
+        </div>
+        <% if @stats[:avg_area] %>
+          <div>
+            <span class="text-xs tracking-[0.3em] text-muted-foreground uppercase">Ср. площадь</span>
+            <span class="ml-3 text-lg text-foreground"><%= @stats[:avg_area].to_i %></span>
+            <span class="text-sm text-muted-foreground"> м²</span>
+          </div>
+        <% end %>
+        <% if @stats[:min_price] && @stats[:max_price] %>
+          <div>
+            <span class="text-xs tracking-[0.3em] text-muted-foreground uppercase">Диапазон цен</span>
+            <span class="ml-3 text-lg text-foreground"><%= format_price.call(@stats[:min_price]) %> – <%= format_price.call(@stats[:max_price]) %></span>
+            <span class="text-sm text-muted-foreground"> ₽</span>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# Districts chips %>
+<% if @districts.any? %>
+  <section class="px-6 lg:px-12 pb-8 bg-background">
+    <div class="max-w-6xl mx-auto">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">РАЙОНЫ ПРЕДСТАВЛЕНИЯ</p>
+      <div class="flex flex-wrap gap-2">
+        <% @districts.each do |district| %>
+          <span class="px-3 py-1 text-xs tracking-wider border border-border text-muted-foreground"><%= district %></span>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# Premium grid %>
+<% if @premium_properties.any? %>
+  <section class="px-6 lg:px-12 pb-16 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <%# Only the first card gets fetchpriority=high (Lighthouse best-practice:
+            один LCP candidate). Cards 2-3 above-fold browsers preload автоматически.
+            Fixed 2026-05-19 — было idx < 3, что давало 3 conflicting high-priority. %>
+        <% @premium_properties.each_with_index do |property, idx| %>
+          <%= render 'properties/property_card', property: property, priority_image: idx.zero? %>
+        <% end %>
+      </div>
+
+      <% if @stats[:count_active] > @premium_properties.size %>
+        <div class="mt-12 text-center">
+          <%= link_to "Смотреть все #{@stats[:count_active]} премиум-объектов →",
+                      properties_path(premium: 1),
+                      class: "inline-block text-sm tracking-[0.3em] text-foreground hover:text-muted-foreground transition-colors underline" %>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% else %>
+  <section class="px-6 lg:px-12 pb-16 bg-background">
+    <div class="max-w-3xl mx-auto text-center">
+      <p class="text-sm text-muted-foreground mb-6">
+        Сейчас в открытой продаже нет премиум-объектов. Большинство сделок
+        в этом сегменте проводится без публикации на сайте — напишите,
+        расскажем о текущих закрытых предложениях.
+      </p>
+    </div>
+  </section>
+<% end %>
+
+<%# CTA footer %>
+<section class="px-6 lg:px-12 py-16 bg-card border-t border-border">
+  <div class="max-w-3xl mx-auto text-center">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4 uppercase">Персональная консультация</p>
+    <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-6">
+      Подберём объект под вашу задачу
+    </h2>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-8 max-w-xl mx-auto">
+      Для премиум-сегмента работаем индивидуально: NDA по запросу, закрытый показ,
+      экспертная оценка и юридическое сопровождение под ключ. Напишите или позвоните —
+      обсудим вашу задачу конфиденциально.
+    </p>
+    <div class="flex flex-wrap gap-4 justify-center">
+      <a href="<%= agency_phone_tel %>" class="px-6 py-3 text-xs tracking-[0.3em] uppercase border border-foreground bg-foreground text-background hover:bg-foreground/85 transition-colors">
+        <%= agency_phone_primary %>
+      </a>
+      <%= link_to "Кейсы закрытых сделок", cases_path, class: "px-6 py-3 text-xs tracking-[0.3em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors" %>
+    </div>
+  </div>
+</section>

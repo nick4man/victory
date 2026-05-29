@@ -1,0 +1,10 @@
+{
+  "$schema": "https://www.figma.com/code-connect/schemas/v1/figma.config.schema.json",
+  "codeConnect": {
+    "include": [".figma/code-connect/templates/**/*.figma.js"],
+    "exclude": ["node_modules/**"],
+    "documentUrlSubstitutions": {},
+    "label": "ERB + Tailwind",
+    "parser": "html"
+  }
+}

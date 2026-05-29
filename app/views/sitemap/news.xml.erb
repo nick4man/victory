@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+  <% (@articles || []).each do |article| %>
+    <url>
+      <loc><%= blog_post_url(slug: article.slug) %></loc>
+      <news:news>
+        <news:publication>
+          <news:name>АН Виктори — Новости рынка недвижимости</news:name>
+          <news:language>ru</news:language>
+        </news:publication>
+        <news:publication_date><%= article.published_at.iso8601 %></news:publication_date>
+        <news:title><%= article.title.to_s.encode(xml: :text) %></news:title>
+      </news:news>
+    </url>
+  <% end %>
+</urlset>

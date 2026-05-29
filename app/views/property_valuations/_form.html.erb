@@ -1,0 +1,555 @@
+<%
+  # Multi-step valuation form (v0-inspired). All steps live in a single <form>;
+  # client-side JS toggles which step pane is visible AND which fields are visible
+  # based on selected property_type via data-show-for="apartment house ...".
+  # When a step pane has zero visible fields (e.g. "details" for `land`), navigation
+  # auto-skips it and the progress indicator hides that circle.
+  valuation ||= PropertyValuation.new
+%>
+
+<%= form_with model: valuation, url: property_valuations_path, method: :post,
+              data: { valuation_form: true, active_step: 1 },
+              class: "max-w-3xl mx-auto" do |f| %>
+
+  <% if valuation.errors.any? %>
+    <div class="mb-6 border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <p class="font-medium mb-2">Не получилось обработать форму:</p>
+      <ul class="list-disc pl-5 space-y-1">
+        <% valuation.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <!-- Progress steps -->
+  <div data-progress class="flex items-center justify-center mb-12">
+    <% [
+      [1, "Тип и адрес",     ""],
+      [2, "Характеристики",  ""],
+      [3, "Детали",          "land"],
+      [4, "Контакты",        ""]
+    ].each_with_index do |(id, name, skip_for), i| %>
+      <div class="flex items-center" data-step-wrap="<%= id %>" <%= "data-skip-for=\"#{skip_for}\"".html_safe if skip_for.present? %>>
+        <div class="flex flex-col items-center">
+          <div data-step-circle="<%= id %>"
+               class="step-circle w-10 h-10 flex items-center justify-center text-sm font-medium transition-colors bg-secondary text-muted-foreground">
+            <span class="step-num"><%= id %></span>
+            <svg class="step-check hidden w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          </div>
+          <span data-step-label="<%= id %>" class="step-label mt-2 text-xs hidden md:block text-muted-foreground"><%= name %></span>
+        </div>
+        <% if i < 3 %>
+          <div data-step-connector="<%= id %>" class="step-connector w-16 md:w-24 h-px mx-2 bg-border"></div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <!-- Form card -->
+  <div class="bg-card border border-border p-8">
+
+    <!-- ========== STEP 1: type & address (always shown) ========== -->
+    <div data-step="1" class="step-pane space-y-8">
+      <h2 class="text-xl font-medium text-foreground">Тип недвижимости и адрес</h2>
+
+      <!-- Property type -->
+      <div class="space-y-3">
+        <label class="text-sm text-muted-foreground">Тип недвижимости <span class="text-foreground">*</span></label>
+        <%= f.hidden_field :property_type, value: (valuation.property_type.presence || 'apartment'), data: { toggle_target: "property_type" } %>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <% property_types = [
+            ["apartment", "Квартира", %(
+              <rect x="8" y="12" width="32" height="32" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <line x1="8"  y1="20" x2="40" y2="20" stroke="currentColor" stroke-width="1"/>
+              <line x1="8"  y1="28" x2="40" y2="28" stroke="currentColor" stroke-width="1"/>
+              <line x1="8"  y1="36" x2="40" y2="36" stroke="currentColor" stroke-width="1"/>
+              <line x1="18" y1="12" x2="18" y2="44" stroke="currentColor" stroke-width="1"/>
+              <line x1="30" y1="12" x2="30" y2="44" stroke="currentColor" stroke-width="1"/>
+              <rect x="20" y="38" width="8" height="6" stroke="currentColor" stroke-width="1" fill="none"/>
+            )],
+            ["house", "Дом", %(
+              <path d="M6 24L24 8L42 24" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="10" y="24" width="28" height="18" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <rect x="20" y="32" width="8"  height="10" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <rect x="14" y="28" width="6"  height="5"  stroke="currentColor" stroke-width="1"   fill="none"/>
+              <rect x="28" y="28" width="6"  height="5"  stroke="currentColor" stroke-width="1"   fill="none"/>
+            )],
+            ["land", "Участок", %(
+              <ellipse cx="24" cy="38" rx="18" ry="4" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <path d="M24 10C24 10 16 18 16 26C16 30.4183 19.5817 34 24 34C28.4183 34 32 30.4183 32 26C32 18 24 10 24 10Z" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <line x1="24" y1="16" x2="24" y2="28" stroke="currentColor" stroke-width="1"/>
+              <line x1="20" y1="22" x2="24" y2="18" stroke="currentColor" stroke-width="1"/>
+              <line x1="28" y1="22" x2="24" y2="18" stroke="currentColor" stroke-width="1"/>
+            )],
+            ["commercial", "Коммерческая", %(
+              <rect x="6"  y="14" width="36" height="28" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <rect x="6"  y="8"  width="36" height="6"  stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <line x1="12" y1="22" x2="36" y2="22" stroke="currentColor" stroke-width="1"/>
+              <rect x="14" y="26" width="8"  height="6" stroke="currentColor" stroke-width="1" fill="none"/>
+              <rect x="26" y="26" width="8"  height="6" stroke="currentColor" stroke-width="1" fill="none"/>
+              <rect x="18" y="36" width="12" height="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            )],
+            ["garage", "Гараж", %(
+              <rect x="8"  y="16" width="32" height="24" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <path d="M8 16L24 6L40 16" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+              <rect x="14" y="24" width="20" height="16" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <line x1="14" y1="28" x2="34" y2="28" stroke="currentColor" stroke-width="1"/>
+              <line x1="14" y1="32" x2="34" y2="32" stroke="currentColor" stroke-width="1"/>
+              <line x1="14" y1="36" x2="34" y2="36" stroke="currentColor" stroke-width="1"/>
+            )],
+            ["room", "Комната", %(
+              <rect x="10" y="10" width="28" height="28" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <rect x="18" y="26" width="8"  height="12" stroke="currentColor" stroke-width="1.5" fill="none"/>
+              <circle cx="24" cy="32" r="1" fill="currentColor"/>
+              <rect x="14" y="14" width="8" height="8" stroke="currentColor" stroke-width="1" fill="none"/>
+              <line x1="14" y1="18" x2="22" y2="18" stroke="currentColor" stroke-width="0.75"/>
+              <line x1="18" y1="14" x2="18" y2="22" stroke="currentColor" stroke-width="0.75"/>
+            )]
+          ] %>
+          <% property_types.each do |id, name, svg_paths| %>
+            <button type="button"
+                    data-toggle="property_type" data-value="<%= id %>"
+                    class="property-type-btn group flex flex-col items-center justify-center p-6 border border-border bg-transparent text-muted-foreground hover:border-foreground/50 hover:bg-foreground/[0.02] transition-all duration-300">
+              <span class="property-type-icon mb-3 transition-transform duration-300 group-hover:scale-110">
+                <svg viewBox="0 0 48 48" fill="none" class="w-10 h-10"><%= svg_paths.html_safe %></svg>
+              </span>
+              <span class="text-sm tracking-wide transition-colors"><%= name %></span>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Deal type -->
+      <div class="space-y-3">
+        <label class="text-sm text-muted-foreground">Тип сделки <span class="text-foreground">*</span></label>
+        <%= f.hidden_field :deal_type, value: (valuation.deal_type.presence || 'sale'), data: { toggle_target: "deal_type" } %>
+        <div class="grid grid-cols-2 gap-3">
+          <% [["sale", "Продажа"], ["rent", "Аренда"]].each do |id, name| %>
+            <button type="button"
+                    data-toggle="deal_type" data-value="<%= id %>"
+                    class="deal-type-btn py-3 px-6 border border-border bg-transparent text-foreground hover:border-muted-foreground transition-colors">
+              <%= name %>
+            </button>
+          <% end %>
+        </div>
+      </div>
+
+      <!-- Address (DaData autocomplete) + parsed chip + optional district toggle -->
+      <div class="space-y-3">
+        <label class="text-sm text-muted-foreground" for="express-address">
+          Адрес объекта <span class="text-foreground">*</span>
+        </label>
+        <%# DaData возвращает не только value, но и распарсенные city/region.
+            Hidden city + chip ниже устраняют дублирующие поля «Город» / «Район»: %>
+        <%= render 'shared/address_autocomplete',
+              input_id:    'express-address',
+              input_name:  'property_valuation[address]',
+              placeholder: 'Например: Москва, ул. Тверская, д. 1',
+              value:       valuation.address,
+              required:    true,
+              city_field:  'property_valuation[city]',
+              chip_target: 'express-address-chip' %>
+
+        <%# Chip — появляется после выбора подсказки. Подтверждает, что
+            адрес распознан корректно (регион + город из ФИАС/КЛАДР). %>
+        <p id="express-address-chip"
+           class="hidden inline-block text-[10px] tracking-[0.25em] text-foreground bg-secondary px-2 py-1 uppercase">
+        </p>
+        <p class="text-xs text-muted-foreground">
+          Начните вводить — появятся подсказки из ФИАС/КЛАДР по всей России.
+        </p>
+      </div>
+
+      <!-- Optional micro-district toggle (Канищево, Дашково, etc.) -->
+      <div class="space-y-2" data-optional-district>
+        <button type="button" data-optional-toggle
+                class="text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-0.5"
+                aria-expanded="<%= valuation.district.present? %>">
+          <span data-optional-label>
+            <%= valuation.district.present? ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН' %>
+          </span>
+        </button>
+        <div data-optional-pane class="<%= valuation.district.present? ? '' : 'hidden' %> pt-3">
+          <%= f.text_field :district, placeholder: 'Микрорайон или район города (например, Центр, Хамовники, Песочня)',
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground mt-1">Для уточнения локации в пределах города (необязательно).</p>
+        </div>
+      </div>
+
+      <%# Inline toggle JS — importmap отключён, Stimulus недоступен. %>
+      <script>
+        (function () {
+          if (window.__optionalDistrictInit) return;
+          window.__optionalDistrictInit = true;
+          document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-optional-toggle]');
+            if (!btn) return;
+            var wrap = btn.closest('[data-optional-district]');
+            var pane = wrap && wrap.querySelector('[data-optional-pane]');
+            var label = wrap && wrap.querySelector('[data-optional-label]');
+            if (!pane || !label) return;
+            pane.classList.toggle('hidden');
+            var open = !pane.classList.contains('hidden');
+            btn.setAttribute('aria-expanded', String(open));
+            label.textContent = open ? '− СКРЫТЬ МИКРОРАЙОН' : '+ УКАЗАТЬ МИКРОРАЙОН РЯЗАНИ';
+          });
+        })();
+      </script>
+    </div>
+
+    <!-- ========== STEP 2: characteristics (per-type fields) ========== -->
+    <div data-step="2" class="step-pane space-y-8 hidden">
+      <h2 class="text-xl font-medium text-foreground">Характеристики объекта</h2>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-2" data-show-for="apartment room house commercial garage">
+          <label class="text-sm text-muted-foreground">Общая площадь, м² <span class="text-foreground">*</span></label>
+          <%= f.number_field :total_area, step: "0.1", placeholder: "85",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+
+        <div class="space-y-2" data-show-for="house land">
+          <label class="text-sm text-muted-foreground">Площадь участка, сотки <%= '<span class="text-foreground">*</span>'.html_safe %></label>
+          <%= f.number_field :land_area, step: "0.01", placeholder: "10",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground">1 сотка = 100 м²</p>
+        </div>
+
+        <div class="space-y-2" data-show-for="apartment house commercial">
+          <label class="text-sm text-muted-foreground">Количество комнат</label>
+          <%= f.number_field :rooms, placeholder: "3",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+
+        <div class="space-y-2" data-show-for="apartment room commercial">
+          <label class="text-sm text-muted-foreground">Этаж</label>
+          <%= f.number_field :floor, placeholder: "5",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+
+        <div class="space-y-2" data-show-for="apartment room house commercial">
+          <label class="text-sm text-muted-foreground" data-label-for="total_floors">Этажей в доме</label>
+          <%= f.number_field :total_floors, placeholder: "12",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground hidden" data-helper-for="total_floors" data-show-for="house">1, 2, 3 — этажность самого дома</p>
+        </div>
+
+        <div class="space-y-2" data-show-for="land">
+          <label class="text-sm text-muted-foreground">Категория земли</label>
+          <%= f.select :land_category,
+                [["Выберите", ""], ["ИЖС", "izhs"], ["ЛПХ", "lph"], ["СНТ / ДНП", "snt"], ["Земли с/х", "agricultural"], ["Коммерческая", "commercial"]],
+                {},
+                class: "w-full h-12 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+
+        <div class="space-y-2" data-show-for="land">
+          <label class="text-sm text-muted-foreground">Вид права</label>
+          <%= f.select :ownership_type,
+                [["Выберите", ""], ["Собственность", "ownership"], ["Аренда", "rent"], ["Пожизненное наследуемое", "inheritable"]],
+                {},
+                class: "w-full h-12 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== STEP 3: details (skipped for land) ========== -->
+    <div data-step="3" class="step-pane space-y-8 hidden">
+      <h2 class="text-xl font-medium text-foreground">Дополнительные детали</h2>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div class="space-y-2" data-show-for="apartment room house commercial garage">
+          <label class="text-sm text-muted-foreground">Год постройки</label>
+          <%= f.number_field :building_year, placeholder: "2020",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+
+        <div class="space-y-2" data-show-for="apartment room house commercial garage">
+          <label class="text-sm text-muted-foreground">Состояние <span class="text-red-400">*</span></label>
+          <%# Rails refuses required + include_blank: false on the same select
+              (an empty option is the only way HTML5 required validation can
+              trigger on a select). We keep `required` and let the empty
+              placeholder serve as the include_blank value. %>
+          <%= f.select :property_condition,
+                [["Дизайнерский ремонт",    "designer"],
+                 ["Евроремонт",              "excellent"],
+                 ["С ремонтом",              "good"],
+                 ["Жилое состояние",         "average"],
+                 ["Требует ремонта",         "needs_repair"]],
+                { include_blank: "— выберите состояние —" },
+                required: true,
+                class: "w-full h-12 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+          <p class="text-xs text-muted-foreground/70">
+            Состояние сильно влияет на цену. Дизайн +18%, евроремонт +10%, ремонт +3%, требует ремонта −12% к рыночной средней.
+          </p>
+        </div>
+      </div>
+
+      <div class="space-y-4" data-show-for="apartment room house commercial">
+        <label class="text-sm text-muted-foreground">Дополнительно</label>
+        <div class="flex flex-wrap gap-3">
+          <%= f.hidden_field :has_garage,  data: { toggle_target: "has_garage" }, value: '0' %>
+          <%= f.hidden_field :has_balcony, data: { toggle_target: "has_balcony" }, value: '0' %>
+          <button type="button" data-toggle-bool="has_garage"
+                  data-show-for="apartment house commercial"
+                  class="opt-btn py-2 px-4 border border-border bg-transparent text-foreground hover:border-muted-foreground transition-colors">
+            Парковка / Гараж
+          </button>
+          <button type="button" data-toggle-bool="has_balcony"
+                  data-show-for="apartment room"
+                  class="opt-btn py-2 px-4 border border-border bg-transparent text-foreground hover:border-muted-foreground transition-colors">
+            Балкон / Лоджия
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== STEP 4: contacts (always) ========== -->
+    <div data-step="4" class="step-pane space-y-8 hidden">
+      <h2 class="text-xl font-medium text-foreground">Контактные данные</h2>
+
+      <div class="space-y-2">
+        <label class="text-sm text-muted-foreground">Ваше имя <span class="text-foreground">*</span></label>
+        <%= f.text_field :name, placeholder: "Иван Иванов",
+              autocomplete: "name",
+              class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      </div>
+
+      <div class="space-y-2">
+        <label class="text-sm text-muted-foreground">Телефон <span class="text-foreground">*</span></label>
+        <%= f.telephone_field :phone, placeholder: "+7 (___) ___-__-__",
+              autocomplete: "tel",
+              class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      </div>
+
+      <div class="space-y-2">
+        <label class="text-sm text-muted-foreground">Email</label>
+        <%= f.email_field :email, placeholder: "email@example.com",
+              autocomplete: "email",
+              class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      </div>
+
+      <p class="text-xs text-muted-foreground">
+        Нажимая кнопку «Получить оценку», вы соглашаетесь с
+        <%= link_to "политикой конфиденциальности", privacy_path, target: "_blank", class: "underline hover:text-foreground" %>
+      </p>
+    </div>
+
+    <!-- Navigation -->
+    <div class="flex justify-between mt-10 pt-6 border-t border-border">
+      <button type="button" data-nav="prev"
+              class="nav-btn py-2 px-4 border border-border text-foreground bg-transparent hover:bg-secondary transition-colors flex items-center gap-2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="15 6 9 12 15 18"/></svg>
+        Назад
+      </button>
+
+      <button type="button" data-nav="next"
+              class="py-2 px-6 bg-foreground text-background hover:bg-foreground/90 transition-colors flex items-center gap-2">
+        Далее
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><polyline points="9 6 15 12 9 18"/></svg>
+      </button>
+
+      <button type="submit" data-nav="submit"
+              class="hidden py-2 px-6 bg-foreground text-background hover:bg-foreground/90 transition-colors">
+        Получить оценку
+      </button>
+    </div>
+  </div>
+<% end %>
+
+<style>
+  .step-circle.is-current { background: var(--color-foreground); color: var(--color-background); }
+  .step-circle.is-done    { background: var(--color-foreground); color: var(--color-background); }
+  .step-label.is-active   { color: var(--color-foreground); }
+  .step-connector.is-done { background: var(--color-foreground); }
+
+  .property-type-btn.is-selected {
+    border-color: var(--color-foreground);
+    background: color-mix(in oklch, var(--color-foreground) 5%, transparent);
+    color: var(--color-foreground);
+  }
+  .property-type-btn.is-selected .property-type-icon { color: var(--color-foreground); }
+
+  .deal-type-btn.is-selected,
+  .opt-btn.is-selected {
+    border-color: var(--color-foreground);
+    background: var(--color-secondary);
+  }
+</style>
+
+<script>
+  (function () {
+    const root = document.querySelector('[data-valuation-form]');
+    if (!root) return;
+
+    const steps   = Array.from(root.querySelectorAll('[data-step]'));   // 4 panes
+    const wraps   = Array.from(root.querySelectorAll('[data-step-wrap]'));
+    const circles = Array.from(root.querySelectorAll('[data-step-circle]'));
+    const labels  = Array.from(root.querySelectorAll('[data-step-label]'));
+    const conns   = Array.from(root.querySelectorAll('[data-step-connector]'));
+    const prevBtn = root.querySelector('[data-nav="prev"]');
+    const nextBtn = root.querySelector('[data-nav="next"]');
+    const submitBtn = root.querySelector('[data-nav="submit"]');
+    const propertyTypeInput = root.querySelector('[data-toggle-target="property_type"]');
+    let current = 1;
+
+    function currentType() {
+      return (propertyTypeInput?.value || 'apartment').trim();
+    }
+
+    // True when step pane has at least one visible field after data-show-for filtering.
+    function stepIsActive(stepId) {
+      const t = currentType();
+      const pane = root.querySelector(`[data-step="${stepId}"]`);
+      if (!pane) return false;
+      // Step has no per-type filtering on the wrap → check show-for elements within pane.
+      const filterables = pane.querySelectorAll('[data-show-for]');
+      if (filterables.length === 0) return true; // no per-type filter → always active
+
+      // Active if at least one [data-show-for] element matches current type.
+      return Array.from(filterables).some(el => {
+        const list = (el.dataset.showFor || '').split(/\s+/).filter(Boolean);
+        return list.includes(t);
+      });
+    }
+
+    function activeStepIds() {
+      // Honour data-skip-for on the step-wrap (e.g. step 3 skipped for `land`).
+      const t = currentType();
+      return wraps
+        .filter(w => {
+          const skip = (w.dataset.skipFor || '').split(/\s+/).filter(Boolean);
+          if (skip.includes(t)) return false;
+          return stepIsActive(Number(w.dataset.stepWrap));
+        })
+        .map(w => Number(w.dataset.stepWrap));
+    }
+
+    function applyFieldVisibility() {
+      const t = currentType();
+      root.querySelectorAll('[data-show-for]').forEach(el => {
+        const list = (el.dataset.showFor || '').split(/\s+/).filter(Boolean);
+        el.classList.toggle('hidden', !list.includes(t));
+      });
+    }
+
+    function render() {
+      const active = activeStepIds();
+      // If current step got removed by a property_type switch, snap to nearest preceding active.
+      if (!active.includes(current)) {
+        current = active.filter(id => id <= current).pop() || active[0];
+      }
+
+      // Pane visibility
+      steps.forEach(el => el.classList.toggle('hidden', Number(el.dataset.step) !== current));
+
+      // Step-wrap (entire step block: circle + connector) visibility
+      wraps.forEach(w => {
+        const id = Number(w.dataset.stepWrap);
+        w.classList.toggle('hidden', !active.includes(id));
+      });
+
+      // Circles
+      circles.forEach(el => {
+        const id = Number(el.dataset.stepCircle);
+        const num   = el.querySelector('.step-num');
+        const check = el.querySelector('.step-check');
+        el.classList.remove('is-current', 'is-done');
+        if (id < current)        { el.classList.add('is-done');    num?.classList.add('hidden');    check?.classList.remove('hidden'); }
+        else if (id === current) { el.classList.add('is-current'); num?.classList.remove('hidden'); check?.classList.add('hidden'); }
+        else                     {                                 num?.classList.remove('hidden'); check?.classList.add('hidden'); }
+      });
+
+      labels.forEach(el => {
+        el.classList.toggle('is-active', Number(el.dataset.stepLabel) <= current);
+      });
+      conns.forEach(el => {
+        el.classList.toggle('is-done', Number(el.dataset.stepConnector) < current);
+      });
+
+      const isFirst = current === active[0];
+      const isLast  = current === active[active.length - 1];
+      prevBtn.style.visibility = isFirst ? 'hidden' : 'visible';
+      nextBtn.classList.toggle('hidden',   isLast);
+      submitBtn.classList.toggle('hidden', !isLast);
+    }
+
+    function go(delta) {
+      const active = activeStepIds();
+      const idx = active.indexOf(current);
+      const next = active[idx + delta];
+      if (next != null) {
+        current = next;
+        render();
+        window.scrollTo({ top: root.offsetTop - 80, behavior: 'smooth' });
+      }
+    }
+    prevBtn.addEventListener('click', () => go(-1));
+    nextBtn.addEventListener('click', () => go(+1));
+
+    // Toggle visual + hidden value for property_type / deal_type
+    function selectToggle(group, value) {
+      const hidden = root.querySelector(`[data-toggle-target="${group}"]`);
+      if (hidden) hidden.value = value;
+      root.querySelectorAll(`[data-toggle="${group}"]`).forEach(btn => {
+        btn.classList.toggle('is-selected', btn.dataset.value === value);
+      });
+      if (group === 'property_type') {
+        applyFieldVisibility();
+        render();
+      }
+    }
+    root.querySelectorAll('[data-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => selectToggle(btn.dataset.toggle, btn.dataset.value));
+    });
+
+    // Bool toggle (has_garage / has_balcony)
+    function selectBool(group, btnEl) {
+      const hidden = root.querySelector(`[data-toggle-target="${group}"]`);
+      const next = (hidden?.value === '1') ? '0' : '1';
+      if (hidden) hidden.value = next;
+      btnEl.classList.toggle('is-selected', next === '1');
+    }
+    root.querySelectorAll('[data-toggle-bool]').forEach(btn => {
+      btn.addEventListener('click', () => selectBool(btn.dataset.toggleBool, btn));
+    });
+
+    // Pre-select defaults from hidden field values (e.g. validation re-render)
+    root.querySelectorAll('[data-toggle-target]').forEach(input => {
+      const group = input.dataset.toggleTarget;
+      const value = input.value;
+      if (!value) return;
+      if (value === '1' || value === 'true') {
+        const btn = root.querySelector(`[data-toggle-bool="${group}"]`);
+        btn?.classList.add('is-selected');
+      } else {
+        root.querySelectorAll(`[data-toggle="${group}"]`).forEach(b => {
+          b.classList.toggle('is-selected', b.dataset.value === value);
+        });
+      }
+    });
+
+    applyFieldVisibility();
+    render();
+
+    // Submit-once guard — предотвращает повторные POST'ы при быстрых
+    // двойных кликах / impatient retry'ах. Disabled button + smart label
+    // + return false на второй submit. Controller redirect'нёт на loader
+    // page после первого save, повторный submit бессмыслен.
+    root.addEventListener('submit', function (e) {
+      if (!submitBtn) return;
+      if (submitBtn.disabled || submitBtn.dataset.submitting === '1') {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      submitBtn.disabled = true;
+      submitBtn.dataset.submitting = '1';
+      submitBtn.dataset.originalLabel = submitBtn.textContent.trim();
+      submitBtn.textContent = 'Обрабатываем…';
+      submitBtn.classList.add('opacity-60', 'cursor-wait');
+    }, true); // capture phase — fire before любых других listener'ов
+  })();
+</script>

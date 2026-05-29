@@ -1,0 +1,93 @@
+<% content_for :title, "Мои объекты" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <div class="mb-12 pb-8 border-b border-border">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">МОИ ОБЪЕКТЫ</p>
+      <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground"><%= current_user.short_name.presence || 'Мои объекты' %></h1>
+      <div class="flex flex-wrap gap-3 mt-6">
+        <% [
+          ['ad',         'В рекламе'],
+          ['active',     'В работе'],
+          ['lead',       'Сбор данных'],
+          ['prepayment', 'Аванс'],
+          ['deferred',   'Отложен'],
+          ['deal',       'Сделка'],
+          ['denied',     'Отказ'],
+          ['archive',    'База лидов']
+        ].each do |state, label| %>
+          <% n = @counts[state].to_i %>
+          <% next if n.zero? %>
+          <% active = params[:deal_state] == state %>
+          <%= link_to dashboard_properties_path(deal_state: active ? nil : state),
+                class: "px-3 py-1 text-xs tracking-widest border #{active ? 'border-foreground bg-foreground text-background' : 'border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground'} transition-colors" do %>
+            <%= label.upcase %> · <%= n %>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+
+    <% if @properties.any? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+        <% @properties.each do |p| %>
+          <%= link_to property_path(p), target: '_blank', class: "block bg-background hover:bg-foreground/[0.02] transition-colors" do %>
+            <% if p.images.attached? && (img = p.images.first).present? %>
+              <div class="aspect-video bg-secondary overflow-hidden">
+                <%= image_tag img, class: "w-full h-full object-cover" %>
+              </div>
+            <% else %>
+              <div class="aspect-video bg-secondary flex items-center justify-center text-muted-foreground text-xs tracking-widest">БЕЗ ФОТО</div>
+            <% end %>
+            <div class="p-5">
+              <div class="flex items-center gap-2 mb-2 flex-wrap">
+                <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-border text-muted-foreground"><%= p.deal_type %></span>
+                <% if p.deal_state %>
+                  <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border <%= p.deal_state == 'ad' ? 'border-foreground text-foreground' : 'border-border text-muted-foreground' %>"><%= p.deal_state %></span>
+                <% end %>
+                <% if p.property_type %>
+                  <span class="text-[10px] uppercase tracking-wider text-muted-foreground"><%= p.property_type.name %></span>
+                <% end %>
+              </div>
+              <p class="text-base font-medium text-foreground truncate"><%= p.title %></p>
+              <p class="text-xs text-muted-foreground mt-1 truncate"><%= p.address %></p>
+              <p class="text-lg font-medium text-foreground mt-3"><%= number_with_delimiter(p.price.to_i, delimiter: ' ') %> ₽</p>
+              <p class="text-xs text-muted-foreground mt-1"><%= p.area %> м² · <%= p.rooms %>-комн. · CRM ##<%= p.external_id %></p>
+              <div class="mt-3 flex flex-wrap gap-2 text-[10px] tracking-wider">
+                <% if p.status_active? && p.published_at %>
+                  <span class="px-2 py-0.5 border border-emerald-500/40 text-emerald-300">НА САЙТЕ</span>
+                <% else %>
+                  <span class="px-2 py-0.5 border border-border text-muted-foreground">НЕ ОПУБЛ.</span>
+                <% end %>
+                <% if p.in_ad %><span class="px-2 py-0.5 border border-border text-muted-foreground">in_ad</span><% end %>
+                <% if p.in_mls %><span class="px-2 py-0.5 border border-border text-muted-foreground">in_mls</span><% end %>
+                <% if p.synced_at %>
+                  <span class="text-muted-foreground/70 self-center">синх. <%= time_ago_in_words(p.synced_at) %> назад</span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+          <% if p.external_id.present? %>
+            <%= button_to sync_from_crm_dashboard_property_path(p), method: :post,
+                  class: "w-full mt-px px-5 py-2 text-[10px] tracking-[0.3em] text-muted-foreground bg-card hover:bg-foreground hover:text-background transition-colors border-t border-border",
+                  form: { class: "" } do %>
+              ОБНОВИТЬ ИЗ CRM ↻
+            <% end %>
+          <% end %>
+        <% end %>
+      </div>
+
+      <% if @properties.respond_to?(:total_pages) && @properties.total_pages > 1 %>
+        <div class="mt-8 flex items-center justify-center">
+          <%= paginate @properties %>
+        </div>
+      <% end %>
+    <% else %>
+      <div class="bg-card border border-border p-12 text-center text-muted-foreground">
+        За вами пока не закреплено объектов в выбранной стадии.
+      </div>
+    <% end %>
+  </div>
+</section>

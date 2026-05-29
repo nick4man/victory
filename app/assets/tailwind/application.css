@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@source "../../views/**/*.{erb,html,html.erb}";
+@source "../../helpers/**/*.rb";
+@source "../../javascript/**/*.{js,ts}";
+@source "../../controllers/**/*.rb";
+
+/* ------------------------------------------------------------------
+ * Premium real-estate dark theme (ported from v0 / Sminex inspiration)
+ * ------------------------------------------------------------------ */
+:root {
+  --background: oklch(0.07 0 0);
+  --foreground: oklch(0.98 0 0);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.98 0 0);
+  --popover: oklch(0.10 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.07 0 0);
+  --secondary: oklch(0.18 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --muted: oklch(0.15 0 0);
+  --muted-foreground: oklch(0.60 0 0);
+  --accent: oklch(0.20 0 0);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.98 0 0);
+  --border: oklch(0.25 0 0);
+  --input: oklch(0.18 0 0);
+  --ring: oklch(0.50 0 0);
+}
+
+@theme {
+  /* Map our CSS vars onto Tailwind utility colours. */
+  --color-background:        var(--background);
+  --color-foreground:        var(--foreground);
+  --color-card:              var(--card);
+  --color-card-foreground:   var(--card-foreground);
+  --color-popover:           var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary:           var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary:         var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted:             var(--muted);
+  --color-muted-foreground:  var(--muted-foreground);
+  --color-accent:            var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive:       var(--destructive);
+  --color-border:            var(--border);
+  --color-input:             var(--input);
+  --color-ring:              var(--ring);
+
+  /* Legacy palette kept for older templates that still reference primary-N00 etc. */
+  --color-primary-50:  #f5f5f5;
+  --color-primary-100: #e5e5e5;
+  --color-primary-200: #d4d4d4;
+  --color-primary-300: #a3a3a3;
+  --color-primary-400: #737373;
+  --color-primary-500: #525252;
+  --color-primary-600: #ffffff;   /* maps to foreground */
+  --color-primary-700: #f5f5f5;
+  --color-primary-800: #e5e5e5;
+  --color-primary-900: #d4d4d4;
+
+  --color-accent-100: oklch(0.20 0 0);
+  --color-accent-600: oklch(0.40 0 0);
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* No rounded corners — flat premium look */
+  --radius: 0rem;
+}
+
+/* Inline SVG safety net — keep raw <svg> sane size when no class is set. */
+svg:not([class*="w-"]):not([class*="h-"]) {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Body defaults */
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth links hover */
+a { transition: color .25s ease; }

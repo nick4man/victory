@@ -1,0 +1,66 @@
+<% content_for :title, 'Страница не найдена — АН Виктори' %>
+
+<%#
+  Recovery paths on 404. The audit plan flags "soft 404" as Yandex/Google
+  bait — a 404 that gives users (and crawlers) cluster links to real
+  content acts as a soft-redirect graph rather than a dead end.
+%>
+<%
+  catalog_total   = (Property.on_site.count rescue 0)
+  district_counts = (Property.on_site.where.not(district: [nil, '']).group(:district).count rescue {})
+  top_districts   = district_counts.sort_by { |_, c| -c }.first(8)
+  recent_properties = (Property.on_site.order(updated_at: :desc).limit(4).to_a rescue [])
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-3xl mx-auto text-center">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">404</p>
+    <h1 class="text-5xl lg:text-7xl font-light tracking-wider text-foreground mb-8">СТРАНИЦА НЕ НАЙДЕНА</h1>
+    <p class="text-base text-muted-foreground leading-relaxed mb-12 max-w-xl mx-auto">
+      Возможно, ссылка устарела или объект уже снят с продажи. В каталоге сейчас <span class="text-foreground"><%= catalog_total %></span> актуальных объектов в Рязани и области — ниже подобрали удобные точки входа.
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-4">
+      <%= link_to 'В КАТАЛОГ', properties_path, class: "px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
+      <%= link_to 'ГЛАВНАЯ',   root_path,        class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+      <button type="button" data-chat-trigger class="px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors">
+        КОНСУЛЬТАЦИЯ
+      </button>
+    </div>
+  </div>
+</section>
+
+<% if top_districts.any? %>
+  <section class="px-6 lg:px-12 py-12 bg-background border-t border-border">
+    <div class="max-w-5xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6 text-center">РАЙОНЫ РЯЗАНИ</p>
+      <div class="flex flex-wrap gap-3 justify-center">
+        <% top_districts.each do |district, count| %>
+          <%= link_to properties_path(q: { district_eq: district }),
+                      class: "group inline-flex items-baseline gap-2 px-4 py-2 border border-border hover:border-foreground transition-colors" do %>
+            <span class="text-sm tracking-wider text-foreground"><%= district %></span>
+            <span class="text-xs tracking-wider text-muted-foreground"><%= count %></span>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<% if recent_properties.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">НЕДАВНО ДОБАВЛЕНЫ</p>
+          <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground">МОЖЕТ ПОНРАВИТЬСЯ</h2>
+        </div>
+        <%= link_to "ВСЕ ОБЪЕКТЫ →", properties_path, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <% recent_properties.each do |p| %>
+          <%= render 'properties/property_card', property: p %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>

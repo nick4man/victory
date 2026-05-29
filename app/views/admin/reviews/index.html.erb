@@ -1,0 +1,85 @@
+<% content_for :title, 'Модерация отзывов — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">АДМИН</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-8">
+      Модерация отзывов
+    </h1>
+
+    <nav class="mb-8 flex flex-wrap gap-3 text-sm tracking-[0.3em]">
+      <%= link_to 'ВСЕ',         admin_reviews_path(),                      class: "px-5 py-2 border #{params[:status].blank? ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'PENDING',     admin_reviews_path(status: 'pending'),   class: "px-5 py-2 border #{params[:status] == 'pending' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'APPROVED',    admin_reviews_path(status: 'approved'),  class: "px-5 py-2 border #{params[:status] == 'approved' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <%= link_to 'REJECTED',    admin_reviews_path(status: 'rejected'),  class: "px-5 py-2 border #{params[:status] == 'rejected' ? 'bg-foreground text-background' : 'border-border text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+    </nav>
+
+    <% if @reviews.empty? %>
+      <p class="text-sm text-muted-foreground tracking-wide">Отзывов в этой категории нет.</p>
+    <% else %>
+      <div class="space-y-4">
+        <% @reviews.each do |r| %>
+          <article class="border border-border bg-card p-6 grid grid-cols-1 lg:grid-cols-[200px_1fr_auto] gap-6 items-start">
+            <div>
+              <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-1"><%= r.status %></p>
+              <p class="text-base font-medium text-foreground"><%= r.display_author %></p>
+              <% if r.author_email.present? %>
+                <p class="text-xs text-muted-foreground mt-1"><%= r.author_email %></p>
+              <% end %>
+              <% if r.author_phone.present? %>
+                <p class="text-xs text-muted-foreground"><%= r.author_phone %></p>
+              <% end %>
+              <p class="mt-2 text-yellow-500 text-base"><%= r.stars %></p>
+              <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 uppercase mt-2">
+                <%= r.created_at.strftime('%d.%m.%Y %H:%M') %> · <%= r.submitted_via.presence || 'unknown' %>
+              </p>
+            </div>
+
+            <div>
+              <% if r.title.present? %>
+                <p class="text-sm font-medium text-foreground mb-2"><%= r.title %></p>
+              <% end %>
+              <p class="text-sm text-foreground leading-relaxed whitespace-pre-wrap"><%= r.body %></p>
+              <% if r.property.present? %>
+                <p class="mt-3 text-xs text-muted-foreground">
+                  Объект: <%= link_to r.property.title.to_s.truncate(80), property_path(r.property), class: 'underline', target: '_blank', rel: 'noopener' %>
+                </p>
+              <% end %>
+              <% if r.source != 'own' %>
+                <p class="mt-2 text-[10px] tracking-[0.3em] text-muted-foreground uppercase">
+                  Источник: <%= r.source_label %>
+                  <% if r.external_url.present? %>
+                    · <%= link_to 'оригинал', r.external_url, target: '_blank', rel: 'noopener nofollow', class: 'underline' %>
+                  <% end %>
+                </p>
+              <% end %>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <% if r.status_pending? %>
+                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r),
+                      method: :post,
+                      class: 'px-5 py-2 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
+                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r),
+                      method: :post,
+                      class: 'px-5 py-2 text-xs tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
+              <% elsif r.status_approved? %>
+                <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(r),
+                      method: :post,
+                      class: 'px-5 py-2 text-xs tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
+              <% elsif r.status_rejected? %>
+                <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(r),
+                      method: :post,
+                      class: 'px-5 py-2 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
+              <% end %>
+            </div>
+          </article>
+        <% end %>
+      </div>
+
+      <div class="mt-8">
+        <%= paginate @reviews if respond_to?(:paginate) %>
+      </div>
+    <% end %>
+  </div>
+</section>

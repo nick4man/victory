@@ -1,0 +1,144 @@
+<% content_for :title, "Рабочая панель — #{AgencyInfo::NAME}" %>
+<%
+  assigned_inquiries = Inquiry.where(agent_id: cabinet_user.id)
+                              .order(
+                                Arel.sql("CASE priority WHEN 2 THEN 0 WHEN 1 THEN 1 ELSE 2 END"),
+                                created_at: :desc
+                              )
+                              .limit(50)
+
+  my_properties = Property.on_site.assigned_to(cabinet_user).order(updated_at: :desc).limit(50)
+
+  status_label = {
+    'new' => 'Новая', 'contacted' => 'В работе',
+    'in_progress' => 'Подбор', 'scheduled' => 'Запланирован показ',
+    'completed' => 'Завершено', 'cancelled' => 'Отменено',
+    'spam' => 'Спам'
+  }
+  priority_label = { 'urgent' => '🔥 СРОЧНО', 'high' => '⚡ Высокий', 'normal' => '' }
+
+  open_count = assigned_inquiries.where(status: %w[new contacted in_progress scheduled]).count
+  urgent_count = assigned_inquiries.where(priority: :urgent).count
+  hot_count = open_count > 0 ? assigned_inquiries.where(status: %w[new contacted]).count : 0
+%>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+    <header class="flex justify-between items-start mb-12">
+      <div>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">
+          <%= cabinet_user.role_admin? ? 'Администратор' : 'Агент' %> · Рабочая панель
+        </p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">
+          <%= [cabinet_user.first_name, cabinet_user.last_name].compact_blank.join(' ').presence || cabinet_user.email %>
+        </h1>
+      </div>
+      <%= button_to cabinet_logout_path, method: :delete,
+            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors',
+            form: { data: { turbo: false } } do %>
+        Выйти →
+      <% end %>
+    </header>
+
+    <!-- METRICS -->
+    <div class="grid grid-cols-3 gap-4 mb-12">
+      <div class="border border-border p-5">
+        <p class="text-xs tracking-wider text-muted-foreground uppercase mb-2">Активных заявок</p>
+        <p class="text-3xl font-light text-foreground"><%= open_count %></p>
+      </div>
+      <div class="border border-border p-5">
+        <p class="text-xs tracking-wider text-muted-foreground uppercase mb-2">Срочных</p>
+        <p class="text-3xl font-light text-foreground"><%= urgent_count %></p>
+      </div>
+      <div class="border border-border p-5">
+        <p class="text-xs tracking-wider text-muted-foreground uppercase mb-2">Объектов в работе</p>
+        <p class="text-3xl font-light text-foreground"><%= my_properties.length %></p>
+      </div>
+    </div>
+
+    <!-- ASSIGNED INQUIRIES -->
+    <div class="mb-16">
+      <div class="flex items-baseline justify-between mb-6">
+        <h2 class="text-xl font-light tracking-tight text-foreground">Назначенные клиенты</h2>
+        <span class="text-xs tracking-wider text-muted-foreground"><%= assigned_inquiries.length %> всего</span>
+      </div>
+      <% if assigned_inquiries.empty? %>
+        <div class="border border-border p-6 text-sm text-muted-foreground">
+          У вас пока нет назначенных заявок. Когда диспетчерская направит лида —
+          он появится здесь автоматически.
+        </div>
+      <% else %>
+        <div class="border border-border divide-y divide-border">
+          <% assigned_inquiries.each do |i| %>
+            <div class="p-5 flex flex-wrap items-start gap-4">
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-3 mb-2 flex-wrap">
+                  <% if priority_label[i.priority.to_s].present? %>
+                    <span class="text-xs tracking-wider text-foreground font-medium">
+                      <%= priority_label[i.priority.to_s] %>
+                    </span>
+                  <% end %>
+                  <span class="text-sm text-foreground"><%= i.name %></span>
+                  <% if i.phone.present? %>
+                    <a href="tel:<%= i.phone %>" class="text-xs text-muted-foreground hover:text-foreground">
+                      <%= i.phone %>
+                    </a>
+                  <% end %>
+                </div>
+                <p class="text-xs text-muted-foreground mb-1">
+                  <%= I18n.t("inquiry_types.#{i.inquiry_type}", default: i.inquiry_type.to_s.humanize) %> ·
+                  <%= status_label[i.status.to_s] || i.status %> ·
+                  <%= i.created_at.strftime('%d.%m.%y') %>
+                </p>
+                <% if i.message.present? %>
+                  <p class="text-sm text-muted-foreground mt-2"><%= truncate(i.message, length: 200) %></p>
+                <% end %>
+              </div>
+              <% if i.email.present? %>
+                <a href="mailto:<%= i.email %>" class="text-xs text-muted-foreground hover:text-foreground tracking-wider">
+                  <%= truncate(i.email, length: 30) %>
+                </a>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <!-- MY PROPERTIES -->
+    <div class="mb-16">
+      <div class="flex items-baseline justify-between mb-6">
+        <h2 class="text-xl font-light tracking-tight text-foreground">Мои объекты</h2>
+        <span class="text-xs tracking-wider text-muted-foreground"><%= my_properties.length %> в работе</span>
+      </div>
+      <% if my_properties.empty? %>
+        <div class="border border-border p-6 text-sm text-muted-foreground">
+          За вами не закреплены активные объекты.
+        </div>
+      <% else %>
+        <div class="grid md:grid-cols-2 gap-4">
+          <% my_properties.each do |p| %>
+            <%= link_to property_path(p), class: 'block border border-border p-5 hover:border-foreground transition-colors' do %>
+              <p class="text-sm text-foreground font-light mb-1">
+                <%= truncate(p.address.to_s, length: 60) %>
+              </p>
+              <p class="text-xs text-muted-foreground mb-3">
+                <%= p.try(:area) || p.try(:total_area) %> м²
+                <% if p.try(:district).present? %> · <%= p.district %><% end %>
+                <% if p.try(:rooms).present? %> · <%= p.rooms %>-комн<% end %>
+              </p>
+              <% if p.price.present? && p.price.positive? %>
+                <p class="text-base font-light text-foreground">
+                  <%= number_to_currency(p.price, precision: 0, unit: '₽', format: '%n %u', delimiter: ' ') %>
+                </p>
+              <% end %>
+              <p class="text-xs text-muted-foreground/70 mt-3 tracking-wider">
+                <%= p.status %> · обн. <%= p.updated_at.strftime('%d.%m.%y') %>
+              </p>
+            <% end %>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</section>

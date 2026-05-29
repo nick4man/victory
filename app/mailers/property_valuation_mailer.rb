@@ -7,18 +7,40 @@ class PropertyValuationMailer < ApplicationMailer
   # @param valuation [PropertyValuation]
   def valuation_completed(valuation)
     @valuation = valuation
-    @evaluation_result = JSON.parse(valuation.evaluation_data, symbolize_names: true)
+    # evaluation_data — jsonb column → ActiveRecord deserialize'ит в Hash.
+    # Legacy rows могли быть stored как JSON string. Mirror'им pattern из
+    # PropertyValuationsController#result.
+    raw = valuation.evaluation_data
+    @evaluation_result = case raw
+                         when Hash   then raw.deep_symbolize_keys
+                         when String then (JSON.parse(raw, symbolize_names: true) rescue {})
+                         else {}
+                         end
     @result_url = property_valuation_result_url(valuation.token)
     @pdf_url = property_valuation_download_pdf_url(valuation.token, format: :pdf)
-    
+
+    # In-app notification — only for logged-in users (PropertyValuation has
+    # `user_id` for those who submitted while authenticated, or it got
+    # back-filled on registration via User#link_existing_records).
+    Notification.notify!(
+      valuation.user,
+      kind:       'valuation',
+      title:      'Онлайн-оценка готова',
+      body:       "Адрес: #{valuation.address}".truncate(200),
+      url:        @result_url,
+      notifiable: valuation
+    )
+
     attach_logo
     track_email("valuation_#{valuation.id}")
     
-    mail(
+    msg = mail(
       to: valuation.email,
       subject: "Результат оценки недвижимости - #{number_to_currency(valuation.estimated_price, precision: 0)}",
       template_name: 'valuation_completed'
     )
+    gate_notify!(msg, valuation.user, category: 'deal_events', channel: 'email') if valuation.user.present?
+    msg
   end
   
   # Notify managers about new valuation
@@ -58,35 +80,40 @@ class PropertyValuationMailer < ApplicationMailer
   # @param valuation [PropertyValuation]
   def callback_confirmation(valuation)
     return unless valuation.email.present?
-    
+
     @valuation = valuation
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: valuation.email,
       subject: 'Мы получили вашу заявку на звонок',
       template_name: 'callback_confirmation'
     )
+    gate_notify!(msg, valuation.user, category: 'deal_events', channel: 'email') if valuation.user.present?
+    msg
   end
   
   # Send follow-up email after valuation
   # @param valuation [PropertyValuation]
   def follow_up(valuation)
     return unless valuation.email.present?
-    
+
     @valuation = valuation
     @result_url = property_valuation_result_url(valuation.token)
     @contact_url = contacts_url
-    
+
     attach_logo
-    
-    mail(
+
+    msg = mail(
       to: valuation.email,
       subject: 'Как продвигается продажа вашей недвижимости?',
       template_name: 'follow_up'
     )
+    # Follow-up — marketing touchpoint (NOT transactional), gated через market_news.
+    gate_notify!(msg, valuation.user, category: 'market_news', channel: 'email') if valuation.user.present?
+    msg
   end
   
   private

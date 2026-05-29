@@ -1,0 +1,188 @@
+# frozen_string_literal: true
+
+module Telegram
+  # Saves Telegram messages from whitelisted senders (operator personal
+  # account + Oksana + ops group) into the local /app/inbox/ directory so
+  # Claude / staff can review screenshots and notes between sessions.
+  #
+  # Whitelist comes from ENV[TELEGRAM_INBOX_WHITELIST] — comma-separated
+  # numeric chat_ids. Both private chats (positive ids) and groups
+  # (negative ids) supported. If the env var is unset, the saver is a no-op
+  # — it WILL NOT save messages from random Telegram users.
+  #
+  # Storage layout (gitignored):
+  #   inbox/
+  #     2026-05-12_18-30-15_id<chat_id>_msg<message_id>.json    # always
+  #     2026-05-12_18-30-15_id<chat_id>_msg<message_id>.jpg     # if photo
+  #     2026-05-12_18-30-15_id<chat_id>_msg<message_id>.<ext>   # if document
+  class InboxSaver
+    INBOX_DIR = Rails.root.join('inbox')
+
+    def initialize(msg)
+      @msg = msg
+    end
+
+    def self.call(msg)
+      new(msg).call
+    end
+
+    # Fast whitelist check without instantiating — used by InboundProcessor
+    # to decide whether to enqueue the async TelegramInboxSaveJob at all.
+    def self.whitelisted?(msg)
+      return false if msg.blank?
+      list = ENV['TELEGRAM_INBOX_WHITELIST'].to_s.split(',').map { |s| s.strip.to_i }.compact_blank
+      return false if list.empty?
+      chat_id = msg.dig('chat', 'id').to_i
+      from_id = msg.dig('from', 'id').to_i
+      list.include?(chat_id) || list.include?(from_id)
+    end
+
+    def call
+      return :no_msg if @msg.blank?
+      return :not_whitelisted unless whitelisted?
+
+      ensure_dir
+      base = filename_base
+      write_meta!(base)
+      write_text!(base) if text.present?
+      download_photo!(base) if photo.present?
+      download_document!(base) if document.present?
+
+      # Phase 15 — параллельно с file save кладём в БД для FTS.
+      # Soft-fail: ошибка БД не должна ломать file-save flow.
+      persist_to_db
+
+      Rails.logger.info("[Telegram::InboxSaver] saved #{base}")
+      :saved
+    rescue StandardError => e
+      Rails.logger.warn("[Telegram::InboxSaver] failed: #{e.class} #{e.message}")
+      :error
+    end
+
+    private
+
+    def whitelist
+      ENV['TELEGRAM_INBOX_WHITELIST'].to_s.split(',').map { |s| s.strip.to_i }.compact_blank
+    end
+
+    def chat_id
+      @msg.dig('chat', 'id').to_i
+    end
+
+    def from_id
+      @msg.dig('from', 'id').to_i
+    end
+
+    def whitelisted?
+      list = whitelist
+      return false if list.empty?
+      list.include?(chat_id) || list.include?(from_id)
+    end
+
+    def text
+      @msg['text'].presence || @msg['caption'].presence
+    end
+
+    # Telegram sends photos as an array of progressively larger thumbnails;
+    # the last entry is the original-resolution version. We grab that one.
+    def photo
+      Array(@msg['photo']).last
+    end
+
+    def document
+      @msg['document']
+    end
+
+    def ensure_dir
+      INBOX_DIR.mkpath
+    end
+
+    def filename_base
+      ts = Time.current.strftime('%Y-%m-%d_%H-%M-%S')
+      "#{ts}_id#{chat_id}_msg#{@msg['message_id']}"
+    end
+
+    def write_meta!(base)
+      File.write(INBOX_DIR.join("#{base}.json"), JSON.pretty_generate({
+        message_id:  @msg['message_id'],
+        date:        @msg['date'],
+        chat:        @msg['chat'],
+        from:        @msg['from'],
+        text:        @msg['text'],
+        caption:     @msg['caption'],
+        photo_meta:  photo,
+        document_meta: document,
+        ingested_at: Time.current.iso8601
+      }.compact))
+    end
+
+    def write_text!(base)
+      File.write(INBOX_DIR.join("#{base}.txt"), text)
+    end
+
+    def download_photo!(base)
+      client.download_file_to(photo['file_id'], INBOX_DIR.join("#{base}.jpg"))
+    end
+
+    def download_document!(base)
+      ext = File.extname(document['file_name'].to_s).presence || '.bin'
+      client.download_file_to(document['file_id'], INBOX_DIR.join("#{base}#{ext}"))
+    end
+
+    def client
+      @client ||= Telegram::Client.new
+    end
+
+    # Phase 15 — upsert message в telegram_group_messages для FTS поиска.
+    # Только supergroup/group (private DM не индексируем — privacy + объём не
+    # оправдан). Idempotent через unique key (chat_id, message_id).
+    def persist_to_db
+      chat_type = @msg.dig('chat', 'type').to_s
+      return unless chat_type.in?(%w[group supergroup])
+
+      result = TelegramGroupMessage.upsert(
+        {
+          tg_chat_id: chat_id,
+          tg_message_id: @msg['message_id'].to_i,
+          tg_thread_id: @msg['message_thread_id'],
+          tg_user_id: from_id,
+          sender_username: @msg.dig('from', 'username'),
+          sender_first_name: @msg.dig('from', 'first_name'),
+          body: text.to_s,
+          payload_kind: detect_payload_kind,
+          has_attachment: photo.present? || document.present?,
+          reply_to_tg_message_id: @msg.dig('reply_to_message', 'message_id'),
+          sent_at: parse_sent_at,
+          created_at: Time.current,
+          updated_at: Time.current
+        },
+        unique_by: %i[tg_chat_id tg_message_id]
+      )
+
+      # Phase 16.5 — upsert skip'ает after_commit callbacks (ActiveRecord gotcha),
+      # поэтому enqueue embed job вручную если text present. id из upsert result.
+      return if text.to_s.strip.empty?
+
+      msg_id = result.rows.first&.first
+      EmbedTelegramGroupMessageJob.perform_later(msg_id) if msg_id
+    rescue StandardError => e
+      Rails.logger.warn("[Telegram::InboxSaver#persist_to_db] #{e.class}: #{e.message}")
+    end
+
+    def detect_payload_kind
+      return 'photo'    if photo.present?
+      return 'document' if document.present?
+      return 'voice'    if @msg['voice'].present?
+      return 'sticker'  if @msg['sticker'].present?
+      return 'video'    if @msg['video'].present?
+      return 'system'   if @msg['forum_topic_created'] || @msg['new_chat_members'] || @msg['left_chat_member']
+
+      'text'
+    end
+
+    def parse_sent_at
+      epoch = @msg['date'].to_i
+      epoch.positive? ? Time.zone.at(epoch) : Time.current
+    end
+  end
+end

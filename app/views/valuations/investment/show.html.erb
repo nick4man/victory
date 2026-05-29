@@ -1,0 +1,408 @@
+<% content_for :title, "Результат аудита — АН Виктори" %>
+
+<%
+  # Verdict/strategy/confidence labels live in ValuationsHelper now —
+  # single source of truth, also used by PDF generator.
+  verdict_ru_map     = ValuationsHelper::VERDICT_RU
+  strategy_ru_map    = ValuationsHelper::STRATEGY_RU
+  confidence_ru_map  = ValuationsHelper::CONFIDENCE_RU
+  fmt_rub = ->(v) {
+    next '—' if v.blank?
+    "#{v.to_f.round.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\1 ').reverse} ₽"
+  }
+  fmt_pct = ->(v, digits = 1) {
+    next '—' if v.blank?
+    "#{v.to_f.round(digits)}%"
+  }
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto"
+       data-token="<%= @valuation.token %>"
+       data-status="<%= @valuation.status %>">
+
+    <%# === Pending state: loader === %>
+    <% if @valuation.pending? %>
+      <div class="text-center py-20" data-valuation-progress-target="loader">
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">РАСЧЁТ В ПРОЦЕССЕ</p>
+        <div class="inline-block animate-spin mb-6">
+          <svg class="w-12 h-12 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" stroke-width="2" opacity="0.2"/>
+            <path d="M12 2a10 10 0 0 1 10 10" stroke-width="2"/>
+          </svg>
+        </div>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4">
+          Запускаем 1&nbsp;000&nbsp;000 симуляций Монте-Карло
+        </h1>
+        <p class="text-base text-muted-foreground max-w-xl mx-auto">
+          Считаем индекс эффективности для трёх стратегий (наличные, ипотека, депозит), отбираем 5 лучших банковских программ, готовим PDF-отчёт.
+          Обычно занимает 20–40 секунд.
+        </p>
+        <p class="mt-8 text-xs tracking-[0.3em] text-muted-foreground/70" id="poll-status">
+          Ожидание...
+        </p>
+      </div>
+
+      <script>
+        (function () {
+          var token = <%= @valuation.token.to_json.html_safe %>;
+          var pollEl = document.getElementById('poll-status');
+          var INTERVAL_MS = 4000;
+          var MAX_MS = 180000;
+          var startedAt = Date.now();
+          var setText = function (s) { if (pollEl) pollEl.textContent = s; };
+
+          var poll = function () {
+            if (Date.now() - startedAt > MAX_MS) {
+              setText('Превышено время ожидания. Обновите страницу.');
+              clearInterval(timer);
+              return;
+            }
+            fetch('/valuations/audit/' + encodeURIComponent(token) + '/status', {
+              headers: { Accept: 'application/json' }
+            }).then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (data) {
+                if (!data) return;
+                if (data.status === 'completed' || data.status === 'failed') {
+                  setText('Готово, перезагружаем...');
+                  clearInterval(timer);
+                  setTimeout(function () { window.location.reload(); }, 400);
+                }
+              })
+              .catch(function (e) { console.warn('[valuation-poll] failed', e); });
+          };
+
+          setText('Считаем...');
+          var timer = setInterval(poll, INTERVAL_MS);
+          poll();
+        })();
+      </script>
+
+    <%# === Failed state === %>
+    <% elsif @valuation.failed? %>
+      <div class="text-center py-20 max-w-2xl mx-auto">
+        <p class="text-sm tracking-[0.4em] text-destructive mb-6">РАСЧЁТ НЕ ВЫПОЛНЕН</p>
+        <h1 class="text-3xl font-light text-foreground mb-4">Расширенный аудит временно недоступен</h1>
+        <p class="text-base text-muted-foreground mb-8">
+          Движок аудита не отвечает. Попробуйте обновить через несколько минут.
+        </p>
+        <div class="flex gap-3 justify-center">
+          <%= link_to "Обновить", investment_audit_show_path(token: @valuation.token),
+                class: "px-6 py-3 border border-border text-sm tracking-wider hover:bg-secondary" %>
+          <%= link_to "Простая оценка", new_property_valuation_path,
+                class: "px-6 py-3 bg-foreground text-background text-sm tracking-wider" %>
+        </div>
+      </div>
+
+    <%# === Completed state === %>
+    <% else %>
+      <%
+        verdict = @audit&.dig('verdict') || 'NEUTRAL'
+        verdict_ru = verdict_ru_map[verdict] || verdict
+        verdict_color = case verdict
+          when 'BUY'  then 'text-emerald-500'
+          when 'WAIT' then 'text-rose-500'
+          else 'text-amber-500'
+        end
+        scenarios = @audit&.dig('scenarios') || []
+        realistic = scenarios.find { |s| s['scenario_name'] == 'Реалистичный' } || scenarios[1] || scenarios.first
+        mc        = @monte_carlo || {}
+        recommended = mc['recommended_strategy']
+        confidence  = mc['confidence_level']
+        sensitivity = @audit&.dig('sensitivity_table') || []
+      %>
+
+      <%# === Report number + date strip === %>
+      <div class="mb-6 flex items-center justify-between flex-wrap gap-3 text-xs tracking-[0.3em] text-muted-foreground">
+        <span>ИНВЕСТИЦИОННЫЙ АУДИТ · ОТЧЁТ <span class="text-foreground"><%= @valuation.report_label %></span></span>
+        <span><%= l(@valuation.created_at.to_date, format: :long) %></span>
+      </div>
+
+      <%# === Object info bar === %>
+      <div class="mb-12 bg-card border border-border p-6 lg:p-8">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-6">
+          <div class="col-span-2 md:col-span-2">
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ОБЪЕКТ</p>
+            <p class="text-base text-foreground"><%= @valuation.address.presence || @audit['complex_name'] %></p>
+          </div>
+          <div>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ПЛОЩАДЬ</p>
+            <p class="text-base text-foreground"><%= @audit['area_sqm']&.to_f&.round(1) %> м²</p>
+          </div>
+          <div>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ЦЕНА</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(@audit['price_total']) %></p>
+          </div>
+          <div>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">₽ ЗА М²</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(@audit['price_per_sqm']) %></p>
+          </div>
+        </div>
+      </div>
+
+      <%# === Hero: verdict === %>
+      <div class="text-center mb-16">
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ВЕРДИКТ</p>
+        <h1 class="text-5xl lg:text-7xl font-light tracking-tight <%= verdict_color %> mb-6">
+          <%= verdict_ru %>
+        </h1>
+        <p class="text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          <%# Engine иногда возвращает «EI» в verdict_explanation/decision_rationale —
+              post-process на стороне Rails чтобы пользователь видел «индекс эффективности». %>
+          <%= (@audit['verdict_explanation'] || 'Расчёт завершён.').to_s.gsub(/\bEI\b/, 'индекс эффективности') %>
+        </p>
+        <% if recommended.present? %>
+          <p class="mt-6 text-sm text-foreground">
+            Лучшая стратегия по симуляции Монте-Карло: <strong><%= strategy_ru_map[recommended] || recommended.to_s.capitalize %></strong>
+            <% if confidence.present? %>
+              <span class="text-muted-foreground">· <%= confidence_ru_map[confidence] || confidence %></span>
+            <% end %>
+          </p>
+        <% end %>
+      </div>
+
+      <%# === EI tiles (3 strategies with MC range) === %>
+      <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИНДЕКС ЭФФЕКТИВНОСТИ ПО СТРАТЕГИЯМ</p>
+      <p class="text-xs text-muted-foreground mb-4 leading-relaxed max-w-3xl">
+        Индекс эффективности — соотношение полезного результата к затратам. <strong>≥ 1.2</strong> — выгодно (рекомендация «Покупать»),
+        <strong>0.9–1.1</strong> — нейтрально, <strong>&lt; 0.8</strong> — невыгодно (рекомендация «Подождать»).
+        Медиана — центральное значение по 1 млн симуляций Монте-Карло; интервал p5–p95 — пессимистичный и оптимистичный сценарии.
+      </p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+        <%
+          # If the user picked a specific deposit program in the form
+          # (см. attach_rate_overrides), отображаем её рядом с ДЕПОЗИТ-карточкой.
+          user_ov = (@valuation.evaluation_data || {})['user_overrides'] || {}
+          deposit_label = user_ov['deposit_program_label']
+          ei_data = [
+            ['НАЛИЧНЫМИ (100%)', @audit['ei_cash'], mc['cash'], 'cash'],
+            ['ИПОТЕКА',          @audit['ei_mortgage'], mc['mortgage'], 'mortgage'],
+            ['ДЕПОЗИТ',          @audit['ei_deposit'], mc['deposit'], 'deposit']
+          ]
+        %>
+        <% ei_data.each do |title, ei, mc_strat, key| %>
+          <% is_best = recommended.to_s.downcase == key %>
+          <div class="bg-card border <%= is_best ? 'border-foreground/60' : 'border-border' %> p-6 relative">
+            <% if is_best %>
+              <span class="absolute top-3 right-3 text-[9px] tracking-[0.3em] bg-foreground text-background px-2 py-1">ЛУЧШАЯ</span>
+            <% end %>
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3"><%= title %></p>
+            <p class="text-4xl font-light text-foreground mb-1"><%= ei ? ei.to_f.round(2) : '—' %></p>
+            <% if key == 'deposit' && deposit_label.present? %>
+              <p class="text-[11px] text-muted-foreground mb-3">
+                Программа: <span class="text-foreground"><%= deposit_label %></span>
+                <% if user_ov['deposit_rate'] %>· ставка <span class="text-foreground"><%= user_ov['deposit_rate'] %>%</span><% end %>
+              </p>
+            <% end %>
+            <p class="text-xs text-muted-foreground mb-4">Медиана индекса (детерминированный расчёт)</p>
+
+            <% if mc_strat %>
+              <div class="pt-4 border-t border-border space-y-2">
+                <div class="flex justify-between text-xs">
+                  <span class="text-muted-foreground">Медиана Монте-Карло:</span>
+                  <span class="text-foreground"><%= mc_strat['ei_median']&.to_f&.round(2) %></span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-muted-foreground">Диапазон p5–p95:</span>
+                  <span class="text-foreground"><%= mc_strat['ei_p5']&.to_f&.round(2) %>–<%= mc_strat['ei_p95']&.to_f&.round(2) %></span>
+                </div>
+                <div class="flex justify-between text-xs">
+                  <span class="text-muted-foreground">Вероятность «Покупать»:</span>
+                  <span class="text-foreground"><%= fmt_pct.(mc_strat['buy_probability']) %></span>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <%# === 3 scenarios table (Оптим / Реал / Пессим) === %>
+      <% if scenarios.any? %>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИНДЕКС ЭФФЕКТИВНОСТИ ПРИ РАЗНЫХ СЦЕНАРИЯХ</p>
+        <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
+          Зависимость от макропараметров (рост цен, ставки ЦБ, инфляция). Лучшая стратегия выбирается отдельно для каждого сценария.
+        </p>
+        <div class="bg-card border border-border mb-12 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">СЦЕНАРИЙ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">РОСТ ЦЕН</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИПОТЕКА</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · НАЛИЧНЫЕ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · ИПОТЕКА</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС · ДЕПОЗИТ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ЛУЧШАЯ</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% scenarios.each do |s| %>
+                <tr class="border-b border-border last:border-b-0">
+                  <td class="p-4 text-foreground"><%= s['scenario_name'] %></td>
+                  <td class="p-4 text-right text-muted-foreground"><%= s.dig('params','price_growth_annual')&.to_f&.round(1) %>%</td>
+                  <td class="p-4 text-right text-muted-foreground"><%= s.dig('params','mortgage_rate')&.to_f&.round(1) %>%</td>
+                  <td class="p-4 text-right text-foreground"><%= s.dig('cash','ei')&.to_f&.round(2) %></td>
+                  <td class="p-4 text-right text-foreground"><%= s.dig('mortgage','ei')&.to_f&.round(2) %></td>
+                  <td class="p-4 text-right text-foreground"><%= s.dig('deposit','ei')&.to_f&.round(2) %></td>
+                  <td class="p-4 text-right text-foreground"><%= strategy_ru_map[s['best_strategy']] || s['best_strategy'] %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+
+      <%# === Bank offers — банковские программы с симуляцией Монте-Карло === %>
+      <%
+        per_offer = @bank_offers&.dig('per_offer') || []
+        recommended_offer_id = @bank_offers&.dig('recommended_offer_id')
+        recommended_bank = @bank_offers&.dig('recommended_bank')
+        recommended_product = @bank_offers&.dig('recommended_product')
+      %>
+      <% if per_offer.any? %>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ИПОТЕЧНЫЕ ПРОГРАММЫ БАНКОВ</p>
+        <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
+          Каждая программа просчитана отдельной симуляцией Монте-Карло — реальные ставки банков, требования по первому взносу и сроку.
+          Сортировка по индексу ипотеки (выше — выгоднее).
+        </p>
+        <% if recommended_bank.present? %>
+          <p class="text-sm text-foreground mb-4">
+            ◆ Рекомендуем: <strong><%= recommended_bank %></strong> — <%= recommended_product %>
+          </p>
+        <% end %>
+        <div class="bg-card border border-border mb-12 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-border">
+                <th class="text-left p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">БАНК / ПРОГРАММА</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">СТАВКА</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ИНДЕКС (МЕДИАНА)</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">P5–P95</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">ВЕРОЯТНОСТЬ ВЫГОДЫ</th>
+                <th class="text-right p-4 text-[10px] tracking-[0.3em] text-muted-foreground font-normal">&nbsp;</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% per_offer.first(8).each do |po| %>
+                <% offer = po['offer'] || {} %>
+                <% is_best = offer['id'] == recommended_offer_id %>
+                <tr class="border-b border-border last:border-b-0 <%= is_best ? 'bg-secondary' : '' %>">
+                  <td class="p-4 text-foreground">
+                    <%= offer['bank_name'] %><% if is_best %> <span class="text-xs text-muted-foreground">◆</span><% end %>
+                    <div class="text-xs text-muted-foreground"><%= offer['product_name'].to_s.truncate(60) %></div>
+                  </td>
+                  <td class="p-4 text-right text-foreground"><%= po['effective_rate']&.to_f&.round(2) %>%</td>
+                  <td class="p-4 text-right text-foreground"><%= po['ei_mortgage_median']&.to_f&.round(2) %></td>
+                  <td class="p-4 text-right text-muted-foreground">
+                    <%= po['ei_mortgage_p5']&.to_f&.round(2) %>–<%= po['ei_mortgage_p95']&.to_f&.round(2) %>
+                  </td>
+                  <td class="p-4 text-right text-foreground"><%= po['buy_probability'].to_f.round(1) %>%</td>
+                  <td class="p-4 text-right">
+                    <% if offer['id'].present? %>
+                      <%= link_to "ЗАЯВКА →",
+                            services_mortgage_program_apply_path(offer['id'], audit_token: @valuation.token),
+                            class: "inline-block text-[10px] tracking-[0.25em] border border-border px-3 py-2 text-muted-foreground hover:text-foreground hover:border-foreground transition-colors whitespace-nowrap" %>
+                    <% end %>
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+
+      <%# === Mortgage details (real scenario) === %>
+      <% if realistic && (m = realistic['mortgage']).present? %>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">УСЛОВИЯ ИПОТЕКИ (РЕАЛИСТИЧНЫЙ СЦЕНАРИЙ)</p>
+        <div class="bg-card border border-border mb-12 grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-border">
+          <div class="p-5">
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ПЕРВЫЙ ВЗНОС</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(m['down_payment']) %></p>
+          </div>
+          <div class="p-5">
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ТЕЛО КРЕДИТА</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(m['loan_amount']) %></p>
+          </div>
+          <div class="p-5">
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ПЛАТЁЖ В МЕС.</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(m['monthly_payment']) %></p>
+          </div>
+          <div class="p-5">
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ПЕРЕПЛАТА</p>
+            <p class="text-base text-foreground"><%= fmt_rub.(m['total_interest']) %></p>
+          </div>
+        </div>
+      <% end %>
+
+      <%# === Sensitivity table (mortgage rate) — compact SVG sparkline === %>
+      <% if sensitivity.any? %>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-4">ВЛИЯНИЕ СТАВКИ ИПОТЕКИ НА ИНДЕКС</p>
+        <p class="text-xs text-muted-foreground mb-4 max-w-3xl">
+          Как меняется индекс ипотеки если ставка ниже или выше. Линия порога 1.0 — точка безубыточности.
+        </p>
+        <%
+          rates_with_ei = sensitivity.map { |r| [r['rate'].to_f, r['ei'].to_f] }
+          xs = rates_with_ei.map(&:first)
+          ys = rates_with_ei.map(&:last)
+          x_min, x_max = xs.min, xs.max
+          y_min, y_max = [0, ys.min].min, [1.2, ys.max].max
+          w, h = 800, 180
+          x_of = ->(x) { 40 + (x - x_min).to_f / (x_max - x_min) * (w - 60) }
+          y_of = ->(y) { h - 20 - (y - y_min).to_f / (y_max - y_min) * (h - 40) }
+          path = rates_with_ei.map.with_index { |(x, y), i| "#{i.zero? ? 'M' : 'L'}#{x_of.call(x).round(1)} #{y_of.call(y).round(1)}" }.join(' ')
+          threshold_y = y_of.call(1.0).round(1)
+        %>
+        <div class="bg-card border border-border p-6 mb-12 overflow-x-auto">
+          <svg viewBox="0 0 <%= w %> <%= h %>" preserveAspectRatio="xMidYMid meet" class="w-full h-auto">
+            <line x1="40" y1="<%= threshold_y %>" x2="<%= w - 20 %>" y2="<%= threshold_y %>" stroke="currentColor" stroke-width="0.5" stroke-dasharray="4 4" opacity="0.3"/>
+            <text x="<%= w - 24 %>" y="<%= threshold_y - 4 %>" font-size="10" text-anchor="end" fill="currentColor" opacity="0.5">Индекс = 1.0 (порог)</text>
+            <path d="<%= path %>" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <% [x_min, (x_min + x_max) / 2.0, x_max].each do |x| %>
+              <text x="<%= x_of.call(x) %>" y="<%= h - 4 %>" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.6"><%= x.to_i %>%</text>
+            <% end %>
+          </svg>
+          <p class="mt-2 text-xs text-muted-foreground text-center">Ось X — ставка ипотеки (%). Ось Y — индекс эффективности.</p>
+        </div>
+      <% end %>
+
+      <%# === Risks + assumptions === %>
+      <% if (@audit['risks'].is_a?(Array) && @audit['risks'].any?) || (@audit['assumptions'].is_a?(Array) && @audit['assumptions'].any?) %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+          <% if @audit['risks']&.any? %>
+            <div class="bg-card border border-border p-6">
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">РИСКИ И ОГРАНИЧЕНИЯ</p>
+              <ul class="space-y-2 text-sm text-foreground/90">
+                <% @audit['risks'].each do |r| %><li>— <%= r %></li><% end %>
+              </ul>
+            </div>
+          <% end %>
+          <% if @audit['assumptions']&.any? %>
+            <div class="bg-card border border-border p-6">
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ПРЕДПОСЫЛКИ РАСЧЁТА</p>
+              <ul class="space-y-2 text-sm text-foreground/90">
+                <% @audit['assumptions'].each do |a| %><li>— <%= a %></li><% end %>
+              </ul>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+
+      <%# === CTAs === %>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <%= link_to "СКАЧАТЬ PDF-ОТЧЁТ",
+              investment_audit_pdf_path(token: @valuation.token),
+              class: "px-8 py-4 bg-foreground text-background tracking-[0.2em] text-sm hover:bg-foreground/85 text-center" %>
+        <%= link_to "НОВЫЙ АУДИТ",
+              investment_audit_new_path,
+              class: "px-8 py-4 border border-border tracking-[0.2em] text-sm hover:bg-secondary text-center" %>
+        <%= link_to "ВЕРНУТЬСЯ К ВЫБОРУ",
+              valuations_path,
+              class: "px-8 py-4 border border-border tracking-[0.2em] text-sm hover:bg-secondary text-center" %>
+      </div>
+
+      <p class="mt-8 text-xs text-muted-foreground/70 text-center">
+        Дата аудита: <%= @audit['audit_date'] %> · ID: <%= @valuation.audit_engine_id %>
+      </p>
+    <% end %>
+  </div>
+</section>

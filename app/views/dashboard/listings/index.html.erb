@@ -1,0 +1,126 @@
+<% content_for :title, 'Мои оценки и объекты — АН Виктори' %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <div class="mb-10 pb-6 border-b border-border">
+      <p class="text-xs tracking-[0.4em] text-muted-foreground mb-3">ЛИЧНЫЙ КАБИНЕТ</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Мои оценки и объекты</h1>
+      <p class="text-sm text-muted-foreground mt-3 max-w-2xl">
+        Все онлайн-оценки, которые вы заказывали, и объекты, которые вы продаёте через нас.
+        Регистрация автоматически подтянула заявки, оставленные ранее с этим email.
+      </p>
+    </div>
+
+    <%# ============================================================
+        SECTION 1 — МОИ ОЦЕНКИ (PropertyValuation)
+        ============================================================ %>
+    <section class="mb-14">
+      <div class="flex items-baseline justify-between mb-5 flex-wrap gap-2">
+        <h2 class="text-xl lg:text-2xl font-light tracking-wide text-foreground">Оценки и аудиты</h2>
+        <div class="flex gap-3">
+          <%= link_to 'Заказать новую', valuations_path,
+                class: 'text-xs tracking-[0.25em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-1' %>
+        </div>
+      </div>
+
+      <% if @valuations.any? %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <% @valuations.each do |v| %>
+            <div class="bg-card border border-border p-5 hover:border-foreground/40 transition-colors">
+              <div class="flex items-baseline justify-between mb-3 flex-wrap gap-2">
+                <span class="text-[10px] tracking-[0.3em] text-muted-foreground">
+                  <%= v.audit_mode == 'investment' ? 'ИНВЕСТ-АУДИТ' : 'ЭКСПРЕСС-ОЦЕНКА' %>
+                </span>
+                <span class="text-[10px] tracking-wider text-muted-foreground/70">
+                  №<%= v.report_number || v.id %> · <%= l v.created_at.to_date, format: :long rescue v.created_at.strftime('%d.%m.%Y') %>
+                </span>
+              </div>
+              <p class="text-base text-foreground font-medium leading-snug mb-1 truncate" title="<%= v.address %>">
+                <%= v.address.presence || 'Адрес не указан' %>
+              </p>
+              <p class="text-xs text-muted-foreground mb-3">
+                <%= v.total_area ? "#{v.total_area} м²" : '' %>
+                <% if v.rooms %><span class="opacity-50 mx-1">·</span><%= v.rooms %>-комн.<% end %>
+              </p>
+              <% if v.estimated_price.to_f.positive? %>
+                <p class="text-2xl font-light text-foreground mb-3">
+                  <%= number_with_delimiter(v.estimated_price.to_i, delimiter: ' ') %> ₽
+                </p>
+              <% end %>
+              <div class="flex gap-3 text-xs tracking-wider">
+                <%= link_to 'Открыть отчёт', result_property_valuations_path(v.token),
+                      class: 'text-foreground hover:text-muted-foreground border-b border-foreground/40 pb-px' %>
+                <%= link_to 'Скачать PDF', download_pdf_property_valuations_path(v.token),
+                      class: 'text-muted-foreground hover:text-foreground border-b border-border pb-px' %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <div class="bg-card border border-border p-10 text-center">
+          <p class="text-sm text-muted-foreground mb-4">У вас пока нет оценок. Закажите бесплатно — это занимает 1 минуту.</p>
+          <%= link_to 'Оценить квартиру', valuations_path,
+                class: 'inline-block px-6 py-3 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+        </div>
+      <% end %>
+    </section>
+
+    <%# ============================================================
+        SECTION 2 — Я ПРОДАЮ ЧЕРЕЗ АН (Property where owner_user_id)
+        ============================================================ %>
+    <section>
+      <div class="flex items-baseline justify-between mb-5 flex-wrap gap-2">
+        <h2 class="text-xl lg:text-2xl font-light tracking-wide text-foreground">Я продаю через АН</h2>
+      </div>
+
+      <% if @selling_properties.any? %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <% @selling_properties.each do |p| %>
+            <div class="bg-card border border-border p-5">
+              <div class="flex items-center gap-2 mb-3 flex-wrap">
+                <% if p.status_active? && p.published_at %>
+                  <span class="text-[10px] tracking-[0.3em] px-2 py-0.5 border border-emerald-500/40 text-emerald-300">НА САЙТЕ</span>
+                <% elsif p.status_sold? %>
+                  <span class="text-[10px] tracking-[0.3em] px-2 py-0.5 border border-border text-muted-foreground">ПРОДАН</span>
+                <% else %>
+                  <span class="text-[10px] tracking-[0.3em] px-2 py-0.5 border border-border text-muted-foreground">В РАБОТЕ</span>
+                <% end %>
+                <% if p.deal_state.present? %>
+                  <span class="text-[10px] tracking-wider text-muted-foreground">CRM · <%= p.deal_state %></span>
+                <% end %>
+              </div>
+              <p class="text-base text-foreground font-medium leading-snug mb-1"><%= p.title.presence || p.address %></p>
+              <p class="text-xs text-muted-foreground mb-3"><%= p.address %></p>
+              <% if p.price.to_f.positive? %>
+                <p class="text-xl font-light text-foreground mb-3">
+                  <%= number_with_delimiter(p.price.to_i, delimiter: ' ') %> ₽
+                </p>
+              <% end %>
+              <% if p.user %>
+                <p class="text-xs text-muted-foreground">
+                  Агент: <span class="text-foreground"><%= p.user.short_name.presence || p.user.email %></span>
+                </p>
+              <% end %>
+              <% if p.status_active? && p.published_at %>
+                <%= link_to 'Открыть на сайте', property_path(p), target: '_blank',
+                      class: 'inline-block mt-3 text-xs tracking-wider text-foreground border-b border-border hover:border-foreground transition-colors pb-px' %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
+      <% else %>
+        <div class="bg-card border border-border p-10 text-center">
+          <p class="text-sm text-muted-foreground mb-2">У вас пока нет объектов, которые мы продаём.</p>
+          <p class="text-xs text-muted-foreground/70 mb-4">
+            Оставьте заявку — мы оценим, подготовим к продаже и опубликуем на сайте + Авито/ЦИАН/Я.Недвижимость.
+          </p>
+          <%= link_to 'Заказать продажу', sell_root_path,
+                class: 'inline-block px-6 py-3 text-xs tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+        </div>
+      <% end %>
+    </section>
+  </div>
+</section>

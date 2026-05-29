@@ -17,16 +17,19 @@ class PagesController < ApplicationController
     )
     
     add_breadcrumb 'О компании'
-    
-    # Load statistics for about page
+
+    @metrics = AgencyMetricsService.call
+    @reviews = Review.public_facing.limit(6).to_a
+
+    # Legacy hash kept for backwards compat with anything still using @statistics.
     @statistics = {
-      years_in_business: Time.current.year - 2010,
-      total_deals: Property.where(status: [:sold, :rented]).count,
+      years_in_business: @metrics[:years_on_market],
+      total_deals:       @metrics[:completed_deals],
       active_properties: Property.published.count,
-      satisfied_clients: User.clients.count,
+      satisfied_clients: @metrics[:happy_clients],
       professional_agents: User.agents.count
     }
-    
+
     track_event('about_page_viewed')
   end
   
@@ -152,49 +155,11 @@ class PagesController < ApplicationController
       description: 'Полный спектр услуг по недвижимости: покупка, продажа, аренда, ипотека, юридическое сопровождение.',
       keywords: 'услуги, недвижимость, ипотека, юридические услуги, оценка'
     )
-    
+
     add_breadcrumb 'Услуги'
-    
-    # Services list
-    @services = [
-      {
-        icon: '🏠',
-        title: 'Подбор недвижимости',
-        description: 'Поможем найти идеальную квартиру или дом с учетом всех ваших пожеланий',
-        link: properties_path
-      },
-      {
-        icon: '💰',
-        title: 'Ипотечное кредитование',
-        description: 'Подбор оптимальных ипотечных программ от ведущих банков',
-        link: services_mortgage_calculator_path
-      },
-      {
-        icon: '⚖️',
-        title: 'Юридическое сопровождение',
-        description: 'Полное юридическое сопровождение сделок купли-продажи',
-        link: services_legal_services_path
-      },
-      {
-        icon: '📊',
-        title: 'Оценка недвижимости',
-        description: 'Профессиональная оценка рыночной стоимости вашей недвижимости',
-        link: sell_evaluation_path
-      },
-      {
-        icon: '📄',
-        title: 'Помощь с документами',
-        description: 'Подготовка и проверка документов для сделок',
-        link: services_document_services_path
-      },
-      {
-        icon: '🎥',
-        title: 'Виртуальные туры',
-        description: '3D-туры по объектам недвижимости с эффектом присутствия',
-        link: services_virtual_tours_path
-      }
-    ]
-    
+
+    @services = ServiceType.public_visible.active.ordered
+
     track_event('services_page_viewed')
   end
   

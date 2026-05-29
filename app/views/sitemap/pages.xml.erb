@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<%# /sitemap-pages.xml — slow-change bucket (static + landings). Я. может
+    crawl раз в неделю — содержимое: agency pages (about/contacts/faq) +
+    20 микро-районов + 4 admin + 5 type-only + 2 premium + rent twins. %>
+<%
+  today_iso = Date.current.iso8601
+  # Динамические lastmod anchors для index-страниц контента (root, /properties,
+  # /blog) — используют max(updated_at) релевантной коллекции.
+  properties_mod = (Property.published.maximum(:updated_at) || Time.current).iso8601
+  articles_mod   = (Article.respond_to?(:published) && Article.published.maximum(:updated_at) || Time.current).iso8601
+  cases_mod      = (CaseStudy.respond_to?(:public_facing) && CaseStudy.public_facing.maximum(:updated_at) || Time.current).iso8601
+%>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <%# Static pages — order is purely cosmetic; priority tells crawlers what we value %>
+  <% [
+    [root_url,                       'daily',   1.0, properties_mod],
+    [properties_url,                 'hourly',  0.9, properties_mod],
+    [map_properties_url,             'weekly',  0.7, properties_mod],
+    [services_page_url,              'monthly', 0.7, today_iso],
+    [new_property_valuation_url,     'weekly',  0.7, today_iso],
+    [about_url,                      'monthly', 0.5, today_iso],
+    [team_url,                       'monthly', 0.6, today_iso],
+    [history_url,                    'monthly', 0.4, today_iso],
+    [contacts_url,                   'monthly', 0.5, today_iso],
+    [faq_url,                        'monthly', 0.5, today_iso],
+    [privacy_url,                    'yearly',  0.2, today_iso],
+    [terms_url,                      'yearly',  0.2, today_iso],
+    [blog_url,                       'daily',   0.7, articles_mod],
+    [news_url,                       'daily',   0.7, articles_mod],
+    [cases_url,                      'weekly',  0.7, cases_mod],
+    [foreign_url,                    'monthly', 0.6, today_iso]
+  ].each do |loc, freq, prio, lastmod| %>
+    <url>
+      <loc><%= loc %></loc>
+      <lastmod><%= lastmod %></lastmod>
+      <changefreq><%= freq %></changefreq>
+      <priority><%= prio %></priority>
+    </url>
+  <% end %>
+
+  <%# Article category hub-pages — internal authority distribution. Lastmod =
+      max(Article.updated_at) в категории; если пусто — skip (soft-404
+      avoidance, не индексируем empty hub-pages). %>
+  <% Article::CATEGORIES.each do |cat| %>
+    <% latest = Article.public_facing.where(category: cat).maximum(:updated_at) %>
+    <% next unless latest %>
+    <url>
+      <loc><%= blog_category_url(category: cat) %></loc>
+      <lastmod><%= latest.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
+  <%#
+    SEO district landings — each has a 300-500 word editorial partial in
+    landings/content/sale_kvartira_<slug>.html.erb. All 20 micro-districts
+    plus 4 admin districts. Type/rooms variants without per-page content
+    are NOT listed to avoid soft-404 demotion.
+  %>
+  <%# Per-district lastmod — max(file mtime, property updated_at, landing_content updated_at).
+      Убирает ложный сигнал "всё изменилось каждый день" → экономит crawl budget Я./Google. %>
+  <% RyazanDistricts::MICRO.each do |slug, info| %>
+    <url>
+      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <lastmod><%= district_lastmod(slug, info[:aliases], intent: 'sale', type: 'kvartira') %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
+  <% RyazanDistricts::ADMIN.each do |slug, info| %>
+    <% admin_aliases = info[:children].flat_map { |c| RyazanDistricts::MICRO[c]&.dig(:aliases) }.compact %>
+    <url>
+      <loc><%= buy_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <lastmod><%= district_lastmod(slug, admin_aliases, intent: 'sale', type: 'kvartira') %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+  <%# Type-only landings — lastmod = max(Property.updated_at) cross-district
+      этого type. %>
+  <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
+    <url>
+      <loc><%= buy_landing_url(type: t) %></loc>
+      <lastmod><%= type_landing_lastmod(intent: 'sale', type: t) %></lastmod>
+      <changefreq>daily</changefreq>
+      <priority>0.8</priority>
+    </url>
+  <% end %>
+  <%# Premium modifier — Phase A focus. lastmod через type_landing для
+      kvartira/dom (premium filter — subset, мах(updated_at) ≤ type-wide). %>
+  <% %w[kvartira dom].each do |t| %>
+    <url>
+      <loc><%= buy_premium_landing_url(type: t) %></loc>
+      <lastmod><%= type_landing_lastmod(intent: 'sale', type: t) %></lastmod>
+      <changefreq>daily</changefreq>
+      <priority>0.9</priority>
+    </url>
+  <% end %>
+  <%# Rent (snyat) variant — те же helpers с intent: 'rent'. %>
+  <% RyazanDistricts::MICRO.each do |slug, info| %>
+    <url>
+      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <lastmod><%= district_lastmod(slug, info[:aliases], intent: 'rent', type: 'kvartira') %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
+  <% RyazanDistricts::ADMIN.each do |slug, info| %>
+    <% admin_aliases = info[:children].flat_map { |c| RyazanDistricts::MICRO[c]&.dig(:aliases) }.compact %>
+    <url>
+      <loc><%= rent_district_landing_url(type: 'kvartira', district: slug) %></loc>
+      <lastmod><%= district_lastmod(slug, admin_aliases, intent: 'rent', type: 'kvartira') %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.5</priority>
+    </url>
+  <% end %>
+  <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
+    <url>
+      <loc><%= rent_landing_url(type: t) %></loc>
+      <lastmod><%= type_landing_lastmod(intent: 'rent', type: t) %></lastmod>
+      <changefreq>daily</changefreq>
+      <priority>0.7</priority>
+    </url>
+  <% end %>
+
+  <%#
+    Phase 1.6.D — Moscow + СПб city-prefixed landings. URL helpers
+    derived from routes (Phase 1.6.B):
+      moskva_buy_landing_url      / spb_buy_landing_url
+      moskva_buy_district_landing_url / spb_buy_district_landing_url
+      moskva_buy_premium_landing_url  / spb_buy_premium_landing_url
+      moskva_rent_landing_url     / spb_rent_landing_url
+      moskva_rent_district_landing_url / spb_rent_district_landing_url
+    Priority slightly ниже Ryazan analogues (0.6/0.5 vs 0.7/0.6) — Рязань
+    остаётся canonical для бренда, МСК/СПб — expansion. После того как
+    catalog в этих городах вырастет, можно равнять priority.
+
+    Districts фильтр на Property.district колонке: для Москвы/СПб
+    данные не parsed Topnlab'ом → landings вернут 0 listings + noindex,
+    follow guard (landings/show.html.erb). Когда district появится в
+    catalog — URL автоматически индексируется.
+  %>
+  <% { 'moskva' => MoscowDistricts, 'spb' => SpbDistricts }.each do |city_slug, mod| %>
+    <%# Buy — type-only %>
+    <% %w[kvartira dom uchastok komnata kommercheskaya].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.7</priority>
+      </url>
+    <% end %>
+    <%# Buy — premium для kvartira + dom (matches Ryazan premium set) %>
+    <% %w[kvartira dom].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_premium_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.8</priority>
+      </url>
+    <% end %>
+    <%# Buy — districts (12 МСК / 10 СПб per Phase 1.6.C) %>
+    <% mod::MICRO.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.6</priority>
+      </url>
+    <% end %>
+    <% mod::ADMIN.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_buy_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.5</priority>
+      </url>
+    <% end %>
+    <%# Rent — type-only %>
+    <% %w[kvartira dom komnata kommercheskaya].each do |t| %>
+      <url>
+        <loc><%= send("#{city_slug}_rent_landing_url", type: t) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>daily</changefreq>
+        <priority>0.6</priority>
+      </url>
+    <% end %>
+    <%# Rent — districts (mirror buy district set) %>
+    <% mod::MICRO.each_key do |slug| %>
+      <url>
+        <loc><%= send("#{city_slug}_rent_district_landing_url", type: 'kvartira', district: slug) %></loc>
+        <lastmod><%= today_iso %></lastmod>
+        <changefreq>weekly</changefreq>
+        <priority>0.5</priority>
+      </url>
+    <% end %>
+  <% end %>
+</urlset>

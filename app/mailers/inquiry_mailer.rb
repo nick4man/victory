@@ -25,22 +25,38 @@ class InquiryMailer < ApplicationMailer
   # @param inquiry [Inquiry]
   def inquiry_confirmation(inquiry)
     return unless inquiry.email.present?
-    
+
     @inquiry = inquiry
     @property = inquiry.property
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    @contact_email = ENV.fetch('CONTACT_EMAIL', 'info@viktory-realty.ru')
-    
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
+    @contact_email = AgencyInfo::EMAIL
+
+    # In-app notification mirror (visible at /dashboard/notifications).
+    # Only fires when the inquiry is tied to a registered user — anonymous
+    # form submissions only get the email confirmation.
+    Notification.notify!(
+      inquiry.user,
+      kind:       'inquiry',
+      title:      'Заявка принята',
+      body:       @property ? "По объекту: #{@property.title}".truncate(200) : 'Менеджер свяжется с вами в ближайшее время.',
+      url:        inquiry.user ? Rails.application.routes.url_helpers.dashboard_inquiry_path(inquiry) : nil,
+      notifiable: inquiry
+    )
+
     attach_logo
     track_email("inquiry_#{inquiry.id}")
     
-    mail(
+    msg = mail(
       to: inquiry.email,
       subject: 'Мы получили вашу заявку',
       template_name: 'inquiry_confirmation'
     )
+    # #436 — gate for registered users. Anonymous (user=nil) — всё равно
+    # отправляем (это transactional ack), gate_notify! пропустит nil.
+    gate_notify!(msg, inquiry.user, category: 'inquiry_status', channel: 'email') if inquiry.user.present?
+    msg
   end
-  
+
   # Notify about callback request
   # @param inquiry [Inquiry]
   def callback_requested(inquiry)

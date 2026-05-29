@@ -1,0 +1,71 @@
+<% content_for :title, "Отзыв ##{@review.id} — Модерация" %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-2">
+      <%= link_to '← К СПИСКУ', admin_reviews_path(), class: 'hover:text-foreground' %>
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-8">
+      Отзыв #<%= @review.id %>
+    </h1>
+
+    <div class="border border-border bg-card p-8 space-y-6">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
+        <div>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-1">Статус</p>
+          <p class="text-foreground"><%= @review.status %></p>
+        </div>
+        <div>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-1">Канал</p>
+          <p class="text-foreground"><%= @review.submitted_via.presence || '—' %></p>
+        </div>
+        <div>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-1">Источник</p>
+          <p class="text-foreground"><%= @review.source_label.presence || 'Сайт' %></p>
+        </div>
+        <div>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase mb-1">Дата</p>
+          <p class="text-foreground"><%= @review.created_at.strftime('%d.%m.%Y %H:%M') %></p>
+        </div>
+      </div>
+
+      <hr class="border-border">
+
+      <div>
+        <p class="text-base text-foreground"><%= @review.display_author %></p>
+        <% if @review.author_email.present? %>
+          <p class="text-sm text-muted-foreground"><%= @review.author_email %></p>
+        <% end %>
+        <% if @review.author_phone.present? %>
+          <p class="text-sm text-muted-foreground"><%= @review.author_phone %></p>
+        <% end %>
+        <p class="mt-2 text-yellow-500 text-2xl"><%= @review.stars %></p>
+      </div>
+
+      <% if @review.title.present? %>
+        <p class="text-lg font-medium text-foreground"><%= @review.title %></p>
+      <% end %>
+
+      <p class="text-base text-foreground leading-relaxed whitespace-pre-wrap"><%= @review.body %></p>
+
+      <% if @review.property.present? %>
+        <p class="text-sm text-muted-foreground">
+          Объект: <%= link_to @review.property.title, property_path(@review.property), class: 'underline', target: '_blank', rel: 'noopener' %>
+        </p>
+      <% end %>
+    </div>
+
+    <div class="mt-8 flex flex-wrap gap-4">
+      <% if @review.status_pending? || @review.status_rejected? %>
+        <%= button_to 'ОДОБРИТЬ', approve_admin_review_path(@review),
+              method: :post,
+              class: 'px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer' %>
+      <% end %>
+      <% unless @review.status_rejected? %>
+        <%= button_to 'ОТКЛОНИТЬ', reject_admin_review_path(@review),
+              method: :post,
+              class: 'px-8 py-4 text-sm tracking-[0.3em] border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors cursor-pointer' %>
+      <% end %>
+    </div>
+  </div>
+</section>

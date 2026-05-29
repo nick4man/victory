@@ -1,0 +1,23 @@
+<%= AgencyInfo::NAME %>
+===
+
+Здравствуйте<%= @user.first_name.present? ? ", #{@user.first_name}" : '' %>.
+
+Статус вашей сделки обновлён.
+
+Новый этап: <%= @new_stage_label.upcase %>
+<% if @prev_stage_label.present? -%>
+Предыдущий этап: <%= @prev_stage_label %>
+<% end -%>
+
+Открыть личный кабинет:
+<%= @cabinet_url %>
+
+В кабинете доступна полная история этапов, контакт агента и связанные
+документы. Это уведомление автоматическое — для связи с агентом
+используйте чат внутри кабинета.
+
+---
+<%= AgencyInfo::NAME %>
+<%= AgencyInfo::PHONE_PRIMARY rescue '' %>
+<%= AgencyInfo::WEBSITE_URL %>

@@ -1,0 +1,72 @@
+<% content_for :title, "Верификация договора № #{@consent.id} — #{AgencyInfo::NAME}" %>
+<% content_for :seo_description, "Публичная верификация подписи агентского договора № #{@consent.id} АН «Виктори»." %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-6">
+      Верификация подписи
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      Договор № <%= @consent.id %>
+    </h1>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-10 max-w-xl">
+      Эта страница подтверждает существование и целостность электронной подписи
+      агентского договора, заключённого через личный кабинет АН «Виктори».
+    </p>
+
+    <% if @consent.revoked? %>
+      <div class="mb-10 border border-red-700/40 bg-red-700/5 p-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-red-700 mb-2">Статус</p>
+        <p class="text-sm text-red-700 mb-1">⚠ Договор отозван клиентом</p>
+        <p class="text-xs text-muted-foreground">
+          Дата отзыва: <%= @consent.revoked_at.strftime('%d.%m.%y %H:%M') %>
+          <% if @consent.revocation_reason.present? %>
+            · Причина: <%= @consent.revocation_reason %>
+          <% end %>
+        </p>
+      </div>
+    <% elsif @tampered %>
+      <div class="mb-10 border border-red-700/40 bg-red-700/5 p-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-red-700 mb-2">⚠ Целостность нарушена</p>
+        <p class="text-sm text-red-700">
+          Содержимое документа было изменено после подписания. Обратитесь
+          в агентство для разрешения ситуации.
+        </p>
+      </div>
+    <% else %>
+      <div class="mb-10 border border-emerald-700/40 bg-emerald-700/5 p-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-emerald-700 mb-2">Статус</p>
+        <p class="text-sm text-emerald-700 mb-1">✓ Подпись действительна</p>
+        <p class="text-xs text-muted-foreground">
+          Подписано: <%= @consent.signed_at.strftime('%d.%m.%y %H:%M') %> ·
+          Версия документа: <%= @consent.consent_version %>
+        </p>
+      </div>
+    <% end %>
+
+    <div class="border-t border-border pt-8">
+      <h2 class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-6">Предмет договора</h2>
+      <p class="text-sm text-foreground mb-2"><%= @property.title %></p>
+      <p class="text-xs text-muted-foreground mb-1">
+        <%= @property.address %>
+      </p>
+      <% if (area = @property.try(:total_area) || @property.try(:area)) %>
+        <p class="text-xs text-muted-foreground">
+          <%= area %> м²<% if @property.rooms.present? && @property.rooms.positive? %> ·
+          <%= @property.rooms %>-комн<% end %>
+        </p>
+      <% end %>
+    </div>
+
+    <div class="border-t border-border pt-8 mt-8">
+      <h2 class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">Хеш содержимого</h2>
+      <p class="text-xs font-mono text-foreground/80 break-all">
+        SHA-256: <%= @consent.content_hash %>
+      </p>
+      <p class="text-xs text-muted-foreground/70 mt-2">
+        Имя клиента и контактные данные не отображаются на этой странице
+        в соответствии с политикой конфиденциальности (152-ФЗ).
+      </p>
+    </div>
+  </div>
+</section>

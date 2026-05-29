@@ -1,0 +1,18 @@
+<% content_for :title, "Договор не найден — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-24 lg:py-32 bg-background min-h-screen">
+  <div class="max-w-xl mx-auto text-center">
+    <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-6">
+      Верификация подписи
+    </p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4">
+      Договор не найден
+    </h1>
+    <p class="text-sm text-muted-foreground leading-relaxed mb-8">
+      Токен в ссылке недействителен. Возможные причины: токен скопирован
+      с ошибкой, договор удалён, или ссылка устарела.
+    </p>
+    <%= link_to 'На главную', root_path,
+          class: 'inline-block text-xs tracking-[0.25em] uppercase border-b border-foreground text-foreground hover:text-muted-foreground pb-1' %>
+  </div>
+</section>

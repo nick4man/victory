@@ -1,0 +1,24 @@
+Требуется ваше согласие на публикацию — <%= AgencyInfo::NAME %>
+
+Здравствуйте<%= @user.first_name.present? ? ", #{@user.first_name}" : '' %>.
+
+Мы подготовили карточку для размещения вашего объекта недвижимости.
+Для публикации необходимо ваше согласие с условиями агентского договора.
+
+Объект: <%= @property.title %>
+Адрес: <%= @property.address %>
+<% if (area = @property.try(:total_area) || @property.try(:area)) %>
+Площадь: <%= area %> м²
+<% end %>
+Цена: <%= number_to_currency(@property.price, precision: 0, unit: '₽', format: '%n %u', delimiter: ' ') %>
+
+Войдите в личный кабинет для подписания договора:
+<%= @login_url %>
+
+Ссылка действительна 30 минут.
+
+При вопросах по условиям договора — напишите на <%= AgencyInfo::EMAIL rescue 'info@victory62.org' %>.
+
+---
+<%= AgencyInfo::NAME %>
+<%= AgencyInfo::WEBSITE_URL %>

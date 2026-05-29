@@ -1,0 +1,153 @@
+<% content_for :title, 'Админка | АН Виктори' %>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <div class="flex items-baseline justify-between flex-wrap gap-4 mb-12">
+      <div>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНИСТРИРОВАНИЕ</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Панель управления</h1>
+      </div>
+      <%= button_to 'ВЫХОД', admin_logout_path, method: :delete,
+            class: 'px-4 py-2 text-[11px] tracking-[0.25em] border border-border text-muted-foreground hover:text-foreground hover:border-foreground/60 transition-colors bg-transparent cursor-pointer',
+            form: { class: 'inline' } %>
+    </div>
+
+    <% if flash[:notice].present? %>
+      <div class="mb-6 px-4 py-3 border border-emerald-500/40 bg-emerald-500/5 text-sm text-emerald-300">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <%# === Properties card — публикационный dashboard + «Запросить подпись» === %>
+      <%= link_to admin_properties_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">КАТАЛОГ</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Публикация объектов</h2>
+        <p class="text-sm text-muted-foreground mb-6">Все объекты Topnlab, причина «не на сайте», force-publish, запрос подписи клиента.</p>
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @property_counts[:all] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">На сайте</dt>
+            <dd class="text-foreground"><%= @property_counts[:published] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">В архиве</dt>
+            <dd class="text-foreground"><%= @property_counts[:archived] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Ждут подписи</dt>
+            <dd class="text-foreground"><%= @property_counts[:pending_consent] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
+      <%# === Articles card === %>
+      <%= link_to admin_articles_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">КОНТЕНТ</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Статьи и новости</h2>
+        <p class="text-sm text-muted-foreground mb-6">Модерация, скрытие, ручное создание.</p>
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @article_counts[:total] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Опубликовано</dt>
+            <dd class="text-foreground"><%= @article_counts[:published] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Скрыто</dt>
+            <dd class="text-foreground"><%= @article_counts[:hidden] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Черновики</dt>
+            <dd class="text-foreground"><%= @article_counts[:drafts] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
+      <%# === Reviews card === %>
+      <%= link_to admin_reviews_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">ОБРАТНАЯ СВЯЗЬ</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Отзывы клиентов</h2>
+        <p class="text-sm text-muted-foreground mb-6">Одобрение/отклонение отзывов на сайте.</p>
+        <dl class="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @review_counts[:total] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Ожидают</dt>
+            <dd class="text-foreground"><%= @review_counts[:pending] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Одобрено</dt>
+            <dd class="text-foreground"><%= @review_counts[:approved] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
+      <%# === Case studies card === %>
+      <%= link_to admin_case_studies_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">КЕЙСЫ</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Истории сделок</h2>
+        <p class="text-sm text-muted-foreground mb-6">Анонимизированные post-deal кейсы — публикация, архивирование.</p>
+        <dl class="grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @case_study_counts[:total] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Опубликовано</dt>
+            <dd class="text-foreground"><%= @case_study_counts[:published] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Черновики</dt>
+            <dd class="text-foreground"><%= @case_study_counts[:drafts] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
+      <%# === Landing content card === %>
+      <%= link_to admin_landing_contents_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">SEO</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">SEO-лендинги</h2>
+        <p class="text-sm text-muted-foreground mb-6">Тексты по районам/типам — правки live, без деплоя.</p>
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @landing_counts[:total] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Опубликовано</dt>
+            <dd class="text-foreground"><%= @landing_counts[:published] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
+      <%# === Topnlab CRM status === %>
+      <%= link_to admin_topnlab_status_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">ИНФРАСТРУКТУРА</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Topnlab CRM-синк</h2>
+        <p class="text-sm text-muted-foreground">Здоровье последних запусков синхронизации, счётчики, ошибки.</p>
+      <% end %>
+
+      <%# === Bank rates card === %>
+      <%= link_to admin_bank_rates_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">СТАВКИ</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Bank rates</h2>
+        <p class="text-sm text-muted-foreground">Снэпшоты ставок банков по ипотеке — последний снимок и diff.</p>
+      <% end %>
+    </div>
+  </div>
+</section>

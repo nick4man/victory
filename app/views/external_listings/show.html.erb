@@ -1,0 +1,161 @@
+<%
+  el = @external_listing
+  agency_label = (ExternalListing::SITEMAP_AGENCY_LABELS[el.source_id.to_s.split(':').first] ||
+                  el.source.to_s.humanize)
+  content_for :title, @meta_title
+  content_for :seo_description, @meta_description
+  content_for :canonical_url, @canonical_url
+%>
+
+<section class="px-6 lg:px-12 py-12 lg:py-20 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+
+    <%# Breadcrumb / back %>
+    <div class="mb-8">
+      <%= link_to '← Назад в каталог', properties_path,
+            class: 'text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors uppercase' %>
+    </div>
+
+    <%# Badge — БАЗА АГЕНТСТВ + источник %>
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <span class="px-3 py-1 text-xs tracking-widest bg-foreground text-background uppercase">
+        База агентств
+      </span>
+      <span class="text-xs tracking-[0.2em] text-muted-foreground uppercase">
+        Источник: <%= agency_label %>
+      </span>
+    </div>
+
+    <%# Title + price + key facts %>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      <%= el.title.to_s.truncate(120) %>
+    </h1>
+    <p class="text-sm text-muted-foreground mb-8">
+      <%= el.address.to_s.truncate(140) %>
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-16">
+      <%# LEFT: photo + facts (2 cols) %>
+      <div class="lg:col-span-2">
+        <% if el.respond_to?(:photo_url) && el.photo_url.present? %>
+          <%= image_with_lazy(el.photo_url,
+                alt: el.title.to_s.truncate(80),
+                html_class: 'w-full aspect-[4/3] object-cover bg-muted/40 mb-8') %>
+        <% else %>
+          <div class="w-full aspect-[4/3] bg-muted/40 flex items-center justify-center text-muted-foreground/40 text-xs tracking-[0.3em] uppercase mb-8">
+            Фото у агента
+          </div>
+        <% end %>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-px bg-border mb-8">
+          <div class="bg-card p-4">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2 uppercase">Цена</p>
+            <p class="text-lg tracking-wider text-foreground">
+              <%= el.price.to_f.positive? ? "#{number_with_delimiter(el.price.to_i, delimiter: ' ')} ₽" : 'По запросу' %>
+            </p>
+          </div>
+          <div class="bg-card p-4">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2 uppercase">Площадь</p>
+            <p class="text-lg tracking-wider text-foreground">
+              <%= el.area.to_f.positive? ? "#{el.area.to_f.round(1)} м²" : '—' %>
+            </p>
+          </div>
+          <div class="bg-card p-4">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2 uppercase">Комнат</p>
+            <p class="text-lg tracking-wider text-foreground">
+              <% if el.rooms.to_i.zero? %>Студия
+              <% elsif el.rooms.to_i.positive? %><%= el.rooms %>
+              <% else %>—<% end %>
+            </p>
+          </div>
+        </div>
+
+        <% if el.description.present? %>
+          <div class="prose prose-invert max-w-none">
+            <h2 class="text-base tracking-[0.2em] uppercase text-muted-foreground mb-3">Описание</h2>
+            <p class="text-sm text-foreground/90 leading-relaxed whitespace-pre-line">
+              <%= el.description.to_s.truncate(2000) %>
+            </p>
+          </div>
+        <% end %>
+      </div>
+
+      <%# RIGHT: lead capture (1 col, sticky) %>
+      <aside class="lg:sticky lg:top-24 self-start">
+        <div class="border border-border bg-card p-6 lg:p-8">
+          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase">
+            Связаться через нас
+          </p>
+          <h3 class="text-lg font-light tracking-tight text-foreground mb-4">
+            Узнать подробнее об объекте
+          </h3>
+          <p class="text-xs text-muted-foreground mb-6 leading-relaxed">
+            Заполните форму — наш агент свяжется в течение 15 минут.
+            Покажем объект, проверим документы, поможем с торгом и оформлением.
+          </p>
+
+          <%= form_with url: contact_forms_quick_inquiry_path, method: :post, local: true, class: 'space-y-4' do |f| %>
+            <%= f.hidden_field :external_listing_id, value: el.id, name: 'inquiry[external_listing_id]' %>
+            <input type="hidden" name="inquiry[message]" value="Запрос на объект «<%= el.title.to_s.truncate(80) %>» (источник: <%= agency_label %>)">
+
+            <div>
+              <label class="text-xs tracking-[0.3em] text-muted-foreground mb-2 block uppercase">Имя</label>
+              <%= text_field_tag 'inquiry[name]', nil, required: true,
+                    class: 'w-full bg-transparent border-b border-border focus:border-foreground focus:outline-none text-foreground py-2',
+                    placeholder: 'Как к вам обращаться' %>
+            </div>
+            <div>
+              <label class="text-xs tracking-[0.3em] text-muted-foreground mb-2 block uppercase">Телефон</label>
+              <%= telephone_field_tag 'inquiry[phone]', nil, required: true,
+                    class: 'w-full bg-transparent border-b border-border focus:border-foreground focus:outline-none text-foreground py-2',
+                    placeholder: '+7 (___) ___-__-__' %>
+            </div>
+            <div>
+              <label class="text-xs tracking-[0.3em] text-muted-foreground mb-2 block uppercase">
+                Email <span class="text-muted-foreground/50">(необязательно)</span>
+              </label>
+              <%= email_field_tag 'inquiry[email]', nil,
+                    class: 'w-full bg-transparent border-b border-border focus:border-foreground focus:outline-none text-foreground py-2',
+                    placeholder: 'you@example.com' %>
+            </div>
+
+            <%= submit_tag 'Связаться с агентом',
+                  class: 'w-full mt-6 px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors cursor-pointer' %>
+          <% end %>
+
+          <p class="text-[10px] text-muted-foreground/60 mt-6 leading-relaxed">
+            Объект показан по данным открытого фида АН «<%= agency_label %>».
+            Заявка приходит к нам, мы координируем показ совместно с
+            агентством-владельцем. Без скрытых комиссий с вашей стороны.
+          </p>
+        </div>
+      </aside>
+    </div>
+
+    <%# JSON-LD: RealEstateListing с seller указанием другого агентства %>
+    <script type="application/ld+json">
+      <%= {
+        '@context': 'https://schema.org',
+        '@type': 'RealEstateListing',
+        url: @canonical_url,
+        name: el.title.to_s.truncate(120),
+        description: @meta_description,
+        offers: {
+          '@type': 'Offer',
+          price: el.price.to_i,
+          priceCurrency: 'RUB',
+          availability: 'https://schema.org/InStock',
+          seller: {
+            '@type': 'RealEstateAgent',
+            name: agency_label
+          }
+        },
+        address: {
+          '@type': 'PostalAddress',
+          streetAddress: el.address.to_s,
+          addressCountry: 'RU'
+        }
+      }.to_json.html_safe %>
+    </script>
+  </div>
+</section>

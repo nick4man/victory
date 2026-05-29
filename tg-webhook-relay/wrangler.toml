@@ -1,0 +1,17 @@
+name = "victory-tg-relay"
+main = "src/index.js"
+compatibility_date = "2026-05-14"
+
+# Worker подхватит этот url как public hostname:
+# https://victory-tg-relay.<your-subdomain>.workers.dev
+# (subdomain создаётся при первом deploy в твоём Cloudflare account)
+
+# Если хочешь использовать TELEGRAM_WEBHOOK_SECRET для дополнительной защиты
+# (Telegram setWebhook secret_token feature) — раскомментируй и используй:
+#   wrangler secret put TELEGRAM_WEBHOOK_SECRET
+# и сними проверку с захардкоженного значения в src/index.js
+# [vars]
+# UPSTREAM_URL = "https://victory62.org/webhooks/telegram"
+
+# Free план Cloudflare Workers: 100K req/день — нам хватит с большим запасом
+# (~1000 webhook'ов/день максимум).

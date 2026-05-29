@@ -1,0 +1,16 @@
+<% content_for :title, 'Новое агентство — Админ — АН Виктори' %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">АДМИН → ПАРТНЁРСКИЕ АГЕНТСТВА</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      Новое агентство
+    </h1>
+    <p class="text-sm text-muted-foreground mb-8">
+      Заведи counterparty для commission tracking. После сохранения — лиды на их listings
+      будут авто-создавать Referral со статусом pending.
+    </p>
+
+    <%= render 'form' %>
+  </div>
+</section>

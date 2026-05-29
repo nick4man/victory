@@ -1,0 +1,45 @@
+<% content_for :title, "Админка · Редактирование «#{@case_study.title.truncate(40)}» — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-4xl mx-auto">
+    <div class="mb-8 flex items-baseline justify-between gap-4 flex-wrap">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА · КЕЙСЫ</p>
+        <h1 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground"><%= @case_study.title %></h1>
+        <p class="text-xs text-muted-foreground/70 mt-2">
+          Статус: <%= @case_study.status %>
+          <% if @case_study.published_at %> · опубликован <%= @case_study.published_at.strftime('%d.%m.%y') %><% end %>
+          <% if @case_study.views_count.positive? %> · просмотров: <%= @case_study.views_count %><% end %>
+        </p>
+      </div>
+      <% if @case_study.status_published? %>
+        <%= link_to 'Посмотреть на сайте →', case_path(@case_study), target: '_blank',
+              class: 'text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground uppercase' %>
+      <% end %>
+    </div>
+
+    <%= render 'form' %>
+
+    <%# === Quick actions === %>
+    <div class="mt-8 pt-8 border-t border-border space-y-3">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase">Быстрые действия</p>
+      <div class="flex flex-wrap gap-3">
+        <% unless @case_study.status_published? %>
+          <%= button_to 'Опубликовать', publish_admin_case_study_path(@case_study),
+                method: :post,
+                class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+        <% end %>
+        <% unless @case_study.status_archived? %>
+          <%= button_to 'В архив', archive_admin_case_study_path(@case_study),
+                method: :post,
+                class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors',
+                data: { confirm: 'Кейс в архив — скрыть из публичного списка?' } %>
+        <% end %>
+        <%= button_to 'Soft-delete', soft_delete_admin_case_study_path(@case_study),
+              method: :post,
+              class: 'px-4 py-2 text-xs tracking-[0.2em] uppercase border border-destructive/40 text-destructive hover:border-destructive transition-colors',
+              data: { confirm: 'Скрыть кейс полностью? Восстановить можно только через консоль.' } %>
+      </div>
+    </div>
+  </div>
+</section>

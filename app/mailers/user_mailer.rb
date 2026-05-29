@@ -9,8 +9,11 @@ class UserMailer < ApplicationMailer
     @user = user
     @dashboard_url = "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/dashboard"
     @properties_url = "#{ENV.fetch('APP_URL', 'http://localhost:5000')}/properties"
-    @contact_phone = ENV.fetch('CONTACT_PHONE', '+7 (999) 123-45-67')
-    @contact_email = ENV.fetch('CONTACT_EMAIL', 'info@viktory-realty.ru')
+    # Contacts из AgencyInfo (canonical, как на сайте). До 22.05.26 здесь
+    # были ENV-fallback'и с моками `+7 (999) 123-45-67` / `info@viktory-realty.ru`
+    # которые утекали в production-emails если ENV не set.
+    @contact_phone = AgencyInfo::PHONE_PRIMARY
+    @contact_email = AgencyInfo::EMAIL
 
     attach_logo
     track_email("welcome_#{user.id}")

@@ -1,0 +1,139 @@
+<% content_for :title, "Админка · Ставки банков — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2">Ставки банков</h1>
+    <p class="text-sm text-muted-foreground mb-8">Еженедельный snapshot с banki.ru. Источник для таблицы депозитов на калькуляторе и инвест-аудита.</p>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <%# === Kind tabs === %>
+    <div class="flex gap-2 mb-6">
+      <% BankRateSnapshot::KINDS.each do |k| %>
+        <%= link_to (k == 'deposit' ? 'ДЕПОЗИТЫ' : 'ИПОТЕКА'),
+              admin_bank_rates_path(kind: k),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@kind == k ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground'} transition-colors" %>
+      <% end %>
+      <span class="ml-auto"></span>
+      <%= button_to '⟳ Обновить сейчас',
+            admin_refresh_bank_rates_path(),
+            method: :post,
+            class: 'px-3 py-1.5 text-[11px] tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+    </div>
+
+    <% if @latest %>
+      <%# === Summary === %>
+      <div class="mb-8 p-4 border <%= @latest.status == 'ok' ? 'border-emerald-500/30' : (@latest.status == 'partial' ? 'border-amber-500/30' : 'border-rose-500/30') %>">
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2">ПОСЛЕДНИЙ SNAPSHOT</p>
+        <p class="text-sm text-foreground">
+          <%= I18n.l(@latest.as_of, format: :long) %> ·
+          статус <span class="text-foreground"><%= @latest.status %></span> ·
+          программ: <%= @latest.items_count %>
+        </p>
+        <% if @latest.error_log.present? %>
+          <p class="text-xs text-rose-300 mt-2">Ошибка: <%= @latest.error_log.truncate(200) %></p>
+        <% end %>
+      </div>
+
+      <%# === Diff === %>
+      <% if (@diff[:added] + @diff[:removed] + @diff[:changed]).any? %>
+        <div class="mb-8 p-4 border border-border bg-card/40">
+          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ИЗМЕНЕНИЯ С ПРЕДЫДУЩЕГО ЗАПУСКА</p>
+          <% if @diff[:changed].any? %>
+            <p class="text-xs text-muted-foreground mb-2">Изменились ставки:</p>
+            <ul class="text-xs space-y-1 mb-3">
+              <% @diff[:changed].first(20).each do |c| %>
+                <% delta = c[:after]['rate_max'].to_f - c[:before]['rate_max'].to_f %>
+                <li>
+                  <span class="text-foreground"><%= c[:key].split('|').first %></span> ·
+                  <%= c[:key].split('|').last %>:
+                  <span class="text-muted-foreground"><%= c[:before]['rate_max'] %>%</span> →
+                  <span class="text-foreground"><%= c[:after]['rate_max'] %>%</span>
+                  <span class="<%= delta.positive? ? 'text-emerald-300' : 'text-rose-300' %>">
+                    (<%= delta.positive? ? '+' : '' %><%= delta.round(2) %>)
+                  </span>
+                </li>
+              <% end %>
+            </ul>
+          <% end %>
+          <% if @diff[:added].any? %>
+            <p class="text-xs text-emerald-300 mb-1">Новых программ: <%= @diff[:added].size %></p>
+          <% end %>
+          <% if @diff[:removed].any? %>
+            <p class="text-xs text-rose-300 mb-1">Пропавших программ: <%= @diff[:removed].size %></p>
+          <% end %>
+        </div>
+      <% end %>
+
+      <%# === Table === %>
+      <h2 class="text-lg tracking-tight text-foreground mb-3">Текущая выборка</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs border border-border">
+          <thead class="bg-card text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+            <tr>
+              <th class="text-left p-3">Банк</th>
+              <th class="text-left p-3">Программа</th>
+              <th class="text-right p-3">Ставка</th>
+              <th class="text-left p-3">Срок</th>
+              <th class="text-left p-3">Условия</th>
+              <th class="text-right p-3">Источник</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @latest.items.each do |item| %>
+              <tr class="border-t border-border">
+                <td class="p-3 font-medium"><%= item['bank_name'] %></td>
+                <td class="p-3"><%= item['product_name'].to_s.truncate(50) %></td>
+                <td class="p-3 text-right text-emerald-300"><%= item['rate_max'] %>%</td>
+                <td class="p-3 text-muted-foreground whitespace-nowrap"><%= item['term_months_min'] %>–<%= item['term_months_max'] %> мес.</td>
+                <td class="p-3 text-muted-foreground text-[11px]">
+                  <%= item['capitalization'] ? 'кап.' : '—' %><% if item['withdraw_allowed'] %> · снятие<% end %>
+                </td>
+                <td class="p-3 text-right">
+                  <% if item['source_url'].present? %>
+                    <a href="<%= item['source_url'] %>" target="_blank" rel="noopener" class="text-muted-foreground hover:text-foreground">→</a>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="text-lg tracking-tight text-foreground mt-10 mb-3">История запусков</h2>
+      <table class="w-full text-xs border border-border">
+        <thead class="bg-card text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+          <tr>
+            <th class="text-left p-3">Дата</th>
+            <th class="text-left p-3">Статус</th>
+            <th class="text-right p-3">Программ</th>
+            <th class="text-left p-3">Ошибки</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @history.each do |snap| %>
+            <tr class="border-t border-border">
+              <td class="p-3 font-mono"><%= snap.as_of %></td>
+              <td class="p-3">
+                <% color = { 'ok' => 'text-emerald-300', 'partial' => 'text-amber-300', 'failed' => 'text-rose-300' }[snap.status] %>
+                <span class="<%= color %>"><%= snap.status %></span>
+              </td>
+              <td class="p-3 text-right"><%= snap.items_count %></td>
+              <td class="p-3 text-muted-foreground text-[11px]"><%= snap.error_log.to_s.truncate(80) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <div class="p-6 border border-amber-500/30 text-amber-300 text-sm">
+        Snapshots ещё нет. Нажмите «⟳ Обновить сейчас» чтобы запустить парсер первый раз.
+      </div>
+    <% end %>
+  </div>
+</section>

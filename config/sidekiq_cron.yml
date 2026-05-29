@@ -1,0 +1,128 @@
+# Phase 10 Iter 18 — Timezone confirmed: TZ=Europe/Moscow в обоих контейнерах
+# (web + sidekiq, см. docker-compose.yml). Sidekiq-cron interpretирует cron
+# expressions в локальной timezone runner'а. Все «23:55» строки — MSK time.
+# Изменение TZ требует rebuild containers + restart Sidekiq.
+
+topnlab_sync:
+  cron: "*/30 * * * *"     # every 30 minutes
+  class: TopnlabSyncJob
+  queue: scheduled
+  description: "Pull all in_ad properties from Topnlab CRM and upsert into Property"
+
+# mls_sync disabled — Topnlab API does not expose cross-agency MLS data,
+# only our own listings in MLS projection. See MlsSync::TopnlabSyncService.
+# Comparable data now comes from external_yrl_sync (Yandex YRL feeds).
+
+topnlab_staff_sync:
+  cron: "30 6 * * *"       # daily at 06:30
+  class: TopnlabStaffSyncJob
+  queue: scheduled
+  description: "Sync Topnlab company structure (departments + users) into local Department + User"
+
+topnlab_orders_sync:
+  cron: "45 */3 * * *"     # every 3 hours at :45
+  class: TopnlabOrdersSyncJob
+  queue: scheduled
+  description: "Sync Topnlab buyer/renter orders (type=order) into BuyerOrder"
+
+topnlab_owner_sync:
+  cron: "0 3 * * *"        # daily at 03:00 — after staff sync (06:30 is later; owner sync is lighter)
+  class: TopnlabOwnerSyncJob
+  queue: scheduled
+  description: "Enrich Property#owner_user_id from Topnlab seller-client linkage; enables cabinet 'мои объекты'"
+
+external_yrl_sync:
+  cron: "25 */4 * * *"     # every 4 hours at :25
+  class: ExternalListings::YrlSyncJob
+  queue: scheduled
+  description: "Refresh public Yandex Realty YRL feeds from other Ryazan agencies (comp data)"
+
+refresh_topnlab_stats:
+  cron: "15 * * * *"       # hourly at :15 (offset from other Topnlab jobs)
+  class: RefreshTopnlabStatsJob
+  queue: low_priority
+  description: "Refresh Topnlab counts cache (processed_requests metric on /landing + /about). Throttled API: full sweep ≈ 8 min."
+
+bank_rates_refresh:
+  cron: "0 4 * * *"        # daily 04:00 MSK (was weekly SUN — user mandate: daily freshness)
+  class: BankRatesRefreshJob
+  queue: scheduled
+  description: "Refresh deposit programs from banki.ru (mortgage DOM TODO — see job comments)"
+
+tg_polling:
+  cron: "* * * * *"        # every minute
+  class: "Telegram::WorkBot::PollingJob"
+  queue: scheduled
+  description: "Fallback polling getUpdates когда TG → webhook не доходит (TELEGRAM_POLLING_MODE=true)"
+
+task_batch_expiry:
+  cron: "*/10 * * * *"     # every 10 minutes
+  class: TaskBatchExpiryJob
+  queue: scheduled
+  description: "Phase 7.2 — pending TaskBatch > 1h → status=expired (Оксана не подтвердила)"
+
+digest_cleanup:
+  cron: "5 0 * * *"        # daily 00:05 Moscow
+  class: DigestCleanupJob
+  queue: scheduled
+  description: "Phase 7.4 — unpin вчерашний digest + seed today's в #ДИСПЕТЧЕРСКОЙ"
+
+kpi_staff_snapshot:
+  cron: "55 23 * * *"      # daily 23:55 Moscow
+  class: "Kpi::StaffSnapshotJob"
+  queue: scheduled
+  description: "Phase 7.6 — daily StaffMetric snapshot per assignable TelegramUser"
+
+kpi_agency_digest:
+  cron: "0 18 * * *"       # daily 18:00 Moscow
+  class: "Kpi::AgencyDigestJob"
+  queue: scheduled
+  description: "Phase 7.6 — DM директорам с agency-wide сводкой текущего дня"
+
+voice_archive_cleanup:
+  cron: "0 4 * * SUN"      # weekly Sunday 04:00 Moscow
+  class: "Nextcloud::VoiceArchiveCleanupJob"
+  queue: scheduled
+  description: "Phase 7.8b — soft-delete voice-archive DocumentUpload > 90 дней (NC файлы остаются)"
+
+telegram_webhook_acks_cleanup:
+  cron: "30 4 * * SUN"     # weekly Sunday 04:30 Moscow
+  class: "Telegram::WebhookAcksCleanupJob"
+  queue: scheduled
+  description: "Phase 9 Iter 8 — delete TelegramWebhookAck rows > 7 дней"
+
+document_reminder:
+  cron: "0 * * * *"        # hourly at :00 Moscow
+  class: DocumentReminderJob
+  queue: scheduled
+  description: "Phase 4F — DocumentRequirement SLA ramping reminders. Tier 1 client (>=1xSLA), Tier 2 manager (>=2x), Tier 3 director cascade (>=3x). Quiet hours 21-07 + weekend skip."
+
+topnlab_webhook_health:
+  cron: "0 8 * * *"        # daily 08:00 Moscow
+  class: TopnlabWebhookHealthJob
+  queue: scheduled
+  description: "Phase 4E — silent webhook detection. Alert via CriticalRecipients if last_webhook_at > 24h ago."
+
+kpi_morning_digest:
+  cron: "0 8 * * 1-5"      # weekdays 08:00 Moscow
+  class: "Kpi::MorningDigestJob"
+  queue: scheduled
+  description: "Phase 6 — per-staff DM с задачами на сегодня + просрочки + open leads + SLA warnings + вчерашний recap"
+
+kpi_weekly_report:
+  cron: "0 10 * * 1"       # Monday 10:00 Moscow
+  class: "Kpi::WeeklyReportJob"
+  queue: scheduled
+  description: "Phase 6 — недельный отчёт managers+directors: agency totals, top-3 staff, overdue/suspicious bottom, trends vs prev week"
+
+director_daily_digest:
+  cron: "30 8 * * *"       # daily 08:30 Moscow (за 30 мин до kpi_morning_digest сотрудникам)
+  class: "Telegram::WorkBot::DailyDigestJob"
+  queue: scheduled
+  description: "Phase 15 — director DM control panel: agency-wide daily snapshot (leads/tasks/top-performer/SLA) с inline-кнопкой [📊 Полный dashboard]. Не повторяет kpi_morning_digest (тот per-staff)."
+
+director_weekly_summary:
+  cron: "0 10 * * 1"       # Monday 10:00 Moscow
+  class: "Telegram::WorkBot::WeeklySummaryJob"
+  queue: scheduled
+  description: "Phase 15 — director DM weekly report: trends vs prev week, top-3 performers, overdue anomalies (>2σ), LLM cost. Дополняет kpi_weekly_report (тот для managers+directors)."

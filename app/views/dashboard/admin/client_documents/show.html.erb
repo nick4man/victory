@@ -1,0 +1,92 @@
+<% content_for :title, "Документ ##{@document.id} — детали" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-4xl mx-auto">
+    <%= link_to '← К очереди', dashboard_admin_client_documents_path(),
+                class: "text-sm text-muted-foreground hover:text-foreground" %>
+
+    <div class="mt-6 mb-12 pb-8 border-b border-border">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">МОДЕРАЦИЯ · ##<%= @document.id %></p>
+      <h1 class="text-4xl font-light tracking-wide text-foreground">
+        <%= { 'passport' => 'Паспорт', 'inn' => 'ИНН', 'egrn' => 'Выписка ЕГРН', 'contract' => 'Договор' }[@document.document_kind] || @document.document_kind %>
+      </h1>
+      <p class="text-sm text-muted-foreground mt-2">
+        Статус: <code><%= @document.status %></code> ·
+        Загружено: <%= l @document.created_at, format: '%d.%m.%y %H:%M' %>
+        <% if @document.uploader %> · от <%= @document.uploader.email %><% end %>
+      </p>
+    </div>
+
+    <!-- Parsed data (UNMASKED — only admin) -->
+    <div class="mb-12">
+      <h2 class="text-2xl font-light text-foreground mb-4">Распознанные поля</h2>
+      <% if @parsed_data.blank? %>
+        <p class="text-muted-foreground italic">Распознавание не запущено или вернуло пустой результат.</p>
+      <% else %>
+        <div class="border border-border">
+          <% @parsed_data.each do |key, value| %>
+            <% next if key.to_s == 'confidence' || value.blank? %>
+            <div class="flex items-center gap-6 px-4 py-3 border-b border-border last:border-b-0">
+              <p class="text-sm text-muted-foreground w-48 shrink-0"><%= key.to_s.humanize %></p>
+              <p class="text-base text-foreground font-mono break-all"><%= value %></p>
+            </div>
+          <% end %>
+          <% if @parsed_data['confidence'] %>
+            <div class="px-4 py-3 bg-muted/20">
+              <p class="text-sm text-muted-foreground">
+                Confidence: <%= (@parsed_data['confidence'].to_f * 100).round %>%
+              </p>
+            </div>
+          <% end %>
+        </div>
+
+        <details class="mt-6">
+          <summary class="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
+            DLP masked версия (для UI/нотификаций)
+          </summary>
+          <pre class="mt-3 p-4 bg-muted/20 text-xs overflow-auto"><%= JSON.pretty_generate(@masked_data) %></pre>
+        </details>
+      <% end %>
+    </div>
+
+    <!-- Verify form -->
+    <% if @document.status_ocr_completed? %>
+      <div class="border-2 border-border p-6 mb-8">
+        <h3 class="text-lg font-medium mb-4">Проверка</h3>
+        <p class="text-sm text-muted-foreground mb-6">
+          Проверь распознанные поля выше. Если корректно — подтверди. Если ошибки — отметь на повторную обработку.
+        </p>
+        <div class="flex gap-3">
+          <%= button_to '✅ Подтвердить', approve_dashboard_admin_client_document_path(@document),
+                        method: :patch,
+                        class: "py-2 px-6 bg-foreground text-background hover:bg-foreground/90 transition-colors text-sm",
+                        data: { confirm: 'Подтверждаешь корректность распознанных полей?' } %>
+          <%= form_with url: reject_dashboard_admin_client_document_path(@document),
+                        method: :patch, local: true, class: "flex items-center gap-2" do |f| %>
+            <%= f.text_field :reason, placeholder: 'Причина (опц.)',
+                             class: "py-2 px-3 border border-border bg-background text-sm w-64" %>
+            <%= f.submit '↩ Отклонить',
+                         class: "py-2 px-4 border border-destructive text-destructive hover:bg-destructive hover:text-background transition-colors text-sm" %>
+          <% end %>
+        </div>
+      </div>
+    <% elsif @document.status_reviewed? %>
+      <div class="border border-emerald-600 p-4 text-emerald-700">
+        ✅ Проверено <%= l @document.reviewed_at, format: '%d.%m.%y %H:%M' if @document.reviewed_at %>
+      </div>
+    <% elsif @document.status_ocr_failed? %>
+      <div class="border border-destructive p-4">
+        <p class="text-destructive font-medium">⚠️ OCR упал</p>
+        <p class="text-sm text-muted-foreground mt-1"><%= @document.error_message %></p>
+      </div>
+    <% end %>
+
+    <% if @document.nextcloud_path.present? %>
+      <p class="text-xs text-muted-foreground mt-8">
+        📁 Nextcloud: <code class="text-foreground"><%= @document.nextcloud_path %></code>
+      </p>
+    <% end %>
+  </div>
+</section>

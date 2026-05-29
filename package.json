@@ -1,0 +1,18 @@
+{
+  "name": "victory62-dev-tools",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Dev-only npm tooling for АН «Виктори» Rails app — Figma Code Connect + Playwright Visual Regression. Runtime assets go through Importmap (config/importmap.rb is intentionally absent — see app/views/layouts/application.html.erb for the inline-module pattern).",
+  "scripts": {
+    "figma:connect": "code-connect connect",
+    "figma:create": "code-connect create",
+    "figma:publish": "code-connect publish",
+    "vr:test": "playwright test --config=playwright.config.ts",
+    "vr:update": "playwright test --config=playwright.config.ts --update-snapshots",
+    "vr:ui": "playwright test --ui --config=playwright.config.ts"
+  },
+  "devDependencies": {
+    "@figma/code-connect": "^1.4.0",
+    "@playwright/test": "^1.49.0"
+  }
+}

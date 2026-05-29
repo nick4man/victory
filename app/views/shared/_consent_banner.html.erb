@@ -1,0 +1,54 @@
+<%# Cookie/Metrika notification banner per 152-ФЗ §6.1.2.
+    Light consent — sticky bottom, dismissable. НЕ блокирует Метрику
+    до согласия, только информирует пользователя. Скрывается после
+    клика «Принять», состояние в localStorage.
+
+    Self-contained — inline vanilla JS (same pattern as chat_widget).
+    Stimulus в проекте формально не bootstrap'ится, поэтому
+    data-controller-style контроллеры — dead code. %>
+<div id="consent-banner"
+     class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 shadow-2xl">
+  <div class="px-6 lg:px-12 py-4 flex flex-col lg:flex-row items-start lg:items-center gap-3 lg:gap-6 max-w-7xl mx-auto">
+    <p class="text-sm text-foreground leading-relaxed flex-1">
+      Сайт использует cookies и Яндекс.Метрику (включая Webvisor — запись действий посетителя)
+      для улучшения сервиса. Продолжая использовать сайт, вы соглашаетесь с условиями
+      <%= link_to 'Политики конфиденциальности', privacy_path,
+                  class: 'underline hover:text-muted-foreground',
+                  target: '_blank',
+                  rel: 'noopener' %>.
+    </p>
+    <button type="button" id="consent-banner-accept"
+            class="shrink-0 px-6 py-2 text-xs tracking-[0.3em] uppercase border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors">
+      Принять
+    </button>
+  </div>
+</div>
+
+<script type="module">
+  (() => {
+    const KEY = 'victory-consent-banner-v1';
+    const root = document.getElementById('consent-banner');
+    if (!root) return;
+
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(KEY) === '1';
+    } catch (_) {
+      // private mode / disabled storage — re-show banner each visit, OK
+    }
+
+    if (!dismissed) {
+      // Reveal on next paint to avoid layout shift on initial render
+      requestAnimationFrame(() => root.classList.remove('hidden'));
+    }
+
+    document.getElementById('consent-banner-accept')?.addEventListener('click', () => {
+      try {
+        localStorage.setItem(KEY, '1');
+      } catch (_) {
+        // silently fail — banner just won't persist
+      }
+      root.classList.add('hidden');
+    });
+  })();
+</script>

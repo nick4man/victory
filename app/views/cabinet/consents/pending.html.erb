@@ -1,0 +1,71 @@
+<% content_for :title, "На подписание — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-8">
+      <%= link_to '← Кабинет', cabinet_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <header class="mb-12">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Личный кабинет</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+        На подписание
+      </h1>
+      <p class="text-sm text-muted-foreground leading-relaxed max-w-2xl">
+        Объекты недвижимости, по которым агентство подготовило карточку для публикации.
+        Для размещения на сайте и партнёрских площадках необходимо ваше согласие
+        с условиями агентского договора.
+      </p>
+    </header>
+
+    <% if @pending_properties.empty? %>
+      <div class="border border-border p-8 text-center">
+        <p class="text-sm text-muted-foreground mb-2">
+          На данный момент нет объектов, ожидающих вашего согласия.
+        </p>
+        <p class="text-xs text-muted-foreground/70">
+          Когда агент подготовит карточку нового объекта, вы получите письмо
+          со ссылкой на эту страницу.
+        </p>
+      </div>
+    <% else %>
+      <div class="space-y-4">
+        <% @pending_properties.each do |property| %>
+          <div class="border border-border p-6">
+            <div class="grid md:grid-cols-3 gap-4 mb-4">
+              <div class="md:col-span-2">
+                <h3 class="text-lg font-light tracking-tight text-foreground mb-2">
+                  <%= property.title %>
+                </h3>
+                <p class="text-sm text-muted-foreground mb-1">
+                  <%= property.address %>
+                </p>
+                <p class="text-xs tracking-wider text-muted-foreground/70">
+                  <% if (area = property.try(:total_area) || property.try(:area)) %>
+                    <%= area %> м²
+                  <% end %>
+                  <% if property.rooms.present? && property.rooms.positive? %>
+                    · <%= property.rooms %>-комн
+                  <% end %>
+                  <% if property.floor.present? %>
+                    · этаж <%= property.floor %>/<%= property.total_floors %>
+                  <% end %>
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-light text-foreground mb-1">
+                  <%= number_to_currency(property.price, precision: 0, unit: '₽', format: '%n %u', delimiter: ' ') %>
+                </p>
+                <p class="text-xs tracking-wider text-muted-foreground/70">
+                  цена предложения
+                </p>
+              </div>
+            </div>
+            <%= link_to 'Перейти к подписанию →', cabinet_listing_consent_path(property),
+                  class: 'inline-block text-xs tracking-[0.25em] uppercase border-b border-foreground text-foreground hover:text-muted-foreground hover:border-muted-foreground transition-colors pb-1' %>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</section>

@@ -1,0 +1,135 @@
+<% content_for :title, "Админка · Статьи — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <%# === Header === %>
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Статьи и новости</h1>
+      </div>
+      <%= link_to "+ Новая статья",
+            new_admin_article_path(),
+            class: "px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors" %>
+    </div>
+
+    <%# Flash %>
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <%# === Scope tabs (status) === %>
+    <% tabs = [
+      ['visible', "ОПУБЛИКОВАНО · #{@counts[:visible]}"],
+      ['pending', "ЧЕРНОВИКИ · #{@counts[:pending]}"],
+      ['hidden',  "СКРЫТО · #{@counts[:hidden]}"]
+    ] %>
+    <div class="flex flex-wrap gap-2 mb-3">
+      <% tabs.each do |slug, label| %>
+        <%= link_to label, admin_articles_path(scope: slug, category: @category),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <%# === Category filter === %>
+    <% cat_labels = { 'news' => 'НОВОСТИ', 'market' => 'РЫНОК', 'mortgage' => 'ИПОТЕКА', 'investment' => 'ИНВЕСТ', 'analytics' => 'АНАЛИТИКА', 'guide' => 'ГАЙДЫ' } %>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <%= link_to "ВСЕ КАТЕГОРИИ", admin_articles_path(scope: @scope),
+            class: "px-3 py-1 text-[10px] tracking-[0.25em] border #{@category.nil? ? 'border-foreground text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% Article::CATEGORIES.each do |cat| %>
+        <%= link_to (cat_labels[cat] || cat.upcase), admin_articles_path(scope: @scope, category: cat),
+              class: "px-3 py-1 text-[10px] tracking-[0.25em] border #{@category == cat ? 'border-foreground text-foreground' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <%# === Table === %>
+    <% if @articles.any? %>
+      <div class="bg-card border border-border divide-y divide-border overflow-x-auto">
+        <div class="grid grid-cols-12 gap-3 px-4 py-3 text-[10px] tracking-[0.3em] text-muted-foreground bg-secondary/30">
+          <div class="col-span-1">ID</div>
+          <div class="col-span-2">КАТЕГОРИЯ</div>
+          <div class="col-span-4">ЗАГОЛОВОК</div>
+          <div class="col-span-2">ИСТОЧНИК</div>
+          <div class="col-span-1">СТАТУС</div>
+          <div class="col-span-2 text-right">ДЕЙСТВИЯ</div>
+        </div>
+
+        <% @articles.each do |a| %>
+          <div class="grid grid-cols-12 gap-3 px-4 py-4 text-sm hover:bg-secondary/20 transition-colors">
+            <div class="col-span-1 text-muted-foreground">#<%= a.id %></div>
+            <div class="col-span-2">
+              <span class="text-[10px] tracking-[0.3em] text-muted-foreground"><%= a.category.upcase %></span>
+              <% if a.region.present? %>
+                <span class="block text-[10px] text-muted-foreground/70 mt-1"><%= a.region %></span>
+              <% end %>
+            </div>
+            <div class="col-span-4">
+              <p class="text-foreground"><%= a.title.truncate(80) %></p>
+              <p class="text-[10px] text-muted-foreground/70 mt-1">
+                <% if a.published_at %>
+                  опубликовано <%= l a.published_at, format: :long %>
+                <% else %>
+                  не опубликовано · создано <%= l a.created_at, format: :long %>
+                <% end %>
+              </p>
+            </div>
+            <div class="col-span-2">
+              <span class="text-xs text-muted-foreground"><%= a.external_source.presence || '—' %></span>
+              <% if a.external_id %>
+                <span class="block text-[10px] text-muted-foreground/60 mt-1 font-mono"><%= a.external_id.truncate(24) %></span>
+              <% end %>
+            </div>
+            <div class="col-span-1 text-xs">
+              <% if a.hidden? %>
+                <span class="text-destructive">скрыто</span>
+              <% elsif a.published? %>
+                <span class="text-emerald-400">опубл.</span>
+              <% else %>
+                <span class="text-muted-foreground">черн.</span>
+              <% end %>
+            </div>
+            <div class="col-span-2 text-right space-x-2 text-xs tracking-wider">
+              <%= link_to "ОТКР", news_path(article: a.slug), target: "_blank",
+                    class: "text-muted-foreground hover:text-foreground" if a.published? && !a.hidden? %>
+              <%= link_to "РЕД", edit_admin_article_path(a),
+                    class: "text-muted-foreground hover:text-foreground" %>
+              <% unless a.published? %>
+                <%= button_to "ПУБЛ", publish_admin_article_path(a),
+                      method: :post,
+                      class: "inline-block text-foreground hover:text-muted-foreground bg-transparent border-0 p-0 cursor-pointer",
+                      form: { class: "inline" },
+                      data: { turbo_confirm: "Опубликовать сейчас?" } %>
+              <% end %>
+              <% if a.hidden? %>
+                <%= button_to "ВЕРН", unhide_admin_article_path(a),
+                      method: :post,
+                      class: "inline-block text-foreground hover:text-muted-foreground bg-transparent border-0 p-0 cursor-pointer",
+                      form: { class: "inline" } %>
+              <% else %>
+                <%= button_to "СКР", hide_admin_article_path(a),
+                      method: :post,
+                      class: "inline-block text-destructive hover:text-destructive/80 bg-transparent border-0 p-0 cursor-pointer",
+                      form: { class: "inline" },
+                      data: { turbo_confirm: "Скрыть статью «#{a.title.truncate(40)}»?" } %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+      <% if @articles.respond_to?(:total_pages) && @articles.total_pages > 1 %>
+        <div class="mt-6"><%= paginate @articles rescue nil %></div>
+      <% end %>
+    <% else %>
+      <div class="bg-card border border-border p-12 text-center">
+        <p class="text-sm text-muted-foreground">Статей в этой категории нет.</p>
+      </div>
+    <% end %>
+
+    <p class="mt-10 text-[10px] tracking-[0.25em] text-muted-foreground/70">
+      Webhook: POST /webhooks/news_ingest · Bearer NEWS_INGEST_TOKEN
+    </p>
+  </div>
+</section>

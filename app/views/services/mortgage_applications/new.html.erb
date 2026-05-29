@@ -1,0 +1,122 @@
+<% content_for :title, "Заявка на ипотеку — АН Виктори" %>
+
+<%
+  fmt_rub = ->(v) { v.present? ? number_with_delimiter(v.to_i, delimiter: ' '.encode('UTF-8')) + ' ₽' : '—' }
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto">
+    <p class="text-xs tracking-[0.4em] text-muted-foreground mb-4">ЗАЯВКА НА ИПОТЕКУ</p>
+    <h1 class="text-3xl md:text-4xl lg:text-5xl font-light tracking-tight text-foreground leading-tight mb-6">
+      Оставьте контакт — мы перезвоним
+    </h1>
+    <p class="text-base text-muted-foreground mb-8 leading-relaxed">
+      Менеджер свяжется с вами в течение часа: подскажет недостающие документы,
+      поможет с заявкой в банк и сопровождает сделку до регистрации.
+    </p>
+
+    <%# === Program / audit context banners === %>
+    <% if @program %>
+      <div class="bg-card border border-border p-5 mb-5">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">ВЫБРАННАЯ ПРОГРАММА</p>
+        <p class="text-base text-foreground"><%= @program[:bank_name] %> · <%= @program[:product_name] %></p>
+        <p class="text-xs text-muted-foreground mt-2">
+          От <span class="text-foreground"><%= @program[:rate_min] %>%</span>
+          · до <span class="text-foreground"><%= @program[:term_years_max] || 30 %> лет</span>
+          · взнос от <span class="text-foreground"><%= @program[:down_payment_min_pct]&.to_i || 15 %>%</span>
+        </p>
+      </div>
+    <% end %>
+
+    <% if @audit_valuation %>
+      <div class="bg-card border border-border p-5 mb-8">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-2">СВЯЗАННЫЙ ИНВЕСТ-АУДИТ</p>
+        <p class="text-sm text-foreground">
+          <span class="text-muted-foreground">Отчёт <%= @audit_valuation.report_label %></span>
+          · <%= @audit_valuation.address.to_s.truncate(60) %>
+          · <%= fmt_rub.call(@audit_valuation.estimated_price) %>
+        </p>
+        <%= link_to "ОТКРЫТЬ ОТЧЁТ →",
+              investment_audit_show_path(token: @audit_valuation.token),
+              class: "mt-2 inline-block text-[10px] tracking-[0.25em] text-muted-foreground hover:text-foreground border-b border-border/40" %>
+      </div>
+    <% end %>
+
+    <%# === Form === %>
+    <%= form_with model: @inquiry,
+                  url: services_mortgage_applications_path,
+                  local: true,
+                  class: "space-y-5",
+                  id: "mortgage-app-form" do |f| %>
+      <%= hidden_field_tag :program_id, @program ? @program[:id] : nil %>
+      <%= hidden_field_tag :audit_token, params[:audit_token] %>
+
+      <% if @inquiry.errors.any? %>
+        <div class="border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          <ul class="list-disc pl-5">
+            <% @inquiry.errors.full_messages.each do |msg| %>
+              <li><%= msg %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <%= f.label :name, "Имя *", class: "block text-xs tracking-[0.2em] text-muted-foreground mb-2" %>
+          <%= f.text_field :name, required: true, placeholder: "Иван Иванов",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+        <div>
+          <%= f.label :phone, "Телефон *", class: "block text-xs tracking-[0.2em] text-muted-foreground mb-2" %>
+          <%= f.telephone_field :phone, required: true, placeholder: "+7 (___) ___-__-__",
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+      </div>
+
+      <div>
+        <%= f.label :email, "Email", class: "block text-xs tracking-[0.2em] text-muted-foreground mb-2" %>
+        <%= f.email_field :email, placeholder: "ivan@example.com",
+              class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      </div>
+
+      <% meta = (@inquiry.metadata || {}).with_indifferent_access %>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <div>
+          <label for="inquiry_meta_property_price" class="block text-xs tracking-[0.2em] text-muted-foreground mb-2">ЦЕНА ОБЪЕКТА, ₽</label>
+          <%= number_field_tag 'inquiry[metadata][property_price]', meta[:property_price], step: 1000, placeholder: '5 000 000', id: 'inquiry_meta_property_price',
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+        <div>
+          <label for="inquiry_meta_down_payment" class="block text-xs tracking-[0.2em] text-muted-foreground mb-2">ПЕРВЫЙ ВЗНОС, ₽</label>
+          <%= number_field_tag 'inquiry[metadata][down_payment]', meta[:down_payment], step: 1000, placeholder: '1 000 000', id: 'inquiry_meta_down_payment',
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+        <div>
+          <label for="inquiry_meta_loan_term" class="block text-xs tracking-[0.2em] text-muted-foreground mb-2">СРОК, ЛЕТ</label>
+          <%= number_field_tag 'inquiry[metadata][loan_term]', meta[:loan_term], min: 1, max: 30, placeholder: '20', id: 'inquiry_meta_loan_term',
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+        <div>
+          <label for="inquiry_meta_monthly_income" class="block text-xs tracking-[0.2em] text-muted-foreground mb-2">ДОХОД В МЕС., ₽</label>
+          <%= number_field_tag 'inquiry[metadata][monthly_income]', meta[:monthly_income], step: 1000, placeholder: '80 000', id: 'inquiry_meta_monthly_income',
+                class: "w-full h-12 px-4 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+        </div>
+      </div>
+
+      <div>
+        <%= f.label :message, "Комментарий", class: "block text-xs tracking-[0.2em] text-muted-foreground mb-2" %>
+        <%= f.text_area :message, rows: 3, placeholder: "Удобное время звонка, дополнительные пожелания...",
+              class: "w-full px-4 py-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      </div>
+
+      <p class="text-[11px] text-muted-foreground/70 leading-relaxed">
+        Отправляя заявку, вы соглашаетесь на обработку персональных данных согласно
+        <%= link_to "политике конфиденциальности", privacy_path, class: "underline hover:text-foreground" %>.
+      </p>
+
+      <%= f.submit "ОТПРАВИТЬ ЗАЯВКУ",
+            class: "w-full sm:w-auto px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/85 transition-colors cursor-pointer" %>
+    <% end %>
+  </div>
+</section>

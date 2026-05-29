@@ -1,0 +1,60 @@
+<%#
+  Schema.org Person + AggregateRating for the agent profile.
+  Linked to the global RealEstateAgent via worksFor.@id so search
+  engines build a connected entity graph (agency → its agents).
+
+  AggregateRating is only emitted when there's at least 1 approved
+  review — Google penalises empty rating widgets (a 5-star "0 reviews"
+  is treated as misleading structured data).
+%>
+<%
+  page_url = agent_url(@agent.agent_slug, host: request.host_with_port)
+  avatar_url = if @agent.avatar.attached?
+                 Rails.application.routes.url_helpers.url_for(
+                   @agent.avatar.variant(resize_to_fill: [400, 400])
+                 )
+               else
+                 nil
+               end
+
+  person = {
+    '@context' => 'https://schema.org',
+    '@type' => 'Person',
+    'name' => @agent.display_name,
+    'jobTitle' => (@agent.try(:crm_role_name).presence || 'Агент по недвижимости'),
+    'telephone' => @agent.display_phone,
+    'email' => @agent.email.presence,
+    'image' => avatar_url,
+    'url' => page_url,
+    'worksFor' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent" },
+    'description' => @agent.bio.to_s.strip.presence,
+    'knowsLanguage' => (@agent.languages.is_a?(Array) && @agent.languages.any? ? @agent.languages : nil),
+    'knowsAbout' => (@agent.specialties.is_a?(Array) && @agent.specialties.any? ? @agent.specialties : nil),
+    'hasCredential' => (@agent.license_no.present? ? {
+      '@type' => 'EducationalOccupationalCredential',
+      'credentialCategory' => 'license',
+      'name' => "Лицензия #{@agent.license_no}"
+    } : nil)
+  }.compact
+
+  if @agent.agent_review_count.to_i.positive? && @agent.agent_average_rating
+    person['aggregateRating'] = {
+      '@type' => 'AggregateRating',
+      'ratingValue' => @agent.agent_average_rating,
+      'reviewCount' => @agent.agent_review_count,
+      'bestRating' => 5,
+      'worstRating' => 1
+    }
+  end
+%>
+<script type="application/ld+json">
+<%= raw person.to_json %>
+</script>
+
+<script type="application/ld+json">
+<%= breadcrumb_jsonld([
+  ['Главная', root_url],
+  ['Команда', team_url],
+  [@agent.display_name, page_url]
+]) %>
+</script>

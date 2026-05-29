@@ -12,14 +12,21 @@ class ApplicationController < ActionController::Base
   # INCLUDES
   # ============================================
   # include Pundit::Authorization
+  include VisitorIdentity
   
   # ============================================
   # BEFORE ACTIONS
   # ============================================
-  # before_action :configure_permitted_parameters, if: :devise_controller?
+  before_action :configure_permitted_parameters, if: :devise_controller?
   before_action :set_locale
+  before_action :setup_meta_tags
+  before_action :set_active_storage_url_options
+  # noindex,nofollow header на /users/* (Devise sign-in/sign-up/password
+  # routes). robots.txt уже Disallow'ит /users/, но Googlebot может
+  # доиндексировать URL через external links — X-Robots дублирует signal
+  # на стороне response. Pure auth pages не несут полезного контента.
+  before_action :set_noindex_on_devise_controllers, if: :devise_controller?
   # before_action :track_user_activity
-  # before_action :setup_meta_tags
   # Временно отключено: требуется gem browser
   # before_action :detect_device_type
   
@@ -38,34 +45,54 @@ class ApplicationController < ActionController::Base
   # ============================================
   # HELPER METHODS
   # ============================================
-  helper_method :user_signed_in?
-  helper_method :current_user
   helper_method :current_user_admin?
   helper_method :current_user_agent?
   helper_method :current_user_client?
   helper_method :mobile_device?
   helper_method :tablet_device?
   helper_method :desktop_device?
-  
-  # Stub methods for Devise (temporarily disabled)
-  def user_signed_in?
-    false
+  helper_method :current_cabinet_user
+  helper_method :cabinet_user_signed_in?
+
+  # A7 Phase 1: cabinet identity (non-Devise, magic-link session).
+  # Returns User or nil. Не путать с current_user (Devise off, всегда nil).
+  def current_cabinet_user
+    return @current_cabinet_user if defined?(@current_cabinet_user)
+
+    id = session[:cabinet_user_id]
+    @current_cabinet_user = id ? User.find_by(id: id, active: true, deleted_at: nil) : nil
   end
-  
-  def current_user
-    nil
+
+  def cabinet_user_signed_in?
+    current_cabinet_user.present?
   end
-  
+
   protected
-  
+
+  # Active Storage needs per-request host to render blob URLs.
+  def set_active_storage_url_options
+    ActiveStorage::Current.url_options = {
+      host:     request.host,
+      port:     request.port,
+      protocol: request.protocol
+    }
+  end
+
   # ============================================
   # DEVISE CONFIGURATION
   # ============================================
+  # Devise auth pages (/users/sign_in, /users/sign_up, /users/password/new,
+  # etc.) shouldn't appear в SERP — pure auth forms, no editorial value.
+  # Sent via header так что non-HTML response paths тоже защищены.
+  def set_noindex_on_devise_controllers
+    response.headers['X-Robots-Tag'] = 'noindex, nofollow'
+  end
+
   def configure_permitted_parameters
     devise_parameter_sanitizer.permit(:sign_up, keys: [
-      :first_name, 
-      :last_name, 
-      :phone, 
+      :first_name,
+      :last_name,
+      :phone,
       :avatar
     ])
     
@@ -223,7 +250,19 @@ class ApplicationController < ActionController::Base
   # REDIRECT HELPERS
   # ============================================
   def redirect_back_or_to(default_path, **options)
-    redirect_to(request.referer || default_path, **options)
+    referer = request.referer
+    if referer.present? && safe_redirect_target?(referer)
+      redirect_to(referer, **options)
+    else
+      redirect_to(default_path, **options)
+    end
+  end
+
+  def safe_redirect_target?(url)
+    uri = URI.parse(url)
+    uri.host.nil? || uri.host == request.host
+  rescue URI::InvalidURIError
+    false
   end
   
   def store_location
@@ -257,15 +296,27 @@ class ApplicationController < ActionController::Base
   
   def render_404
     respond_to do |format|
-      format.html { render file: Rails.public_path.join('404.html'), status: :not_found, layout: false }
+      format.html { render template: 'errors/not_found', status: :not_found, layout: 'application' }
       format.json { render json: { error: 'Not found' }, status: :not_found }
       format.any  { head :not_found }
     end
   end
-  
+
+  # 410 Gone — content existed but was intentionally removed (admin hid
+  # article, property archived/sold). Я./Google de-index 410 URLs faster
+  # than 404 (which they retry) and much faster than 302 (which they treat
+  # as soft-redirect). Used by BlogController#show and PropertiesController#show.
+  def render_410
+    respond_to do |format|
+      format.html { render template: 'errors/gone', status: :gone, layout: 'application' }
+      format.json { render json: { error: 'Gone' }, status: :gone }
+      format.any  { head :gone }
+    end
+  end
+
   def render_500
     respond_to do |format|
-      format.html { render file: Rails.public_path.join('500.html'), status: :internal_server_error, layout: false }
+      format.html { render template: 'errors/internal_server_error', status: :internal_server_error, layout: 'application' }
       format.json { render json: { error: 'Internal server error' }, status: :internal_server_error }
       format.any  { head :internal_server_error }
     end
@@ -342,7 +393,7 @@ class ApplicationController < ActionController::Base
       token = request.headers['Authorization'].split(' ').last
       @current_api_user = decode_jwt_token(token)
     end
-  rescue
+  rescue JWT::DecodeError, JWT::ExpiredSignature, ActiveRecord::RecordNotFound
     @current_api_user = nil
   end
   
@@ -396,9 +447,24 @@ class ApplicationController < ActionController::Base
   # ============================================
   private
   
-  # Override Devise's after_sign_in_path
+  # Role-based dispatch after a successful sign-in. Stored location (the page
+  # the user came from) wins so deep-linking still works; otherwise the role
+  # decides which cabinet shows by default:
+  #   admin  → /admin            (moderation + content management)
+  #   agent  → /dashboard/staff  (CRM-synced workload view)
+  #   client → /dashboard        (favourites/inquiries/saved searches)
   def after_sign_in_path_for(resource)
-    stored_location_for(resource) || dashboard_root_path || root_path
+    stored_location_for(resource) || default_cabinet_for(resource)
+  end
+
+  def default_cabinet_for(resource)
+    case
+    when resource.respond_to?(:admin?) && resource.admin? then admin_root_path
+    when resource.respond_to?(:agent?) && resource.agent? then dashboard_staff_index_path
+    else dashboard_root_path
+    end
+  rescue StandardError
+    dashboard_root_path
   end
   
   # Override Devise's after_sign_out_path

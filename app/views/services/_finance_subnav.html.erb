@@ -1,0 +1,28 @@
+<%# Cross-navigation across the 4 «Финансы» section pages. Renders 3
+    cards linking to the OTHER pages of the section (filters out the
+    current one based on the `current:` symbol).
+    Usage examples (call with one of :mortgage / :deposit / :vs / :application). %>
+<%
+  all_cards = [
+    { key: :mortgage,    title: 'Ипотечный калькулятор', subtitle: 'Платёж, переплата, программы банков', href: services_mortgage_path },
+    { key: :deposit,     title: 'Депозитный калькулятор', subtitle: 'Доход вклада, сравнение программ', href: services_deposit_path },
+    { key: :vs,          title: 'Вклад или ипотека',     subtitle: 'Что выгоднее на горизонте 20 лет', href: services_mortgage_vs_deposit_path },
+    { key: :application, title: 'Подать заявку',         subtitle: 'Свяжем с банком — без выезда и звонков', href: new_services_mortgage_application_path }
+  ]
+  current_sym = (local_assigns[:current] || :mortgage).to_sym
+  visible = all_cards.reject { |c| c[:key] == current_sym }
+%>
+
+<section class="px-6 lg:px-12 py-12 lg:py-16 bg-card/30 border-t border-border">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-3 uppercase">Другие финансовые инструменты</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <% visible.each do |c| %>
+        <%= link_to c[:href], class: 'block p-5 bg-background border border-border hover:border-foreground transition-colors group' do %>
+          <p class="text-sm tracking-wider text-foreground group-hover:text-muted-foreground transition-colors"><%= c[:title] %> →</p>
+          <p class="text-xs text-muted-foreground mt-2 leading-relaxed"><%= c[:subtitle] %></p>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+</section>

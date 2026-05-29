@@ -6,8 +6,16 @@ class ApplicationJob < ActiveJob::Base
   # Automatically retry jobs that encountered a deadlock
   retry_on ActiveRecord::Deadlocked
 
-  # Most jobs are safe to ignore if the underlying records are no longer available
-  discard_on ActiveJob::DeserializationError
+  # Most jobs are safe to ignore if the underlying records are no longer
+  # available — но логируем чтобы понять статистику discards (типичный
+  # симптом — job создан до cleanup-задачи которая удалила запись).
+  discard_on ActiveJob::DeserializationError do |job, error|
+    Rails.logger.warn(
+      "[ApplicationJob discard] #{job.class.name} jid=#{job.job_id} " \
+      "args=#{job.arguments.inspect.to_s.truncate(200)} " \
+      "reason=#{error.class}: #{error.message.to_s.truncate(120)}"
+    )
+  end
   
   # Retry on common errors
   retry_on StandardError, wait: :exponentially_longer, attempts: 3
@@ -21,15 +29,66 @@ class ApplicationJob < ActiveJob::Base
     Rails.logger.info "Completed job: #{job.class.name}"
   end
   
+  # Phase 9 Iter 10 — Critical job classes which warrant DM Оксане on failure.
+  # Не для всех jobs (например cleanup tasks — noise) — только для тех что
+  # затрагивают live customer/staff flow.
+  CRITICAL_JOB_CLASSES = %w[
+    DocumentIntake::ParserJob
+    Kpi::StaffSnapshotJob
+    Kpi::AgencyDigestJob
+    DispatcherDigestRefreshJob
+    TaskBatchExpiryJob
+  ].freeze
+
   rescue_from(StandardError) do |exception|
     Rails.logger.error "Job failed: #{self.class.name}"
     Rails.logger.error "Error: #{exception.message}"
     Rails.logger.error exception.backtrace.join("\n")
-    
-    # Send error notification if needed
-    # ErrorNotificationService.new(exception, job: self).notify
-    
+
+    notify_directors_on_critical_failure(exception) if CRITICAL_JOB_CLASSES.include?(self.class.name)
+
     raise exception
+  end
+
+  private
+
+  def notify_directors_on_critical_failure(exception)
+    # Phase 11 Iter 26 — throttle 5-min bucket per (job_class + exception_class).
+    # При transient failure (Sidekiq retry × N + parallel workers) directors
+    # получают 1 alert вместо десятков → нет alert fatigue.
+    throttle_key = "#{self.class.name}:#{exception.class.name}"
+    unless Telegram::AlertThrottle.allow?(key: throttle_key)
+      Rails.logger.info(
+        "[ApplicationJob#notify_critical_failure] throttled — #{throttle_key} " \
+        "(suppressed=#{Telegram::AlertThrottle.suppressed_count(key: throttle_key)})"
+      )
+      return
+    end
+
+    suppressed = Telegram::AlertThrottle.suppressed_count(key: throttle_key)
+    suppress_note = suppressed.positive? ? "\n<i>(suppressed #{suppressed} similar over last 5min)</i>" : ''
+
+    # Phase 11 Iter 25 — cascade fallback: directors → admins → managers.
+    # Phase 13 Iter 49 — surface tier-info чтобы receiver понимал что это
+    # fallback alert (manager-tier видит director-level CRM failure).
+    cascade = Telegram::CriticalRecipients.resolve
+    tier_note = cascade.fallback? ? "\n<i>(routed to #{cascade.tier} tier — directors недоступны)</i>" : ''
+
+    text = "⚠️ <b>Background job failed</b>\n" \
+           "Class: <code>#{self.class.name}</code>\n" \
+           "Args: <code>#{arguments.inspect.to_s.truncate(200)}</code>\n" \
+           "Error: <code>#{exception.class}: #{exception.message.to_s.truncate(180)}</code>#{suppress_note}#{tier_note}\n\n" \
+           '<i>Phase 9 Iter 10 / 11 Iter 26 — auto alert + throttle.</i>'
+
+    client = Telegram::Client.new
+    cascade.each do |recipient|
+      chat_id = recipient.dm_chat_id || recipient.tg_user_id
+      next if chat_id.blank?
+
+      client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+    rescue StandardError => e
+      Rails.logger.warn("[ApplicationJob#notify_critical_failure] DM to #{recipient.mention}: #{e.message}")
+    end
   end
 end
 

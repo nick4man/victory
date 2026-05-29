@@ -1,0 +1,203 @@
+<% content_for :title, 'Считаем оценку — АН Виктори' %>
+<% content_for :seo_description, 'Идёт расчёт рыночной стоимости вашей недвижимости.' %>
+
+<%# Async loader page для PropertyValuationJob. UI: countdown «осталось ~Nс»
+    + 4 stage progress (search catalog / open market / medians / report).
+    Client polls /valuations/:token/status каждые 3с — при completed/failed
+    делаем reload, тогда controller рендерит result/failed view. %>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto text-center"
+       data-valuation-token="<%= @valuation.token %>"
+       data-valuation-status="<%= @valuation.status %>">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">ОЦЕНКА ЗАПУЩЕНА</p>
+
+    <div class="inline-block animate-spin mb-6">
+      <svg class="w-12 h-12 text-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke-width="2" opacity="0.2"/>
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-width="2"/>
+      </svg>
+    </div>
+
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">
+      Готовим оценку
+    </h1>
+    <p class="text-base text-muted-foreground max-w-xl mx-auto mb-2">
+      Ищем похожие объекты, считаем медианы и доверительный интервал.
+    </p>
+    <p class="text-2xl text-foreground font-light mb-10">
+      <span id="countdown-label">Осталось</span>
+      <span id="countdown-value">~30</span>
+      <span id="countdown-unit">секунд</span>
+    </p>
+
+    <%# Progress steps — 4 этапа, чекаются по ходу таймера. %>
+    <ol class="max-w-md mx-auto text-left space-y-3 mb-10" id="stage-list">
+      <li class="flex items-start gap-3" data-stage="0" data-stage-from="0" data-stage-to="8">
+        <span class="stage-icon flex-shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-xs text-muted-foreground">1</span>
+        <span class="stage-text text-sm text-muted-foreground">Поиск аналогов в каталоге АН</span>
+      </li>
+      <li class="flex items-start gap-3" data-stage="1" data-stage-from="8" data-stage-to="17">
+        <span class="stage-icon flex-shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-xs text-muted-foreground">2</span>
+        <span class="stage-text text-sm text-muted-foreground">Сбор данных на открытом рынке (Avito, Cian, Domclick)</span>
+      </li>
+      <li class="flex items-start gap-3" data-stage="2" data-stage-from="17" data-stage-to="24">
+        <span class="stage-icon flex-shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-xs text-muted-foreground">3</span>
+        <span class="stage-text text-sm text-muted-foreground">Расчёт медианы и доверительного интервала</span>
+      </li>
+      <li class="flex items-start gap-3" data-stage="3" data-stage-from="24" data-stage-to="30">
+        <span class="stage-icon flex-shrink-0 w-6 h-6 rounded-full border border-border flex items-center justify-center text-xs text-muted-foreground">4</span>
+        <span class="stage-text text-sm text-muted-foreground">Генерация отчёта и финального расчёта</span>
+      </li>
+    </ol>
+
+    <p class="text-xs tracking-[0.3em] text-muted-foreground/70 uppercase" id="poll-status">
+      Подключаемся…
+    </p>
+  </div>
+</section>
+
+<%# noscript fallback — мета-refresh каждые 8 секунд для пользователей с JS off. %>
+<noscript>
+  <meta http-equiv="refresh" content="8">
+  <section class="px-6 lg:px-12 pb-16 bg-background">
+    <div class="max-w-3xl mx-auto text-center">
+      <p class="text-xs tracking-wider text-muted-foreground">
+        Страница автоматически обновится. Если не обновляется — нажмите F5.
+      </p>
+    </div>
+  </section>
+</noscript>
+
+<script>
+  (function () {
+    var token = <%= @valuation.token.to_json.html_safe %>;
+    var pollEl = document.getElementById('poll-status');
+    var countdownEl = document.getElementById('countdown-value');
+    var countdownLabelEl = document.getElementById('countdown-label');
+    var countdownUnitEl = document.getElementById('countdown-unit');
+    var stages = document.querySelectorAll('#stage-list li[data-stage]');
+
+    var startedAt = Date.now();
+    var BUDGET_SEC = 30;            // ожидаемое время расчёта
+    var INTERVAL_MS = 3000;          // polling status
+    var TICK_MS = 1000;              // UI tick
+    var MAX_MS = 120000;             // абсолютный timeout
+
+    function setPoll(s) { if (pollEl) pollEl.textContent = s; }
+
+    function pluralSec(n) {
+      var mod10 = n % 10, mod100 = n % 100;
+      if (mod10 === 1 && mod100 !== 11) return 'секунда';
+      if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'секунды';
+      return 'секунд';
+    }
+
+    function updateCountdown() {
+      var elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      var remaining = BUDGET_SEC - elapsedSec;
+      if (remaining > 0) {
+        countdownLabelEl.textContent = 'Осталось';
+        countdownEl.textContent = '~' + remaining;
+        countdownUnitEl.textContent = pluralSec(remaining);
+      } else {
+        countdownLabelEl.textContent = 'Совсем скоро';
+        countdownEl.textContent = '…';
+        countdownUnitEl.textContent = '';
+      }
+    }
+
+    function updateStages() {
+      var elapsedSec = Math.round((Date.now() - startedAt) / 1000);
+      var activeFound = false;
+      stages.forEach(function (li) {
+        var from = parseInt(li.getAttribute('data-stage-from'), 10);
+        var to = parseInt(li.getAttribute('data-stage-to'), 10);
+        var icon = li.querySelector('.stage-icon');
+        var text = li.querySelector('.stage-text');
+        if (!icon || !text) return;
+
+        // step completed
+        if (elapsedSec >= to) {
+          icon.textContent = '✓';
+          icon.classList.remove('border-border', 'text-muted-foreground');
+          icon.classList.add('bg-foreground', 'border-foreground', 'text-background');
+          text.classList.remove('text-muted-foreground');
+          text.classList.add('text-foreground/70');
+          return;
+        }
+        // step in progress (first non-completed)
+        if (!activeFound && elapsedSec >= from) {
+          icon.textContent = '→';
+          icon.classList.remove('border-border', 'text-muted-foreground');
+          icon.classList.add('border-foreground', 'text-foreground');
+          text.classList.remove('text-muted-foreground');
+          text.classList.add('text-foreground');
+          activeFound = true;
+        }
+      });
+      // если elapsed > 30 — последний шаг становится active
+      if (!activeFound && elapsedSec >= BUDGET_SEC) {
+        var last = stages[stages.length - 1];
+        if (last) {
+          var icon = last.querySelector('.stage-icon');
+          var text = last.querySelector('.stage-text');
+          if (icon) {
+            icon.textContent = '→';
+            icon.classList.add('border-foreground', 'text-foreground');
+          }
+          if (text) text.classList.add('text-foreground');
+        }
+      }
+    }
+
+    function tick() {
+      updateCountdown();
+      updateStages();
+    }
+
+    function poll() {
+      if (Date.now() - startedAt > MAX_MS) {
+        setPoll('Превышено время ожидания. Обновите страницу через минуту.');
+        clearInterval(pollTimer);
+        clearInterval(tickTimer);
+        return;
+      }
+      fetch('/valuations/' + encodeURIComponent(token) + '/status', {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store'
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data) return;
+          if (data.status === 'completed') {
+            setPoll('Готово, открываем отчёт…');
+            clearInterval(pollTimer);
+            clearInterval(tickTimer);
+            // mark all stages as completed visually before reload
+            stages.forEach(function (li) {
+              var icon = li.querySelector('.stage-icon');
+              if (icon) {
+                icon.textContent = '✓';
+                icon.classList.add('bg-foreground', 'border-foreground', 'text-background');
+                icon.classList.remove('border-border', 'text-muted-foreground');
+              }
+            });
+            setTimeout(function () { window.location.reload(); }, 600);
+          } else if (data.status === 'failed') {
+            setPoll('Не удалось рассчитать. Перенаправляем…');
+            clearInterval(pollTimer);
+            clearInterval(tickTimer);
+            setTimeout(function () { window.location.reload(); }, 1500);
+          }
+        })
+        .catch(function (e) { console.warn('[valuation-poll] failed', e); });
+    }
+
+    setPoll('Считаем…');
+    tick();
+    var tickTimer = setInterval(tick, TICK_MS);
+    var pollTimer = setInterval(poll, INTERVAL_MS);
+    poll();
+  })();
+</script>

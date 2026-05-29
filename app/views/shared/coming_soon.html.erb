@@ -1,0 +1,24 @@
+<%
+  section ||= "Раздел"
+  description ||= "Раздел в разработке. Скоро здесь появится полезный контент."
+%>
+<% content_for :title, "#{section} — АН Виктори" %>
+<%# Coming-soon pages have <100 words of content. Letting Google/Yandex
+    index them attaches a "thin content" reputation to the domain. noindex
+    keeps them off SERPs until real copy lands; follow preserves the
+    internal-link graph so the rest of the site stays connected. %>
+<% content_for :head do %>
+  <meta name="robots" content="noindex, follow">
+<% end %>
+
+<section class="min-h-[60vh] px-6 lg:px-12 py-24 lg:py-32 bg-background flex items-center">
+  <div class="max-w-2xl mx-auto text-center">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">СКОРО</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-8"><%= section.upcase %></h1>
+    <p class="text-base text-muted-foreground leading-relaxed mb-12"><%= description %></p>
+    <div class="flex items-center justify-center gap-4 flex-wrap">
+      <%= link_to "НА ГЛАВНУЮ",      root_path,       class: "px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
+      <%= link_to "КАТАЛОГ ОБЪЕКТОВ", properties_path, class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+    </div>
+  </div>
+</section>

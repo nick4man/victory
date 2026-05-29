@@ -1,0 +1,153 @@
+<% content_for :title, "Заявка ##{@inquiry.id} — АН Виктори" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<%
+  status_badge_class = ->(status) {
+    case status.to_s
+    when 'completed' then 'border-emerald-500/40 text-emerald-300'
+    when 'cancelled' then 'border-border text-muted-foreground'
+    when 'rejected'  then 'border-red-500/40 text-red-300'
+    when 'pending', 'new' then 'border-foreground/40 text-foreground'
+    else 'border-foreground/40 text-foreground'
+    end
+  }
+  status_label = ->(status) {
+    {
+      'pending'    => 'НОВАЯ',
+      'new'        => 'НОВАЯ',
+      'contacted'  => 'СВЯЗАЛИСЬ',
+      'scheduled'  => 'НАЗНАЧЕНО',
+      'completed'  => 'ВЫПОЛНЕНА',
+      'cancelled'  => 'ОТМЕНЕНА',
+      'rejected'   => 'ОТКАЗАНО'
+    }[status.to_s] || status.to_s.upcase
+  }
+%>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-3xl mx-auto">
+
+    <%= link_to '← Все заявки', dashboard_inquiries_path,
+          class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground mb-8' %>
+
+    <%# === Header === %>
+    <div class="flex items-baseline justify-between flex-wrap gap-3 mb-8 pb-6 border-b border-border">
+      <div>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2">ЗАЯВКА №<%= @inquiry.id %></p>
+        <h1 class="text-2xl lg:text-3xl font-light tracking-tight text-foreground"><%= (@inquiry.inquiry_type.presence || 'Запрос').upcase %></h1>
+      </div>
+      <span class="px-3 py-1 text-[11px] tracking-[0.3em] border <%= status_badge_class.call(@inquiry.status) %>">
+        <%= status_label.call(@inquiry.status) %>
+      </span>
+    </div>
+
+    <% if flash[:notice] %>
+      <div class="mb-6 px-4 py-3 border border-emerald-500/40 bg-emerald-500/5 text-sm text-emerald-300">
+        <%= flash[:notice] %>
+      </div>
+    <% end %>
+    <% if flash[:alert] %>
+      <div class="mb-6 px-4 py-3 border border-red-500/40 bg-red-500/5 text-sm text-red-300">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+
+    <%# === Property block === %>
+    <% if @property %>
+      <div class="bg-card border border-border p-5 mb-6 flex items-center gap-5">
+        <% if @property.images.attached? %>
+          <%= image_tag @property.images.first, class: 'w-24 h-24 object-cover border border-border flex-shrink-0' %>
+        <% else %>
+          <div class="w-24 h-24 bg-secondary border border-border flex items-center justify-center text-[10px] text-muted-foreground flex-shrink-0">БЕЗ ФОТО</div>
+        <% end %>
+        <div class="flex-1 min-w-0">
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ОБЪЕКТ</p>
+          <p class="text-base text-foreground font-medium truncate"><%= @property.title %></p>
+          <p class="text-xs text-muted-foreground mt-1 truncate"><%= @property.address %></p>
+          <% if @property.price.to_f.positive? %>
+            <p class="text-sm text-foreground mt-1"><%= number_with_delimiter(@property.price.to_i, delimiter: ' ') %> ₽</p>
+          <% end %>
+        </div>
+        <%= link_to 'ОТКР →', property_path(@property), target: '_blank',
+              class: 'text-[10px] tracking-[0.3em] text-muted-foreground hover:text-foreground' %>
+      </div>
+    <% end %>
+
+    <%# === Inquiry details === %>
+    <div class="bg-card border border-border p-7 lg:p-8 mb-6">
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ИМЯ</dt>
+          <dd class="text-foreground"><%= @inquiry.name.presence || '—' %></dd>
+        </div>
+        <div>
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">ТЕЛЕФОН</dt>
+          <dd class="text-foreground"><%= @inquiry.phone.presence || '—' %></dd>
+        </div>
+        <div class="sm:col-span-2">
+          <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">EMAIL</dt>
+          <dd class="text-foreground"><%= @inquiry.email.presence || '—' %></dd>
+        </div>
+        <% if @inquiry.message.present? || @inquiry.comment.present? %>
+          <div class="sm:col-span-2">
+            <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">СООБЩЕНИЕ</dt>
+            <dd class="text-foreground whitespace-pre-line leading-relaxed"><%= @inquiry.message.presence || @inquiry.comment %></dd>
+          </div>
+        <% end %>
+        <% if @inquiry.preferred_date.present? || @inquiry.preferred_time.present? %>
+          <div>
+            <dt class="text-[10px] tracking-[0.3em] text-muted-foreground mb-1">УДОБНОЕ ВРЕМЯ</dt>
+            <dd class="text-foreground"><%= [@inquiry.preferred_date, @inquiry.preferred_time].compact.join(', ') %></dd>
+          </div>
+        <% end %>
+      </dl>
+    </div>
+
+    <%# === Agent contact === %>
+    <% if @agent %>
+      <div class="bg-card border border-border p-7 lg:p-8 mb-6">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-3">ВАШ АГЕНТ</p>
+        <p class="text-base text-foreground"><%= @agent.display_name %></p>
+        <div class="mt-3 flex flex-wrap gap-4 text-sm">
+          <a href="tel:<%= @agent.display_phone_tel %>" class="text-foreground hover:text-muted-foreground border-b border-foreground/40 pb-px">
+            <%= @agent.display_phone %>
+          </a>
+          <% if @agent.email.present? %>
+            <a href="mailto:<%= @agent.email %>" class="text-foreground hover:text-muted-foreground border-b border-foreground/40 pb-px">
+              <%= @agent.email %>
+            </a>
+          <% end %>
+        </div>
+      </div>
+    <% end %>
+
+    <%# === Timeline === %>
+    <% if @events.any? %>
+      <div class="bg-card border border-border p-7 lg:p-8 mb-6">
+        <p class="text-[10px] tracking-[0.3em] text-muted-foreground mb-5">ИСТОРИЯ</p>
+        <ol class="space-y-4">
+          <% @events.each do |ev| %>
+            <li class="flex items-start gap-4">
+              <span class="w-1.5 h-1.5 rounded-full bg-foreground mt-2 flex-shrink-0"></span>
+              <div class="flex-1">
+                <p class="text-sm text-foreground"><%= ev[:label] %></p>
+                <p class="text-[10px] tracking-wider text-muted-foreground/70 mt-1">
+                  <%= l(ev[:at], format: :long) rescue ev[:at] %>
+                </p>
+              </div>
+            </li>
+          <% end %>
+        </ol>
+      </div>
+    <% end %>
+
+    <%# === Actions === %>
+    <% if %w[new contacted in_progress scheduled].include?(@inquiry.status.to_s) %>
+      <%= button_to 'ОТМЕНИТЬ ЗАЯВКУ', cancel_dashboard_inquiry_path(@inquiry), method: :post,
+            data: { turbo_confirm: 'Точно отменить заявку?' },
+            class: 'px-5 py-3 text-xs tracking-[0.3em] border border-red-500/40 text-red-300 hover:bg-red-500/10 transition-colors cursor-pointer',
+            form: { class: 'inline' } %>
+    <% end %>
+  </div>
+</section>

@@ -1,0 +1,82 @@
+services:
+  db:
+    # Custom: postgis/postgis:15-3.5 + apt postgresql-15-pgvector.
+    # Drop-in replacement for postgres:15 — same major version + same data layout,
+    # same VOLUME mount. pgdata named volume preserved across image swap.
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: viktory-postgres-pgvector:pg15-postgis35
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - .env
+    ports:
+      - "0.0.0.0:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+      - rails_tmp:/app/tmp
+      - rails_log:/app/log
+    tty: true
+    stdin_open: true
+
+  sidekiq:
+    build: .
+    restart: unless-stopped
+    user: "${UID:-1000}:${GID:-1000}"
+    env_file:
+      - .env
+    environment:
+      SKIP_DB_PREPARE: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      web:
+        condition: service_started
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+      - rails_tmp:/app/tmp
+      - rails_log:/app/log
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+
+volumes:
+  pgdata:
+  redisdata:
+  bundle:
+  rails_tmp:
+  rails_log:

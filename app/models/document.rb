@@ -67,8 +67,12 @@ class Document < ApplicationRecord
   # SCOPES
   # ============================================
   
+  # Soft-delete по CLAUDE rule #1: default_scope скрывает deleted строки от
+  # всех queries. Доступ к удалённым — через `.unscoped` или `.with_deleted`.
+  default_scope { where(deleted_at: nil) }
+  scope :with_deleted, -> { unscope(where: :deleted_at) }
   scope :active, -> { where(deleted_at: nil) }
-  scope :deleted, -> { where.not(deleted_at: nil) }
+  scope :deleted, -> { unscope(where: :deleted_at).where.not(deleted_at: nil) }
   scope :public_documents, -> { where(public: true) }
   scope :private_documents, -> { where(public: false) }
   scope :verified, -> { where.not(verified_at: nil) }

@@ -1,0 +1,45 @@
+<%#
+  Public-facing DOM breadcrumb with Schema.org BreadcrumbList microdata.
+
+  Why both DOM and JSON-LD: Google requires the rendered DOM to match
+  the JSON-LD it sees, and Yandex won't show the breadcrumb carousel
+  in SERP unless the trail is visible in the page itself. Pages that
+  only emit BreadcrumbList JSON-LD (via breadcrumb_jsonld helper) get
+  the entity-graph signal but not the SERP rendering.
+
+  Local `items` is an Array of [text, url] tuples. Last item is the
+  current page and rendered as plain text (no link, no href).
+
+  Visual style is intentionally minimal — small uppercase tracking,
+  muted foreground, chevron separator — to match the site's monochrome
+  premium aesthetic instead of the Tailwind blue-pill look used by the
+  legacy `breadcrumbs` helper in the dashboard.
+
+  Usage (см. реальный caller — pages/about.html.erb:4):
+    render shared/breadcrumb с items как Array of [label, url] tuples,
+    последний tuple — current page с url=nil.
+%>
+<% items = local_assigns[:items] || [] %>
+<% if items.any? %>
+  <nav aria-label="Хлебные крошки" class="px-6 lg:px-12 pt-24 pb-2 bg-background">
+    <ol class="max-w-7xl mx-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-xs tracking-[0.2em] text-muted-foreground"
+        itemscope itemtype="https://schema.org/BreadcrumbList">
+      <% items.each_with_index do |(text, url), idx| %>
+        <li class="inline-flex items-center"
+            itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+          <% if url.present? && idx < items.size - 1 %>
+            <a href="<%= url %>" itemprop="item" class="hover:text-foreground transition-colors">
+              <span itemprop="name"><%= text %></span>
+            </a>
+          <% else %>
+            <span itemprop="name" class="text-foreground"><%= text %></span>
+          <% end %>
+          <meta itemprop="position" content="<%= idx + 1 %>">
+          <% unless idx == items.size - 1 %>
+            <span class="mx-2 text-muted-foreground/60" aria-hidden="true">/</span>
+          <% end %>
+        </li>
+      <% end %>
+    </ol>
+  </nav>
+<% end %>

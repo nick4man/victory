@@ -1,0 +1,43 @@
+<div class="bg-background p-6 hover:bg-foreground/[0.02] transition-colors">
+  <div class="flex items-start gap-4">
+    <% if user.avatar.attached? %>
+      <%= image_tag user.avatar.variant(resize_to_fill: [80, 80]),
+            class: "w-16 h-16 object-cover", loading: 'lazy', decoding: 'async',
+            alt: "#{user.display_name} — #{user.crm_role_name.presence || 'агент'} АН Виктори" %>
+    <% else %>
+      <div class="w-16 h-16 flex items-center justify-center border border-border text-foreground text-lg tracking-widest flex-shrink-0">
+        <%= user.avatar_initials %>
+      </div>
+    <% end %>
+
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <%# Public agent profile page (Schema.org Person + reviews). Falls
+            back to plain text when the user isn't an agent with a slug. %>
+        <% if user.respond_to?(:has_agent_profile?) && user.has_agent_profile? %>
+          <%= link_to user.display_name, agent_path(user.agent_slug),
+                class: 'font-medium text-foreground truncate underline-offset-4 hover:underline' %>
+        <% else %>
+          <p class="font-medium text-foreground truncate"><%= user.display_name %></p>
+        <% end %>
+        <% if user.is_chief %>
+          <span class="text-[10px] uppercase tracking-wider px-2 py-0.5 border border-foreground text-foreground">Руководитель</span>
+        <% end %>
+      </div>
+      <p class="text-sm text-muted-foreground mb-3"><%= user.crm_role_name.presence || (user.role_agent? ? 'Агент' : user.role.to_s.capitalize) %></p>
+
+      <div class="space-y-1 text-xs text-muted-foreground">
+        <% if user.phone.present? %>
+          <p>
+            <%= link_to user.phone, "tel:#{user.phone}", class: "hover:text-foreground transition-colors" %>
+          </p>
+        <% end %>
+        <% if user.email.present? %>
+          <p>
+            <%= link_to user.email, "mailto:#{user.email}", class: "hover:text-foreground transition-colors break-all" %>
+          </p>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</div>

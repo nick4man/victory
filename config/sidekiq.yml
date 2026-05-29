@@ -15,7 +15,6 @@
 # Redis connection
 :redis:
   url: <%= ENV.fetch('REDIS_URL', 'redis://localhost:6379/0') %>
-  namespace: viktory_realty_sidekiq
   pool: <%= ENV.fetch('RAILS_MAX_THREADS', 5) %>
 
 # Retry settings

@@ -48,9 +48,18 @@ class Inquiry < ApplicationRecord
   belongs_to :user, optional: true, counter_cache: true
   belongs_to :property, optional: true, counter_cache: true
   belongs_to :agent, class_name: 'User', optional: true
+  # Phase 2 MLS/YRL: client interested в чужом объекте (показывается через
+  # /external-listings/:id). Используется в Phase 3 для auto-create Referral.
+  belongs_to :external_listing, optional: true
+  # Phase 3: auto-created при Inquiry с external_listing_id через
+  # Referrals::AutoCreator (after_commit hook).
+  has_one :referral, dependent: :destroy
 
   has_many :messages, dependent: :nullify
-  has_many :activities, as: :trackable, dependent: :destroy
+  # NOTE: `has_many :activities, as: :trackable` removed — Activity model
+  # never existed (orphaned polymorphic association с initial scaffold).
+  # No callers in app/. If activity-log нужен в будущем — добавлять
+  # Topnlab::ActivityLogFetcher pattern (existing).
 
   # ============================================
   # ENUMS
@@ -85,7 +94,12 @@ class Inquiry < ApplicationRecord
   # VALIDATIONS
   # ============================================
   validates :name, presence: true, length: { minimum: 2, maximum: 100 }
-  validates :phone, presence: true
+  # Phase 4D — TG-DM intake может прийти БЕЗ phone (клиент только начал
+  # диалог). Phase 4E — crm_webhook source хранит только masked phone (PII
+  # stays в Topnlab). Phone qualification — отдельный шаг. Site-формы и
+  # manual продолжают требовать phone.
+  PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+  validates :phone, presence: true, unless: -> { PHONE_OPTIONAL_SOURCES.include?(source) }
   validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
   validates :inquiry_type, presence: true
   validates :status, presence: true
@@ -100,9 +114,16 @@ class Inquiry < ApplicationRecord
   # ============================================
   before_validation :normalize_phone
   before_validation :set_default_source, on: :create
+  # Phase 16 — auto-tag staff/test submissions без UX friction.
+  before_validation :detect_staff_test_submission, on: :create
   after_create :assign_to_agent
   after_create :send_notifications
   after_create :sync_to_crm
+  after_create_commit :push_to_work_bot
+  # Phase 3 MLS/YRL — если Inquiry на чужой объект, заводим pending
+  # Referral для commission tracking. Service сам решает что делать
+  # если PartnerAgency не найдена (логирует, не падает).
+  after_create_commit :auto_create_referral
   after_update :notify_status_change, if: :saved_change_to_status?
 
   # ============================================
@@ -415,6 +436,18 @@ class Inquiry < ApplicationRecord
 
   private
 
+  # Phase 3: auto-create Referral если Inquiry на чужой объект.
+  # Service-level — Inquiry не должен знать business logic matching
+  # ExternalListing → PartnerAgency. Failure isolation: не ломаем
+  # save flow если service падает.
+  def auto_create_referral
+    return if external_listing_id.blank?
+    Referrals::AutoCreator.call(self)
+  rescue StandardError => e
+    Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+    Sentry.capture_exception(e, extra: { inquiry_id: id, external_listing_id: external_listing_id }) if defined?(Sentry)
+  end
+
   # Callbacks
   def normalize_phone
     return unless phone.present?
@@ -423,6 +456,22 @@ class Inquiry < ApplicationRecord
 
   def set_default_source
     self.source ||= 'web'
+  end
+
+  # Phase 16 — auto-tag staff/test submissions через эвристики (StaffSubmissionDetector).
+  # Без UX friction: real клиент submit'ит как обычно, staff/test markers получают
+  # staff_test=true → KPI / dashboard фильтруют по умолчанию.
+  def detect_staff_test_submission
+    return if staff_test # уже выставлен (admin override / factory)
+
+    result = StaffSubmissionDetector.detect(
+      email: email,
+      phone: phone,
+      name: name,
+      tg_user_id: client_tg_user_id # Phase 4D — set когда intake идёт из TG DM
+    )
+    self.staff_test = result.staff_test
+    self.staff_test_matched_by = result.matched_by
   end
 
   def assign_to_agent
@@ -442,14 +491,79 @@ class Inquiry < ApplicationRecord
     sync_to_crm! if ENV['AMOCRM_ENABLED'] == 'true'
   end
 
+  # Публикуем карточку нового лида в Telegram-бот АН.
+  # Не блокирует пользователя (после commit, в фоне через перформ-later когда подключим Sidekiq).
+  # Если интегра отключена (ENV) или ошибка — мы её не пробрасываем; сайт работает.
+  def push_to_work_bot
+    return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
+    return if Thread.current[:skip_workbot_push] == true  # рекурсия из Lead::Intake::SiteSource#fallback_inquiry
+    source = case inquiry_type
+             when 'evaluation' then 'site_valuation'
+             when 'mortgage'   then 'site_mortgage'
+             else                   'site_form'
+             end
+    # Chat-flow leads (см. ChatTools::QualifyLead) кладут extra metadata —
+    # forward'им в payload чтобы LeadAnnouncer мог отрисовать service-badge
+    # и SiteSource'у привязать lead_ref к PropertyValuation.
+    chat_meta = metadata.is_a?(Hash) ? metadata : {}
+    service_type = chat_meta['service_type'].presence || chat_meta[:service_type].presence
+    valuation_token = chat_meta['property_valuation_token'].presence ||
+                      chat_meta[:property_valuation_token].presence
+    valuation_id = (PropertyValuation.find_by(token: valuation_token)&.id if valuation_token)
+
+    Lead::Intake.call(
+      source: source,
+      payload: {
+        name:          name,
+        phone:         phone,
+        email:         email,
+        message:       message,
+        summary:       message.presence || comment,
+        priority:      priority,             # для LeadAnnouncer badge (high/urgent)
+        service_type:  service_type,         # для service-badge (express/cma/...)
+        property_id:   property_id,
+        inquiry_id:    id,
+        valuation_id:  valuation_id,         # → SiteSource привяжет lead_ref к PropertyValuation
+        origin:        referrer_url,
+        utm:           { source: utm_source, medium: utm_medium, campaign: utm_campaign }.compact_blank
+      }.compact
+    )
+  rescue StandardError => e
+    Rails.logger.error("[Inquiry#push_to_work_bot] inquiry=#{id} #{e.class}: #{e.message}")
+  end
+
   def notify_status_change
     notify_user_of_status_change! if user.present?
+    broadcast_cabinet_status_change
+  end
+
+  # A7 Phase 2: real-time push в /cabinet через CabinetChannel. Адресат —
+  # либо linked User (user_id), либо matched-by-email/phone (cabinet lookup).
+  # Fail-safe: ошибка broadcast'а не должна ломать main save flow.
+  def broadcast_cabinet_status_change
+    target_user = user || User.where(active: true).find_by('LOWER(email) = ?', email.to_s.downcase)
+    return if target_user.nil?
+
+    CabinetChannel.broadcast_to(target_user, {
+      type:        'inquiry_status_changed',
+      inquiry_id:  id,
+      status:      status,
+      priority:    priority,
+      status_label: status_label,
+      updated_at:  updated_at.iso8601
+    })
+  rescue StandardError => e
+    Rails.logger.warn("[Inquiry##{id}] CabinetChannel broadcast failed: #{e.class} #{e.message}")
   end
 
   # Validations
   def phone_format
     return unless phone.present?
-    
+    # Phase 4E — masked phone из CRM ('+7 999 ***-**-67') legitimately
+    # содержит < 10 digits. Skip format check для sources которые могут
+    # legitimately иметь masked phone.
+    return if PHONE_OPTIONAL_SOURCES.include?(source)
+
     cleaned = phone.gsub(/\D/, '')
     unless cleaned.match?(/\A\d{10,11}\z/)
       errors.add(:phone, 'должен содержать 10-11 цифр')
@@ -463,6 +577,11 @@ class Inquiry < ApplicationRecord
   end
 
   def property_or_message_required
+    # Mortgage inquiries carry program details in metadata, not a property
+    # FK — exempt them from the property-or-message rule so /services/mortgage
+    # applications validate cleanly.
+    return if inquiry_type == 'mortgage'
+
     if property_id.blank? && message.blank?
       errors.add(:base, 'Необходимо указать объект недвижимости или сообщение')
     end

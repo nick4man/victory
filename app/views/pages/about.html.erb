@@ -1,173 +1,105 @@
-<% content_for :title, "О компании" %>
+<% content_for :title, "О компании — АН Виктори" %>
+<% content_for :seo_description, 'АН «Виктори» — агентство недвижимости в Рязани с 2008 года. Покупка, продажа, аренда квартир, домов, коммерческой недвижимости. Юридическое сопровождение, ипотечный консалтинг, опыт 18 лет на рынке.' %>
+<%# Branded OG image — фасад офиса с цветущей сакурой (16.05.2026).
+    Приоритет над layout default og-default.jpg для соцсетей. %>
+<% content_for :og_image,        "#{request.protocol}#{request.host_with_port}/images/office/og.jpg" %>
+<% content_for :og_image_width,  1200 %>
+<% content_for :og_image_height, 630 %>
 
-<div class="bg-white">
-  <!-- Hero section -->
-  <div class="relative bg-gradient-to-r from-primary-600 to-primary-800 py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="text-center">
-        <h1 class="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-          О компании АН "Виктори"
-        </h1>
-        <p class="mx-auto mt-6 max-w-2xl text-xl text-primary-100">
-          Мы помогаем людям находить дом их мечты уже более <%= @statistics[:years_in_business] %> лет
+<%# ImageObject Schema.org для офисных фото — сигнал Я.Картинки/Google
+    Images о визуальной идентичности агентства. 3 фото из slider'а. %>
+<% content_for :head do %>
+  <%= render 'shared/jsonld_image_object', images: [
+    { url: '/images/office/hero.jpg',         caption: 'Офис АН «Виктори» — фасад с цветущей сакурой, ул. Горького 86, Рязань', width: 1600, height: 1200 },
+    { url: '/images/office/facade-wide.jpg',  caption: 'Здание офиса АН «Виктори» — общий план, ул. Горького 86', width: 1200, height: 900 },
+    { url: '/images/office/entry.jpg',        caption: 'Входная группа офиса АН «Виктори» — приёмная клиентов', width: 1200, height: 900 }
+  ] %>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['О компании', nil]
+] %>
+
+<section class="px-6 lg:px-12 py-12 lg:py-16 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">О КОМПАНИИ</p>
+    <h1 class="text-5xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-12 leading-tight">
+      АН ВИКТОРИ<br>НЕДВИЖИМОСТЬ В РЯЗАНИ
+    </h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-24 mb-24">
+      <div>
+        <p class="text-base text-muted-foreground leading-relaxed mb-6">
+          АН «Виктори» — рязанское агентство недвижимости. Помогаем клиентам покупать, продавать, арендовать и оценивать квартиры, дома, участки и коммерческую недвижимость в Рязани и области.
+        </p>
+        <p class="text-base text-muted-foreground leading-relaxed">
+          Команда профильных агентов, своя база сделок, договоры и сопровождение под ключ. Работаем по принципу: каждая сделка — рекомендация и повторное обращение.
         </p>
       </div>
+      <%# Honest tile: если Topnlab API populated — показываем processed_total
+          с label "обработано". Else — показываем completed_deals (local DB)
+          с правильным label "закрытых сделок", а не lying про "обработанные". %>
+      <% processed_count = @metrics[:processed_requests].to_i %>
+      <% deals_tile = if processed_count.positive?
+                       [number_with_delimiter(processed_count), 'обработано клиентских запросов']
+                     else
+                       [number_with_delimiter(@metrics[:completed_deals]), 'закрытых сделок']
+                     end %>
+      <div class="grid grid-cols-2 gap-8">
+        <% [
+          [@metrics[:years_on_market],                            "лет на рынке"],
+          [Property.on_site.count,                         "объектов в рекламе"],
+          deals_tile,
+          [@metrics[:total_volume_human].presence || 'Рязань',    @metrics[:total_volume_human].present? ? "объём продаж" : "и область"]
+        ].each do |v, l| %>
+          <div>
+            <p class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-2"><%= v %></p>
+            <p class="text-xs tracking-widest text-muted-foreground uppercase"><%= l %></p>
+          </div>
+        <% end %>
+      </div>
     </div>
-  </div>
 
-  <!-- Mission section -->
-  <div class="py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="lg:grid lg:grid-cols-2 lg:gap-8 lg:items-center">
+    <%# Фото офиса (ул. Горького, 86) — слайдер 3 кадров, авто-ротация 5с.
+        Кадры: фасад с сакурой, общий план, крыльцо. %>
+    <div class="mb-20">
+      <%= render 'shared/photo_slider',
+            id: 'about-office-slider',
+            interval: 5000,
+            slides: [
+              { src: '/images/office/hero.jpg',
+                alt: 'Офис АН «Виктори» — фасад с цветущей сакурой',
+                caption: 'ул. Горького, 86 — фасад нашего офиса' },
+              { src: '/images/office/facade-wide.jpg',
+                alt: 'Здание офиса АН «Виктори» — общий план',
+                caption: 'Здание целиком — Горького, 86' },
+              { src: '/images/office/entry.jpg',
+                alt: 'Входная группа офиса АН «Виктори»',
+                caption: 'Входная группа — приёмная и переговорные' }
+            ] %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-12 md:gap-16">
+      <% [
+        ["ПОДБОР",       "Знаем рязанский рынок: каждый район, новостройки, частные секторы. Подбираем под бюджет и задачу.", properties_path, "Открыть каталог"],
+        ["ОЦЕНКА",       "Онлайн-оценка по нашей базе фактических сделок. Адекватная цена под продажу или ипотечный отчёт. Инвест-аудит для покупателей.", valuations_path, "Оценить онлайн"],
+        ["ИПОТЕКА",      "Партнёрство с банками, расчёт платежа и помощь с пакетом документов. Льготные программы тоже.", services_mortgage_calculator_path, "Рассчитать"],
+        ["СОПРОВОЖДЕНИЕ","Проверка чистоты объекта, договор, регистрация в Росреестре. Сделка с минимумом шагов от клиента.", services_legal_services_path, "Подробнее"]
+      ].each do |t, b, link_url, link_label| %>
         <div>
-          <h2 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
-            Наша миссия
-          </h2>
-          <p class="mt-4 text-lg text-gray-500">
-            Мы стремимся сделать процесс покупки, продажи и аренды недвижимости максимально простым,
-            прозрачным и безопасным. Наша цель — не просто заключить сделку, а найти для каждого
-            клиента идеальное решение, которое улучшит качество его жизни.
-          </p>
-          <p class="mt-4 text-lg text-gray-500">
-            Мы гордимся тем, что помогли тысячам семей найти свой дом, и продолжаем совершенствовать
-            наши услуги, внедряя современные технологии и лучшие практики рынка недвижимости.
-          </p>
+          <h3 class="text-lg tracking-widest text-foreground mb-4"><%= t %></h3>
+          <p class="text-sm text-muted-foreground leading-relaxed mb-3"><%= b %></p>
+          <%= link_to link_label + " →", link_url, class: "inline-block text-xs tracking-[0.3em] text-foreground border-b border-foreground/30 hover:border-foreground transition-colors" %>
         </div>
-        <div class="mt-10 lg:mt-0">
-          <img class="rounded-lg shadow-lg" 
-               src="https://images.unsplash.com/photo-1560518883-ce09059eeffa?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1073&q=80" 
-               alt="О компании">
-        </div>
-      </div>
+      <% end %>
+    </div>
+
+    <div class="mt-24 flex flex-wrap gap-6">
+      <%= link_to team_path,    class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>КОМАНДА<% end %>
+      <%= link_to history_path, class: "px-8 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>ИСТОРИЯ<% end %>
     </div>
   </div>
+</section>
 
-  <!-- Statistics -->
-  <div class="bg-primary-800 py-12">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="grid grid-cols-2 gap-6 lg:grid-cols-5">
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= @statistics[:years_in_business] %>+</p>
-          <p class="mt-2 text-base text-primary-100">Лет на рынке</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:total_deals]) %>+</p>
-          <p class="mt-2 text-base text-primary-100">Успешных сделок</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:active_properties]) %></p>
-          <p class="mt-2 text-base text-primary-100">Объектов</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= number_with_delimiter(@statistics[:satisfied_clients]) %>+</p>
-          <p class="mt-2 text-base text-primary-100">Довольных клиентов</p>
-        </div>
-        <div class="text-center">
-          <p class="text-4xl font-extrabold text-white"><%= @statistics[:professional_agents] %></p>
-          <p class="mt-2 text-base text-primary-100">Профессиональных агентов</p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Values -->
-  <div class="py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="text-center">
-        <h2 class="text-3xl font-extrabold text-gray-900 sm:text-4xl">
-          Наши ценности
-        </h2>
-        <p class="mx-auto mt-4 max-w-2xl text-xl text-gray-500">
-          Принципы, которыми мы руководствуемся в работе
-        </p>
-      </div>
-
-      <div class="mt-12 grid gap-8 lg:grid-cols-3">
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🎯
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Профессионализм</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Высокая квалификация наших специалистов, постоянное обучение и развитие
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            ✨
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Прозрачность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Честность во всех аспектах работы, открытая информация о сделках
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            💎
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Надежность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Соблюдение всех обязательств, юридическая чистота сделок
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            ❤️
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Клиентоориентированность</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Индивидуальный подход к каждому клиенту, учет всех пожеланий
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🚀
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Инновации</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Современные технологии, AI-рекомендации, виртуальные туры
-          </p>
-        </div>
-
-        <div class="bg-white border border-gray-200 rounded-lg p-6 hover:shadow-lg transition">
-          <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white text-2xl">
-            🏆
-          </div>
-          <h3 class="mt-4 text-lg font-medium text-gray-900">Качество</h3>
-          <p class="mt-2 text-base text-gray-500">
-            Высокие стандарты обслуживания, контроль на всех этапах
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CTA section -->
-  <div class="bg-gray-50 py-16">
-    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <div class="rounded-lg bg-primary-700 px-6 py-12 text-center sm:px-12">
-        <h2 class="text-3xl font-extrabold text-white sm:text-4xl">
-          Готовы начать сотрудничество?
-        </h2>
-        <p class="mx-auto mt-4 max-w-2xl text-lg text-primary-100">
-          Свяжитесь с нами, и мы поможем найти идеальный вариант недвижимости
-        </p>
-        <div class="mt-8 flex justify-center gap-4">
-          <%= link_to contacts_path, 
-              class: "inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-primary-700 bg-white hover:bg-primary-50" do %>
-            Связаться с нами
-          <% end %>
-          <%= link_to properties_path, 
-              class: "inline-flex items-center px-6 py-3 border border-white text-base font-medium rounded-md text-white hover:bg-primary-600" do %>
-            Смотреть каталог
-          <% end %>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
+<%= render 'shared/reviews_strip', reviews: @reviews, aggregate: @metrics %>

@@ -1,0 +1,50 @@
+<% content_for :title, "Сотрудники компании" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+
+    <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6 mb-12 pb-8 border-b border-border">
+      <div>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">КАБИНЕТ СОТРУДНИКА</p>
+        <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground">Сотрудники компании</h1>
+        <p class="text-sm text-muted-foreground mt-3"><%= pluralize(@users.size, 'сотрудник', plural: 'сотрудников') %> · <%= pluralize(@departments.size, 'отдел', plural: 'отделов') %></p>
+      </div>
+      <%= form_with url: dashboard_staff_index_path, method: :get, local: true, class: "w-full lg:w-80" do |f| %>
+        <%= f.search_field :q, value: @search, placeholder: "Поиск: ФИО, должность, email",
+              class: "w-full h-11 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
+      <% end %>
+    </div>
+
+    <% if @search.present? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+        <% @users.each do |u| %>
+          <%= render 'shared/team_member_card', user: u %>
+        <% end %>
+        <% if @users.empty? %>
+          <div class="bg-background p-12 text-center text-muted-foreground col-span-full">
+            Никто не найден по запросу «<%= @search %>».
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <% @grouped.each do |dept, users_in_dept| %>
+        <% next if users_in_dept.empty? %>
+        <div class="mb-12">
+          <h2 class="text-lg font-medium text-foreground mb-1"><%= dept&.title || 'Без отдела' %></h2>
+          <% if dept&.address.present? %>
+            <p class="text-sm text-muted-foreground mb-6"><%= dept.address %></p>
+          <% else %>
+            <div class="h-6"></div>
+          <% end %>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
+            <% users_in_dept.sort_by { |u| [u.is_chief ? 0 : 1, u.last_name.to_s] }.each do |u| %>
+              <%= render 'shared/team_member_card', user: u %>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    <% end %>
+  </div>
+</section>

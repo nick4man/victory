@@ -1,0 +1,74 @@
+<% content_for :title, 'Админка · Кейсы — АН Виктори' %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <%# === Header === %>
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Кейсы</h1>
+      </div>
+      <%= link_to '+ Новый кейс',
+            new_admin_case_study_path(),
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+    </div>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <%# === Scope tabs === %>
+    <% tabs = [
+      ['visible',  "ОПУБЛИКОВАНО · #{@counts[:visible]}"],
+      ['draft',    "ЧЕРНОВИКИ · #{@counts[:draft]}"],
+      ['archived', "АРХИВ · #{@counts[:archived]}"],
+      ['deleted',  "УДАЛЁННЫЕ · #{@counts[:deleted]}"]
+    ] %>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <% tabs.each do |slug, label| %>
+        <%= link_to label, admin_case_studies_path(scope: slug),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <%# === Table === %>
+    <% if @case_studies.any? %>
+      <div class="bg-card border border-border divide-y divide-border overflow-x-auto">
+        <% @case_studies.each do |cs| %>
+          <div class="px-6 py-4 flex items-baseline gap-6 flex-wrap">
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-foreground truncate"><%= cs.title %></p>
+              <p class="text-[10px] tracking-wider text-muted-foreground mt-1 uppercase">
+                <%= cs.district %> · <%= cs.property_type %>
+                <% if cs.deal_amount %> · <%= cs.deal_amount_human %><% end %>
+                <% if cs.published_at %> · <%= cs.published_at.strftime('%d.%m.%y') %><% end %>
+              </p>
+            </div>
+            <div class="flex items-center gap-3">
+              <%= link_to 'Изменить', edit_admin_case_study_path(cs),
+                    class: 'text-xs tracking-[0.2em] text-foreground hover:text-muted-foreground uppercase' %>
+              <% if cs.status_published? && cs.deleted_at.nil? %>
+                <%= link_to 'Открыть', case_path(cs), target: '_blank',
+                      class: 'text-xs tracking-[0.2em] text-muted-foreground hover:text-foreground uppercase' %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    <% else %>
+      <div class="bg-card border border-border p-12 text-center">
+        <p class="text-sm text-muted-foreground">
+          В этой группе нет кейсов.
+          <% if @scope != 'visible' %>
+            <%= link_to 'Опубликованные →', admin_case_studies_path(), class: 'underline hover:text-foreground' %>
+          <% else %>
+            Создайте первый кейс через кнопку выше.
+          <% end %>
+        </p>
+      </div>
+    <% end %>
+  </div>
+</section>

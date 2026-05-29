@@ -4,13 +4,13 @@ class PropertiesController < ApplicationController
   # Public pages - no authentication required
   # Private actions require authentication via before_action below
   
-  before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite, 
-                                       :schedule_viewing, :share, :print, :report]
+  before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite,
+                                       :schedule_viewing, :share, :print, :report, :dossier]
   before_action :authorize_property, only: [:edit, :update, :destroy]
   
   # Require authentication for these actions
-  before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy, 
-                                             :favorite, :unfavorite, :schedule_viewing], if: -> { respond_to?(:authenticate_user!) }
+  before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy,
+                                             :favorite, :unfavorite, :schedule_viewing]
   
   # Pagination
   before_action :set_per_page, only: [:index, :search]
@@ -22,27 +22,54 @@ class PropertiesController < ApplicationController
   # GET /properties
   def index
     # Build ransack search
-    @q = Property.published.ransack(params[:q])
-    
+    @q = Property.on_site.ransack(params[:q])
+
     # Apply filters
     @properties = @q.result(distinct: true)
                     .includes(:property_type, :user)
                     .order(sort_order)
+
+    # Premium-сегмент фильтр (Phase A). Convention-простой `?premium=1` —
+    # независим от ransack `q[...]` params чтобы work с `link_to '/properties?premium=1'`.
+    # Logic пересекается с scope Property.premium.
+    if ActiveModel::Type::Boolean.new.cast(params[:premium])
+      @properties = @properties.premium
+      @premium_filter_active = true
+    end
     
     # Store search in session for "back to results" functionality
     session[:property_search] = request.fullpath
     
     # Pagination
     @properties = @properties.page(params[:page]).per(@per_page)
-    
+
+    # Phase 2 MLS/YRL — добавляем external listings (другие агентства) после
+    # наших карточек. Только на page=1 первой страницы; чтобы не каннибализ-
+    # ировать SEO, ограничиваем 12 cards (~1 row на desktop). Если пользователь
+    # фильтрует (q params present) — НЕ показываем externals, потому что они
+    # не пройдут наш ransack filter (мы не индексируем все их поля одинаково).
+    @external_listings = []
+    if params[:page].to_i <= 1 && params[:q].blank? && !@premium_filter_active
+      @external_listings = ExternalListing.active.priced.recent.order(fetched_at: :desc).limit(12)
+    end
+
     # Get AI recommendations if user is logged in
     if current_user
       @recommended_properties = Property.recommended_for_user(current_user, 6)
     end
     
-    # Statistics
-    @total_count = @q.result.count
-    @avg_price = @q.result.average(:price)
+    # Statistics — recount on the same scope that pagination renders so
+    # the «Found N» pill stays consistent when premium filter is on.
+    stats_scope = @premium_filter_active ? @q.result.premium : @q.result
+    @total_count = stats_scope.count
+    @avg_price = stats_scope.average(:price)
+
+    # Facet counts для UI-badges рядом с filter chips (district + deal_type +
+    # premium). Считаем по Property.on_site (global) — даёт user'у absolute
+    # сигнал «N объектов в категории», независимо от текущих filters. Без
+    # этого user догадывается есть ли смысл кликнуть «Канищево» (3) vs
+    # «Семчино» (0).
+    @facet_counts = build_facet_counts
     
     # Track search event
     track_event('properties_searched', {
@@ -59,6 +86,22 @@ class PropertiesController < ApplicationController
   
   # GET /properties/:id
   def show
+    # Non-active properties (archived/sold/draft/rejected/pending) НЕ должны
+    # ранжироваться в Я.: они leak'ают topical authority + дают пользователю
+    # «купите то чего нет». 410 Gone — Я. de-index такие URLs быстрее чем
+    # 404 (который retry-fetched) или 302 (soft-redirect). set_property
+    # уже нашёл @property without scope, теперь enforce'им SEO-policy здесь
+    # (а не в set_property) чтобы admin edit/update/destroy продолжали
+    # работать для archived объектов.
+    return render_410 unless @property.status_active? && @property.published_at.present?
+
+    # Conditional GET — 304 when the bot/browser already has a copy whose
+    # ETag matches @property's cache_key_with_version. Big crawl-rate win
+    # for Yandex (304 responses cost ~5ms vs 800ms+ full render), and the
+    # early return also prevents bot revisits from inflating view counters
+    # below since side effects only run on stale (200) responses.
+    return if stale?(@property, public: true)
+
     # Increment view counter
     @property.increment_views!
     
@@ -78,13 +121,32 @@ class PropertiesController < ApplicationController
     
     # Load related data
     @similar_properties = Property.similar_to(@property, 4)
-    @property_images = @property.property_images.order(:position)
+
+    # "More in this district" — separate internal-linking block. similar_to
+    # filters by price+area+deal_type which often crosses districts; this
+    # block keeps users (and crawlers) inside the same geo cluster, giving
+    # Yandex a stronger neighborhood-relevance signal.
+    @district_properties = if @property.district.present?
+                             Property.on_site
+                                     .in_district(@property.district)
+                                     .where.not(id: @property.id)
+                                     .order(Arel.sql('RANDOM()'))
+                                     .limit(4)
+                           else
+                             Property.none
+                           end
+    # @property_images = @property.property_images.order(:position)
+    # PropertyImage model is not implemented yet — Active Storage `images` are
+    # used directly in the view (see properties/show.html.erb).
+    @property_images = []
     
-    # Price history
-    @price_history = @property.price_histories.order(changed_at: :desc).limit(10)
+    # Price history — order by effective_date (PriceHistory schema uses
+    # effective_date not "changed_at"; latent bug pre-existing since at
+    # the time of writing 0 rows existed, so the typo never surfaced).
+    @price_history = @property.price_histories.order(effective_date: :desc).limit(10)
     
-    # Reviews
-    @reviews = @property.reviews.approved.order(created_at: :desc).limit(5) if defined?(Review)
+    # Reviews — Property has no has_many :reviews association at the moment.
+    @reviews = @property.respond_to?(:reviews) ? @property.reviews.approved.order(created_at: :desc).limit(5) : []
     
     # Check if favorited
     @is_favorited = current_user&.favorited?(@property)
@@ -179,7 +241,7 @@ class PropertiesController < ApplicationController
   
   # GET /properties/map
   def map
-    @q = Property.published.ransack(params[:q])
+    @q = Property.on_site.ransack(params[:q])
     @properties = @q.result(distinct: true)
                     .where.not(latitude: nil, longitude: nil)
                     .includes(:property_type)
@@ -198,16 +260,30 @@ class PropertiesController < ApplicationController
   
   # GET /properties/search
   def search
-    query = params[:q]
-    
+    # The search action and the catalog (index) share the index template
+    # but use params[:q] differently: search treats it as a free-text
+    # string, index treats it as a Ransack hash. Stash the query under a
+    # different name so the template's `params.dig(:q, :deal_type_eq)`
+    # doesn't crash on a String.
+    @search_query = params[:q].to_s
+    params[:q] = nil
+    @q = Property.on_site.ransack({}) # empty ransack so search_form_for renders
+
+    # Search-result URLs are an infinite-permutation space and dilute crawl
+    # budget if indexed. noindex (follow keeps internal links live) tells
+    # both Yandex and Google to crawl-but-not-index these.
+    response.headers['X-Robots-Tag'] = 'noindex, follow'
+
     @properties = Property.published
-                          .search_by_text(query)
+                          .search_by_text(@search_query)
                           .includes(:property_type)
                           .page(params[:page])
                           .per(@per_page)
-    
-    track_event('property_text_search', { query: query })
-    
+
+    @total_count = @properties.respond_to?(:total_count) ? @properties.total_count : @properties.size
+
+    track_event('property_text_search', { query: @search_query })
+
     respond_to do |format|
       format.html { render :index }
       format.json { render json: properties_json }
@@ -339,6 +415,26 @@ class PropertiesController < ApplicationController
   def print
     render layout: 'print'
   end
+
+  # GET /properties/:id/dossier.pdf
+  # A3 — premium-gated PDF dossier (5 страниц: cover/gallery/description/
+  # agent/cta). Returns 403-style redirect для non-premium объектов чтобы
+  # не палить сам endpoint, но и не палить dossier-template для бюджет-сегмента.
+  def dossier
+    unless @property.premium?
+      redirect_to @property, alert: 'Дозсье доступно только для премиум-объектов.' and return
+    end
+
+    pdf_bytes = PropertyDossierPdfGenerator.call(@property, locale: :ru)
+    filename  = "dossier-#{@property.try(:slug) || @property.id}.pdf"
+    send_data pdf_bytes,
+              filename: filename,
+              type: 'application/pdf',
+              disposition: params[:download] == '1' ? 'attachment' : 'inline'
+  rescue StandardError => e
+    Rails.logger.warn("[PropertiesController#dossier] #{e.class}: #{e.message}")
+    redirect_to @property, alert: 'PDF временно недоступен, попробуйте через минуту.'
+  end
   
   # POST /properties/:id/report
   def report
@@ -365,12 +461,21 @@ class PropertiesController < ApplicationController
   
   def set_property
     @property = Property.friendly.find(params[:id])
+    # SEO: 301 на канонический slug если зашли через старый (history) slug.
+    # friendly_id `:history` обеспечивает 200-resolve по старым URL, но
+    # Yandex/Google ожидают rel=canonical или явный 301. Делаем 301 чтобы
+    # crawler обновил индекс на новый URL после rooms-mapping fix 18.05.26.
+    if (request.get? || request.head?) &&
+       params[:id].to_s != @property.slug.to_s &&
+       @property.slug.present?
+      redirect_to(url_for(action: action_name, id: @property.slug, only_path: false), status: :moved_permanently)
+    end
   rescue ActiveRecord::RecordNotFound
     redirect_to properties_path, alert: 'Объект недвижимости не найден'
   end
   
   def authorize_property
-    unless @property.user == current_user || current_user.admin?
+    unless @property.user == current_user || current_user&.admin?
       redirect_to @property, alert: 'У вас нет прав для выполнения этого действия'
     end
   end
@@ -378,7 +483,38 @@ class PropertiesController < ApplicationController
   def set_per_page
     @per_page = per_page
   end
-  
+
+  # Facet counts для /properties index — рядом с filter chips. Возвращает:
+  #   { deal_type: { 'all' => N, 'sale' => N, 'rent' => N },
+  #     premium:   N,
+  #     district:  { 'centr' => N, 'kanishchevo' => N, ... } }
+  #
+  # 3 SQL запроса: deal_type group, premium count, district group.
+  # Performance: одно on_site scope, чистые AR aggregations — ~10ms total.
+  def build_facet_counts
+    base = Property.on_site
+
+    deal_type_grouped = base.group(:deal_type).count
+    deal_types = {
+      'all'  => deal_type_grouped.values.sum,
+      'sale' => deal_type_grouped['sale'].to_i,
+      'rent' => deal_type_grouped['rent'].to_i
+    }
+
+    district_grouped = base.where.not(district: nil).group(:district).count
+    chip_slugs = %w[centr kanishchevo dashkovo-pesochnya priokskiy semchino gorroshcha kalnoe solotcha]
+    districts = chip_slugs.index_with do |slug|
+      aliases = RyazanDistricts.aliases_for(slug) || []
+      aliases.sum { |a| district_grouped[a].to_i }
+    end
+
+    {
+      deal_type: deal_types,
+      premium:   base.premium.count,
+      district:  districts
+    }
+  end
+
   # ============================================
   # STRONG PARAMETERS
   # ============================================
@@ -439,6 +575,7 @@ class PropertiesController < ApplicationController
   end
   
   def set_property_meta_tags
+    image_url = primary_image_absolute_url
     set_meta_tags(
       title: @property.title,
       description: @property.short_description(160),
@@ -446,23 +583,34 @@ class PropertiesController < ApplicationController
       og: {
         title: @property.title,
         description: @property.short_description(200),
-        image: @property.primary_image&.url || view_context.asset_url('placeholder.jpg'),
+        image: image_url,
         url: property_url(@property),
         type: 'product'
-      },
+      }.compact,
       twitter: {
         card: 'summary_large_image',
         title: @property.title,
         description: @property.short_description(200),
-        image: @property.primary_image&.url
-      }
+        image: image_url
+      }.compact
     )
+  end
+
+  # Active Storage attachments don't have `.url`; we need rails_blob_url.
+  # Returns absolute URL or nil (let meta_tags omit the field).
+  def primary_image_absolute_url
+    blob = @property.primary_image
+    return nil if blob.blank?
+    Rails.application.routes.url_helpers.rails_blob_url(blob, host: request.base_url)
+  rescue StandardError => e
+    Rails.logger.warn("[Property##{@property.id}] primary image URL failed: #{e.class} #{e.message}")
+    nil
   end
   
   def property_keywords
     keywords = [@property.property_type&.name, @property.district]
     keywords << "#{@property.rooms}-комнатная" if @property.rooms
-    keywords << @property.deal_type_i18n
+    keywords << I18n.t("activerecord.attributes.property.deal_types.#{@property.deal_type}", default: @property.deal_type)
     keywords.compact.join(', ')
   end
   

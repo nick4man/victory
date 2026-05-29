@@ -1,0 +1,21 @@
+<% content_for :title, "#{@partner_agency.name} — Админ — АН Виктори" %>
+
+<section class="px-6 lg:px-12 py-12 bg-background">
+  <div class="max-w-3xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">АДМИН → ПАРТНЁРСКИЕ АГЕНТСТВА</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground uppercase mb-2">
+      <%= @partner_agency.name %>
+    </h1>
+    <p class="text-sm text-muted-foreground mb-2">
+      <%= @partner_agency.referrals.count %> referrals ·
+      <%= @partner_agency.referrals.closed_won.count %> closed_won ·
+      ожидается ≈ <%= number_with_delimiter(@partner_agency.referrals.awaiting_settlement.sum(:final_commission_amount).to_i) %> ₽
+    </p>
+    <p class="text-xs text-muted-foreground mb-8">
+      Создано <%= l(@partner_agency.created_at, format: '%d.%m.%y') %> ·
+      Обновлено <%= l(@partner_agency.updated_at, format: '%d.%m.%y') %>
+    </p>
+
+    <%= render 'form' %>
+  </div>
+</section>

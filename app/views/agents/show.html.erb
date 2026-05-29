@@ -1,0 +1,158 @@
+<% content_for :title, @meta_title %>
+<% content_for :seo_description, @meta_description %>
+<% content_for :og_type, 'profile' %>
+<% if @agent.avatar.attached? %>
+  <% content_for :og_image, Rails.application.routes.url_helpers.url_for(@agent.avatar.variant(resize_to_fill: [1200, 630])) %>
+<% end %>
+<% content_for :head do %>
+  <%= render 'jsonld_agent_person' %>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Команда', team_path],
+  [@agent.display_name, nil]
+] %>
+
+<section class="px-6 lg:px-12 pt-8 pb-12 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <%= link_to '← К команде', team_path,
+          class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-8' %>
+
+    <div class="flex flex-col md:flex-row gap-8 md:gap-12">
+      <%# Avatar — 240px square, aspect-preserved %>
+      <div class="shrink-0">
+        <% if @agent.avatar.attached? %>
+          <%# Agent avatar is the LCP candidate on this page — eager + fetchpriority high.
+              decoding=async keeps it off the main thread without delaying paint. %>
+          <%= image_tag @agent.avatar.variant(resize_to_fill: [240, 240]),
+                class: 'w-48 h-48 md:w-60 md:h-60 object-cover',
+                loading: 'eager', decoding: 'async', fetchpriority: 'high',
+                alt: "#{@agent.display_name}, агент АН Виктори" %>
+        <% else %>
+          <div class="w-48 h-48 md:w-60 md:h-60 flex items-center justify-center border border-border text-foreground text-4xl tracking-widest">
+            <%= @agent.initials %>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3 uppercase">АГЕНТ</p>
+        <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-3"><%= @agent.display_name %></h1>
+        <p class="text-base tracking-wider text-muted-foreground mb-8">
+          <%= @agent.try(:crm_role_name).presence || 'Агент по недвижимости' %>
+          <% if @agent.try(:is_chief) %>
+            · <span class="text-foreground">Руководитель</span>
+          <% end %>
+        </p>
+
+        <%# Trust signals: deals/rating/license (when present) %>
+        <div class="flex flex-wrap gap-x-12 gap-y-6 mb-8">
+          <% if @agent.deals_closed_count.to_i.positive? %>
+            <div>
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-1">СДЕЛОК</p>
+              <p class="text-2xl font-light text-foreground"><%= @agent.deals_closed_count %></p>
+            </div>
+          <% end %>
+          <% if @agent.agent_review_count.to_i.positive? %>
+            <div>
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-1">РЕЙТИНГ</p>
+              <p class="text-2xl font-light text-foreground">
+                <%= number_with_precision(@agent.agent_average_rating, precision: 1, separator: ',') %>
+                <span class="text-sm text-muted-foreground">/5 · <%= @agent.agent_review_count %></span>
+              </p>
+            </div>
+          <% end %>
+          <% if @agent.license_no.present? %>
+            <div>
+              <p class="text-xs tracking-[0.3em] text-muted-foreground mb-1">ЛИЦЕНЗИЯ</p>
+              <p class="text-base tracking-wider text-foreground"><%= @agent.license_no %></p>
+            </div>
+          <% end %>
+        </div>
+
+        <%# Contact strip — sticky-like row of channels. If agent has no
+            personal phone in CRM, falls back to the agency main line. %>
+        <div class="flex flex-wrap gap-3 mb-8">
+          <%= link_to "tel:#{@agent.display_phone_tel}",
+                class: 'px-6 py-3 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors' do %>
+            ПОЗВОНИТЬ <%= @agent.display_phone %>
+          <% end %>
+          <% if @agent.email.present? %>
+            <%= link_to "mailto:#{@agent.email}",
+                  class: 'px-6 py-3 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors' do %>
+              EMAIL
+            <% end %>
+          <% end %>
+        </div>
+
+        <% if @agent.bio.present? %>
+          <div class="prose prose-base max-w-none text-muted-foreground leading-relaxed">
+            <%= simple_format @agent.bio.to_s %>
+          </div>
+        <% end %>
+      </div>
+    </div>
+  </div>
+</section>
+
+<% if @active_properties.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОБЪЕКТЫ В РАБОТЕ</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-12">
+        <%= pluralize(@active_properties.size, 'актуальный объект', plural: 'актуальных объекта') %>
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @active_properties.each do |property| %>
+          <%= render 'properties/property_card', property: property %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<% if @reviews.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-4xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОТЗЫВЫ КЛИЕНТОВ</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-12">
+        <%= @agent.display_name.split(' ').first %> в работе
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <% @reviews.each do |review| %>
+          <%= render 'shared/review_card', review: review rescue nil %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# Closed-deal case studies authored by this agent — direct E-E-A-T
+    proof of past performance. Closes the Pillar 2 cross-link gap.
+    Hidden when this agent has no published cases yet — inert не значит
+    broken: появятся кейсы → блок появится автоматически. %>
+<% agent_cases = CaseStudy.where(author_id: @agent.id).public_facing.recent.limit(6) rescue [] %>
+<% if agent_cases.any? %>
+  <section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ЗАКРЫТЫЕ СДЕЛКИ</p>
+      <h2 class="text-2xl lg:text-3xl font-light tracking-wider text-foreground mb-12">
+        <%= pluralize(agent_cases.size, 'кейс', plural: 'кейсов') %> от <%= @agent.display_name.split(' ').first %>
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% agent_cases.each do |c| %>
+          <%= link_to case_path(c), class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+            <p class="text-xs tracking-[0.25em] text-muted-foreground mb-3 uppercase">
+              <%= [c.district, c.property_type].compact.join(' · ') %>
+            </p>
+            <h3 class="text-base text-foreground mb-2 group-hover:underline"><%= c.title %></h3>
+            <% if c.excerpt.present? %>
+              <p class="text-sm text-muted-foreground line-clamp-3"><%= c.excerpt %></p>
+            <% end %>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>

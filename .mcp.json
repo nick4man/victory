@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "mcpServers": {
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--project",
+        "/home/q/victory"
+      ]
+    },
+    "postgres": {
+      "command": "/home/q/victory/bin/postgres-mcp.sh"
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"]
+    },
+    "rails-guides": {
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "/home/q/victory/docker-compose.yml",
+        "exec",
+        "-T",
+        "-e", "HOME=/app",
+        "-w", "/app",
+        "web",
+        "rails-mcp-server",
+        "--mode", "stdio",
+        "--single-project"
+      ]
+    }
+  }
+}

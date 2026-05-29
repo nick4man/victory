@@ -1,0 +1,78 @@
+<%# Official Yandex Maps reviews iframe widget. Shows up to 5 reviews from the
+    organisation's Yandex card, themed white inside (no dark mode support
+    cross-origin). We wrap it in a dark-themed border/header so it visually
+    fits the rest of the page. Reads AgencyInfo::YANDEX_ORG_ID (canonical
+    в коде); ENV override allowed for staging/test if a different org_id
+    нужен.
+
+    Auto-rotate carousel (2026-05-16): cross-origin iframe нельзя
+    программно листать изнутри (same-origin policy), но мы обёрнули его в
+    fixed-height viewport с overflow:hidden и анимируем `transform:
+    translateY(...)` самого iframe-элемента — он наш DOM-узел. Каждые 5
+    секунд iframe смещается на ~105px вверх, после 5-го шага зацикливается
+    на позицию 0. Уважает prefers-reduced-motion, паузит на hover/focus и
+    при скрытой вкладке. %>
+<% if (org_id = ENV['YANDEX_ORG_ID'].presence || AgencyInfo::YANDEX_ORG_ID).present? %>
+  <div class="border border-border bg-card overflow-hidden">
+    <div class="px-5 py-4 border-b border-border">
+      <p class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Отзывы на Яндекс.Картах</p>
+    </div>
+    <div class="yandex-reviews-viewport relative overflow-hidden bg-white"
+         style="height: 480px"
+         data-interval="5000"
+         data-total-steps="5"
+         data-iframe-height="1500"
+         data-viewport-height="480">
+      <iframe
+        src="https://yandex.ru/maps-reviews-widget/<%= org_id %>?comments"
+        width="100%"
+        style="height: 1500px; transform: translateY(0); transition: transform 700ms cubic-bezier(0.4, 0, 0.2, 1); will-change: transform;"
+        frameborder="0"
+        loading="lazy"
+        title="Отзывы на Яндекс.Картах"></iframe>
+    </div>
+    <div class="px-5 py-3 border-t border-border">
+      <a href="https://yandex.ru/maps/org/<%= org_id %>/reviews/" target="_blank" rel="noopener nofollow"
+         class="text-[10px] tracking-[0.3em] text-foreground hover:text-muted-foreground uppercase">
+        ОСТАВИТЬ ОТЗЫВ В Я.КАРТАХ →
+      </a>
+    </div>
+  </div>
+
+  <script type="module">
+    (() => {
+      const viewport = document.querySelector('.yandex-reviews-viewport');
+      if (!viewport) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+      const iframe = viewport.querySelector('iframe');
+      if (!iframe) return;
+
+      const interval     = parseInt(viewport.dataset.interval,       10) || 5000;
+      const totalSteps   = parseInt(viewport.dataset.totalSteps,     10) || 5;
+      const iframeHeight = parseInt(viewport.dataset.iframeHeight,   10) || 600;
+      const viewportH    = parseInt(viewport.dataset.viewportHeight, 10) || 180;
+
+      const maxOffset = Math.max(0, iframeHeight - viewportH);
+      const stepPx    = totalSteps > 1 ? maxOffset / (totalSteps - 1) : 0;
+
+      let currentStep = 0;
+      let paused = false;
+
+      viewport.addEventListener('mouseenter', () => { paused = true; });
+      viewport.addEventListener('mouseleave', () => { paused = false; });
+      viewport.addEventListener('focusin',    () => { paused = true; });
+      viewport.addEventListener('focusout',   () => { paused = false; });
+
+      document.addEventListener('visibilitychange', () => {
+        paused = document.hidden;
+      });
+
+      setInterval(() => {
+        if (paused) return;
+        currentStep = (currentStep + 1) % totalSteps;
+        iframe.style.transform = `translateY(-${Math.round(currentStep * stepPx)}px)`;
+      }, interval);
+    })();
+  </script>
+<% end %>

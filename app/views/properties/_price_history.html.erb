@@ -1,0 +1,45 @@
+<%#
+  Compact price-change timeline под основной ценой объекта. Display only —
+  rendered только если у property есть хотя бы 1 PriceHistory row. Data
+  пишется автоматически through Property#after_update :track_price_change
+  hook когда price changes; до первого изменения partial рендерит nothing.
+
+  When визуализация активируется (Topnlab начинает push price-updates),
+  это сильный buyer-trust signal: "цена не менялась 60 дней" или
+  "продавец снизил цену 2 раза" — оба сигналы видны crawler'у (через
+  JSON-LD extension в _jsonld_property) и пользователю.
+
+  Schema: PriceHistory has property_id, old_price, new_price, change_type
+  ('increase'|'decrease'), effective_date (not null), price_change_percent.
+%>
+<% history = local_assigns[:history] || (defined?(@price_history) ? @price_history : nil) %>
+<% if history.respond_to?(:any?) && history.any? %>
+  <div class="border-t border-border pt-4 mt-4">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase">История цены</p>
+    <ol class="space-y-2">
+      <% history.first(5).each do |row| %>
+        <li class="flex items-baseline justify-between gap-3 text-sm">
+          <span class="text-muted-foreground text-xs tracking-wider">
+            <%= I18n.l(row.effective_date.to_date, format: '%d.%m.%y') rescue row.effective_date %>
+          </span>
+          <span class="flex items-center gap-2">
+            <% if row.old_price.present? %>
+              <span class="text-muted-foreground line-through text-xs">
+                <%= number_with_delimiter(row.old_price.to_i, delimiter: ' '.encode('UTF-8')) %> ₽
+              </span>
+              <span class="text-muted-foreground/60" aria-hidden="true">→</span>
+            <% end %>
+            <span class="<%= row.change_type_decrease? ? 'text-emerald-500' : 'text-foreground' %> tracking-wider">
+              <%= number_with_delimiter(row.new_price.to_i, delimiter: ' '.encode('UTF-8')) %> ₽
+            </span>
+            <% if row.price_change_percent.present? && row.price_change_percent.abs.positive? %>
+              <span class="text-xs <%= row.change_type_decrease? ? 'text-emerald-500/80' : 'text-muted-foreground' %>">
+                <%= '+' if row.change_type_increase? %><%= row.price_change_percent.to_f.round(1) %>%
+              </span>
+            <% end %>
+          </span>
+        </li>
+      <% end %>
+    </ol>
+  </div>
+<% end %>

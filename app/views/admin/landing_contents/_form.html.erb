@@ -1,0 +1,319 @@
+<%# Structured block editor for SEO landing content. Pure DOM construction
+    (createElement + textContent) — no innerHTML with dynamic data, so user
+    input cannot break out of its slot. State lives in `STATE.blocks`;
+    every mutation re-renders the list and re-serializes to the hidden
+    field that the controller reads on submit. %>
+<%= form_with model: [:admin, landing_content],
+      multipart: true,
+      html: { id: 'lc-form', class: 'space-y-8' } do |f| %>
+
+  <% if landing_content.errors.any? %>
+    <div class="p-4 border border-destructive text-destructive text-sm">
+      <strong>Не удалось сохранить:</strong>
+      <ul class="list-disc list-inside mt-2">
+        <% landing_content.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">СДЕЛКА</label>
+      <%= f.select :intent, LandingContent::INTENTS.map { |i| [i == 'sale' ? 'Продажа' : 'Аренда', i] }, {}, class: 'admin-input' %>
+    </div>
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ТИП</label>
+      <%= f.select :type,
+            [['Квартиры', 'kvartira'], ['Дома', 'dom'], ['Участки', 'uchastok'],
+             ['Комнаты', 'komnata'], ['Коммерческая', 'kommercheskaya']],
+            {}, class: 'admin-input' %>
+    </div>
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">РАЙОН</label>
+      <% slugs = (RyazanDistricts.all_micro_slugs + RyazanDistricts.all_admin_slugs).map { |s| [RyazanDistricts.name_for(s), s] } %>
+      <%= f.select :district_slug, slugs, { include_blank: '— весь город —' }, class: 'admin-input' %>
+    </div>
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">КОМНАТ</label>
+      <%= f.select :rooms,
+            [['Любое', ''], ['Студии', 'studiya'], ['1-комн', '1'], ['2-комн', '2'], ['3-комн', '3'], ['4-комн', '4']],
+            { include_blank: false }, class: 'admin-input' %>
+    </div>
+  </div>
+
+  <div>
+    <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ЗАГОЛОВОК H1</label>
+    <%= f.text_field :title, class: 'admin-input', required: true %>
+  </div>
+  <div>
+    <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">META DESCRIPTION (до 300 знаков)</label>
+    <%= f.text_area :meta_description, rows: 2, class: 'admin-input', maxlength: 300 %>
+  </div>
+
+  <div>
+    <div class="flex items-baseline justify-between mb-3">
+      <label class="text-xs tracking-[0.25em] text-muted-foreground">КОНТЕНТ-БЛОКИ</label>
+      <div class="relative">
+        <button type="button" id="lc-add-menu-btn" class="px-3 py-1.5 text-xs tracking-[0.25em] border border-border hover:border-foreground transition-colors">+ ДОБАВИТЬ БЛОК</button>
+        <div id="lc-add-menu" class="hidden absolute right-0 top-full mt-1 z-10 bg-card border border-border min-w-[200px]">
+          <% [
+            ['heading',   'Заголовок (H2/H3)'],
+            ['paragraph', 'Параграф'],
+            ['quote',     'Цитата'],
+            ['link',      'Ссылка'],
+            ['image',     'Фото'],
+            ['list',      'Список'],
+            ['faq',       'FAQ']
+          ].each do |kind, label| %>
+            <button type="button" class="lc-add-btn block w-full text-left px-4 py-2 text-sm hover:bg-foreground/5" data-kind="<%= kind %>"><%= label %></button>
+          <% end %>
+        </div>
+      </div>
+    </div>
+
+    <div id="lc-blocks" class="space-y-3"></div>
+    <%= hidden_field_tag 'landing_content[body_blocks_json]', '[]', id: 'lc-blocks-json' %>
+  </div>
+
+  <div class="flex items-center gap-3 p-4 border border-border">
+    <%= f.check_box :published, id: 'lc-published' %>
+    <label for="lc-published" class="text-sm">Опубликовать сразу</label>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <%= f.submit (landing_content.persisted? ? 'Сохранить' : 'Создать'),
+          class: 'px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] hover:bg-foreground/85 transition-colors cursor-pointer' %>
+    <%= link_to 'Отмена', admin_landing_contents_path,
+          class: 'px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors' %>
+    <% if landing_content.persisted? %>
+      <%= link_to 'Открыть на сайте →', landing_content.public_path,
+            target: '_blank', rel: 'noopener',
+            class: 'ml-auto text-xs text-muted-foreground hover:text-foreground' %>
+      <%= button_to 'Удалить', admin_landing_content_path(landing_content),
+            method: :delete,
+            data: { turbo_confirm: 'Удалить эту страницу?' },
+            class: 'text-xs text-destructive hover:opacity-80' %>
+    <% end %>
+  </div>
+<% end %>
+
+<style>
+  .admin-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: transparent;
+    border: 1px solid hsl(var(--border));
+    color: hsl(var(--foreground));
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .admin-input:focus { border-color: hsl(var(--foreground)); }
+  .lc-block-card {
+    border: 1px solid hsl(var(--border));
+    padding: 1rem;
+    background: hsl(var(--card) / 0.5);
+  }
+  .lc-block-card .lc-list-items > div,
+  .lc-block-card .lc-faq-pairs > div { margin-bottom: 0.5rem; }
+</style>
+
+<script type="module" data-lc-initial='<%= raw((landing_content.body_blocks || []).to_json) %>'>
+  (function() {
+    const STATE = { blocks: [] };
+    try {
+      const initial = JSON.parse(document.currentScript.dataset.lcInitial || '[]');
+      if (Array.isArray(initial)) STATE.blocks = initial.map(b => ({ ...b, _uid: uid() }));
+    } catch (e) { /* ignore */ }
+
+    const blocksEl   = document.getElementById('lc-blocks');
+    const jsonEl     = document.getElementById('lc-blocks-json');
+    const addMenuBtn = document.getElementById('lc-add-menu-btn');
+    const addMenu    = document.getElementById('lc-add-menu');
+    const csrfMeta   = document.querySelector('meta[name="csrf-token"]');
+    const uploadUrl  = '<%= upload_image_admin_landing_contents_path %>';
+
+    function uid() { return 'b' + Math.random().toString(36).slice(2, 9); }
+
+    function el(tag, attrs, ...children) {
+      const node = document.createElement(tag);
+      if (attrs) {
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v == null) continue;
+          if (k === 'class') node.className = v;
+          else if (k === 'value') node.value = v;
+          else if (k === 'text') node.textContent = v;
+          else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
+          else node.setAttribute(k, v);
+        }
+      }
+      for (const c of children) {
+        if (c == null) continue;
+        node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+      }
+      return node;
+    }
+
+    function input(opts) {
+      return el('input', { type: 'text', class: 'admin-input', placeholder: opts.placeholder, value: opts.value || '', oninput: e => opts.onInput(e.target.value) });
+    }
+
+    function textarea(opts) {
+      const ta = el('textarea', { class: 'admin-input', rows: opts.rows || 3, placeholder: opts.placeholder, oninput: e => opts.onInput(e.target.value) });
+      ta.value = opts.value || '';
+      return ta;
+    }
+
+    function select(opts) {
+      const sel = el('select', { class: 'admin-input', onchange: e => opts.onChange(e.target.value) });
+      opts.options.forEach(([val, label]) => {
+        const o = el('option', { value: val }, label);
+        if (String(opts.value) === String(val)) o.selected = true;
+        sel.appendChild(o);
+      });
+      return sel;
+    }
+
+    function btn(text, onClick, extraClass) {
+      return el('button', { type: 'button', class: 'text-xs text-muted-foreground hover:text-foreground ' + (extraClass||''), onclick: onClick }, text);
+    }
+
+    function commit() {
+      jsonEl.value = JSON.stringify(STATE.blocks.map(b => { const { _uid, ...rest } = b; return rest; }));
+    }
+
+    function makeBlock(kind) {
+      const base = { kind, _uid: uid() };
+      switch (kind) {
+        case 'heading':   return { ...base, level: 2, text: '' };
+        case 'paragraph': return { ...base, text: '' };
+        case 'quote':     return { ...base, text: '', author: '' };
+        case 'link':      return { ...base, url: '', text: '' };
+        case 'image':     return { ...base, signed_id: '', alt: '', caption: '' };
+        case 'list':      return { ...base, style: 'ul', items: [''] };
+        case 'faq':       return { ...base, items: [{ q: '', a: '' }] };
+        default:          return base;
+      }
+    }
+
+    function kindLabel(k) {
+      return { heading: 'Заголовок', paragraph: 'Параграф', quote: 'Цитата',
+               link: 'Ссылка', image: 'Фото', list: 'Список', faq: 'FAQ' }[k] || k;
+    }
+
+    function renderBlockBody(b) {
+      const body = el('div', { class: 'lc-block-body' });
+      if (b.kind === 'heading') {
+        body.appendChild(el('div', { class: 'grid grid-cols-[auto_1fr] gap-2' },
+          select({ value: b.level, options: [['2','H2'],['3','H3']], onChange: v => { b.level = parseInt(v, 10); commit(); } }),
+          input({ placeholder: 'Текст заголовка', value: b.text, onInput: v => { b.text = v; commit(); } })
+        ));
+      } else if (b.kind === 'paragraph') {
+        body.appendChild(textarea({ rows: 4, placeholder: 'Текст параграфа', value: b.text, onInput: v => { b.text = v; commit(); } }));
+      } else if (b.kind === 'quote') {
+        body.appendChild(textarea({ rows: 3, placeholder: 'Текст цитаты', value: b.text, onInput: v => { b.text = v; commit(); } }));
+        body.appendChild(input({ placeholder: 'Автор (опционально)', value: b.author || '', onInput: v => { b.author = v; commit(); } }));
+      } else if (b.kind === 'link') {
+        body.appendChild(el('input', { type: 'url', class: 'admin-input mb-2', placeholder: 'https://...', value: b.url || '', oninput: e => { b.url = e.target.value; commit(); } }));
+        body.appendChild(input({ placeholder: 'Текст ссылки', value: b.text || '', onInput: v => { b.text = v; commit(); } }));
+      } else if (b.kind === 'image') {
+        const preview = el('div', { class: 'lc-img-preview text-xs text-muted-foreground' });
+        preview.textContent = b.signed_id ? '✓ загружено' : 'фото не выбрано';
+        const fileInput = el('input', { type: 'file', accept: 'image/*', class: 'text-xs' });
+        fileInput.addEventListener('change', async (e) => {
+          const f = e.target.files[0];
+          if (!f) return;
+          preview.textContent = '⌛ загрузка...';
+          try {
+            const fd = new FormData();
+            fd.append('file', f);
+            const resp = await fetch(uploadUrl, {
+              method: 'POST', body: fd,
+              headers: { 'X-CSRF-Token': csrfMeta ? csrfMeta.content : '' },
+              credentials: 'same-origin'
+            });
+            const j = await resp.json();
+            if (j.signed_id) {
+              b.signed_id = j.signed_id;
+              commit();
+              preview.textContent = '✓ загружено: ' + j.filename;
+            } else {
+              preview.textContent = 'Ошибка: ' + (j.error || 'unknown');
+            }
+          } catch (err) {
+            preview.textContent = 'Ошибка загрузки: ' + err.message;
+          }
+        });
+        body.append(fileInput, preview,
+          input({ placeholder: 'ALT-текст (для SEO)', value: b.alt || '', onInput: v => { b.alt = v; commit(); } }),
+          input({ placeholder: 'Подпись под фото (опционально)', value: b.caption || '', onInput: v => { b.caption = v; commit(); } })
+        );
+      } else if (b.kind === 'list') {
+        const styleSel = select({ value: b.style, options: [['ul','Маркеры'],['ol','Нумерация']], onChange: v => { b.style = v; commit(); } });
+        styleSel.style.maxWidth = '120px';
+        const itemsWrap = el('div', { class: 'lc-list-items' });
+        const renderItems = () => {
+          itemsWrap.replaceChildren();
+          b.items.forEach((item, i) => {
+            const inp = input({ placeholder: 'Пункт ' + (i + 1), value: item, onInput: v => { b.items[i] = v; commit(); } });
+            const del = btn('✕', () => { b.items.splice(i, 1); renderItems(); commit(); });
+            itemsWrap.appendChild(el('div', { class: 'grid grid-cols-[1fr_auto] gap-2' }, inp, del));
+          });
+        };
+        renderItems();
+        const addBtn = btn('+ Добавить пункт', () => { b.items.push(''); renderItems(); commit(); }, 'mt-2');
+        body.append(styleSel, itemsWrap, addBtn);
+      } else if (b.kind === 'faq') {
+        const pairsWrap = el('div', { class: 'lc-faq-pairs' });
+        const renderPairs = () => {
+          pairsWrap.replaceChildren();
+          b.items.forEach((pair, i) => {
+            const row = el('div', { class: 'p-2 border border-border/50 space-y-1 mb-3' },
+              input({ placeholder: 'Вопрос #' + (i + 1), value: pair.q || '', onInput: v => { pair.q = v; commit(); } }),
+              textarea({ rows: 2, placeholder: 'Ответ', value: pair.a || '', onInput: v => { pair.a = v; commit(); } }),
+              btn('✕ удалить пару', () => { b.items.splice(i, 1); renderPairs(); commit(); }, 'hover:text-destructive')
+            );
+            pairsWrap.appendChild(row);
+          });
+        };
+        renderPairs();
+        const addBtn = btn('+ Добавить Вопрос/Ответ', () => { b.items.push({ q: '', a: '' }); renderPairs(); commit(); }, 'mt-2');
+        body.append(pairsWrap, addBtn);
+      }
+      return body;
+    }
+
+    function render() {
+      blocksEl.replaceChildren();
+      STATE.blocks.forEach((b, idx) => {
+        const card = el('div', { class: 'lc-block-card' });
+        const header = el('div', { class: 'flex items-center justify-between mb-3' },
+          el('span', { class: 'text-[10px] tracking-[0.25em] text-muted-foreground uppercase' }, kindLabel(b.kind)),
+          el('span', { class: 'space-x-1' },
+            btn('↑', () => { if (idx > 0) { [STATE.blocks[idx-1], STATE.blocks[idx]] = [STATE.blocks[idx], STATE.blocks[idx-1]]; render(); commit(); } }),
+            btn('↓', () => { if (idx < STATE.blocks.length - 1) { [STATE.blocks[idx+1], STATE.blocks[idx]] = [STATE.blocks[idx], STATE.blocks[idx+1]]; render(); commit(); } }),
+            btn('✕', () => { STATE.blocks.splice(idx, 1); render(); commit(); }, 'hover:text-destructive')
+          )
+        );
+        card.append(header, renderBlockBody(b));
+        blocksEl.appendChild(card);
+      });
+      commit();
+    }
+
+    addMenuBtn.addEventListener('click', () => addMenu.classList.toggle('hidden'));
+    document.addEventListener('click', (e) => {
+      if (!addMenu.contains(e.target) && e.target !== addMenuBtn) addMenu.classList.add('hidden');
+    });
+    document.querySelectorAll('.lc-add-btn').forEach(b => {
+      b.addEventListener('click', () => {
+        STATE.blocks.push(makeBlock(b.dataset.kind));
+        addMenu.classList.add('hidden');
+        render();
+      });
+    });
+
+    render();
+  })();
+</script>

@@ -1,0 +1,112 @@
+<% content_for :title, @order.title %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-6xl mx-auto">
+    <%= link_to "← Назад к заявкам", dashboard_orders_path, class: "text-sm text-muted-foreground hover:text-foreground transition-colors mb-6 inline-block" %>
+
+    <div class="grid lg:grid-cols-3 gap-6">
+
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-card border border-border p-6">
+          <div class="flex items-start justify-between gap-6 mb-6">
+            <div>
+              <p class="text-sm tracking-[0.3em] text-muted-foreground mb-2">ЗАЯВКА ##<%= @order.crm_id %></p>
+              <h1 class="text-3xl font-light tracking-wide text-foreground"><%= @order.title %></h1>
+            </div>
+            <div class="text-right">
+              <% if @order.price_range %>
+                <p class="text-2xl font-medium text-foreground"><%= @order.price_range %></p>
+              <% end %>
+              <% if @order.deal_state %>
+                <span class="inline-block mt-2 text-[10px] uppercase tracking-wider px-2 py-1 border border-foreground text-foreground"><%= @order.deal_state %></span>
+              <% end %>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-x-8 gap-y-4 mb-6">
+            <% [
+              ['Тип сделки', I18n.t("deal_types.#{@order.deal_type}", default: @order.deal_type)],
+              ['Тип недвижимости', @order.realty_type],
+              ['Площадь', [@order.area_min, @order.area_max].compact.uniq.join(' – ').then { |s| s.present? ? "#{s} м²" : nil }],
+              ['Комнат', [@order.rooms_min, @order.rooms_max].compact.uniq.join(' – ').presence],
+              ['Стадия', @order.stage_name],
+              ['Ответственный', @order.user&.short_name]
+            ].each do |label, value| %>
+              <% next if value.blank? %>
+              <div class="border-b border-border pb-3">
+                <p class="text-xs text-muted-foreground mb-1"><%= label %></p>
+                <p class="text-sm font-medium text-foreground"><%= value %></p>
+              </div>
+            <% end %>
+          </div>
+
+          <% if @order.preferred_cities.any? || @order.preferred_districts.any? || @order.metro_stations.any? %>
+            <div class="border-t border-border pt-6 mb-4">
+              <p class="text-sm font-medium text-foreground mb-3">Локация</p>
+              <% if @order.preferred_cities.any? %>
+                <p class="text-xs text-muted-foreground mb-1">Города: <span class="text-foreground"><%= @order.preferred_cities.join(', ') %></span></p>
+              <% end %>
+              <% if @order.preferred_districts.any? %>
+                <p class="text-xs text-muted-foreground mb-1">Районы: <span class="text-foreground"><%= @order.preferred_districts.join(', ') %></span></p>
+              <% end %>
+              <% if @order.metro_stations.any? %>
+                <p class="text-xs text-muted-foreground">Метро: <span class="text-foreground"><%= @order.metro_stations.join(', ') %></span></p>
+              <% end %>
+            </div>
+          <% end %>
+
+          <% if @order.description.present? %>
+            <div class="border-t border-border pt-6">
+              <p class="text-sm font-medium text-foreground mb-2">Описание</p>
+              <p class="text-sm text-muted-foreground leading-relaxed"><%= simple_format @order.description %></p>
+            </div>
+          <% end %>
+        </div>
+
+        <% if @matches.any? %>
+          <div class="bg-card border border-border p-6">
+            <h2 class="text-lg font-medium text-foreground mb-1">Подходящие объекты в нашей базе</h2>
+            <p class="text-sm text-muted-foreground mb-6">Найдено <%= @matches.size %> совпадений по параметрам заявки</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-px bg-border">
+              <% @matches.each do |property| %>
+                <%= link_to property_path(property), class: "block bg-background p-4 hover:bg-foreground/[0.02] transition-colors" do %>
+                  <p class="text-sm font-medium text-foreground truncate"><%= property.title %></p>
+                  <p class="text-xs text-muted-foreground mt-1"><%= property.area %> м² · <%= property.rooms %>-комн. · <%= property.district %></p>
+                  <p class="text-base font-medium text-foreground mt-2"><%= number_with_delimiter(property.price.to_i, delimiter: ' ') %> ₽</p>
+                <% end %>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="space-y-6">
+        <div class="bg-card border border-border p-6">
+          <h3 class="text-sm font-medium text-foreground mb-4">Контактная информация</h3>
+          <% if @order.client_name.present? || @order.client_phone_masked.present? %>
+            <% if @order.client_name.present? %>
+              <p class="text-sm text-foreground mb-2"><%= @order.client_name %></p>
+            <% end %>
+            <% if @order.client_phone_masked.present? %>
+              <p class="text-xs text-muted-foreground"><%= @order.client_phone_masked %></p>
+            <% end %>
+            <p class="text-xs text-muted-foreground mt-4">Полные данные клиента доступны в Topnlab CRM (карточка ##<%= @order.crm_id %>).</p>
+          <% else %>
+            <p class="text-xs text-muted-foreground">Контактные данные доступны в Topnlab CRM.</p>
+          <% end %>
+        </div>
+
+        <div class="bg-card border border-border p-6">
+          <h3 class="text-sm font-medium text-foreground mb-4">Системная информация</h3>
+          <div class="space-y-2 text-xs text-muted-foreground">
+            <p>CRM ID: <span class="text-foreground">##<%= @order.crm_id %></span></p>
+            <p>Синхронизировано: <span class="text-foreground"><%= l(@order.synced_at, format: :short) if @order.synced_at %></span></p>
+            <p>Создано: <span class="text-foreground"><%= l(@order.created_at, format: :short) %></span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

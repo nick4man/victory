@@ -1,0 +1,72 @@
+# АН «Виктори» — агентство недвижимости в Рязани
+
+> Профессиональные услуги на рынке недвижимости Рязани и Рязанской области:
+> покупка, продажа, аренда квартир, домов и коммерческой недвижимости.
+> Экспресс-оценка по гедонической модели, расчёт ипотеки (22 банковские
+> программы), инвестиционный аудит объектов. Сайт работает в production
+> на https://victory62.org.
+
+## Главное
+
+- [Главная](https://victory62.org/): hero-слайдер актуальных объектов, новости, услуги
+- [Контакты](https://victory62.org/contacts): адрес, телефоны, режим работы, агенты
+
+## Каталог объектов
+
+- [/properties](https://victory62.org/properties): полный каталог с фильтрами (район, цена, площадь, этаж, ремонт)
+- [/properties/{slug}](https://victory62.org/properties): отдельный объект — карточка, фото, описание, карта, JSON-LD `RealEstateListing` / `Apartment` / `House`
+- [/properties/search](https://victory62.org/properties/search): поиск по Ransack (`q[title_or_description_cont]=...`)
+- [/properties/map](https://victory62.org/properties/map): карта объектов через Яндекс.Карты
+
+## Лендинги по типу сделки и району
+
+- [/buy/kvartira](https://victory62.org/buy/kvartira): купить квартиру в Рязани
+- [/buy/dom](https://victory62.org/buy/dom): купить дом
+- [/buy/kommerciya](https://victory62.org/buy/kommerciya): коммерческая
+- [/buy/uchastok](https://victory62.org/buy/uchastok): земельный участок
+- [/rent/...](https://victory62.org/rent/): аренда (квартира, дом, коммерческая)
+- [/sale/...](https://victory62.org/sale/): продажа от собственников
+- District-landings: `/buy/kvartira/{district-slug}` для 20+ районов (Дашково-Песочня, Канищево, Дубровичи, Солотча, ...)
+
+## Услуги
+
+- [/services/mortgage](https://victory62.org/services/mortgage): ипотечный калькулятор (22 банковские программы, актуальные ставки)
+- [/valuations](https://victory62.org/valuations): экспресс-оценка стоимости недвижимости
+- [/services/investment-audit](https://victory62.org/services/investment-audit): инвестиционный аудит объекта (доходность, окупаемость, риски)
+- [/services/legal](https://victory62.org/services/legal): юридическое сопровождение сделки
+
+## Новости и блог
+
+- [/news](https://victory62.org/news): новости рынка недвижимости региона, embedding-search по смысловому соответствию
+- [/news/{slug}](https://victory62.org/news): отдельная статья (JSON-LD `Article` / `NewsArticle`)
+
+## Агенты
+
+- [/agents](https://victory62.org/agents): профили агентов (когда включится Devise — будут полнее)
+
+## Отзывы
+
+- [/reviews](https://victory62.org/reviews): отзывы клиентов
+- Moderated by admin; structured data `Review`
+
+## JSON API
+
+- [/api/v1/properties](https://victory62.org/api/v1/properties): JSON-листинг объектов с фильтрами
+- [/api/v1/properties/{id}](https://victory62.org/api/v1/properties/1): отдельный объект
+- [/api/v1/properties/featured](https://victory62.org/api/v1/properties/featured): рекомендуемые
+- [/api/v1/properties/{id}/similar](https://victory62.org/api/v1/properties/1/similar): похожие
+- [/api/v1/mortgage_calculator/calculate](https://victory62.org/api/v1/mortgage_calculator/calculate): POST расчёт ипотеки
+
+## Дополнительная информация
+
+- Локализация: интерфейс на русском (`ru-RU`), валюта `RUB`
+- Регион: Рязанская область (`RU-RYA`), город Рязань
+- Карты: Яндекс.Карты (Яндекс.Maps API)
+- Часовой пояс: Europe/Moscow
+- Контентная политика: статьи и описания объектов — оригинальный контент агентства; цитирование с обратной ссылкой приветствуется
+
+## Контакты для AI-ботов
+
+- Сайт-карта: https://victory62.org/sitemap.xml
+- Robots policy: https://victory62.org/robots.txt
+- Связь по структурированным данным или ошибкам индексации: через форму на /contacts

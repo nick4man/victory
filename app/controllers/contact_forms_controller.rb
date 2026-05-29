@@ -213,7 +213,7 @@ class ContactFormsController < ApplicationController
   private
   
   def quick_inquiry_params
-    params.require(:inquiry).permit(:name, :phone, :email, :message, :property_id)
+    params.require(:inquiry).permit(:name, :phone, :email, :message, :property_id, :external_listing_id)
   end
   
   def viewing_params
@@ -301,13 +301,14 @@ class ContactFormsController < ApplicationController
   
   def find_matching_properties(inquiry)
     criteria = inquiry.metadata
-    
-    Property.active
-            .where(property_type: criteria['property_type'])
-            .where(deal_type: criteria['deal_type'])
-            .where('price >= ? AND price <= ?', criteria['min_price'], criteria['max_price'])
-            .where(rooms: criteria['rooms']) if criteria['rooms'].present?
-            .limit(10)
+
+    scope = Property.active
+                    .where(property_type: criteria['property_type'])
+                    .where(deal_type: criteria['deal_type'])
+                    .where('price >= ? AND price <= ?', criteria['min_price'], criteria['max_price'])
+
+    scope = scope.where(rooms: criteria['rooms']) if criteria['rooms'].present?
+    scope.limit(10)
   end
   
   def create_crm_lead(inquiry)

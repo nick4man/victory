@@ -1,0 +1,85 @@
+<% content_for :title, "Запрос подписи клиента — #{AgencyInfo::NAME}" %>
+
+<section class="px-6 lg:px-12 py-12 lg:py-16 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-8">
+      <%= link_to '← К списку объектов', admin_properties_path(),
+            class: 'hover:text-foreground' %>
+    </nav>
+
+    <header class="mb-10">
+      <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-4">
+        Admin · Запрос подписи
+      </p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">
+        Запрос подписи клиента
+      </h1>
+      <p class="text-sm text-muted-foreground mt-2">
+        Отправим клиенту email с magic-link на форму подписания агентского
+        договора. Объект перейдёт в статус «ожидает подписи» — на сайте не публикуется
+        до подписания.
+      </p>
+    </header>
+
+    <% if flash[:alert] %>
+      <div class="mb-6 p-4 border border-red-700/40 bg-red-700/5 text-sm text-red-700">
+        <%= flash[:alert] %>
+      </div>
+    <% end %>
+
+    <%# Property summary %>
+    <div class="border border-border p-6 mb-8">
+      <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">Объект</p>
+      <h2 class="text-base font-light text-foreground mb-2">
+        <%= @property.title %>
+      </h2>
+      <p class="text-sm text-muted-foreground mb-2"><%= @property.address %></p>
+      <p class="text-xs text-muted-foreground/70">
+        <% area = @property.try(:total_area) || @property.try(:area) %>
+        <%= area %> м² ·
+        <%= number_to_currency(@property.price, precision: 0, unit: '₽', format: '%n %u', delimiter: ' ') %> ·
+        текущий статус: <code><%= @property.status %></code>
+      </p>
+    </div>
+
+    <%= form_with url: send_consent_request_admin_property_path(@property),
+          method: :post, local: true, html: { class: 'space-y-6' } do |f| %>
+      <div>
+        <label for="client_email" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+          Email клиента
+        </label>
+        <input type="email" name="client_email" id="client_email" required
+               autocomplete="off"
+               placeholder="client@example.com"
+               class="w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50">
+        <p class="mt-2 text-xs text-muted-foreground/70">
+          Если client'а с этим email нет в системе — мы создадим аккаунт автоматически.
+        </p>
+      </div>
+
+      <div>
+        <label for="client_name" class="block text-xs tracking-[0.2em] uppercase text-muted-foreground mb-2">
+          Имя клиента <span class="text-muted-foreground/50">(опционально)</span>
+        </label>
+        <input type="text" name="client_name" id="client_name"
+               autocomplete="off"
+               placeholder="Имя Фамилия"
+               class="w-full px-4 py-3 bg-transparent border border-border focus:border-foreground outline-none text-base text-foreground placeholder:text-muted-foreground/50">
+        <p class="mt-2 text-xs text-muted-foreground/70">
+          Используется при auto-create нового User. Если client уже есть — игнорируется.
+        </p>
+      </div>
+
+      <div class="border-t border-border pt-6">
+        <button type="submit"
+                class="px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors">
+          Отправить запрос
+        </button>
+        <p class="mt-4 text-xs text-muted-foreground/70">
+          После клика: Property → <code>pending_consent</code>, email отправлен async,
+          мы перенаправим вас обратно на список.
+        </p>
+      </div>
+    <% end %>
+  </div>
+</section>

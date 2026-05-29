@@ -1,0 +1,252 @@
+en:
+  foreign:
+    meta:
+      title: "Russian Real Estate for International Investors — Victory Agency"
+      description: "Premium properties in Russia — Ryazan, Moscow, St. Petersburg. Apartments, houses, and commercial real estate from $150K. Multi-currency pricing, legal due diligence, FATCA/CRS-compliant workflow."
+    hero:
+      eyebrow: "International Desk"
+      title: "Russian real estate for international investors"
+      subtitle: "Premium apartments, country houses, and commercial real estate in Ryazan, Moscow, and St. Petersburg. From boutique flats to high-yield investment portfolios — handled end-to-end by a single English-speaking advisor."
+      cta_consult: "Request consultation"
+      cta_browse: "Browse premium catalogue"
+    value_props:
+      title: "Why work with us"
+      confidentiality:
+        title: "Confidentiality first"
+        body: "NDA-protected transactions. Listings can be private — visible only after the buyer signs a brokerage agreement. Beneficial-ownership structures handled discreetly."
+      due_diligence:
+        title: "Independent legal due diligence"
+        body: "Title chain verification, encumbrance check, RosReestr extract translated to English. We disclose every flag — not just the green ones."
+      currency:
+        title: "Multi-currency transparency"
+        body: "Every price quoted in RUB, USD, EUR, and AED at live CBR rates. Settlement structures (escrow, Russian-licensed bank account opening) explained upfront."
+      fatca:
+        title: "FATCA/CRS-aware"
+        body: "Document intake compatible with US persons (W-9), CRS-reportable residents, and PEP-flagged individuals. We refer to licensed compliance partners where needed."
+      visa:
+        title: "Residency pathway support"
+        body: "Property acquisition above 30M RUB qualifies for fast-track residency under Russian law (FZ-115, 2023). We coordinate with migration lawyers."
+      single_advisor:
+        title: "One advisor, end-to-end"
+        body: "No handoffs. Your assigned advisor speaks English, knows your file from intake to keys-handover, and continues post-deal property management if requested."
+    featured:
+      title: "Featured premium opportunities"
+      subtitle: "A glimpse of the live inventory. Full catalogue available after a brief introduction call."
+      area_label: "Area"
+      district_label: "District"
+      details_cta: "Full details"
+    catalog_cta:
+      title: "Looking for something specific?"
+      body: "Off-market listings, exclusive country estates, commercial yield assets — we maintain a private inventory that is never published online. Tell us what you're after."
+      button: "Start a private search"
+    contact:
+      title: "Get in touch"
+      english_advisor: "English-speaking advisor"
+      whatsapp: "WhatsApp"
+      telegram: "Telegram"
+      email: "Email"
+      phone: "Phone"
+    footer_note: "Victory Real Estate Agency — based in Ryazan, Russia. Member of the Russian Guild of Realtors (РГР). Operating since 2015."
+
+  # Reserved for future B2-B7 expansion
+  cabinet:
+    foreign_welcome: "Welcome to your International Investor Portal"
+
+  # B2: Investment Audit PDF + foreign audit controller
+  audit:
+    pdf_meta:
+      title: "Investment Audit — Victory Real Estate"
+      author: "Victory Real Estate Agency"
+      subject: "Investment audit report (English edition)"
+      producer: "Victory Real Estate · victory62.org"
+    pdf:
+      tagline: "Real estate agency in Ryazan, Russia"
+      header_title: "Investment audit report"
+      report_label_prefix: "REPORT"
+    cover:
+      subject_label: "AUDIT SUBJECT"
+      area: "AREA"
+      price: "PRICE"
+      per_sqm: "PER SQ. M"
+      verdict_label: "VERDICT"
+      recommended_strategy_prefix: "Best strategy:"
+      audit_date_label: "Audit date:"
+    verdicts:
+      buy: "BUY"
+      wait: "WAIT"
+      neutral: "NEUTRAL"
+    strategies:
+      cash: "Cash"
+      mortgage: "Mortgage"
+      deposit: "Deposit"
+    confidence:
+      high: "high confidence"
+      medium: "medium confidence"
+      low: "low confidence"
+    ei:
+      page_title: "Investment efficiency — comparative analysis"
+      ei_score: "EI score"
+      cash_yield_pct: "Cash yield, %"
+      irr_pct: "IRR, %"
+      payback_years: "Payback, years"
+      mortgage_irr: "Mortgage IRR"
+      deposit_irr: "Deposit IRR"
+      cash_irr: "Cash IRR"
+      strategy: "Strategy"
+      median_index: "Median index"
+      p5_p95_range: "p5–p95 range"
+      buy_probability: "Profitability prob."
+      three_strategies_header: "RESULTS ACROSS THREE STRATEGIES"
+      threshold_legend: "EI ≥ 1.2 — buy is better than alternatives · 0.9–1.1 — neutral · < 0.8 — not profitable"
+      recommended_marker_note: "◆ — strategy recommended after Monte Carlo (1,000,000 simulations)."
+      explainer: "EI score combines cash yield, IRR, and risk-adjusted return into a single normalized figure (0–100). Higher = better risk-reward profile vs. local market median."
+      explainer_full: "If EI > 1.2 for a given strategy, this purchase method is currently more profitable than the alternative (deposit or rent + save). If EI < 0.8, your money works more efficiently in another instrument. Profitability probability shows the chance of staying in profit across thousands of possible futures."
+      mortgage_terms_header: "MORTGAGE TERMS (REALISTIC SCENARIO)"
+      down_payment: "Down payment"
+      loan_amount: "Loan amount"
+      total_payments: "Total payments over term"
+      total_interest: "Total interest (overpayment)"
+      mortgage_explainer: "«Total payments» %{total_payments} — sum of every monthly payment across the full mortgage term (typically 20 years). The audit evaluates on a 5-year horizon — so EI accounts only for what is paid in those 5 years plus residual debt, not the full 20-year overpayment. A 1%% reduction in interest rate materially shifts the efficiency index (see p.3)."
+    page_footer: "p.%{page}  ·  Report %{report}"
+    scenarios:
+      page_title: "Scenarios & sensitivity"
+      recommended_strategy: "Recommended strategy"
+      confidence_level: "Confidence level"
+      ei_by_market_header: "EI ACROSS MARKET SCENARIOS"
+      intro: "How investment efficiency changes under optimistic, realistic, and pessimistic market developments."
+      scenario_col: "Scenario"
+      price_growth_col: "Price growth"
+      mortgage_col: "Mortgage rate"
+      ei_cash_col: "EI cash"
+      ei_mortgage_col: "EI mortgage"
+      ei_deposit_col: "EI deposit"
+      best_col: "Best"
+      names:
+        realistic: "Realistic"
+        optimistic: "Optimistic"
+        pessimistic: "Pessimistic"
+      explainer: "100,000 Monte Carlo simulations across mortgage / cash / deposit strategies, with sensitivity to interest-rate moves, vacancy, and price appreciation."
+      explainer_full: "Realistic scenario — the default baseline (rates & inflation from the Central Bank of Russia). Optimistic — if inflation and price growth exceed forecasts, rates ease. Pessimistic — the reverse. If 'Best' is identical across all three — the decision is robust; if it changes — weight your own view of the market."
+      sensitivity_header: "MORTGAGE EI SENSITIVITY TO RATE"
+      sensitivity_intro: "How mortgage EI changes if the actual rate differs from the forecast. Line 1.0 — breakeven threshold."
+      sensitivity_explainer: "If you've been offered a lower rate — find it on the horizontal axis and read EI on the right. EI > 1.0 means a mortgage at that rate is already better than a deposit."
+    bank_offers:
+      page_title: "Mortgage programs"
+      bank: "Bank"
+      program: "Program"
+      rate: "Rate"
+      term: "Term"
+      monthly_payment: "Monthly payment"
+      median_index: "Median index"
+      p5_p95: "p5–p95"
+      buy_probability: "Profitability prob."
+      recommended_header: "RECOMMENDED BY MULTI-OFFER MC"
+      programs_header: "PROGRAMS SORTED BY EI MEDIAN (BEST FIRST)"
+      explainer: "Top-N mortgage offers available for the buyer profile, including subsidized state programs where eligible. Rates as of audit date."
+      explainer_full: "Every program ran a separate Monte Carlo simulation (50,000 iterations each) with its own rate and down-payment requirement. EI is calculated the same way as for a single base program. The recommended one has the highest efficiency index; if all indices are < 1.0, the program is still flagged but it means buying with a mortgage is currently not profitable for this property."
+    visa:
+      page_title: "Residency & tax considerations for foreign investors"
+      investment_visa_header: "Investment-based residency"
+      tax_obligations_header: "Tax obligations for non-residents"
+      residency_pathways_header: "Other residency pathways"
+      legal_disclaimer_header: "Legal disclaimer"
+      legal_disclaimer_default: "This section is informational only and does not constitute legal, tax, or migration advice. Russian residency, tax, and AML rules change frequently. Always verify current obligations with a licensed Russian lawyer or tax advisor before acting."
+      generation_failed_fallback: "Visa and residency information is being prepared. Please contact your advisor for the latest details on Russian residency pathways for property investors and non-resident tax obligations."
+    conversion:
+      page_title: "Currency conversion — reference table"
+      rates_as_of: "Exchange rates as of"
+      rates_source: "Source"
+      fx_disclaimer: "Exchange rates fluctuate. Use these figures as a snapshot only — settlement amounts in foreign currency may differ at the date of actual transfer."
+      column_headers:
+        amount_rub: "Amount, RUB"
+        usd: "USD"
+        eur: "EUR"
+        aed: "AED"
+        gbp: "GBP"
+        cny: "CNY"
+      rows:
+        property_price: "Property price"
+        price_per_sqm: "Price per sq. m"
+        annual_cashflow: "Annual rental cashflow"
+        five_year_total: "5-year net outcome"
+    glossary:
+      page_title: "Risks, assumptions, glossary"
+      risks_header: "Risks and limitations"
+      assumptions_header: "Calculation assumptions"
+      glossary_header: "Glossary of terms"
+      contact_header: "DISCUSS THE REPORT WITH AN ADVISOR"
+      terms:
+        efficiency_index:
+          term: "Efficiency Index"
+          body: "Ratio of the deal's useful outcome (projected value + saved rent) to its costs (mortgage payments or opportunity cost of alternative investments). EI ≥ 1.2 — purchase is profitable; ≤ 0.8 — not."
+        monte_carlo:
+          term: "Monte Carlo method"
+          body: "A way to estimate the spread of future outcomes: the engine simulates a million variants of how prices, rates, and inflation could evolve over a 5-year horizon, and computes EI for each. The output is not a single number but a range plus the probability of a good outcome."
+        buy_probability:
+          term: "Profitability probability"
+          body: "Share of Monte Carlo scenarios where EI ended up ≥ 1.2. Higher = more robust decision to future uncertainty."
+        market_scenarios:
+          term: "Market scenarios"
+          body: "Three conditional futures: optimistic (low rates, price growth), realistic (current Central Bank of Russia forecast), and pessimistic (high rates, low growth). Useful to see which scenario breaks the decision."
+        strategies:
+          term: "Strategies"
+          body: "Cash — purchase with own funds at a full-payment discount. Mortgage — purchase with borrowed funds at current market rate. Deposit — DO NOT purchase, keep money on deposit and rent. Best strategy = highest efficiency index."
+      contact_footer: "Questions? Contact your advisor at hello@victory62.org or via Telegram @rznvictory."
+    signature_footer:
+      date_prefix: "Audit date:"
+      site_label: "OUR WEBSITE"
+      tg_label: "TELEGRAM"
+      tg_caption: "news every 15 min"
+
+  foreign_audit:
+    meta:
+      title: "Free Investment Audit for Russian Real Estate — Victory Agency"
+      description: "Run a free, AI-powered investment audit on any Russian property. Multi-currency cashflow (RUB/USD/EUR/AED), Monte Carlo scenarios, mortgage comparison, and residency pathways. English-language PDF delivered in 30 seconds."
+    new:
+      eyebrow: "Investment Audit"
+      title: "Free investment audit"
+      subtitle: "Get a structured analysis of any Russian property in 30 seconds. Multi-currency cashflow projections, Monte Carlo scenarios, and a full English-language PDF — delivered to your inbox."
+      step1_label: "Step 1 — Property"
+      step2_label: "Step 2 — Financials"
+      step3_label: "Step 3 — Contact"
+      property_type: "Property type"
+      address: "Address (city, district, street)"
+      area: "Area, sq. m"
+      asking_price_rub: "Asking price, RUB"
+      asking_price_help: "If priced in another currency, convert to RUB at the current CBR rate. We'll show the multi-currency breakdown in the report."
+      mortgage_rate: "Expected mortgage rate, %"
+      mortgage_rate_help: "Leave blank to use the current average for your buyer profile."
+      deposit_rate: "Bank deposit rate (alternative), %"
+      name: "Full name"
+      email: "Email"
+      phone: "Phone (international format)"
+      submit: "Run audit"
+      submit_help: "We will not share your data. PDF arrives in 30 seconds."
+      disclaimer: "By submitting, you confirm you have read and agreed to our privacy policy and audit methodology disclaimer. This report is for informational purposes only and is not investment advice."
+    processing:
+      title: "Audit in progress"
+      subtitle: "Crunching the numbers — Monte Carlo simulations, comparable analysis, mortgage scenarios, and residency considerations."
+      remaining: "About %{seconds} seconds left"
+      stages:
+        comparables: "Searching comparable properties"
+        market_data: "Collecting open-market data (Avito, Cian, Domclick)"
+        monte_carlo: "Running Monte Carlo simulations (100K iterations)"
+        visa: "Generating residency & tax considerations"
+        report: "Finalizing English PDF report"
+    show:
+      verdict_label: "Verdict"
+      price_label: "Property price"
+      yield_label: "Cash yield"
+      irr_label: "IRR"
+      payback_label: "Payback period"
+      download_pdf: "Download PDF (English)"
+      contact_advisor: "Speak with an English-speaking advisor"
+      another_audit: "Run another audit"
+    cta:
+      title: "Considering an investment in Russian property?"
+      body: "Run a free AI-powered audit. Get verdict (BUY / WAIT / NEUTRAL), Monte Carlo scenarios, mortgage comparison, and residency pathways — delivered as an English-language PDF in 30 seconds."
+      button: "Start free audit"
+    errors:
+      rate_limit: "Too many requests. Please try again in an hour."
+      not_ready: "Report is not ready yet."
+      pdf_failed: "PDF temporarily unavailable. Please refresh the page."

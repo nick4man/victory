@@ -1,0 +1,122 @@
+# Sidecar stack for СОДИКС audit-engine-v2 (Investment Audit mode).
+#
+# Compose with the main file:
+#   docker compose -f docker-compose.yml -f docker-compose.audit.yml up -d
+#
+# Topology:
+#   audit-internal (internal: true):
+#     audit-postgres ↔ audit-redis ↔ audit-mc-worker ↔ audit-api
+#   default (victory62 implicit):
+#     web (Rails) ↔ audit-api  ← only the API joins both networks
+#
+# Rails reaches the engine as http://audit-api:8000/api/v2 (no external port).
+# The mc-worker, postgres, redis have NO route to the host or the internet.
+# The api needs internet egress for CB-RF macro cron (APScheduler), which is
+# why it joins the default network.
+
+services:
+  audit-postgres:
+    build:
+      context: ./services/audit-engine/engine
+      dockerfile: Dockerfile.pgvector
+    image: viktory-audit-pg-pgvector:pg16-3.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: re_audit
+      POSTGRES_USER: audit_user
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:?AUDIT_DB_PASSWORD must be set in .env.audit}
+    volumes:
+      - audit_pgdata:/var/lib/postgresql/data
+    # Intentionally NO host port. Engine talks to it via service DNS on
+    # audit-internal. To inspect from host, use:
+    #   docker compose exec audit-postgres psql -U audit_user re_audit
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audit_user -d re_audit"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - audit-internal
+
+  audit-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - audit_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - audit-internal
+
+  audit-api:
+    build:
+      context: ./services/audit-engine/engine
+      dockerfile: Dockerfile.api
+    image: viktory-audit-engine:v2.0
+    restart: unless-stopped
+    env_file:
+      - .env.audit
+    environment:
+      DATABASE_URL: postgresql://audit_user:${AUDIT_DB_PASSWORD}@audit-postgres:5432/re_audit
+      REDIS_URL: redis://audit-redis:6379/0
+    depends_on:
+      audit-postgres:
+        condition: service_healthy
+      audit-redis:
+        condition: service_healthy
+    volumes:
+      - audit_reports:/app/reports
+    # Dockerfile.api default CMD already runs alembic upgrade head before
+    # uvicorn. Single replica enforces the advisory-lock contract: do NOT
+    # scale this service to >1 unless you also reorder migrations into a
+    # one-shot init job.
+    networks:
+      - audit-internal
+      - default        # Rails web/sidekiq reach + APScheduler CB-RF egress
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/v2/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  audit-mc-worker:
+    build:
+      context: ./services/audit-engine/engine
+      dockerfile: Dockerfile.api
+    image: viktory-audit-engine:v2.0
+    restart: unless-stopped
+    env_file:
+      - .env.audit
+    environment:
+      DATABASE_URL: postgresql://audit_user:${AUDIT_DB_PASSWORD}@audit-postgres:5432/re_audit
+      REDIS_URL: redis://audit-redis:6379/0
+      MC_USE_GPU: "false"
+    command: ["python", "-m", "audit_engine.monte_carlo_worker"]
+    depends_on:
+      audit-postgres:
+        condition: service_healthy
+      audit-redis:
+        condition: service_healthy
+    networks:
+      - audit-internal
+    # numpy is happy to eat every core. Cap so a runaway sim doesn't
+    # starve Rails/Sidekiq. 1M MC simulations cost ~14s on 2 CPUs.
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2g
+
+networks:
+  audit-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  audit_pgdata:
+  audit_redisdata:
+  audit_reports:

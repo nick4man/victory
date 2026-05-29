@@ -1,0 +1,34 @@
+<% content_for :title, 'Не удалось рассчитать оценку — АН Виктори' %>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto text-center">
+    <p class="text-sm tracking-[0.4em] text-destructive mb-6">ОЦЕНКА НЕ ВЫПОЛНЕНА</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-6">
+      Не удалось рассчитать оценку автоматически
+    </h1>
+    <p class="text-base text-muted-foreground leading-relaxed mb-8">
+      <%
+        err = nil
+        if @valuation.evaluation_data.is_a?(Hash)
+          err = @valuation.evaluation_data['error'] || @valuation.evaluation_data[:error]
+        end
+      %>
+      <% if err.present? %>
+        Причина: <%= err %>.
+      <% else %>
+        Возможные причины: недостаточно похожих объектов в каталоге по введённым параметрам
+        или временный сбой расчётного движка.
+      <% end %>
+      Мы можем рассчитать оценку вручную — оставьте заявку или позвоните.
+    </p>
+
+    <div class="flex flex-wrap gap-3 justify-center">
+      <%= link_to 'Попробовать заново', new_property_valuation_path,
+            class: 'px-6 py-3 text-xs tracking-[0.3em] uppercase border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+      <a href="<%= agency_phone_tel %>"
+         class="px-6 py-3 text-xs tracking-[0.3em] uppercase border border-foreground bg-foreground text-background hover:bg-foreground/85 transition-colors">
+        <%= agency_phone_primary %>
+      </a>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,76 @@
+<%#
+  Phase 2 MLS/YRL — card for ExternalListing (другое агентство).
+  Visually parallel _property_card.html.erb, но:
+    • Линк → /external-listings/:id (наша detail-страница, НЕ external URL)
+    • Бейдж «БАЗА АГЕНТСТВ» виден всегда
+    • Нет favorite toggle (не наша собственность — не можем сохранить как
+      favorite в нашем DB; favorite требует Property linkage)
+    • Нет agent phone block — связаться можно только через нашу форму
+%>
+<%
+  el = local_assigns[:external_listing]
+  agency_label = (ExternalListing::SITEMAP_AGENCY_LABELS[el.source_id.to_s.split(':').first] ||
+                  el.source.to_s.humanize)
+  hero_url = el.respond_to?(:photo_url) ? el.photo_url : nil
+%>
+<div class="group relative bg-card border border-border overflow-hidden">
+  <%= link_to external_listing_path(el), class: 'block' do %>
+    <div class="relative aspect-[4/3] overflow-hidden bg-muted/40">
+      <% if hero_url.present? %>
+        <%= image_with_lazy(hero_url,
+              alt: el.title.to_s.truncate(80),
+              html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-700') %>
+      <% else %>
+        <div class="w-full h-full flex items-center justify-center text-muted-foreground/40 text-xs tracking-[0.3em]">
+          ФОТО У АГЕНТА
+        </div>
+      <% end %>
+      <div class="absolute inset-0 bg-background/30 group-hover:bg-transparent transition-colors duration-500"></div>
+
+      <div class="absolute top-4 left-4 flex gap-2">
+        <span class="px-3 py-1 text-xs tracking-widest bg-background/80 backdrop-blur-sm text-foreground border border-border">
+          БАЗА&nbsp;АГЕНТСТВ
+        </span>
+      </div>
+
+      <div class="absolute bottom-4 right-4 w-12 h-12 flex items-center justify-center bg-foreground text-background opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10M7 17 17 7"/></svg>
+      </div>
+    </div>
+
+    <div class="p-6 pb-4">
+      <h3 class="text-lg tracking-wider text-foreground mb-1 group-hover:text-muted-foreground transition-colors uppercase">
+        <%= el.title.to_s.truncate(80) %>
+      </h3>
+      <p class="text-sm text-muted-foreground tracking-wide mb-4">
+        <%= el.address.to_s.truncate(80).presence || 'Адрес уточните в карточке' %>
+      </p>
+
+      <div class="grid grid-cols-2 gap-4 py-4 border-t border-border">
+        <div>
+          <p class="text-xs tracking-widest text-muted-foreground mb-1">ПЛОЩАДЬ</p>
+          <p class="text-sm tracking-wider text-foreground">
+            <%= el.area.present? && el.area.to_f.positive? ? "#{el.area.to_f.round(1)} м²" : '—' %>
+          </p>
+        </div>
+        <div>
+          <p class="text-xs tracking-widest text-muted-foreground mb-1">КОМНАТ</p>
+          <p class="text-sm tracking-wider text-foreground">
+            <% if el.rooms.to_i.zero? %>Студия
+            <% elsif el.rooms.to_i.positive? %><%= el.rooms %>-комн.
+            <% else %>—<% end %>
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-4 border-t border-border">
+        <p class="text-xl tracking-wider text-foreground mb-1">
+          <%= el.price.to_f.positive? ? "#{number_with_delimiter(el.price.to_i, delimiter: ' ')} ₽" : 'Цена по запросу' %>
+        </p>
+        <p class="text-xs tracking-wider text-muted-foreground/70">
+          источник: <%= agency_label %>
+        </p>
+      </div>
+    </div>
+  <% end %>
+</div>

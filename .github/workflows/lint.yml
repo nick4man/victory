@@ -1,0 +1,66 @@
+name: Lint & security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel older runs on the same ref — save CI minutes.
+concurrency:
+  group: lint-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rubocop:
+    name: RuboCop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          # Honours .ruby-version / Gemfile (ruby '3.2.2')
+          bundler-cache: true
+
+      - name: Run RuboCop
+        run: bundle exec rubocop --parallel --format github
+
+  brakeman:
+    name: Brakeman (security)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Run Brakeman
+        # --exit-on-warn  → non-zero exit code if ANY warning found.
+        # --quiet         → suppress progress dots; just the report.
+        # --format text   → human-readable on failure.
+        run: bundle exec brakeman --exit-on-warn --quiet --format text
+
+  bundler-audit:
+    name: bundler-audit (CVEs in Gemfile.lock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Run bundler-audit
+        # `update` syncs the local vulnerability DB before the check.
+        run: |
+          bundle exec bundle-audit update
+          bundle exec bundle-audit check

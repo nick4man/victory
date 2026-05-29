@@ -42,8 +42,8 @@ module ViktoryRealty
     config.autoload_paths << Rails.root.join('app', 'presenters')
     config.autoload_paths << Rails.root.join('app', 'decorators')
 
-    # Active Job queue adapter (temporarily using async for setup)
-    config.active_job.queue_adapter = :async
+    # Active Job queue adapter
+    config.active_job.queue_adapter = :sidekiq
 
     # Active Storage
     config.active_storage.service = :local
@@ -104,11 +104,10 @@ module ViktoryRealty
       g.helper false
     end
 
-    # Exception handling
-    # Временно отключено до создания ErrorsController
-    # unless Rails.env.development? || Rails.env.test?
-    #   config.exceptions_app = ->(env) { ErrorsController.action(:show).call(env) }
-    # end
+    # Branded error pages → ErrorsController via /404, /422, /500 routes
+    # (см. config/routes.rb). Test env keeps default Rails behavior для
+    # raise_on_unhandled чёткости в RSpec.
+    config.exceptions_app = routes unless Rails.env.test?
 
     # Active Record configuration
     config.active_record.schema_format = :sql

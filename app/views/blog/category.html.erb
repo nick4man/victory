@@ -1,0 +1,71 @@
+<% content_for :title, "#{@h1} — АН Виктори" %>
+<% content_for :seo_description, @meta_description %>
+
+<%# CollectionPage JSON-LD — links to ItemList of articles в категории.
+    Я./Google parsing: знает что это hub-page topical cluster'a. %>
+<% content_for :head do %>
+<script type="application/ld+json">
+<%= raw({
+  '@context' => 'https://schema.org',
+  '@type' => 'CollectionPage',
+  'name' => @h1,
+  'description' => @meta_description,
+  'url' => blog_category_url(category: @category),
+  'isPartOf' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#website" },
+  'mainEntity' => {
+    '@type' => 'ItemList',
+    'numberOfItems' => @articles.total_count,
+    'itemListElement' => @articles.each_with_index.map { |a, i|
+      { '@type' => 'ListItem', 'position' => i + 1, 'url' => blog_post_url(slug: a.slug), 'name' => a.title }
+    }
+  }
+}.to_json) %>
+</script>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Блог', blog_path],
+  [@h1, nil]
+] %>
+
+<section class="px-6 lg:px-12 py-12 lg:py-16 bg-background">
+  <div class="max-w-7xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">БЛОГ · <%= @category.upcase %></p>
+    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-wider text-foreground mb-6 leading-tight">
+      <%= @h1 %>
+    </h1>
+    <p class="text-base text-muted-foreground leading-relaxed mb-12 max-w-3xl"><%= @intro %></p>
+
+    <%# Category nav-bar — cross-link discovery для Я./Google + UX %>
+    <nav class="flex flex-wrap gap-3 mb-12 text-xs tracking-[0.3em]" aria-label="Категории блога">
+      <%= link_to 'ВСЕ', blog_path,
+                  class: 'px-4 py-2 border border-border text-foreground hover:bg-foreground hover:text-background transition-colors' %>
+      <% Article::CATEGORIES.each do |cat| %>
+        <%= link_to cat.upcase,
+                    blog_category_path(category: cat),
+                    class: "px-4 py-2 border border-border #{cat == @category ? 'bg-foreground text-background' : 'text-foreground hover:bg-foreground hover:text-background'} transition-colors" %>
+      <% end %>
+    </nav>
+
+    <% if @articles.any? %>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <% @articles.each do |article| %>
+          <%= render 'article_card', article: article %>
+        <% end %>
+      </div>
+
+      <% if respond_to?(:paginate) && @articles.respond_to?(:total_pages) && @articles.total_pages > 1 %>
+        <div class="mt-12 flex justify-center">
+          <%= paginate @articles %>
+        </div>
+      <% end %>
+    <% else %>
+      <div class="border border-border p-12 text-center">
+        <p class="text-sm tracking-wider text-muted-foreground">
+          Пока нет статей в этой категории. <%= link_to 'Все статьи →', blog_path, class: 'underline text-foreground' %>
+        </p>
+      </div>
+    <% end %>
+  </div>
+</section>

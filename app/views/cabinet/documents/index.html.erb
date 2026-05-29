@@ -1,0 +1,162 @@
+<% content_for :title, "Документы — #{AgencyInfo::NAME}" %>
+<%
+  consent_status_label = {
+    'received'        => 'Получен',
+    'ocr_processing'  => 'Распознаётся',
+    'ocr_completed'   => 'Распознан',
+    'ocr_failed'      => 'Ошибка OCR',
+    'reviewed'        => 'Проверен',
+    'archived'        => 'Архив'
+  }
+  kind_label = {
+    'passport' => 'Паспорт', 'inn' => 'ИНН',
+    'egrn'     => 'Выписка ЕГРН', 'contract' => 'Договор',
+    'other'    => 'Прочее'
+  }
+  total = @signed_consents.size + @client_documents.size + @valuations.size
+%>
+
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+
+    <header class="flex justify-between items-start mb-16">
+      <div>
+        <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-4">Личный кабинет / Документы</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">
+          Мои документы
+        </h1>
+        <p class="text-sm text-muted-foreground mt-2">
+          Всё в одном месте — договоры, сканы и оценки.
+        </p>
+      </div>
+      <%= link_to cabinet_path,
+            class: 'text-xs tracking-[0.2em] uppercase text-muted-foreground hover:text-foreground transition-colors' do %>
+        ← В кабинет
+      <% end %>
+    </header>
+
+    <% if total.zero? %>
+      <div class="border border-border p-8 text-center text-muted-foreground">
+        <p class="mb-3 text-sm">У вас пока нет загруженных или подписанных документов.</p>
+        <p class="text-xs">Договоры по объектам появятся здесь после подписания, сканы из TG-бота — после получения.</p>
+      </div>
+    <% else %>
+
+      <!-- SIGNED CONSENTS (Agency contracts) -->
+      <% if @signed_consents.any? %>
+        <div class="mb-12">
+          <div class="flex items-baseline justify-between mb-4">
+            <h2 class="text-xl font-light tracking-tight text-foreground">Подписанные договоры</h2>
+            <span class="text-xs tracking-wider text-muted-foreground"><%= @signed_consents.size %></span>
+          </div>
+          <div class="border border-border divide-y divide-border">
+            <% @signed_consents.each do |consent| %>
+              <div class="p-5 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-3 mb-1">
+                    <span class="text-xs tracking-wider bg-emerald-500/10 text-emerald-700 px-2 py-1">
+                      ✓ Подписан
+                    </span>
+                    <span class="text-xs text-muted-foreground/70">
+                      <%= consent.signed_at.strftime('%d.%m.%y %H:%M') %>
+                    </span>
+                  </div>
+                  <p class="text-sm text-foreground truncate">
+                    Агентский договор по объекту
+                    <% if consent.property %>
+                      <span class="text-muted-foreground">
+                        #<%= consent.property.id %> — <%= truncate(consent.property.title.to_s, length: 60) %>
+                      </span>
+                    <% end %>
+                  </p>
+                </div>
+                <%= link_to "Скачать PDF",
+                      cabinet_listing_consent_pdf_path(consent.property_id),
+                      class: 'shrink-0 text-xs tracking-[0.2em] uppercase text-foreground border border-foreground px-3 py-2 hover:bg-foreground hover:text-background transition-colors' %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- CLIENT-UPLOADED DOCUMENTS (Photo scans от bot) -->
+      <% if @client_documents.any? %>
+        <div class="mb-12">
+          <div class="flex items-baseline justify-between mb-4">
+            <h2 class="text-xl font-light tracking-tight text-foreground">Загруженные сканы</h2>
+            <span class="text-xs tracking-wider text-muted-foreground"><%= @client_documents.size %></span>
+          </div>
+          <div class="border border-border divide-y divide-border">
+            <% @client_documents.each do |doc| %>
+              <div class="p-5">
+                <div class="flex items-center gap-3 mb-1">
+                  <span class="text-xs tracking-wider bg-foreground/10 text-foreground px-2 py-1">
+                    <%= kind_label[doc.document_kind] || doc.document_kind.to_s.humanize %>
+                  </span>
+                  <span class="text-xs tracking-wider bg-muted text-muted-foreground px-2 py-1">
+                    <%= consent_status_label[doc.status] || doc.status %>
+                  </span>
+                  <span class="text-xs text-muted-foreground/70">
+                    <%= doc.created_at.strftime('%d.%m.%y %H:%M') %>
+                  </span>
+                </div>
+                <p class="text-xs text-muted-foreground mt-2">
+                  <% if doc.status == 'reviewed' %>
+                    Проверен агентом ✓
+                  <% elsif doc.status == 'ocr_completed' %>
+                    Распознан — ждёт проверку агентом
+                  <% elsif doc.status == 'ocr_processing' %>
+                    В обработке — обычно ~30 сек
+                  <% elsif doc.status == 'ocr_failed' %>
+                    Не удалось распознать. Пришли заново через бота.
+                  <% else %>
+                    Получен — в очереди на распознавание
+                  <% end %>
+                </p>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- VALUATIONS -->
+      <% if @valuations.any? %>
+        <div class="mb-12">
+          <div class="flex items-baseline justify-between mb-4">
+            <h2 class="text-xl font-light tracking-tight text-foreground">Оценки</h2>
+            <span class="text-xs tracking-wider text-muted-foreground"><%= @valuations.size %></span>
+          </div>
+          <div class="border border-border divide-y divide-border">
+            <% @valuations.each do |v| %>
+              <div class="p-5 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-3 mb-1">
+                    <span class="text-xs tracking-wider bg-foreground/10 text-foreground px-2 py-1">
+                      Оценка <%= v.status %>
+                    </span>
+                    <span class="text-xs text-muted-foreground/70">
+                      <%= v.created_at.strftime('%d.%m.%y') %>
+                    </span>
+                  </div>
+                  <p class="text-sm text-foreground">
+                    <% if v.estimated_price.to_i.positive? %>
+                      Расчёт: <strong><%= number_to_currency(v.estimated_price, unit: '₽', precision: 0) %></strong>
+                    <% else %>
+                      В работе
+                    <% end %>
+                  </p>
+                </div>
+                <% if v.token.present? %>
+                  <%= link_to "Подробнее",
+                        property_valuation_path(token: v.token),
+                        class: 'shrink-0 text-xs tracking-[0.2em] uppercase text-foreground border border-foreground px-3 py-2 hover:bg-foreground hover:text-background transition-colors' %>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+
+    <% end %>
+  </div>
+</section>

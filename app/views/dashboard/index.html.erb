@@ -1,338 +1,149 @@
-<% content_for :title, "Личный кабинет" %>
+<%
+  is_staff = current_user.role_agent? || current_user.role_admin?
+  is_admin = current_user.role_admin?
 
-<div class="py-6">
-  <div class="mx-auto max-w-7xl px-4 sm:px-6 md:px-8">
-    <!-- Page header -->
-    <div class="mb-8">
-      <h1 class="text-3xl font-bold text-gray-900">
-        Добро пожаловать, <%= current_user.first_name || current_user.email %>!
+  # CRM activity counters (graceful when tables don't exist yet)
+  staff_count    = (Department.active.count rescue 0)
+  agents_count   = (User.crm_active.where(role: User.roles[:agent]).count rescue 0)
+  orders_count   = (BuyerOrder.active.count rescue 0)
+  services_count = (ServiceType.public_visible.count rescue 0)
+  reports_count  = (CrmReport.count rescue 0)
+%>
+
+<% content_for :title, "Личный кабинет — АН Виктори" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <div class="mb-12 pb-8 border-b border-border">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-3">ЛИЧНЫЙ КАБИНЕТ</p>
+      <h1 class="text-4xl lg:text-5xl font-light tracking-wide text-foreground mb-2">
+        <%= current_user.short_name.presence || current_user.email %>
       </h1>
-      <p class="mt-2 text-sm text-gray-600">
-        Вот обзор вашей активности
-      </p>
+      <p class="text-sm text-muted-foreground"><%= current_user.email %><% if current_user.crm_role_name %> · <%= current_user.crm_role_name %><% end %></p>
     </div>
 
-    <!-- Statistics cards -->
-    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-      <!-- Favorites -->
-      <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-              </svg>
-            </div>
-            <div class="ml-5 w-0 flex-1">
-              <dl>
-                <dt class="text-sm font-medium text-gray-500 truncate">Избранное</dt>
-                <dd class="flex items-baseline">
-                  <div class="text-2xl font-semibold text-gray-900">
-                    <%= @statistics[:favorites_count] %>
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-        <div class="bg-gray-50 px-5 py-3">
-          <%= link_to dashboard_favorites_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-            Посмотреть все
-          <% end %>
-        </div>
-      </div>
+    <% if is_staff %>
+      <!-- ========== STAFF SECTION ========== -->
+      <div class="mb-16">
+        <h2 class="text-xs tracking-[0.4em] text-muted-foreground mb-6">РАБОТА С CRM</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-border">
 
-      <!-- Inquiries -->
-      <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+          <%= link_to dashboard_staff_index_path, class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <div class="flex items-start justify-between mb-4">
+              <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">СОТРУДНИКИ</h3>
+              <p class="text-3xl font-light text-foreground"><%= agents_count %></p>
             </div>
-            <div class="ml-5 w-0 flex-1">
-              <dl>
-                <dt class="text-sm font-medium text-gray-500 truncate">Заявки</dt>
-                <dd class="flex items-baseline">
-                  <div class="text-2xl font-semibold text-gray-900">
-                    <%= @statistics[:inquiries_count] %>
-                  </div>
-                  <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
-                    <%= @statistics[:active_inquiries] %> активных
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-        <div class="bg-gray-50 px-5 py-3">
-          <%= link_to dashboard_inquiries_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-            Посмотреть все
+            <p class="text-sm text-muted-foreground leading-relaxed">Справочник коллег: ФИО, отделы, контакты. Из Topnlab CRM.</p>
+            <p class="text-xs text-muted-foreground mt-4"><%= pluralize(staff_count, 'отдел', plural: 'отделов') %></p>
           <% end %>
-        </div>
-      </div>
 
-      <!-- Messages -->
-      <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
+          <%= link_to dashboard_orders_path, class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <div class="flex items-start justify-between mb-4">
+              <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">ПОКУПАТЕЛИ</h3>
+              <p class="text-3xl font-light text-foreground"><%= orders_count %></p>
             </div>
-            <div class="ml-5 w-0 flex-1">
-              <dl>
-                <dt class="text-sm font-medium text-gray-500 truncate">Сообщения</dt>
-                <dd class="flex items-baseline">
-                  <div class="text-2xl font-semibold text-gray-900">
-                    <%= @statistics[:unread_messages] %>
-                  </div>
-                  <div class="ml-2 text-sm text-gray-500">непрочитанных</div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-        <div class="bg-gray-50 px-5 py-3">
-          <%= link_to dashboard_messages_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-            Посмотреть все
+            <p class="text-sm text-muted-foreground leading-relaxed">Заявки покупателей и арендаторов из CRM. Поиск подходящих объектов из нашей базы.</p>
+            <p class="text-xs text-muted-foreground mt-4">Sync каждые 3 часа</p>
           <% end %>
-        </div>
-      </div>
 
-      <!-- Saved Searches -->
-      <div class="bg-white overflow-hidden shadow rounded-lg">
-        <div class="p-5">
-          <div class="flex items-center">
-            <div class="flex-shrink-0">
-              <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
+          <%= link_to services_page_path, class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <div class="flex items-start justify-between mb-4">
+              <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">УСЛУГИ</h3>
+              <p class="text-3xl font-light text-foreground"><%= services_count %></p>
             </div>
-            <div class="ml-5 w-0 flex-1">
-              <dl>
-                <dt class="text-sm font-medium text-gray-500 truncate">Сохраненные поиски</dt>
-                <dd class="flex items-baseline">
-                  <div class="text-2xl font-semibold text-gray-900">
-                    <%= @statistics[:saved_searches] %>
-                  </div>
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-        <div class="bg-gray-50 px-5 py-3">
-          <%= link_to dashboard_saved_searches_path, class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-            Посмотреть все
+            <p class="text-sm text-muted-foreground leading-relaxed">Каталог услуг агентства: ипотека, юристы, оценка, осмотр объекта.</p>
+            <p class="text-xs text-muted-foreground mt-4">Публичная страница</p>
           <% end %>
-        </div>
-      </div>
-    </div>
 
-    <!-- Two column layout -->
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <!-- Recent Favorites -->
-      <div class="bg-white shadow rounded-lg">
-        <div class="px-6 py-5 border-b border-gray-200">
-          <h3 class="text-lg font-medium text-gray-900">Недавно добавленное в избранное</h3>
-        </div>
-        <div class="px-6 py-4">
-          <% if @recent_favorites.any? %>
-            <ul class="divide-y divide-gray-200">
-              <% @recent_favorites.each do |favorite| %>
-                <li class="py-4">
-                  <div class="flex space-x-3">
-                    <% if favorite.property.primary_image %>
-                      <%= image_tag favorite.property.primary_image.url, 
-                          class: "h-16 w-16 rounded-lg object-cover" %>
-                    <% else %>
-                      <div class="h-16 w-16 rounded-lg bg-gray-200 flex items-center justify-center">
-                        <svg class="h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                        </svg>
-                      </div>
-                    <% end %>
-                    <div class="flex-1 min-w-0">
-                      <%= link_to property_path(favorite.property), class: "block hover:bg-gray-50 transition" do %>
-                        <p class="text-sm font-medium text-gray-900 truncate">
-                          <%= favorite.property.title %>
-                        </p>
-                        <p class="text-sm text-gray-500">
-                          <%= number_to_currency(favorite.property.price, unit: "₽", separator: ",", delimiter: " ", format: "%n %u") %>
-                        </p>
-                        <p class="text-xs text-gray-400">
-                          Добавлено <%= time_ago_in_words(favorite.created_at) %> назад
-                        </p>
-                      <% end %>
-                    </div>
-                  </div>
-                </li>
-              <% end %>
-            </ul>
-            <div class="mt-4">
-              <%= link_to dashboard_favorites_path, 
-                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-                Посмотреть все избранное →
-              <% end %>
+          <% my_count = (Property.unscoped.assigned_to(current_user).where(deleted_at: nil).count rescue 0) %>
+          <%= link_to dashboard_properties_path, class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <div class="flex items-start justify-between mb-4">
+              <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">МОИ ОБЪЕКТЫ</h3>
+              <p class="text-3xl font-light text-foreground"><%= my_count %></p>
             </div>
-          <% else %>
-            <p class="text-sm text-gray-500 text-center py-8">
-              У вас пока нет избранных объектов
-            </p>
-            <%= link_to properties_path, 
-                class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-              Посмотреть каталог
+            <p class="text-sm text-muted-foreground leading-relaxed">Все объекты, закреплённые за вами в CRM (любая стадия — реклама, работа, аванс, архив).</p>
+            <p class="text-xs text-muted-foreground mt-4">Sync каждые 30 мин</p>
+          <% end %>
+
+          <%= link_to properties_path, target: '_blank', class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <div class="flex items-start justify-between mb-4">
+              <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">КАТАЛОГ</h3>
+              <p class="text-3xl font-light text-foreground"><%= (Property.on_site.count rescue 0) %></p>
+            </div>
+            <p class="text-sm text-muted-foreground leading-relaxed">Публичный каталог: только объекты в стадии «реклама» (deal_state=ad).</p>
+            <p class="text-xs text-muted-foreground mt-4">Открывается в новой вкладке</p>
+          <% end %>
+
+          <%= link_to new_property_valuation_path, class: "group bg-card p-8 hover:bg-accent transition-colors block" do %>
+            <h3 class="text-lg tracking-widest text-foreground mb-4 group-hover:translate-x-2 transition-transform">ОНЛАЙН-ОЦЕНКА</h3>
+            <p class="text-sm text-muted-foreground leading-relaxed">Оценка по медиане аналогов: 4 шага, динамические поля для каждого типа объекта.</p>
+          <% end %>
+
+          <% if is_admin %>
+            <% all_props = (Property.unscoped.where(deleted_at: nil).count rescue 0) %>
+            <% unassigned = (Property.unscoped.unassigned.where(deleted_at: nil).count rescue 0) %>
+            <%= link_to dashboard_admin_properties_path, class: "group bg-card p-8 hover:bg-accent transition-colors block border-l-2 border-foreground" do %>
+              <div class="flex items-start justify-between mb-4">
+                <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">ВСЕ ОБЪЕКТЫ</h3>
+                <p class="text-3xl font-light text-foreground"><%= all_props %></p>
+              </div>
+              <p class="text-sm text-muted-foreground leading-relaxed">Полный каталог компании. Назначение агентов, фильтры по стадии, поиск.</p>
+              <p class="text-xs text-muted-foreground mt-4">Без агента: <%= unassigned %> · Только администратор</p>
+            <% end %>
+
+            <%= link_to dashboard_admin_reports_path, class: "group bg-card p-8 hover:bg-accent transition-colors block border-l-2 border-foreground" do %>
+              <div class="flex items-start justify-between mb-4">
+                <h3 class="text-lg tracking-widest text-foreground group-hover:translate-x-2 transition-transform">ОТЧЁТЫ CRM</h3>
+                <p class="text-3xl font-light text-foreground"><%= reports_count %></p>
+              </div>
+              <p class="text-sm text-muted-foreground leading-relaxed">Регистрация custom-отчётов в Topnlab. PDF генерируется на нашем сервере по запросу из CRM.</p>
+              <p class="text-xs text-muted-foreground mt-4">Только администратор</p>
             <% end %>
           <% end %>
+
         </div>
       </div>
+    <% end %>
 
-      <!-- Recent Inquiries -->
-      <div class="bg-white shadow rounded-lg">
-        <div class="px-6 py-5 border-b border-gray-200">
-          <h3 class="text-lg font-medium text-gray-900">Последние заявки</h3>
-        </div>
-        <div class="px-6 py-4">
-          <% if @recent_inquiries.any? %>
-            <ul class="divide-y divide-gray-200">
-              <% @recent_inquiries.each do |inquiry| %>
-                <li class="py-4">
-                  <div class="flex space-x-3">
-                    <div class="flex-1 space-y-1">
-                      <%= link_to dashboard_inquiry_path(inquiry), class: "block hover:bg-gray-50 transition" do %>
-                        <div class="flex items-center justify-between">
-                          <p class="text-sm font-medium text-gray-900">
-                            <%= inquiry.inquiry_type_humanized %>
-                          </p>
-                          <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                       <%= inquiry.status == 'new' ? 'bg-blue-100 text-blue-800' : 
-                                           inquiry.status == 'in_progress' ? 'bg-yellow-100 text-yellow-800' : 
-                                           inquiry.status == 'completed' ? 'bg-green-100 text-green-800' : 
-                                           'bg-gray-100 text-gray-800' %>">
-                            <%= inquiry.status_humanized %>
-                          </span>
-                        </div>
-                        <% if inquiry.property %>
-                          <p class="text-sm text-gray-500 truncate">
-                            <%= inquiry.property.title %>
-                          </p>
-                        <% end %>
-                        <p class="text-xs text-gray-400">
-                          <%= time_ago_in_words(inquiry.created_at) %> назад
-                        </p>
-                      <% end %>
-                    </div>
-                  </div>
-                </li>
-              <% end %>
-            </ul>
-            <div class="mt-4">
-              <%= link_to dashboard_inquiries_path, 
-                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-                Посмотреть все заявки →
-              <% end %>
-            </div>
-          <% else %>
-            <p class="text-sm text-gray-500 text-center py-8">
-              У вас пока нет заявок
-            </p>
+    <!-- ========== PERSONAL SECTION ========== -->
+    <div class="mb-12">
+      <h2 class="text-xs tracking-[0.4em] text-muted-foreground mb-6">ЛИЧНЫЕ ДАННЫЕ</h2>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-px bg-border mb-8">
+        <% [
+          ["ИЗБРАННОЕ",  current_user.favorites_count, dashboard_favorites_path],
+          ["МОИ ЗАЯВКИ", current_user.inquiries_count, dashboard_inquiries_path],
+          ["ПОИСКИ",     (current_user.saved_searches.count rescue 0), dashboard_saved_searches_path],
+          ["СООБЩЕНИЯ",  (current_user.unread_messages_count rescue 0), dashboard_messages_path]
+        ].each do |label, value, url| %>
+          <%= link_to url, class: "bg-card p-6 hover:bg-accent transition-colors block" do %>
+            <p class="text-3xl lg:text-4xl font-light tracking-wider text-foreground mb-2"><%= value %></p>
+            <p class="text-xs tracking-[0.3em] text-muted-foreground"><%= label %></p>
           <% end %>
-        </div>
+        <% end %>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-border">
+        <%= link_to dashboard_profile_path, class: "group bg-card p-6 hover:bg-accent transition-colors block" do %>
+          <h3 class="text-sm tracking-widest text-foreground mb-2 group-hover:translate-x-2 transition-transform">ПРОФИЛЬ</h3>
+          <p class="text-xs text-muted-foreground">Личные данные и безопасность</p>
+        <% end %>
+        <%= link_to dashboard_settings_path, class: "group bg-card p-6 hover:bg-accent transition-colors block" do %>
+          <h3 class="text-sm tracking-widest text-foreground mb-2 group-hover:translate-x-2 transition-transform">НАСТРОЙКИ</h3>
+          <p class="text-xs text-muted-foreground">Уведомления и оформление</p>
+        <% end %>
+        <%= link_to dashboard_history_index_path, class: "group bg-card p-6 hover:bg-accent transition-colors block" do %>
+          <h3 class="text-sm tracking-widest text-foreground mb-2 group-hover:translate-x-2 transition-transform">ИСТОРИЯ</h3>
+          <p class="text-xs text-muted-foreground">Просмотренные объекты</p>
+        <% end %>
+        <%= link_to dashboard_comparisons_path, class: "group bg-card p-6 hover:bg-accent transition-colors block" do %>
+          <h3 class="text-sm tracking-widest text-foreground mb-2 group-hover:translate-x-2 transition-transform">СРАВНЕНИЕ</h3>
+          <p class="text-xs text-muted-foreground">Сопоставление объектов</p>
+        <% end %>
       </div>
     </div>
-
-    <!-- Recommendations -->
-    <% if @recommended_properties.any? %>
-      <div class="mt-8">
-        <div class="bg-white shadow rounded-lg">
-          <div class="px-6 py-5 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Рекомендуем вам</h3>
-            <p class="text-sm text-gray-500 mt-1">
-              Подобраны на основе ваших предпочтений
-            </p>
-          </div>
-          <div class="p-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <% @recommended_properties.each do |property| %>
-                <%= render partial: 'properties/property_card', locals: { property: property } %>
-              <% end %>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-
-    <!-- Recent Views -->
-    <% if @recent_views.any? %>
-      <div class="mt-8">
-        <div class="bg-white shadow rounded-lg">
-          <div class="px-6 py-5 border-b border-gray-200 flex items-center justify-between">
-            <h3 class="text-lg font-medium text-gray-900">Недавно просмотренные</h3>
-            <%= link_to dashboard_history_path, 
-                class: "text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-              Вся история →
-            <% end %>
-          </div>
-          <div class="p-6">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              <% @recent_views.first(3).each do |property| %>
-                <%= render partial: 'properties/property_card', locals: { property: property } %>
-              <% end %>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
-
-    <!-- Active Saved Searches -->
-    <% if @active_saved_searches.any? %>
-      <div class="mt-8">
-        <div class="bg-white shadow rounded-lg">
-          <div class="px-6 py-5 border-b border-gray-200">
-            <h3 class="text-lg font-medium text-gray-900">Активные поиски</h3>
-            <p class="text-sm text-gray-500 mt-1">
-              Вы получите уведомление, когда появятся новые объекты
-            </p>
-          </div>
-          <div class="px-6 py-4">
-            <ul class="divide-y divide-gray-200">
-              <% @active_saved_searches.each do |search| %>
-                <li class="py-4">
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1">
-                      <p class="text-sm font-medium text-gray-900">
-                        <%= search.name || "Поиск ##{search.id}" %>
-                      </p>
-                      <p class="text-sm text-gray-500">
-                        <%= search.query_description %>
-                      </p>
-                    </div>
-                    <div class="ml-4 flex-shrink-0 flex space-x-2">
-                      <%= link_to properties_path(search.search_params), 
-                          class: "inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500" do %>
-                        Открыть
-                      <% end %>
-                    </div>
-                  </div>
-                </li>
-              <% end %>
-            </ul>
-            <div class="mt-4">
-              <%= link_to dashboard_saved_searches_path, 
-                  class: "block text-center text-sm font-medium text-primary-600 hover:text-primary-500" do %>
-                Все сохраненные поиски →
-              <% end %>
-            </div>
-          </div>
-        </div>
-      </div>
-    <% end %>
   </div>
-</div>
-
+</section>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<%# /sitemap.xml — sitemap-index. Перечисляет sub-sitemaps; Я./Google
+    подтягивают каждый отдельно. Готовится почва для Phase 1.6 multi-city. %>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'pages', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @pages_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'listings', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @listings_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'blog', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= @blog_mod %></lastmod>
+  </sitemap>
+  <sitemap>
+    <loc><%= url_for(controller: 'sitemap', action: 'news', format: 'xml', only_path: false, host: request.host_with_port) %></loc>
+    <lastmod><%= Date.current.iso8601 %></lastmod>
+  </sitemap>
+</sitemapindex>

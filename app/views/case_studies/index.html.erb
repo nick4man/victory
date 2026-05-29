@@ -1,0 +1,117 @@
+<%# Public listing для /cases. Pillar 2 — proof of past performance.
+    Empty-state важен — пока нет кейсов, страница не должна молчать. %>
+<% content_for :title, 'Закрытые сделки — кейсы АН Виктори' %>
+<% content_for :seo_description,
+   'Реальные истории закрытых сделок АН «Виктори» — подбор объекта, переговоры, ипотека, юридическое сопровождение. Анонимизированные кейсы с согласия клиентов.' %>
+
+<% content_for :head do %>
+  <%# CollectionPage JSON-LD — exposes /cases как entity-graph node.
+      Inert (numberOfItems=0) пока кейсов нет — но markup корректен. %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'CollectionPage',
+    'name' => 'Закрытые сделки — кейсы АН Виктори',
+    'description' => content_for(:seo_description),
+    'url' => cases_url,
+    'isPartOf' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#website" },
+    'mainEntity' => {
+      '@type' => 'ItemList',
+      'numberOfItems' => @case_studies.size,
+      'itemListElement' => @case_studies.each_with_index.map { |c, i|
+        { '@type' => 'ListItem', 'position' => i + 1, 'url' => case_url(c), 'name' => c.title }
+      }
+    }
+  }.to_json) %>
+  </script>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Главная', root_path],
+  ['Кейсы', nil]
+] %>
+
+<section class="px-6 lg:px-12 pt-8 pb-16 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">КЕЙСЫ</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6 uppercase">
+      Закрытые сделки
+    </h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      <% if @case_studies.any? %>
+        Реальные истории клиентов <%= AgencyInfo::NAME %>: подбор объекта, переговоры,
+        ипотека, закрытие сделки. Все имена изменены, числа и сроки — без правок.
+      <% else %>
+        Здесь будут публиковаться анонимизированные истории закрытых сделок —
+        с согласия клиентов и без раскрытия личных данных.
+      <% end %>
+    </p>
+  </div>
+</section>
+
+<% if @case_studies.any? %>
+  <% if @districts.any? %>
+    <section class="px-6 lg:px-12 pb-8 bg-background">
+      <div class="max-w-6xl mx-auto">
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">РАЙОНЫ</p>
+        <div class="flex flex-wrap gap-2">
+          <% @districts.each do |district| %>
+            <span class="px-3 py-1 text-xs tracking-wider border border-border text-muted-foreground"><%= district %></span>
+          <% end %>
+        </div>
+      </div>
+    </section>
+  <% end %>
+
+  <section class="px-6 lg:px-12 pb-20 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @case_studies.each do |case_study| %>
+          <%= link_to case_path(case_study), class: 'group border border-border bg-card p-6 hover:border-foreground transition-colors flex flex-col gap-4' do %>
+            <div>
+              <% if case_study.district.present? %>
+                <% type_ru = { 'flat' => 'квартира', 'house' => 'дом', 'commercial' => 'коммерция', 'land' => 'участок' }[case_study.property_type] || case_study.property_type %>
+                <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-2 uppercase"><%= case_study.district %> · <%= type_ru %></p>
+              <% end %>
+              <h2 class="text-lg lg:text-xl font-light tracking-wider text-foreground group-hover:text-foreground/80 mb-3">
+                <%= case_study.title %>
+              </h2>
+              <% if case_study.excerpt.present? %>
+                <p class="text-sm text-muted-foreground leading-relaxed line-clamp-4">
+                  <%= case_study.excerpt %>
+                </p>
+              <% end %>
+            </div>
+
+            <div class="mt-auto pt-4 border-t border-border flex flex-wrap items-baseline gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              <% if case_study.area.present? %>
+                <span><%= case_study.area.to_i %> м²</span>
+              <% end %>
+              <% if case_study.deal_amount.present? %>
+                <span class="text-foreground font-medium"><%= case_study.deal_amount_human %></span>
+              <% end %>
+              <% if case_study.deal_duration_days.present? %>
+                <span>срок: <%= case_study.deal_duration_human %></span>
+              <% end %>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% else %>
+  <section class="px-6 lg:px-12 pb-20 bg-background">
+    <div class="max-w-3xl mx-auto text-center">
+      <p class="text-sm text-muted-foreground mb-6">
+        Хотите узнать о наших закрытых сделках до публикации первого кейса?
+        Напишите — расскажем по телефону.
+      </p>
+      <div class="flex flex-wrap gap-4 justify-center">
+        <a href="<%= agency_phone_tel %>" class="px-6 py-3 text-xs tracking-[0.3em] uppercase border border-foreground text-foreground hover:bg-foreground hover:text-background transition-colors">
+          <%= agency_phone_primary %>
+        </a>
+        <%= link_to "Каталог объектов", properties_path, class: "px-6 py-3 text-xs tracking-[0.3em] uppercase border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors" %>
+      </div>
+    </div>
+  </section>
+<% end %>

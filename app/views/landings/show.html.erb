@@ -1,0 +1,222 @@
+<% content_for :title, @meta_title %>
+<% content_for :seo_description, @meta_description %>
+<%# canonical: НЕ override — layout default `request.original_url.split('?').first`
+    корректно включает city prefix (`/spb/kupit/kvartira` → canonical
+    `/spb/kupit/kvartira`). Previous `url_for(only_path: false)` без
+    параметров возвращал bare `/kupit/kvartira` для города-prefixed routes
+    т.к. defaults в scope не передавались — canonical SPb→Ryazan = bug. %>
+<%# Phase 1.6.D — geo.* meta dispatch per city. Layout default (RU-RYA +
+    Рязань + agency coords) подходит для Рязани, но Moscow/SPb landings
+    нуждаются в свежем сигнале (geo-mismatch с hardcode'd RU-RYA сильно
+    давит ranking в МСК/СПб SERP). Для Рязани @city[:iso_region]=RU-RYA
+    совпадает с layout default — content_for не вносит изменений. %>
+<% if defined?(@city) && @city %>
+  <% content_for :geo_region, @city[:iso_region] %>
+  <% content_for :geo_placename, @city[:name] %>
+  <% content_for :geo_position, "#{@city[:lat]};#{@city[:lng]}" %>
+  <% content_for :icbm, "#{@city[:lat]}, #{@city[:lng]}" %>
+<% end %>
+<%# District hero photos — branded картинки района из public/images/landings/<slug>/.
+    Auto-discovery всех .jpg в каталоге, кроме og.jpg (только для meta).
+    Sort по имени файла — hero.jpg идёт первым (h перед остальными).
+    Если 2+ файла — рендерится photo_slider; если 1 — обычная figure;
+    если 0 — fall back на layout default og + первое property image. %>
+<% district_hero_dir = @district_slug && Rails.public_path.join("images/landings/#{@district_slug}") %>
+<% district_photo_paths = district_hero_dir && district_hero_dir.exist? ?
+                            district_hero_dir.glob('*.jpg').reject { |p| p.basename.to_s == 'og.jpg' }.sort :
+                            [] %>
+<% has_district_hero = district_photo_paths.any? %>
+<% has_district_og   = district_hero_dir && district_hero_dir.join('og.jpg').exist? %>
+
+<%# OG image precedence: district branded > first listing > layout default. %>
+<% if has_district_og %>
+  <% content_for :og_image, "#{request.protocol}#{request.host_with_port}/images/landings/#{@district_slug}/og.jpg" %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% elsif (og_lead = @properties.first) && og_lead.images.attached? %>
+  <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+<% end %>
+<%# Body content — prefer DB-backed (admin-editable) LandingContent. If
+    none exists for this slot, fall back to the file-backed ERB partial
+    in app/views/landings/content/. FAQ-pair extraction works on both
+    since both emit <details><summary>Q</summary><p>A</p></details>. %>
+<% if @landing_content
+     rendered_content = @landing_content.body_html.to_s.html_safe
+   else
+     content_slot = [
+       "landings/content/#{@intent}_#{@type}_#{@district_slug || @rooms_raw}",
+       "landings/content/#{@intent}_#{@type}"
+     ].find { |p| lookup_context.exists?(p, [], true) }
+     rendered_content = content_slot ? render(content_slot) : nil
+   end %>
+<% faq_pairs = rendered_content.present? ? faq_pairs_from_html(rendered_content) : [] %>
+
+<% content_for :head do %>
+  <meta name="description" content="<%= @meta_description %>">
+
+  <%# ImageObject Schema.org для district hero фото — сигналит Я.Картинки
+      и Google Images что фото представляет страницу района (попадает в
+      image-vertical SERP по запросам района). Использует alt-теги из
+      LandingsHelper#alt_for_district_photo (per-file, уникальные). %>
+  <% if has_district_hero %>
+    <%= render 'shared/jsonld_image_object', images: district_photo_paths.map { |p|
+      { url: "/images/landings/#{@district_slug}/#{p.basename}",
+        caption: alt_for_district_photo(@district_slug, p.basename.to_s, fallback: @h1) }
+    } %>
+  <% end %>
+
+  <%# Soft-404 guard. Landings with zero inventory still serve content (the
+      content slot + "оставьте заявку" CTA) so we keep them at 200, but tell
+      Yandex/Google not to index them while still following internal links
+      to sibling districts — empty-result pages otherwise drag the whole
+      landings/ namespace down in crawl quality scoring. %>
+  <% if @total_count.zero? %>
+    <meta name="robots" content="noindex,follow">
+  <% end %>
+
+  <%# ItemList JSON-LD — exposes the listing as a curated collection so
+      Yandex/Google can interpret each result card as a discrete entity
+      within the landing's topic, not just inline links. %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'CollectionPage',
+    'name' => @h1,
+    'description' => @meta_description,
+    'url' => url_for(only_path: false, host: request.host_with_port),
+    'mainEntity' => {
+      '@type' => 'ItemList',
+      'numberOfItems' => @total_count,
+      'itemListElement' => @properties.each_with_index.map { |p, i|
+        { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
+      }
+    }
+  }.to_json) %>
+  </script>
+
+  <%# FAQPage JSON-LD — district landings carry 3 Q&A pairs in their content
+      partial as <details><summary>. Surfacing them as structured data unlocks
+      the SERP FAQ accordion (both Google and Yandex). Pairs come from the
+      same HTML the user sees, so they cannot drift out of sync. %>
+  <% if faq_pairs.any? %>
+    <%= faq_jsonld(faq_pairs) %>
+  <% end %>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Каталог', properties_path],
+  [@h1, nil]
+] %>
+
+<!-- Hero / H1 -->
+<section class="px-6 lg:px-12 pt-12 pb-12 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4"><%= @intent == 'rent' ? 'АРЕНДА' : 'ПОКУПКА' %></p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6 uppercase"><%= @h1 %></h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      <% if @total_count.positive? %>
+        В каталоге АН «Виктори» — <%= @total_count %> <%= @type_def[:plural_genitive] %>
+        <%= @district_aliases ? "в районе #{@district_aliases.first}" : 'в Рязани и области' %>.
+      <% else %>
+        Сейчас в этом разрезе нет активных объектов в каталоге. Оставьте заявку —
+        подберём по вашим параметрам, как только появится подходящий вариант.
+      <% end %>
+    </p>
+  </div>
+</section>
+
+<%# District hero photo — рендерится перед editorial content, если есть
+    public/images/landings/<slug>/hero.jpg. Eager-loading + fetchpriority=high
+    для LCP. Caption — район-specific подпись (для centr: Лыбедский бульвар). %>
+<% if has_district_hero %>
+  <section class="px-6 lg:px-12 pb-8 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <%= render 'shared/photo_slider',
+            id: "landing-#{@district_slug}-slider",
+            interval: 5000,
+            slides: district_photo_paths.map { |p|
+              { src: "/images/landings/#{@district_slug}/#{p.basename}",
+                alt: alt_for_district_photo(@district_slug, p.basename.to_s, fallback: @h1) }
+            } %>
+    </div>
+  </section>
+<% end %>
+
+<!-- Optional editorial content slot (per-landing partial in landings/content/) -->
+<% if rendered_content %>
+  <section class="px-6 lg:px-12 pb-12 bg-background">
+    <div class="max-w-4xl mx-auto prose prose-lg text-foreground">
+      <%= rendered_content %>
+    </div>
+  </section>
+<% end %>
+
+<%# Cross-link sibling districts so Yandex/Google discover the full pyramid
+    laterally, not just from the sitemap. Only rendered when this landing
+    is district-scoped — type-only and room-variant landings have no
+    natural sibling set. %>
+<% if @district_slug %>
+  <%= render 'shared/landing_neighbors' %>
+<% end %>
+
+<!-- Listings -->
+<% if @properties.any? %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @properties.each do |property| %>
+          <%= render 'properties/property_card', property: property %>
+        <% end %>
+      </div>
+      <% if @total_count > @properties.size %>
+        <div class="mt-12 text-center">
+          <%= link_to "Смотреть весь каталог →",
+                      properties_path(q: {
+                        deal_type_eq: (@intent == 'rent' ? 'rent' : 'sale'),
+                        district_eq: (@district_aliases&.first),
+                        rooms_eq: @rooms
+                      }.compact),
+                      class: "inline-block text-sm tracking-[0.3em] text-foreground hover:text-muted-foreground transition-colors underline" %>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% else %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-4xl mx-auto text-center">
+      <p class="text-sm text-muted-foreground mb-6">Похожие подборки:</p>
+      <div class="flex flex-wrap gap-3 justify-center">
+        <%= link_to "Все #{@type_def[:plural_genitive]} в Рязани", url_for(only_path: true, district: nil, rooms: nil),
+                    class: "px-4 py-2 text-xs tracking-wider border border-border hover:border-foreground transition-colors" if (@district_slug || @rooms_raw) %>
+        <%= link_to "Весь каталог →", properties_path,
+                    class: "px-4 py-2 text-xs tracking-wider border border-border hover:border-foreground transition-colors" %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# Internal-link CTA block. Landings are entry points from Я./Google SERP
+    for «купить квартиру в районе X» queries, but until now they led only
+    to property cards and the next district. PageRank therefore concentrated
+    on /properties/* and didn't flow into mortgage/services/blog/team — the
+    sections that convert browsing into leads. Three links cover the three
+    main intents (financing, expertise, market reading). %>
+<section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-8 uppercase">Полезные сервисы</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <%= link_to services_mortgage_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Рассчитать платёж и подобрать программу →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Наша команда риелторов в Рязани →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АНАЛИТИКА РЫНКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и market reports →</p>
+      <% end %>
+    </div>
+  </div>
+</section>

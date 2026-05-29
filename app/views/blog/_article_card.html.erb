@@ -1,0 +1,20 @@
+<%# Compact article card for the blog index and "related" sidebars.
+    Lives in blog/ since BlogController owns the route prefix; could move
+    to shared/ if Article cards appear elsewhere (e.g. homepage). %>
+<%= link_to blog_post_path(slug: article.slug), class: "group block bg-card border border-border p-6 hover:border-foreground transition-colors" do %>
+  <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3 uppercase">
+    <%= article.category.humanize %>
+    <% if article.published_at %>
+      · <%= I18n.l(article.published_at.to_date, format: '%d.%m.%Y') rescue article.published_at.strftime('%d.%m.%Y') %>
+    <% end %>
+  </p>
+  <h3 class="text-lg tracking-wider text-foreground group-hover:text-muted-foreground transition-colors mb-3 leading-snug">
+    <%= article.title %>
+  </h3>
+  <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+    <%= article.short_excerpt(length: 160) %>
+  </p>
+  <p class="text-xs tracking-[0.3em] text-muted-foreground/70">
+    <%= article.reading_minutes %> мин чтения<% if article.author %> · <%= article.author.try(:display_name) || article.author.try(:full_name) || 'АН Виктори' %><% end %>
+  </p>
+<% end %>

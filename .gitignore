@@ -33,10 +33,14 @@
 /config/master.key
 /config/credentials/*.key
 
-# Ignore environment variables
+# Ignore environment variables (never commit secrets)
 .env
 .env.local
 .env.*.local
+.env.production
+.env.staging
+.env.audit
+.env.bak-*
 
 # Ignore node_modules
 /node_modules
@@ -235,3 +239,46 @@ ehthumbs.db
 # Ignore local docker volumes
 /postgres-data/
 /redis-data/
+
+# Ignore local DB backups directory (the *.dump rule above also covers files inside)
+/backups/
+
+# TG inbox (incoming screenshots/notes from operators)
+/inbox/
+
+# .mcp.json — теперь в репо. Секреты внутри подставляются через ${VAR}
+# из env разработчика; литералов токенов в файле нет.
+
+# Serena MCP — локальное состояние LSP-сервера (memories, индексы).
+# Per-user/per-machine, не делится между разработчиками.
+.serena/
+
+# Claude Code agent memory — per-session research notes каждого агента
+# (topnlab-api-expert, seo-content-curator и т.д.). Per-user/per-machine,
+# не делится между разработчиками.
+.claude/agent-memory/
+
+# Claude Code inter-session inbox — ephemeral local messaging between
+# parallel sessions (victory/chat/seo). Архив тоже не коммитим.
+# Сама структура папок остаётся через `.gitkeep`.
+.claude/sessions/inbox/**/*.md
+.claude/sessions/inbox/**/archive/
+.claude/sessions/kpi-cache.txt
+
+*.pdf
+*.png
+.playwright-mcp/
+
+# Playwright (Phase 2E) — но baselines committed.
+# Layout: playwright defaults snapshots to `tests/visual/<spec>.spec.ts-snapshots/`.
+# Negation rule un-ignores them despite the `*.png` line above.
+/test-results/
+/playwright-report/
+/playwright/.cache/
+!tests/visual/**/*-snapshots/**/*.png
+
+# Favicon set + PWA icons — branded, committed.
+!public/favicon-*.png
+!public/icon-*.png
+!public/apple-touch-icon.png
+

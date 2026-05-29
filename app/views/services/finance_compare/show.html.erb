@@ -1,0 +1,244 @@
+<%# Вклад vs Ипотека — выделено из mortgage_calculator/show.html.erb в
+    отдельную страницу с большим интерактивным сравнением сценариев
+    «купить в ипотеку» и «положить на вклад + снимать аренду» за 20 лет. %>
+
+<%# === Hero === %>
+<section class="px-6 lg:px-12 pt-32 pb-12 bg-background">
+  <div class="max-w-5xl mx-auto">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">ФИНАНСЫ · СРАВНЕНИЕ</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-4">Вклад или ипотека: что выгоднее?</h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-2xl">
+      У вас есть N миллионов. Что выгоднее: купить квартиру в ипотеку или положить деньги на депозит и снимать жильё?
+      Считаем оба сценария на горизонте 20 лет с учётом роста цен на недвижимость и роста аренды.
+    </p>
+    <div class="mt-6 flex flex-wrap gap-3">
+      <%= link_to 'Ипотечный калькулятор', services_mortgage_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] border border-border hover:border-foreground transition-colors' %>
+      <%= link_to 'Депозитный калькулятор', services_deposit_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] border border-border hover:border-foreground transition-colors' %>
+    </div>
+  </div>
+</section>
+
+<%# === Macro rates === %>
+<section class="px-6 lg:px-12 py-6 bg-card/30 border-y border-border">
+  <div class="max-w-5xl mx-auto flex flex-wrap items-baseline gap-x-8 gap-y-2 text-sm">
+    <span class="text-[10px] tracking-[0.3em] text-muted-foreground uppercase">Текущие ставки</span>
+    <span><span class="text-foreground"><%= @macro[:key_rate] %>%</span> <span class="text-muted-foreground">ЦБ</span></span>
+    <span><span class="text-foreground"><%= @macro[:deposit_rate] %>%</span> <span class="text-muted-foreground">средний депозит</span></span>
+    <span><span class="text-foreground"><%= @macro[:mortgage_rate] %>%</span> <span class="text-muted-foreground">средняя ипотека</span></span>
+  </div>
+</section>
+
+<section class="px-6 lg:px-12 py-12 lg:py-20 bg-background">
+  <div class="max-w-5xl mx-auto" id="vs-block">
+    <div class="bg-card border border-border">
+      <div class="px-6 lg:px-8 py-5 lg:py-6 border-b border-border">
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-1">КАЛЬКУЛЯТОР</p>
+        <h2 class="text-xl lg:text-2xl font-light tracking-tight text-foreground">Введите ваши цифры</h2>
+        <p class="text-sm text-muted-foreground mt-2">
+          Параметры слева — про ипотеку, справа — про вклад с арендой. Все цифры пересчитываются на лету.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-0">
+        <%# Сценарий 1: Ипотека %>
+        <div class="p-6 lg:p-8 border-b md:border-b-0 md:border-r border-border">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">СЦЕНАРИЙ 1 · ИПОТЕКА</p>
+          <div class="space-y-3">
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Цена квартиры, ₽</span>
+              <input type="number" id="vs-price" value="7000000" min="500000" step="100000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Первый взнос, ₽</span>
+              <input type="number" id="vs-down" value="5000000" min="0" step="50000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Ставка ипотеки, %</span>
+              <input type="number" id="vs-mortgage-rate" value="22" min="1" max="40" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Срок, лет</span>
+              <input type="number" id="vs-years" value="20" min="1" max="30" step="1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+          </div>
+          <div class="mt-5 pt-5 border-t border-border space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-muted-foreground">Платёж в месяц:</span> <span class="text-foreground" id="vs-monthly">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Переплата:</span> <span class="text-foreground" id="vs-overpay">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Квартира через срок:</span> <span class="text-foreground" id="vs-flat-future">—</span></div>
+            <div class="flex justify-between font-medium border-t border-border pt-2 mt-2"><span>Чистая позиция:</span> <span class="text-foreground" id="vs-mortgage-net">—</span></div>
+          </div>
+        </div>
+
+        <%# Сценарий 2: Депозит + аренда %>
+        <div class="p-6 lg:p-8">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">СЦЕНАРИЙ 2 · ВКЛАД + АРЕНДА</p>
+          <div class="space-y-3">
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Сумма на депозите, ₽ <span class="text-[10px] opacity-60">(= первый взнос)</span></span>
+              <input type="number" id="vs-deposit-amount" value="5000000" min="0" step="50000" readonly
+                     class="w-full px-3 py-2 bg-background border border-border opacity-70 focus:outline-none">
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Ставка депозита, %</span>
+              <input type="number" id="vs-deposit-rate" value="16" min="1" max="30" step="0.1"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+              <% if @deposit_programs.any? %>
+                <select id="vs-deposit-program" class="mt-1 w-full px-3 py-2 bg-background border border-border text-xs focus:border-foreground focus:outline-none">
+                  <option value="">— выбрать программу банка —</option>
+                  <% @deposit_programs.each do |d| %>
+                    <option value="<%= d[:rate_max] %>"><%= d[:bank_name] %> · <%= d[:product_name].to_s.truncate(40) %> (<%= d[:rate_max] %>%)</option>
+                  <% end %>
+                </select>
+              <% end %>
+            </label>
+            <label class="block">
+              <span class="text-xs text-muted-foreground block mb-1">Аренда в месяц, ₽</span>
+              <input type="number" id="vs-rent" value="35000" min="0" step="1000"
+                     class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+            </label>
+            <details class="text-xs">
+              <summary class="cursor-pointer text-muted-foreground tracking-wider">Расширенные параметры</summary>
+              <div class="mt-3 space-y-3">
+                <label class="block">
+                  <span class="text-xs text-muted-foreground block mb-1">Рост цен на недвижимость, %/год</span>
+                  <input type="number" id="vs-price-growth" value="5" min="0" max="30" step="0.5"
+                         class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+                </label>
+                <label class="block">
+                  <span class="text-xs text-muted-foreground block mb-1">Рост аренды, %/год</span>
+                  <input type="number" id="vs-rent-growth" value="7" min="0" max="30" step="0.5"
+                         class="w-full px-3 py-2 bg-background border border-border focus:border-foreground focus:outline-none">
+                </label>
+              </div>
+            </details>
+          </div>
+          <div class="mt-5 pt-5 border-t border-border space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-muted-foreground">Депозит через срок:</span> <span class="text-foreground" id="vs-deposit-future">—</span></div>
+            <div class="flex justify-between"><span class="text-muted-foreground">Заплатите аренды:</span> <span class="text-foreground" id="vs-total-rent">—</span></div>
+            <div class="flex justify-between font-medium border-t border-border pt-2 mt-2"><span>Чистая позиция:</span> <span class="text-foreground" id="vs-deposit-net">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <%# Вердикт %>
+      <div id="vs-verdict-box" class="px-6 lg:px-8 py-5 lg:py-6 border-t border-border bg-foreground text-background">
+        <p class="text-[10px] tracking-[0.4em] mb-1 opacity-70">ВЕРДИКТ ЧЕРЕЗ <span id="vs-verdict-years">20</span> ЛЕТ</p>
+        <p class="text-xl lg:text-2xl font-light tracking-tight" id="vs-verdict">—</p>
+        <p class="text-xs opacity-70 mt-2">Учтены: переплата по кредиту, рост стоимости квартиры, рост аренды, капитализация процентов на депозите.</p>
+      </div>
+    </div>
+
+    <%# Поясняющая методология %>
+    <div class="mt-10 prose prose-invert max-w-none text-sm text-muted-foreground">
+      <h3 class="text-base text-foreground">Как считаем</h3>
+      <ul class="space-y-2 list-disc pl-5">
+        <li><strong>Ипотека:</strong> аннуитетный платёж по формуле,
+          переплата + первый взнос — это полная стоимость владения.
+          Стоимость квартиры через срок = цена × (1 + рост)<sup>лет</sup>.
+          Чистая позиция = квартира_будущая − сумма_вложенная.</li>
+        <li><strong>Вклад + аренда:</strong> депозит с ежемесячной
+          капитализацией. Сумма арендных платежей — геометрический ряд
+          с заданным ростом. Чистая позиция = депозит_будущий − аренда_суммарная.</li>
+        <li><strong>Параметры по умолчанию:</strong> рост недвижимости 5%/год,
+          рост аренды 7%/год — близко к историческим средним по РФ
+          2010-х. Меняйте под свой регион.</li>
+      </ul>
+      <p class="text-xs text-muted-foreground/70 mt-4">Расчёт упрощённый: не учитывает налог на имущество, страховку, ремонт, форс-мажоры. Для серьёзного решения — закажите бесплатную консультацию агента.</p>
+    </div>
+  </div>
+</section>
+
+<%= render 'services/finance_subnav', current: :vs %>
+
+<script type="module">
+  (function () {
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+
+    const downEl = $('vs-down');
+    const depEl  = $('vs-deposit-amount');
+    const programSel = $('vs-deposit-program');
+    const inputs = ['vs-price','vs-down','vs-mortgage-rate','vs-years',
+                    'vs-deposit-rate','vs-rent','vs-price-growth','vs-rent-growth'];
+
+    function annuityMonthly(loan, annualRate, months) {
+      if (loan <= 0) return 0;
+      const r = annualRate / 100 / 12;
+      if (r === 0) return loan / months;
+      return loan * r * Math.pow(1 + r, months) / (Math.pow(1 + r, months) - 1);
+    }
+
+    function compute() {
+      const price       = Math.max(0, Number($('vs-price').value || 0));
+      const down        = Math.max(0, Number($('vs-down').value || 0));
+      const mortRate    = Math.max(0, Number($('vs-mortgage-rate').value || 0));
+      const years       = Math.max(1, Number($('vs-years').value || 1));
+      const months      = years * 12;
+      const loan        = Math.max(0, price - down);
+      const monthly     = annuityMonthly(loan, mortRate, months);
+      const totalPaid   = monthly * months;
+      const overpay     = totalPaid - loan;
+      const priceGrowth = Math.max(0, Number($('vs-price-growth').value || 0)) / 100;
+      const flatFuture  = price * Math.pow(1 + priceGrowth, years);
+      const mortgageNet = flatFuture - (down + totalPaid);
+
+      depEl.value = down;
+      const depRate     = Math.max(0, Number($('vs-deposit-rate').value || 0));
+      const monthlyDepR = depRate / 100 / 12;
+      const depositFuture = down * Math.pow(1 + monthlyDepR, months);
+      const rent0       = Math.max(0, Number($('vs-rent').value || 0));
+      const rentGrowth  = Math.max(0, Number($('vs-rent-growth').value || 0)) / 100;
+      let totalRent = 0;
+      for (let y = 0; y < years; y++) {
+        totalRent += rent0 * Math.pow(1 + rentGrowth, y) * 12;
+      }
+      const depositNet = depositFuture - totalRent;
+
+      $('vs-monthly').textContent     = fmt(monthly);
+      $('vs-overpay').textContent     = fmt(overpay);
+      $('vs-flat-future').textContent = fmt(flatFuture);
+      $('vs-mortgage-net').textContent = fmt(mortgageNet);
+      $('vs-deposit-future').textContent = fmt(depositFuture);
+      $('vs-total-rent').textContent    = fmt(totalRent);
+      $('vs-deposit-net').textContent   = fmt(depositNet);
+      $('vs-verdict-years').textContent = years;
+
+      const diff = mortgageNet - depositNet;
+      const verdict = $('vs-verdict');
+      const box     = $('vs-verdict-box');
+      box.className = box.className.replace(/\b(bg-\S+|text-\S+|border-\S+)/g, '').trim() + ' border-t border-border';
+      if (Math.abs(diff) < 100000) {
+        verdict.textContent = 'Сценарии примерно равны — разница в пределах 100 000 ₽';
+        box.className += ' bg-foreground text-background';
+      } else if (diff > 0) {
+        verdict.textContent = `Ипотека выгоднее на ${fmt(diff)}`;
+        box.className += ' bg-emerald-900/30 text-emerald-200 border-emerald-500/30';
+      } else {
+        verdict.textContent = `Вклад выгоднее на ${fmt(Math.abs(diff))}`;
+        box.className += ' bg-amber-900/30 text-amber-200 border-amber-500/30';
+      }
+    }
+
+    if (programSel) {
+      programSel.addEventListener('change', (e) => {
+        const r = parseFloat(e.target.value);
+        if (!Number.isNaN(r)) {
+          $('vs-deposit-rate').value = r;
+          compute();
+        }
+      });
+    }
+
+    inputs.forEach((id) => {
+      const el = $(id);
+      el && el.addEventListener('input', compute);
+    });
+    compute();
+  })();
+</script>

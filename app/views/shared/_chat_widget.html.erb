@@ -1,0 +1,354 @@
+<%
+  # Self-contained floating chat widget. No Stimulus / no application.js
+  # required — everything is inline. ActionCable client is loaded from CDN.
+  cable_url = ENV.fetch('ACTION_CABLE_URL', '/cable')
+  conversation_url = chat_conversation_path(format: :json)
+  messages_url     = chat_conversation_messages_path
+%>
+
+<div id="chat-widget"
+     data-cable-url="<%= cable_url %>"
+     data-conversation-url="<%= conversation_url %>"
+     data-messages-url="<%= messages_url %>"
+     class="fixed bottom-6 right-6 z-50">
+
+  <button type="button" id="chat-widget-bubble"
+          aria-label="Открыть чат с консультантом"
+          class="w-14 h-14 rounded-full bg-foreground text-background shadow-lg hover:scale-110 transition-transform flex items-center justify-center relative">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-6 h-6">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+    </svg>
+    <span id="chat-widget-unread"
+          class="hidden absolute top-0 right-0 w-3 h-3 bg-destructive rounded-full"></span>
+  </button>
+
+  <div id="chat-widget-panel"
+       class="hidden absolute bottom-16 right-0 w-[360px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[calc(100vh-6rem)] bg-card border border-border shadow-2xl flex flex-col">
+
+    <div class="flex items-center justify-between p-4 border-b border-border bg-foreground text-background">
+      <div>
+        <p class="text-xs tracking-[0.3em] opacity-70">КОНСУЛЬТАНТ</p>
+        <p class="text-sm font-medium">АН Виктори</p>
+      </div>
+      <button type="button" id="chat-widget-close"
+              aria-label="Закрыть чат"
+              class="hover:opacity-70 transition-opacity">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-5 h-5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <div id="chat-widget-messages"
+         class="flex-1 overflow-y-auto p-4 space-y-3 bg-background">
+      <p id="chat-widget-loading"
+         class="text-xs text-muted-foreground text-center py-8">Загружаем диалог…</p>
+    </div>
+
+    <div id="chat-widget-typing"
+         class="hidden px-4 pb-2 text-xs text-muted-foreground">
+      <span class="inline-block w-2 h-2 bg-muted-foreground rounded-full animate-pulse"></span>
+      <span class="ml-2">Печатает…</span>
+    </div>
+
+    <%# Quick-reply onboarding pills — visible while the conversation has
+        no user-authored messages, hidden as soon as the user sends one.
+        The JS below toggles `data-quick-replies-state="hidden"` after the
+        first user message and restores it if the dialog is cleared. %>
+    <div id="chat-widget-quick-replies"
+         class="px-3 pt-2 pb-1 border-t border-border bg-background flex flex-wrap gap-1.5"
+         data-quick-replies-state="visible">
+      <% [
+        ['💰 Оценить квартиру', 'Сделай экспресс-оценку моей квартиры'],
+        ['🔍 Найти объект',     'Помоги подобрать квартиру в Рязани до 5 млн ₽'],
+        ['📊 Ипотека',          'Посчитай ипотеку: квартира 5 млн ₽, первоначальный взнос 1 млн, 20 лет'],
+        ['🏘️ Про район',         'Расскажи про район Канищево в Рязани']
+      ].each do |label, prompt| %>
+        <button type="button"
+                data-chat-preset="<%= prompt %>"
+                class="px-2.5 py-1 text-[11px] tracking-wider border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
+          <%= label %>
+        </button>
+      <% end %>
+    </div>
+
+    <form id="chat-widget-form" class="border-t border-border bg-background">
+      <div class="flex items-end gap-2 p-3">
+        <textarea id="chat-widget-input" rows="1" maxlength="2000"
+                  placeholder="Напишите сообщение…"
+                  class="flex-1 resize-none px-3 py-2 bg-background border border-border text-foreground text-sm placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors max-h-32"></textarea>
+        <button type="submit" id="chat-widget-send"
+                class="w-10 h-10 flex-shrink-0 bg-foreground text-background hover:bg-foreground/90 transition-colors flex items-center justify-center disabled:opacity-50">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+      <p class="text-[10px] text-muted-foreground px-3 pb-2">
+        Нажимая «Отправить», вы соглашаетесь с
+        <%= link_to 'политикой конфиденциальности', privacy_path, target: '_blank', class: 'underline hover:text-foreground' %>.
+      </p>
+    </form>
+  </div>
+</div>
+
+<script type="module">
+  import { createConsumer } from "https://cdn.jsdelivr.net/npm/@rails/actioncable@7.1.500/app/assets/javascripts/actioncable.esm.js";
+
+  const root      = document.getElementById('chat-widget');
+  const bubble    = document.getElementById('chat-widget-bubble');
+  const panel     = document.getElementById('chat-widget-panel');
+  const closeBtn  = document.getElementById('chat-widget-close');
+  const messages  = document.getElementById('chat-widget-messages');
+  const loading   = document.getElementById('chat-widget-loading');
+  const input     = document.getElementById('chat-widget-input');
+  const form      = document.getElementById('chat-widget-form');
+  const sendBtn   = document.getElementById('chat-widget-send');
+  const typingEl  = document.getElementById('chat-widget-typing');
+  const unreadEl  = document.getElementById('chat-widget-unread');
+
+  const conversationUrl = root.dataset.conversationUrl;
+  const messagesUrl     = root.dataset.messagesUrl;
+  const cableUrl        = root.dataset.cableUrl;
+
+  let conversation = null;
+  let consumer = null;
+  let subscription = null;
+  let openState = localStorage.getItem('chat-widget-open') === '1';
+
+  function applyOpenState () {
+    panel.classList.toggle('hidden', !openState);
+    localStorage.setItem('chat-widget-open', openState ? '1' : '0');
+    if (openState) unreadEl.classList.add('hidden');
+  }
+
+  function toggle () {
+    openState = !openState;
+    applyOpenState();
+    if (openState && !conversation) bootstrap();
+  }
+  function open () {
+    if (openState) return;
+    openState = true;
+    applyOpenState();
+    if (!conversation) bootstrap();
+  }
+
+  bubble.addEventListener('click', toggle);
+  closeBtn.addEventListener('click', toggle);
+  window.addEventListener('chat:open', open);
+  document.addEventListener('click', (e) => {
+    const trigger = e.target.closest('[data-chat-trigger]');
+    if (!trigger) return;
+    e.preventDefault();
+    open();
+  });
+
+  function pageQuery () {
+    const params = new URLSearchParams();
+    params.set('page[path]', window.location.pathname || '/');
+    if (window.location.search) params.set('page[query]', window.location.search.slice(0, 500));
+    if (document.title) params.set('page[title]', document.title.slice(0, 200));
+    if (document.referrer) params.set('page[referrer]', document.referrer.slice(0, 500));
+    return params.toString();
+  }
+
+  async function bootstrap () {
+    try {
+      const url = conversationUrl + (conversationUrl.includes('?') ? '&' : '?') + pageQuery();
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      conversation = await res.json();
+      renderHistory();
+      subscribe();
+    } catch (e) {
+      showError('Не удалось загрузить чат: ' + e.message);
+    }
+  }
+
+  function subscribe () {
+    if (!consumer) {
+      consumer = (cableUrl && cableUrl !== '/cable')
+        ? createConsumer(cableUrl)
+        : createConsumer();
+    }
+    subscription = consumer.subscriptions.create(
+      { channel: 'ConversationChannel', id: conversation.id },
+      { received: handleIncoming }
+    );
+  }
+
+  function handleIncoming (data) {
+    if (data.type === 'message' && data.message) {
+      appendMessage(data.message);
+      if (data.message.role !== 'user') {
+        hideTyping();
+        if (!openState) unreadEl.classList.remove('hidden');
+      }
+    }
+  }
+
+  function renderHistory () {
+    if (loading && loading.parentNode) loading.remove();
+    while (messages.firstChild) messages.removeChild(messages.firstChild);
+    (conversation.messages || []).forEach((m) => appendMessage(m, false));
+    scrollBottom();
+  }
+
+  function appendMessage (m, scroll = true) {
+    if (messages.querySelector('[data-msg-id="' + m.id + '"]')) return;
+
+    const wrap = document.createElement('div');
+    wrap.dataset.msgId = m.id;
+    wrap.dataset.msgRole = m.role || '';
+    const me = m.role === 'user';
+    wrap.className = 'flex ' + (me ? 'justify-end' : 'justify-start');
+
+    const bubble = document.createElement('div');
+    bubble.className = (me ? 'bg-foreground text-background' : 'bg-secondary text-foreground') +
+      ' px-3 py-2 max-w-[85%] text-sm leading-snug whitespace-pre-wrap break-words';
+
+    if (m.role === 'agent' && m.author) {
+      const a = document.createElement('p');
+      a.className = 'text-[10px] uppercase tracking-wider opacity-70 mb-1';
+      a.textContent = m.author;
+      bubble.appendChild(a);
+    }
+    const body = document.createElement('div');
+    if (m.role === 'assistant' || m.role === 'agent') {
+      renderRichBody(body, m.body);
+    } else {
+      body.textContent = m.body;
+    }
+    bubble.appendChild(body);
+
+    wrap.appendChild(bubble);
+    messages.appendChild(wrap);
+    if (scroll) scrollBottom();
+  }
+
+  function scrollBottom () {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function showTyping () { typingEl.classList.remove('hidden'); }
+  function hideTyping () { typingEl.classList.add('hidden'); }
+
+  // Minimal-safe markdown rendering for assistant/agent messages.
+  // Only converts [text](href) where href starts with `/` (internal site path)
+  // or `https://victory62.org`. Everything else (including bare URLs) stays text —
+  // protects against javascript: / data: URIs and external link injection.
+  const SAFE_LINK = /^(?:\/|https:\/\/victory62\.org\/?)/i;
+  function renderRichBody (el, text) {
+    const re = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+    let last = 0;
+    for (const match of text.matchAll(re)) {
+      const idx = match.index;
+      if (idx > last) {
+        el.appendChild(document.createTextNode(text.slice(last, idx)));
+      }
+      if (SAFE_LINK.test(match[2])) {
+        const a = document.createElement('a');
+        a.href = match[2];
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'underline hover:no-underline';
+        a.textContent = match[1];
+        el.appendChild(a);
+      } else {
+        el.appendChild(document.createTextNode(match[0]));
+      }
+      last = idx + match[0].length;
+    }
+    if (last < text.length) {
+      el.appendChild(document.createTextNode(text.slice(last)));
+    }
+  }
+
+  function showError (text) {
+    const el = document.createElement('div');
+    el.className = 'text-xs text-destructive text-center py-2';
+    el.textContent = text;
+    messages.appendChild(el);
+    scrollBottom();
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!conversation) await bootstrap();
+    if (!conversation) return;
+
+    const body = input.value.trim();
+    if (!body) return;
+    input.value = '';
+    sendBtn.disabled = true;
+    showTyping();
+
+    try {
+      const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+      const res = await fetch(messagesUrl, {
+        method: 'POST',
+        headers: Object.assign(
+          { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          csrf ? { 'X-CSRF-Token': csrf } : {}
+        ),
+        credentials: 'same-origin',
+        body: JSON.stringify({ body })
+      });
+      if (res.status === 429) {
+        showError('Слишком много сообщений за минуту. Подождите.');
+        hideTyping();
+      } else if (!res.ok) {
+        throw new Error('HTTP ' + res.status);
+      }
+    } catch (e) {
+      showError('Не удалось отправить: ' + e.message);
+      hideTyping();
+    } finally {
+      sendBtn.disabled = false;
+    }
+  });
+
+  // Apply persisted open-state on first load and bootstrap if open.
+  applyOpenState();
+  if (openState) bootstrap();
+
+  // === Quick-reply pills ===
+  // Visible while the conversation has no user message; hidden after the
+  // first send. Click → fill input + auto-submit, so the user gets to the
+  // estimate / search / mortgage flow in one tap.
+  const quickRepliesEl = document.getElementById('chat-widget-quick-replies');
+
+  function updateQuickRepliesVisibility() {
+    if (!quickRepliesEl) return;
+    const hasUserMessage = Array.from(messages.children).some(
+      (el) => el.dataset && el.dataset.msgRole === 'user'
+    );
+    quickRepliesEl.hidden = hasUserMessage;
+  }
+
+  if (quickRepliesEl) {
+    quickRepliesEl.querySelectorAll('button[data-chat-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        input.value = btn.dataset.chatPreset || '';
+        // Submit via the form's native flow so we reuse all the bootstrap +
+        // CSRF + error handling above.
+        form.requestSubmit ? form.requestSubmit() : form.dispatchEvent(new Event('submit', { cancelable: true }));
+      });
+    });
+
+    // Re-check visibility every time we append a message — cheap enough.
+    const origAppend = appendMessage;
+    appendMessage = function (m, scroll = true) {
+      origAppend(m, scroll);
+      updateQuickRepliesVisibility();
+    };
+    updateQuickRepliesVisibility();
+  }
+</script>

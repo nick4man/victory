@@ -1,0 +1,15 @@
+<% content_for :title, "#{@search.name} — редактирование поиска" %>
+
+<%= render 'shared/dashboard_nav' %>
+
+<section class="px-6 lg:px-12 pt-12 pb-20 bg-background min-h-screen">
+  <div class="max-w-2xl mx-auto">
+    <%= link_to "← К поиску «#{@search.name.truncate(30)}»", dashboard_saved_search_path(@search),
+          class: 'inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground mb-8' %>
+    <div class="mb-10 pb-6 border-b border-border">
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">РЕДАКТИРОВАНИЕ</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground"><%= @search.name %></h1>
+    </div>
+    <%= render 'form' %>
+  </div>
+</section>

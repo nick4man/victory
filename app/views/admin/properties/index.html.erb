@@ -1,0 +1,146 @@
+<% content_for :title, "Админка · Объекты — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-6">
+      <%= link_to '← К дашборду', admin_root_path,
+            class: 'hover:text-foreground' %>
+    </nav>
+
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Публикация объектов</h1>
+        <p class="text-sm text-muted-foreground mt-2 max-w-2xl">Здесь видны все объекты из Topnlab CRM. Если объект не на сайте — в колонке «Причина» написано почему. Принудительная публикация — на свой риск, обходит проверки CRM.</p>
+      </div>
+    </div>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <% tabs = [
+      ['archived',  "НЕ НА САЙТЕ · #{@counts[:archived]}"],
+      ['published', "НА САЙТЕ · #{@counts[:published]}"],
+      ['force',     "FORCE-PUBLISH · #{@counts[:force]}"],
+      ['all',       "ВСЕ · #{@counts[:all]}"]
+    ] %>
+    <div class="flex flex-wrap gap-2 mb-6">
+      <% tabs.each do |slug, label| %>
+        <%= link_to label, admin_properties_path(scope: slug),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <% if @properties.any? %>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs border border-border">
+          <thead class="bg-card text-[10px] tracking-[0.2em] text-muted-foreground uppercase">
+            <tr>
+              <th class="text-left p-3">ID</th>
+              <th class="text-left p-3">CRM</th>
+              <th class="text-left p-3">Тип / Сделка</th>
+              <th class="text-left p-3">Адрес</th>
+              <th class="text-right p-3">Цена</th>
+              <th class="text-left p-3">Сайт</th>
+              <th class="text-left p-3">Внешн. реклама</th>
+              <th class="text-left p-3">Причина</th>
+              <th class="text-right p-3">Действия</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @properties.each do |p| %>
+              <% blockers = p.publication_blockers %>
+              <tr class="border-t border-border hover:bg-card/40 transition-colors <%= 'bg-amber-500/5' if p.force_publish %>">
+                <td class="p-3 font-mono text-muted-foreground">#<%= p.id %></td>
+                <td class="p-3 font-mono text-muted-foreground"><%= p.external_id %></td>
+                <td class="p-3">
+                  <%= p.property_type&.name || p.property_type&.slug %>
+                  <span class="text-muted-foreground"> · <%= p.deal_type %></span>
+                </td>
+                <td class="p-3 text-foreground"><%= p.address.to_s.truncate(50) %></td>
+                <td class="p-3 text-right"><%= number_with_delimiter(p.price.to_i, delimiter: ' ') %> ₽</td>
+                <td class="p-3 whitespace-nowrap">
+                  <% if p.force_archive %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/50">🚫 СКРЫТ</span>
+                  <% elsif p.status_active? && p.published_at %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">🟢 ОНЛАЙН</span>
+                  <% elsif p.force_publish %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">⚡ FORCE</span>
+                  <% else %>
+                    <span class="px-2 py-0.5 text-[10px] tracking-wider bg-zinc-500/10 text-zinc-400 border border-zinc-500/30">⚪ <%= p.status.upcase %></span>
+                  <% end %>
+                </td>
+                <td class="p-3 whitespace-nowrap text-[11px]">
+                  <%# CRM outbound state — informational, не блокер для сайта %>
+                  <% if p.in_ad? %>
+                    <span class="px-1.5 py-0.5 bg-blue-500/10 text-blue-300 border border-blue-500/30">Avito/Cian</span>
+                  <% end %>
+                  <% if p.in_mls? %>
+                    <span class="px-1.5 py-0.5 bg-purple-500/10 text-purple-300 border border-purple-500/30">MLS</span>
+                  <% end %>
+                  <% unless p.in_ad? || p.in_mls? %>
+                    <span class="text-muted-foreground/60">— (только сайт)</span>
+                  <% end %>
+                  <div class="text-muted-foreground/50 mt-1 text-[9px]">deal: <code><%= p.deal_state || 'nil' %></code></div>
+                </td>
+                <td class="p-3 text-muted-foreground text-[11px] max-w-md">
+                  <% if blockers.empty? %>
+                    <span class="text-emerald-300">— готово —</span>
+                  <% else %>
+                    <%= blockers.join(' · ') %>
+                  <% end %>
+                </td>
+                <td class="p-3 text-right space-x-2 whitespace-nowrap">
+                  <% if p.force_archive %>
+                    <%= button_to 'Показать на сайте', toggle_force_archive_admin_property_path(p),
+                          method: :post,
+                          data: { turbo_confirm: "Снять force_archive с «#{p.address.to_s.truncate(40)}»?" },
+                          class: 'text-[11px] text-rose-300 hover:opacity-80 inline-block' %>
+                  <% else %>
+                    <% if p.force_publish %>
+                      <%= button_to 'Выключить force', toggle_force_publish_admin_property_path(p),
+                            method: :post,
+                            data: { turbo_confirm: 'Выключить принудительную публикацию?' },
+                            class: 'text-[11px] text-amber-300 hover:opacity-80 inline-block' %>
+                    <% else %>
+                      <%= button_to 'Force publish →', toggle_force_publish_admin_property_path(p),
+                            method: :post,
+                            data: { turbo_confirm: blockers.any? ? "Опубликовать «#{p.address.to_s.truncate(40)}» в обход CRM (#{blockers.join(', ')})?" : nil },
+                            class: 'text-[11px] text-foreground hover:opacity-80 inline-block' %>
+                    <% end %>
+                    <%= button_to 'Скрыть с сайта', toggle_force_archive_admin_property_path(p),
+                          method: :post,
+                          data: { turbo_confirm: "Скрыть «#{p.address.to_s.truncate(40)}» с сайта (force_archive)?" },
+                          class: 'text-[11px] text-rose-400 hover:opacity-80 inline-block' %>
+                  <% end %>
+                  <% if p.external_id && (crm_url = ENV['TOPNLAB_CRM_URL']).present? %>
+                    <a href="<%= crm_url.chomp('/') %>/realty/<%= p.external_id %>" target="_blank" rel="noopener" class="text-[11px] text-muted-foreground hover:text-foreground">CRM →</a>
+                  <% end %>
+                  <%# A7 Phase 3 — request signature from client.
+                      Visible если объект ещё не на стадии «продан/сдан/ждёт подписи». %>
+                  <% unless %w[sold rented pending_consent].include?(p.status.to_s) %>
+                    <%= link_to 'Запросить подпись',
+                          request_consent_admin_property_path(p),
+                          class: 'text-[11px] text-emerald-300 hover:opacity-80 inline-block' %>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+
+      <% if @properties.respond_to?(:total_pages) %>
+        <div class="mt-6">
+          <%= paginate @properties %>
+        </div>
+      <% end %>
+    <% else %>
+      <p class="text-muted-foreground text-sm">В этой выборке пусто.</p>
+    <% end %>
+  </div>
+</section>

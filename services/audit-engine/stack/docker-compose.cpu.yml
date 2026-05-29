@@ -1,0 +1,30 @@
+version: "3.9"
+
+# CPU-override для audit-v2-stack.
+#
+# Применение:
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d --build
+#
+# Что делает:
+#   - mc-worker собирается из Dockerfile.api (нет cupy/CUDA, только NumPy);
+#   - CMD переопределён на запуск воркера (Dockerfile.api по умолчанию
+#     стартует uvicorn — это поведение для сервиса `api`, не для воркера);
+#   - MC_USE_GPU=false → monte_carlo_worker.py пропускает импорт cupy;
+#   - пустой список GPU-резерваций перекрывает nvidia-reservation из base.
+#
+# Требование: NVIDIA-драйверы и nvidia-container-toolkit на хосте НЕ нужны.
+
+services:
+  mc-worker:
+    build:
+      context: ../../audit-engine-v2
+      dockerfile: Dockerfile.api
+    image: audit-v2-mc-worker-cpu
+    environment:
+      MC_USE_GPU: "false"
+    command: ["python", "-m", "audit_engine.monte_carlo_worker"]
+    healthcheck:
+      disable: true
+    # !reset обнуляет GPU-reservation из docker-compose.yml (иначе compose
+    # сливает списки и mc-worker продолжит требовать nvidia-driver).
+    deploy: !reset null

@@ -50,8 +50,14 @@ class User < ApplicationRecord
   # ============================================
   devise :database_authenticatable, :registerable,
          :recoverable, :rememberable, :validatable,
-         :trackable, :confirmable, :lockable,
-         :omniauthable, omniauth_providers: %i[google_oauth2 yandex]
+         :trackable, :confirmable, :lockable
+
+  # ============================================
+  # AGENT PROFILE (concern — see app/models/concerns/agent_profile.rb)
+  # ============================================
+  # Adds agent_slug auto-generation, to_param override, and aggregate
+  # helpers for the /agents/:slug profile pages. No-op for non-agent users.
+  include AgentProfile
 
   # ============================================
   # ASSOCIATIONS
@@ -65,10 +71,21 @@ class User < ApplicationRecord
   # Favorites
   has_many :favorites, dependent: :destroy
   has_many :favorite_properties, through: :favorites, source: :property
-  
+
+  # A7 Phase 3 — digital agency contract consent records
+  has_many :listing_consents, dependent: :destroy
+
+  # A6 Phase 1 — TG-uploaded identity documents (passport/ИНН/выписка ЕГРН)
+  has_many :uploaded_documents, class_name: 'ClientDocument',
+           foreign_key: 'uploader_id', dependent: :destroy
+
   # Inquiries
   has_many :inquiries, dependent: :destroy
-  
+
+  # #413a — TG-linking state tokens. valid scope в TgLinkToken filter'ит
+  # consumed/expired для UX вычислений активных токенов.
+  has_many :tg_link_tokens, dependent: :destroy
+
   # Saved Searches
   has_many :saved_searches, dependent: :destroy
   has_many :active_saved_searches, -> { active }, class_name: 'SavedSearch'
@@ -87,12 +104,39 @@ class User < ApplicationRecord
   
   # Reviews
   has_many :reviews, dependent: :destroy
-  
+
+  # Online valuations / investment audits this user ordered (linked by
+  # user_id at creation OR backfilled by email after sign-up — see
+  # `after_create_commit :link_existing_valuations` below).
+  has_many :property_valuations, dependent: :nullify
+
+  # Properties the user is selling THROUGH AN (vs `properties` which is
+  # «assigned agent» — same column, different role).
+  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id', dependent: :nullify
+
   # Viewing Schedules
   has_many :viewing_schedules, dependent: :destroy
   
   # Avatar
   has_one_attached :avatar
+  AVATAR_TYPES = %w[image/jpeg image/png image/webp image/gif].freeze
+  MAX_AVATAR_BYTES = 5.megabytes
+
+  validate :acceptable_avatar_upload
+
+  def acceptable_avatar_upload
+    return unless avatar.attached?
+
+    unless AVATAR_TYPES.include?(avatar.content_type)
+      errors.add(:avatar, "тип файла недопустим (#{avatar.content_type})")
+    end
+    if avatar.byte_size > MAX_AVATAR_BYTES
+      errors.add(:avatar, "размер больше лимита #{MAX_AVATAR_BYTES / 1.megabyte}MB")
+    end
+  end
+
+  # CRM department (Topnlab structure)
+  belongs_to :department, optional: true
 
   # ============================================
   # ENUMS
@@ -102,6 +146,40 @@ class User < ApplicationRecord
     agent: 1,     # Агент по недвижимости
     admin: 2      # Администратор
   }, _prefix: true
+
+  # CRM-derived scopes
+  scope :crm_active, -> { where(crm_status: 'active') }
+  scope :chiefs,     -> { where(is_chief: true) }
+  scope :synced_from_crm, -> { where.not(crm_user_id: nil) }
+
+  # Display helpers used by team/staff views.
+  def display_name
+    [last_name, first_name, middle_name].compact_blank.join(' ').presence || email
+  end
+
+  def short_name
+    [first_name, last_name].compact_blank.join(' ').presence || email
+  end
+
+  # Phone to show on public pages (property cards, agent profiles, mailers,
+  # JSON-LD). If the agent doesn't have a personal phone synced from CRM
+  # we fall back to the agency's main line — better to send the caller to
+  # the office than to render a broken / empty tel-link.
+  def display_phone
+    phone.presence || AgencyInfo::PHONE_PRIMARY
+  end
+
+  # Same number, normalized to digits-only — for `tel:` href and
+  # JSON-LD `telephone` properties that don't tolerate parentheses/spaces.
+  def display_phone_tel
+    display_phone.to_s.gsub(/\D/, '')
+  end
+
+  def avatar_initials
+    parts = [first_name, last_name].compact_blank
+    return '?' if parts.empty?
+    parts.map { |s| s[0].to_s.upcase }.join
+  end
 
   # ============================================
   # VALIDATIONS
@@ -119,7 +197,14 @@ class User < ApplicationRecord
   # ============================================
   before_validation :normalize_phone
   before_save :set_default_preferences, if: :new_record?
-  after_create :send_welcome_notification
+  # `send_welcome_notification` отключён — Topnlab owner_sync создавал
+  # десятки User за раз через User.save(validate: false), и каждый юзер
+  # тригерил welcome_email на oks07@yandex.ru (директор). Это шум —
+  # клиенты получают релевантные emails отдельно: magic-link от
+  # cabinet/auth, invitation от CabinetInvitationMailer, deal events от
+  # specialized mailers. Generic welcome не нужен.
+  # after_create :send_welcome_notification    # disabled 22.05.26
+  after_create_commit :link_existing_records
 
   # ============================================
   # SCOPES
@@ -207,6 +292,21 @@ class User < ApplicationRecord
     update_column(:last_activity_at, Time.current)
   end
 
+  # After registration, attach any pre-existing online valuations / inquiries
+  # the visitor had submitted anonymously under the same email. Matching is
+  # email-only (case-insensitive); we don't try phone because of formatting
+  # ambiguity. The new account's owner then sees their history immediately
+  # under /dashboard/listings without staff intervention.
+  def link_existing_records
+    return if email.blank?
+
+    norm = email.to_s.strip.downcase
+    PropertyValuation.where(user_id: nil).where('LOWER(email) = ?', norm).update_all(user_id: id)
+    Inquiry.where(user_id: nil).where('LOWER(email) = ?', norm).update_all(user_id: id) if defined?(Inquiry)
+  rescue StandardError => e
+    Rails.logger.warn("User#link_existing_records failed for user=#{id}: #{e.class} #{e.message}")
+  end
+
   def active?
     active && !deleted?
   end
@@ -289,7 +389,8 @@ class User < ApplicationRecord
     save
   end
 
-  # Notification settings
+  # Notification settings — legacy scalar interface (всё ещё используется
+  # старыми mailers): returns true unless explicitly disabled.
   def notification_enabled?(type)
     notification_settings&.dig(type.to_s) != false
   end
@@ -303,6 +404,63 @@ class User < ApplicationRecord
   def disable_notification(type)
     self.notification_settings ||= {}
     self.notification_settings[type.to_s] = false
+    save
+  end
+
+  # #435 — per-channel notification preferences. Категории:
+  #   inquiry_status     — этапы заявок (новая→показ→договор)
+  #   deal_events        — события сделок (документы готовы, подпись)
+  #   document_requests  — «нужно от вас доки» (passport request etc.)
+  #   market_news        — обзоры рынка, новые объекты в районе
+  #   agency_news        — общие рассылки агентства
+  # Channels: email | tg | sms.
+  #
+  # Хранение в notification_settings jsonb: для новых categories — nested
+  # hash {channel: bool}. Для legacy scalar keys (new_properties etc.) —
+  # старая структура остаётся, не трогаем.
+  NOTIFICATION_CATEGORIES = %w[inquiry_status deal_events document_requests market_news agency_news].freeze
+  NOTIFICATION_CHANNELS   = %w[email tg sms].freeze
+
+  # Дефолты — что отправляем НОВОМУ user'у который ещё не настраивал.
+  # market_news / agency_news — OFF (opt-in, не спам).
+  # sms почти везде OFF (платно, только critical-pings включён по deal_events).
+  DEFAULT_NOTIFICATION_PREFS = {
+    'inquiry_status'    => { 'email' => true,  'tg' => true,  'sms' => false },
+    'deal_events'       => { 'email' => true,  'tg' => true,  'sms' => true },
+    'document_requests' => { 'email' => true,  'tg' => true,  'sms' => false },
+    'market_news'       => { 'email' => false, 'tg' => false, 'sms' => false },
+    'agency_news'       => { 'email' => false, 'tg' => false, 'sms' => false }
+  }.freeze
+
+  # @param category [String, Symbol] one of NOTIFICATION_CATEGORIES
+  # @param channel  [String, Symbol] one of NOTIFICATION_CHANNELS
+  # @return [Boolean] true если можно отправлять, false если выключено OR
+  #   channel недоступен (e.g. tg без tg_user_id).
+  def notify?(category:, channel:)
+    cat = category.to_s
+    ch  = channel.to_s
+    return false unless NOTIFICATION_CATEGORIES.include?(cat) && NOTIFICATION_CHANNELS.include?(ch)
+    return false if ch == 'tg' && tg_user_id.blank? # нет TG → нет push
+    return false if ch == 'sms' && phone.blank?
+    return false if ch == 'email' && email.blank?
+
+    settings = (notification_settings || {})[cat]
+    settings = DEFAULT_NOTIFICATION_PREFS[cat] if settings.nil? || !settings.is_a?(Hash)
+    settings[ch] == true
+  end
+
+  # @param category [String]
+  # @param channel  [String]
+  # @param enabled  [Boolean]
+  def update_notification_pref(category:, channel:, enabled:)
+    cat = category.to_s
+    ch  = channel.to_s
+    return false unless NOTIFICATION_CATEGORIES.include?(cat) && NOTIFICATION_CHANNELS.include?(ch)
+
+    self.notification_settings ||= {}
+    current = (notification_settings[cat] || DEFAULT_NOTIFICATION_PREFS[cat] || {}).dup
+    current[ch] = !!enabled
+    notification_settings[cat] = current
     save
   end
 

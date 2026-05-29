@@ -1,0 +1,123 @@
+<% content_for :title, "Investment Audit — #{@valuation.report_label} | Victory Real Estate" %>
+<% content_for :html_lang, 'en' %>
+
+<%
+  audit = @audit || {}
+  mc = @monte_carlo || {}
+  rates = @rates || {}
+  usd_rate = rates[:usd].to_f
+  fmt_usd = lambda do |rub|
+    next '—' if rub.blank? || usd_rate.zero?
+    '$' + (rub.to_f / usd_rate).round.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1,').reverse
+  end
+  fmt_rub = lambda do |v|
+    next '—' if v.blank?
+    v.to_f.round.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1 ').reverse + ' ₽'
+  end
+
+  verdict = audit['verdict'].to_s
+  verdict_class = {
+    'BUY'     => 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300',
+    'WAIT'    => 'bg-rose-500/10 border-rose-500/40 text-rose-300',
+    'NEUTRAL' => 'bg-amber-500/10 border-amber-500/40 text-amber-300'
+  }[verdict] || 'bg-card border-border text-foreground'
+%>
+
+<section class="px-6 lg:px-12 pt-28 pb-16 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+
+    <%# Header %>
+    <div class="mb-12">
+      <p class="text-xs tracking-[0.3em] text-muted-foreground uppercase mb-3">
+        Investment Audit · Report <%= @valuation.report_label %>
+      </p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2">
+        <%= (@valuation.address.presence || audit['complex_name']).to_s %>
+      </h1>
+      <p class="text-sm text-muted-foreground">
+        Audit date: <%= audit['audit_date'] || I18n.l(Date.current) %>
+      </p>
+    </div>
+
+    <%# Verdict hero %>
+    <div class="border <%= verdict_class %> p-8 lg:p-12 mb-10">
+      <p class="text-xs tracking-[0.3em] uppercase mb-3 opacity-70"><%= t('foreign_audit.show.verdict_label') %></p>
+      <p class="text-5xl lg:text-6xl font-light tracking-tight mb-4">
+        <%= I18n.t("audit.verdicts.#{verdict.downcase}", default: verdict) %>
+      </p>
+      <% if audit['verdict_explanation'].present? %>
+        <p class="text-base leading-relaxed opacity-90 max-w-3xl">
+          <%= audit['verdict_explanation'] %>
+        </p>
+      <% end %>
+      <% if mc['recommended_strategy'].present? %>
+        <p class="mt-4 text-sm opacity-80">
+          Best strategy: <strong><%= I18n.t("audit.strategies.#{mc['recommended_strategy'].to_s.downcase}", default: mc['recommended_strategy']) %></strong>
+        </p>
+      <% end %>
+    </div>
+
+    <%# Key numbers grid - RUB + USD %>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-12">
+      <div class="border border-border p-6 bg-card">
+        <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">
+          <%= t('foreign_audit.show.price_label') %>
+        </p>
+        <p class="text-2xl font-light text-foreground"><%= fmt_rub.call(audit['price_total']) %></p>
+        <p class="text-sm text-muted-foreground mt-1"><%= fmt_usd.call(audit['price_total']) %></p>
+      </div>
+
+      <% if (cash_yield = audit['ei_cash_yield_pct'] || audit['cash_yield_pct']).present? %>
+        <div class="border border-border p-6 bg-card">
+          <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">
+            <%= t('foreign_audit.show.yield_label') %>
+          </p>
+          <p class="text-2xl font-light text-foreground"><%= cash_yield.to_f.round(2) %>%</p>
+          <p class="text-sm text-muted-foreground mt-1">annual</p>
+        </div>
+      <% end %>
+
+      <% if (irr = audit['irr'] || mc['irr_median']).present? %>
+        <div class="border border-border p-6 bg-card">
+          <p class="text-xs tracking-[0.3em] uppercase text-muted-foreground mb-3">
+            <%= t('foreign_audit.show.irr_label') %>
+          </p>
+          <p class="text-2xl font-light text-foreground"><%= irr.to_f.round(2) %>%</p>
+          <p class="text-sm text-muted-foreground mt-1">5-year horizon</p>
+        </div>
+      <% end %>
+    </div>
+
+    <%# Currency disclaimer %>
+    <% if rates[:fetched_at] %>
+      <p class="text-xs text-muted-foreground/60 mb-12">
+        Exchange rates as of
+        <%= rates[:fetched_at].respond_to?(:strftime) ? rates[:fetched_at].strftime('%d %b %Y') : rates[:fetched_at] %>
+        · Source: <%= rates[:source] || 'cbr.ru' %>
+        · 1 USD = <%= rates[:usd].to_f.round(1) %> RUB
+        <% if rates[:eur] %>· 1 EUR = <%= rates[:eur].to_f.round(1) %> RUB<% end %>
+      </p>
+    <% end %>
+
+    <%# CTA actions %>
+    <div class="border-t border-border pt-8 flex flex-col md:flex-row gap-4">
+      <%= link_to t('foreign_audit.show.download_pdf'),
+            download_pdf_foreign_audit_path(@valuation.token),
+            class: 'inline-block px-8 py-4 bg-foreground text-background text-xs tracking-[0.3em] uppercase hover:bg-foreground/90 transition-colors text-center' %>
+      <%= link_to t('foreign_audit.show.contact_advisor'),
+            foreign_path + '#contact',
+            class: 'inline-block px-8 py-4 border border-border text-foreground text-xs tracking-[0.3em] uppercase hover:border-foreground/60 transition-colors text-center' %>
+      <%= link_to t('foreign_audit.show.another_audit'),
+            new_foreign_audit_path,
+            class: 'inline-block px-8 py-4 text-muted-foreground text-xs tracking-[0.3em] uppercase hover:text-foreground transition-colors text-center' %>
+    </div>
+
+    <p class="text-xs text-muted-foreground/50 mt-10 leading-relaxed max-w-3xl">
+      This report is informational only and does not constitute investment advice. Russian property
+      markets, tax rules, and residency regulations change. Always consult with a licensed Russian
+      advisor before making decisions. The PDF version includes additional sections: detailed
+      Monte Carlo scenarios, bank-offer analysis, residency &amp; tax considerations,
+      and a full currency conversion table.
+    </p>
+  </div>
+</section>

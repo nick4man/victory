@@ -1,684 +1,647 @@
-<%# Детальная страница объекта недвижимости - properties/show.html.erb %>
-<% content_for :meta_tags do %>
-  <%= tag.meta name: 'description', content: @property.meta_description || @property.generate_meta_description %>
-  <%= tag.meta property: 'og:type', content: 'product' %>
-  <%= tag.meta property: 'og:title', content: @property.title %>
-  <%= tag.meta property: 'og:description', content: @property.short_description %>
-  <%= tag.meta property: 'og:image', content: @property.primary_image&.url %>
-  <%= tag.meta property: 'og:price:amount', content: @property.price %>
-  <%= tag.meta property: 'og:price:currency', content: 'RUB' %>
+<%# Title + meta description — Seo::PropertyMetaGenerator (Phase 2C) writes
+    LLM-generated copy into property.seo_title / .seo_description via
+    rake seo_generation:property_meta:backfill. effective_seo_* helpers
+    fall back to rule-based generate_meta_* until the backfill runs, so
+    the page never renders blank meta. Without per-property meta all 100+
+    listings used the agency tagline → identical SERP snippets → CTR hit. %>
+<% content_for :title, @property.effective_seo_title %>
+<% content_for :seo_description, @property.effective_seo_description %>
+<%# Geo meta overrides — Yandex regional ranking expects the page's geo
+    signals to match the property's actual location. Without these, every
+    listing emitted Рязань-агентство coords, suppressing МСК/СПб objects
+    in their local SERPs. Locality drives ISO 3166-2 region code via
+    SeoHelper#geo_region_code; placename mirrors the human-readable city;
+    position/ICBM come from the property's own lat/lng (with fallback to
+    the agency via the layout default for properties without geocoding). %>
+<% content_for :geo_region, geo_region_code(@property.address_locality) %>
+<% content_for :geo_placename, @property.address_locality %>
+<% if @property.latitude.to_f != 0 && @property.longitude.to_f != 0 %>
+  <% content_for :geo_position, "#{@property.latitude};#{@property.longitude}" %>
+  <% content_for :icbm, "#{@property.latitude}, #{@property.longitude}" %>
+  <%# OG geo extension — VK/Дзен parsers recognise place:location to
+      render а маленькую карту-чип в preview-карточке шаринга. Extra
+      signal сверх geo.* (which is for crawlers, не для соц-сетей). %>
+  <% content_for :head do %>
+    <meta property="place:location:latitude" content="<%= @property.latitude %>">
+    <meta property="place:location:longitude" content="<%= @property.longitude %>">
+  <% end %>
+<% end %>
+<%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
+    Telegram, Дзен all generate richer preview cards when they get a
+    landscape image ≥1200px on the long side. %>
+<% if @property.images.attached? %>
+  <% content_for :og_image, property_image_url(@property.images.first, variant: :hero) %>
+  <%# Hero variant uses resize_to_limit [1920, 1440] — actual dims may
+      be smaller if source is portrait, but VK/Дзен parsers accept max
+      bounds. Without explicit dimensions VK often skips preview entirely. %>
+  <% content_for :og_image_width, 1920 %>
+  <% content_for :og_image_height, 1440 %>
+<% end %>
+<%# og:type left to layout default ('website'). The previous 'article'
+    value made VK/Telegram render this listing as a news post — wrong
+    semantic, and the Apartment/House JSON-LD already carries the
+    correct entity type for crawlers. %>
+<% content_for :head do %>
+  <%# PhotoSwipe (gallery on tap) is fetched from unpkg.com — preconnect
+      runs DNS+TLS handshake during initial HTML parse so the open-gallery
+      tap doesn't pay 200-400ms cold connection cost on mobile 4G. %>
+  <link rel="preconnect" href="https://unpkg.com" crossorigin>
+
+  <%# LCP preload — kicks off the hero image fetch as soon as <head> parses,
+      not when the picture tag in body is reached. Cuts ~300ms off Largest
+      Contentful Paint on cold visits, which Yandex MatrixNet weights
+      heavily for mobile ranking. %>
+  <% if @property.images.attached? %>
+    <% hero_img = @property.images.first %>
+    <% hero_webp = (url_for(hero_img.variant(:hero_webp)) rescue nil) %>
+    <% if hero_webp %>
+      <link rel="preload" as="image"
+            href="<%= hero_webp %>"
+            type="image/webp"
+            fetchpriority="high">
+    <% end %>
+  <% end %>
+
+  <%= render 'jsonld_property' %>
 <% end %>
 
-<div class="bg-gray-50 min-h-screen" data-controller="property-detail">
-  <!-- Hero Section with Gallery -->
-  <section class="bg-white">
-    <div class="container mx-auto px-4 py-6">
-      <!-- Breadcrumbs -->
-      <nav class="flex items-center space-x-2 text-sm text-gray-600 mb-6">
-        <%= link_to "Главная", root_path, class: "hover:text-primary-600 transition" %>
-        <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
-        </svg>
-        <%= link_to "Каталог", properties_path, class: "hover:text-primary-600 transition" %>
-        <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-          <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
-        </svg>
-        <span class="text-gray-900"><%= @property.title.truncate(50) %></span>
-      </nav>
+<%
+  # All Active Storage images for this property; trigger lazy analysis so we
+  # know real dimensions for PhotoSwipe (falls back to 1600x1200 if absent).
+  all_images = @property.images.attached? ? @property.images.to_a : []
+  all_images.each { |img| img.analyze unless img.analyzed? } rescue nil
 
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <!-- Left Column: Gallery and Info -->
-        <div class="lg:col-span-2">
-          <!-- Image Gallery -->
-          <div class="mb-8" data-controller="gallery">
-            <!-- Main Image -->
-            <div class="relative bg-gray-900 rounded-xl overflow-hidden mb-4 group">
-              <% if @property.images.attached? && @property.images.any? %>
-                <div class="aspect-w-16 aspect-h-9 h-96 md:h-[500px]">
-                  <%= image_tag @property.images.first, 
-                      alt: @property.title, 
-                      class: "w-full h-full object-cover",
-                      data: { gallery_target: "mainImage" } %>
-                </div>
-              <% else %>
-                <div class="h-96 md:h-[500px] flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
-                  <svg class="w-32 h-32 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-+                  </svg>
-+                </div>
-              <% end %>
+  hero_img      = all_images.first
+  gallery_imgs  = all_images.drop(1)
+  fallback_url  = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1920&q=80"
 
-              <!-- Gallery Navigation Arrows -->
-              <% if @property.images.count > 1 %>
-                <button type="button" class="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-75 text-white p-3 rounded-full transition opacity-0 group-hover:opacity-100" data-action="click->gallery#previous">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                  </svg>
-                </button>
-                <button type="button" class="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-75 text-white p-3 rounded-full transition opacity-0 group-hover:opacity-100" data-action="click->gallery#next">
-                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                  </svg>
-                </button>
-              <% end %>
+  pswp_size = ->(image) {
+    w = image&.metadata.is_a?(Hash) ? image.metadata['width']  : nil
+    h = image&.metadata.is_a?(Hash) ? image.metadata['height'] : nil
+    [w.presence || 1600, h.presence || 1200]
+  }
 
-              <!-- Image Counter -->
-              <div class="absolute bottom-4 right-4 bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                <span data-gallery-target="currentIndex">1</span> / <%= @property.images.count %>
-              </div>
+  hero_url = hero_img ? (url_for(hero_img) rescue fallback_url) : fallback_url
+  hero_w, hero_h = pswp_size.call(hero_img)
+%>
 
-              <!-- Fullscreen Button -->
-              <button type="button" class="absolute bottom-4 left-4 bg-black bg-opacity-60 hover:bg-opacity-75 text-white p-2 rounded-lg transition" data-action="click->gallery#openFullscreen" title="Полноэкранный режим">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
-                </svg>
-              </button>
-            </div>
+<!-- PhotoSwipe assets (CDN) -->
+<%= stylesheet_link_tag "https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.css", media: "all" %>
 
-            <!-- Thumbnails -->
-            <% if @property.images.count > 1 %>
-              <div class="grid grid-cols-4 md:grid-cols-6 gap-2">
-                <% @property.images.take(12).each_with_index do |image, index| %>
-                  <button type="button" class="aspect-square rounded-lg overflow-hidden border-2 border-transparent hover:border-primary-600 transition" data-action="click->gallery#selectImage" data-index="<%= index %>">
-                    <%= image_tag image.variant(resize_to_limit: [200, 200]), 
-                        alt: "#{@property.title} - фото #{index + 1}", 
-                        class: "w-full h-full object-cover",
-                        loading: "lazy" %>
-                  </button>
-                <% end %>
-                <% if @property.images.count > 12 %>
-                  <button type="button" class="aspect-square rounded-lg bg-gray-900 bg-opacity-80 flex items-center justify-center text-white font-bold hover:bg-opacity-90 transition" data-action="click->gallery#showAllPhotos">
-                    +<%= @property.images.count - 12 %>
-                  </button>
-                <% end %>
-              </div>
+<!-- ============================================================
+     PhotoSwipe button overrides — match the site's monochrome
+     premium look. Larger arrows, semi-transparent until hover,
+     subtle scale on hover.
+============================================================ -->
+<style>
+  /* ----- Prev / Next arrows ----- */
+  .pswp__button--arrow {
+    width: 72px !important;
+    height: 112px !important;
+    margin: 0 18px !important;
+    /* Subtle, ALWAYS-the-same frosted-glass plate (no fill change on hover) */
+    background: rgba(255, 255, 255, 0.04) !important;
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    opacity: 0.55;
+    transition: transform .3s ease, opacity .3s ease;
+  }
+  .pswp__button--arrow:hover,
+  .pswp__button--arrow:focus-visible {
+    transform: scale(1.14);
+    opacity: 1;          /* whole button is just brighter */
+    /* no background / no border-color change */
+  }
+
+  /* SVG icon: large, slightly translucent in idle so the frosted glass shows
+     through. We REMOVE PhotoSwipe's default <use> sprite via opacity:0 and
+     stack our own chevron on top via :before. */
+  .pswp__button--arrow .pswp__icn {
+    width: 56px !important;
+    height: 56px !important;
+    top: 50% !important;
+    left: 50% !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+  }
+  .pswp__button--arrow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 44px 44px;
+    opacity: 0.75;
+    transition: opacity .3s ease, filter .3s ease;
+  }
+  .pswp__button--arrow:hover::before,
+  .pswp__button--arrow:focus-visible::before {
+    opacity: 1;
+    /* keep white chevron — no inversion since the plate stays dark/glassy */
+  }
+  /* Inline SVG via data-URI — easy to tweak stroke-width here.
+     stroke-width="3" + stroke-linecap="round" gives the thick, soft tip. */
+  .pswp__button--arrow--prev::before {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='15 6 9 12 15 18'/></svg>");
+  }
+  .pswp__button--arrow--next::before {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>");
+  }
+
+  /* ----- Close / Zoom buttons (top-right) ----- */
+  .pswp__button--close,
+  .pswp__button--zoom {
+    width: 56px !important;
+    height: 56px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    opacity: 0.6;
+    transition: transform .25s ease, background-color .25s ease, opacity .25s ease;
+  }
+  .pswp__button--close:hover,
+  .pswp__button--zoom:hover {
+    transform: scale(1.1);
+    opacity: 1;
+    /* no fill change — plate stays glassy */
+  }
+  .pswp__button--close .pswp__icn,
+  .pswp__button--zoom  .pswp__icn { color: #fff; opacity: 0.85; transition: opacity .25s ease; }
+  .pswp__button--close:hover .pswp__icn,
+  .pswp__button--zoom:hover  .pswp__icn { opacity: 1; }
+
+  /* ----- Smooth slide transitions between photos ----- */
+  /* Same tempo as the hero slider on the landing page (1500ms) */
+  .pswp { --pswp-transition-duration: 1500ms; }
+  .pswp__img,
+  .pswp__container {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    transition-duration: 1500ms !important;
+  }
+</style>
+
+<%
+  # Hero slider cycles through ALL images of the property (full album).
+  # First image is rendered with loading="eager"; the rest are lazy-loaded so
+  # only the visible slide is fetched immediately.
+  hero_slides = all_images
+%>
+<%# Semantic <article> wraps the property-specific content (hero +
+    details + location). Google and Yandex use <article> as a strong
+    "this is the main content" signal — helps with content area detection
+    for Core Web Vitals scoring and with rich-snippet generation. The
+    "Похожие"/"В районе" blocks below stay outside since they're related
+    listings, not part of this property's article. itemtype matches the
+    JSON-LD @type via Property#schema_org_type — without that, /properties/dom-*
+    pages emitted Apartment microdata + House JSON-LD, which Google Rich
+    Results flags as "conflicting entity types". %>
+<article itemscope itemtype="https://schema.org/<%= @property.schema_org_type %>">
+<%= render 'shared/breadcrumb', items: [
+  ['Каталог', properties_path],
+  [@property.title, nil]
+] %>
+<!-- Hero — auto-rotating slider, clickable to open lightbox -->
+<section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
+  <% if hero_slides.any? %>
+    <% hero_slides.each_with_index do |img, i| %>
+      <button type="button"
+              class="hero-slide absolute inset-0 cursor-zoom-in bg-transparent border-0 p-0"
+              data-index="<%= i %>"
+              aria-label="Открыть фото <%= i + 1 %> в полноэкранном режиме"
+              style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;">
+        <div class="absolute inset-0 bg-background/60 z-10"></div>
+        <%= property_picture img,
+              alt: property_image_alt(@property, i),
+              sizes: '100vw',
+              priority: i.zero?,
+              html_class: 'w-full h-full object-cover grayscale',
+              fallback: :hero %>
+      </button>
+    <% end %>
+  <% else %>
+    <div class="absolute inset-0">
+      <div class="absolute inset-0 bg-background/60 z-10"></div>
+      <%= property_picture nil,
+            alt: property_image_alt(@property),
+            sizes: '100vw',
+            priority: true,
+            html_class: 'w-full h-full object-cover grayscale',
+            fallback: :hero %>
+    </div>
+  <% end %>
+
+  <!-- Arrows (manual navigation) -->
+  <% if hero_slides.size > 1 %>
+    <button type="button" id="hero-prev"
+            class="hero-arrow absolute left-4 lg:left-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
+            aria-label="Предыдущее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <button type="button" id="hero-next"
+            class="hero-arrow absolute right-4 lg:right-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
+            aria-label="Следующее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="9 6 15 12 9 18"/></svg>
+    </button>
+
+    <!-- Slide counter (bottom-right) -->
+    <div class="absolute bottom-6 right-6 lg:bottom-8 lg:right-8 z-30 text-sm tracking-wider text-muted-foreground">
+      <span id="hero-counter" class="text-foreground text-lg">01</span>
+      <span class="mx-2">/</span>
+      <span><%= sprintf("%02d", hero_slides.size) %></span>
+    </div>
+
+    <!-- Autoplay progress bar -->
+    <div class="hero-progress" id="hero-progress"></div>
+  <% end %>
+
+  <!-- Foreground text overlay -->
+  <div class="relative z-20 h-full flex items-end px-6 lg:px-12 pb-12 pointer-events-none">
+    <div class="max-w-4xl pointer-events-auto">
+      <%= link_to "← К КАТАЛОГУ", properties_path, class: "inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-6" %>
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4 uppercase"><%= @property.deal_type == 'rent' ? 'Аренда' : 'Продажа' %></p>
+      <h1 class="text-4xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-6 uppercase"><%= @property.title %></h1>
+      <p class="text-lg tracking-wider text-muted-foreground"><%= @property.address %></p>
+      <% if all_images.size > 1 %>
+        <p class="mt-4 text-xs tracking-[0.3em] text-muted-foreground"><%= all_images.size %> ФОТО — КЛИК ДЛЯ ПРОСМОТРА</p>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Hero arrows: visible-but-discreet plate, brighten + scale on hover */
+  #hero-slider .hero-arrow {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    opacity: 0.85;
+    transition: transform .3s ease, opacity .3s ease, background-color .3s ease;
+    cursor: pointer;
+  }
+  #hero-slider .hero-arrow:hover,
+  #hero-slider .hero-arrow:focus-visible {
+    transform: translateY(-50%) scale(1.12);
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  /* Auto-play interval (synchronised with the JS setInterval) */
+  #hero-slider { --hero-interval: 3000ms; }
+  #hero-slider .hero-progress {
+    position: absolute;
+    left: 0; bottom: 0;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.85);
+    width: 0%;
+    z-index: 30;
+    transition: width var(--hero-interval) linear;
+    pointer-events: none;
+  }
+  #hero-slider.is-paused .hero-progress { transition: none; }
+</style>
+
+<script>
+  (function () {
+    const root = document.getElementById('hero-slider');
+    if (!root) return;
+    const slides = Array.from(root.querySelectorAll('.hero-slide'));
+    if (slides.length <= 1) return;
+    const counter = document.getElementById('hero-counter');
+    const prevBtn = document.getElementById('hero-prev');
+    const nextBtn = document.getElementById('hero-next');
+
+    const progress = document.getElementById('hero-progress');
+    // Single source of truth for the cycle length (matches CSS --hero-interval).
+    const INTERVAL_MS = 3000;
+    let idx = 0;
+    let timer = null;
+
+    function show(n) {
+      idx = (n + slides.length) % slides.length;
+      slides.forEach((el, i) => {
+        const active = i === idx;
+        el.style.opacity = active ? '1' : '0';
+        el.style.pointerEvents = active ? 'auto' : 'none';
+      });
+      if (counter) counter.textContent = String(idx + 1).padStart(2, '0');
+      restartProgress();
+      // Any transition (auto or manual) restarts the timer — prevents double
+      // ticks and keeps each visible slide on screen for a full INTERVAL_MS.
+      resetAuto();
+    }
+
+    function restartProgress() {
+      if (!progress) return;
+      progress.style.transition = 'none';
+      progress.style.width = '0%';
+      void progress.offsetWidth;          // force reflow
+      progress.style.transition = `width ${INTERVAL_MS}ms linear`;
+      progress.style.width = '100%';
+    }
+
+    function resetAuto() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
+    }
+    function startAuto() {
+      if (timer) return;                   // guard: don't stack timers
+      restartProgress();
+      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
+    }
+    function stopAuto()  {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (progress) progress.style.transition = 'none';
+    }
+
+    // Manual navigation — stopPropagation so click doesn't bubble up to the slide button (which would open lightbox).
+    prevBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx - 1); });
+    nextBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx + 1); });
+
+    // Slides themselves open the lightbox at their own index.
+    slides.forEach((el) => {
+      el.addEventListener('click', () => {
+        const target = document.querySelector(`[data-photoswipe-gallery] a:nth-of-type(${idx + 1})`);
+        target?.click();
+      });
+    });
+
+    // Pause autoplay on hover / focus inside the hero so the user can read.
+    root.addEventListener('mouseenter', stopAuto);
+    root.addEventListener('mouseleave', startAuto);
+    root.addEventListener('focusin',    stopAuto);
+    root.addEventListener('focusout',   startAuto);
+
+    startAuto();
+  })();
+</script>
+
+<!-- Location — moved above main info so location is "right on the page", not buried -->
+<%= render 'location_section' %>
+
+<!-- Main info -->
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
+  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12">
+    <div class="lg:col-span-2">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОПИСАНИЕ</p>
+      <p class="text-base text-foreground leading-relaxed whitespace-pre-line"><%= @property.description %></p>
+
+      <%# AVM (B4) — Schema-clean estimate range from PropertyAvm. Hidden
+          when there aren't enough comparables for a reliable regression. %>
+      <%= render 'avm_estimate' %>
+
+      <% area_label = @property.property_type&.slug == 'house' ? display_house_area(@property) : display_area(@property) %>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border mt-12">
+        <% [
+          ["ПЛОЩАДЬ",  area_label.presence || "—"],
+          ["КОМНАТ",   @property.rooms.presence || "—"],
+          ["ЭТАЖ",     (@property.floor.present? ? "#{@property.floor}/#{@property.total_floors}" : "—")],
+          ["ГОД",      @property.building_year.presence || "—"]
+        ].each do |label, value| %>
+          <div class="bg-card p-6">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2"><%= label %></p>
+            <p class="text-lg tracking-wider text-foreground"><%= value %></p>
+          </div>
+        <% end %>
+      </div>
+
+      <% if all_images.any? %>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mt-12 mb-4">ГАЛЕРЕЯ</p>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" data-photoswipe-gallery>
+          <% all_images.each_with_index do |img, idx| %>
+            <% lightbox_url = (url_for(img.variant(:hero)) rescue nil); next unless lightbox_url %>
+            <% w, h = pswp_size.call(img) %>
+            <a href="<%= lightbox_url %>"
+               data-pswp-width="<%= w %>"
+               data-pswp-height="<%= h %>"
+               class="aspect-[4/3] overflow-hidden block group cursor-zoom-in relative">
+              <%= property_picture img,
+                    alt: property_image_alt(@property, idx + 1),
+                    sizes: '(min-width: 768px) 33vw, 50vw',
+                    html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-500',
+                    fallback: :card %>
+              <span class="absolute bottom-2 right-2 text-[10px] tracking-widest text-background bg-foreground/80 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <%= idx + 1 %> / <%= all_images.size %>
+              </span>
+            </a>
+          <% end %>
+        </div>
+      <% end %>
+
+      <% extras = [] %>
+      <% extras << "Балкон"      if @property.respond_to?(:has_balcony)   && @property.has_balcony %>
+      <% extras << "Лоджия"      if @property.respond_to?(:has_loggia)    && @property.has_loggia %>
+      <% extras << "Парковка"    if @property.respond_to?(:has_parking)   && @property.has_parking %>
+      <% extras << "Лифт"        if @property.respond_to?(:has_elevator)  && @property.has_elevator %>
+      <% extras << "Консьерж"    if @property.respond_to?(:has_concierge) && @property.has_concierge %>
+      <% extras << "Охрана"      if @property.respond_to?(:has_security)  && @property.has_security %>
+      <% if extras.any? %>
+        <div class="mt-12">
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">УДОБСТВА</p>
+          <div class="flex flex-wrap gap-3">
+            <% extras.each do |e| %>
+              <span class="px-4 py-2 text-xs tracking-wider border border-border text-foreground"><%= e.upcase %></span>
             <% end %>
           </div>
+        </div>
+      <% end %>
+    </div>
 
-          <!-- Property Title and Price -->
-          <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-            <div class="flex flex-col md:flex-row md:items-start md:justify-between mb-6">
-              <div class="flex-1 mb-4 md:mb-0">
-                <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
-                  <%= @property.title %>
-                </h1>
-                <div class="flex items-center text-gray-600 mb-2">
-                  <svg class="w-5 h-5 mr-2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  </svg>
-                  <%= @property.full_address %>
-                </div>
-                <% if @property.metro_station.present? %>
-                  <div class="flex items-center text-gray-600 text-sm">
-                    <svg class="w-4 h-4 mr-2 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"/>
-                    </svg>
-                    м. <%= @property.metro_station %>
-                    <% if @property.metro_distance %>
-                      <span class="ml-2">• <%= @property.metro_walking_distance? ? '🚶' : '🚌' %> <%= @property.metro_distance %>м</span>
-                    <% end %>
-                  </div>
-                <% end %>
-              </div>
+    <aside class="lg:col-span-1">
+      <div class="bg-card border border-border p-8 sticky top-24">
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ЦЕНА</p>
+        <p class="text-3xl tracking-wider text-foreground mb-2"><%= @property.price_formatted %></p>
+        <% if (ppu = display_price_per_unit(@property)).present? %>
+          <p class="text-xs tracking-wider text-muted-foreground mb-2"><%= ppu %></p>
+        <% end %>
+        <%# Price-change timeline — silent until first PriceHistory row exists.
+            Tracker hook in Property#after_update fires automatically when
+            price changes; renders nothing while count==0. %>
+        <%= render 'price_history', history: @price_history %>
 
-              <div class="text-right">
-                <div class="text-4xl md:text-5xl font-bold text-primary-600 mb-2">
-                  <%= @property.price_formatted %>
-                </div>
-                <% if @property.price_per_sqm %>
-                  <div class="text-lg text-gray-600">
-                    <%= @property.price_per_sqm_formatted %>
-                  </div>
-                <% end %>
-              </div>
-            </div>
+        <div class="flex flex-col gap-3 mt-8">
+          <% if user_signed_in? %>
+            <%= button_to favorite_property_path(@property), method: :post, class: "w-full px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+              <%= @is_favorited ? 'В ИЗБРАННОМ' : 'В ИЗБРАННОЕ' %>
+            <% end %>
+          <% else %>
+            <%= link_to "ВОЙТИ ДЛЯ ИЗБРАННОГО", new_user_session_path, class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+          <% end %>
+          <%= link_to "ЗАПИСАТЬСЯ НА ПРОСМОТР", new_property_inquiry_path(@property), class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
 
-            <!-- Main Characteristics -->
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-6 py-6 border-y border-gray-200">
-              <div class="text-center">
-                <div class="text-3xl font-bold text-gray-900 mb-1"><%= @property.area %></div>
-                <div class="text-sm text-gray-600">м² общая</div>
-              </div>
-              <% if @property.rooms %>
-                <div class="text-center">
-                  <div class="text-3xl font-bold text-gray-900 mb-1"><%= @property.rooms %></div>
-                  <div class="text-sm text-gray-600">комнат</div>
-                </div>
-              <% end %>
-              <% if @property.floor && @property.total_floors %>
-                <div class="text-center">
-                  <div class="text-3xl font-bold text-gray-900 mb-1"><%= @property.floor %>/<%= @property.total_floors %></div>
-                  <div class="text-sm text-gray-600">этаж</div>
-                </div>
-              <% end %>
-              <% if @property.building_year %>
-                <div class="text-center">
-                  <div class="text-3xl font-bold text-gray-900 mb-1"><%= @property.building_year %></div>
-                  <div class="text-sm text-gray-600">год постройки</div>
-                </div>
-              <% end %>
-            </div>
+          <%# Investment Audit (Phase 4.5). Pre-fills the audit form with
+              this property's area/rooms/price/address so the buyer can run
+              EI/Monte Carlo with one extra step (entering an offer price
+              or hitting submit). Secondary CTA — visual hierarchy below the
+              primary "ЗАПИСАТЬСЯ" button. %>
+          <%= link_to investment_audit_new_path(from_property: @property.slug),
+                class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+            СТОИТ ЛИ ПОКУПАТЬ?
+          <% end %>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
+            ИНВЕСТ-АУДИТ: ИНДЕКС · МОНТЕ-КАРЛО · РЕКОМЕНДАЦИЯ
+          </p>
 
-            <!-- Action Buttons -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-              <button type="button" class="flex items-center justify-center bg-primary-600 hover:bg-primary-700 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg" data-action="click->property-detail#showPhone">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
-                </svg>
-                <span data-property-detail-target="phoneButton">Показать телефон</span>
-              </button>
-
-              <button type="button" class="flex items-center justify-center bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-6 rounded-lg transition shadow-lg" data-action="click->property-detail#openScheduleModal">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                </svg>
-                Записаться на показ
-              </button>
-
-              <% if user_signed_in? %>
-                <button type="button" 
-                        class="flex items-center justify-center <%= @is_favorited ? 'bg-red-500 hover:bg-red-600' : 'bg-white border-2 border-gray-300 hover:border-red-500 text-gray-700 hover:text-red-500' %> font-bold py-4 px-6 rounded-lg transition shadow-lg" 
-                        data-controller="favorite"
-                        data-favorite-property-id-value="<%= @property.id %>"
-                        data-favorite-favorited-value="<%= @is_favorited %>"
-                        data-action="click->favorite#toggle">
-                  <svg class="w-5 h-5 mr-2" fill="<%= @is_favorited ? 'currentColor' : 'none' %>" stroke="currentColor" viewBox="0 0 24 24" data-favorite-target="icon">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                  </svg>
-                  <span data-favorite-target="text"><%= @is_favorited ? 'В избранном' : 'В избранное' %></span>
-                </button>
-              <% else %>
-                <%= link_to new_user_session_path, class: "flex items-center justify-center bg-white border-2 border-gray-300 hover:border-red-500 text-gray-700 hover:text-red-500 font-bold py-4 px-6 rounded-lg transition shadow-lg" do %>
-                  <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                  </svg>
-                  В избранное
-                <% end %>
-              <% end %>
-            </div>
-          </div>
-
-          <!-- Description -->
-          <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">Описание</h2>
-            <div class="text-gray-700 leading-relaxed whitespace-pre-line">
-              <%= @property.description || "Описание будет добавлено позже" %>
-            </div>
-          </div>
-
-          <!-- Detailed Characteristics -->
-          <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">Характеристики</h2>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-              <!-- Building Info -->
-              <div class="flex justify-between py-3 border-b border-gray-100">
-                <span class="text-gray-600">Тип недвижимости:</span>
-                <span class="font-semibold text-gray-900"><%= @property.property_type&.name || 'Квартира' %></span>
-              </div>
-              
-              <div class="flex justify-between py-3 border-b border-gray-100">
-                <span class="text-gray-600">Тип сделки:</span>
-                <span class="font-semibold text-gray-900"><%= @property.deal_type_i18n.capitalize %></span>
-              </div>
-
-              <div class="flex justify-between py-3 border-b border-gray-100">
-                <span class="text-gray-600">Общая площадь:</span>
-                <span class="font-semibold text-gray-900"><%= @property.area %> м²</span>
-              </div>
-
-              <% if @property.living_area %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Жилая площадь:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.living_area %> м²</span>
-                </div>
-              <% end %>
-
-              <% if @property.kitchen_area %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Площадь кухни:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.kitchen_area %> м²</span>
-                </div>
-              <% end %>
-
-              <% if @property.rooms %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Количество комнат:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.rooms == 0 ? 'Студия' : @property.rooms %></span>
-                </div>
-              <% end %>
-
-              <% if @property.floor && @property.total_floors %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Этаж:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.floor %> из <%= @property.total_floors %></span>
-                </div>
-              <% end %>
-
-              <% if @property.building_year %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Год постройки:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.building_year %></span>
-                </div>
-              <% end %>
-
-              <% if @property.building_type %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Тип дома:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.building_type.capitalize %></span>
-                </div>
-              <% end %>
-
-              <% if @property.condition %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Состояние:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.condition_i18n %></span>
-                </div>
-              <% end %>
-
-              <% if @property.ceiling_height %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Высота потолков:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.ceiling_height %></span>
-                </div>
-              <% end %>
-
-              <% if @property.bathrooms %>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                  <span class="text-gray-600">Санузлов:</span>
-                  <span class="font-semibold text-gray-900"><%= @property.bathrooms %></span>
-                </div>
-              <% end %>
-            </div>
-
-            <!-- Features -->
-            <div class="mt-6 pt-6 border-t border-gray-200">
-              <h3 class="text-lg font-bold text-gray-900 mb-4">Удобства</h3>
-              <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-                <% if @property.has_parking %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    Парковка
-                  </div>
-                <% end %>
-
-                <% if @property.has_balcony %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    Балкон
-                  </div>
-                <% end %>
-
-                <% if @property.has_elevator %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    Лифт
-                  </div>
-                <% end %>
-
-                <% if @property.has_security %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    Охрана
-                  </div>
-                <% end %>
-
-                <% if @property.pets_allowed %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    Можно с питомцами
-                  </div>
-                <% end %>
-
-                <% if @property.furniture.present? %>
-                  <div class="flex items-center text-gray-700">
-                    <svg class="w-5 h-5 mr-2 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                    </svg>
-                    <%= @property.furniture %>
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          </div>
-
-          <!-- Virtual Tour -->
-          <% if @property.virtual_tour_url.present? %>
-            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-              <h2 class="text-2xl font-bold text-gray-900 mb-4">Виртуальный 3D-тур</h2>
-              <div class="relative bg-gray-900 rounded-lg overflow-hidden" style="padding-bottom: 56.25%;">
-                <iframe src="<%= @property.virtual_tour_url %>" 
-                        class="absolute top-0 left-0 w-full h-full"
-                        frameborder="0" 
-                        allowfullscreen
-                        loading="lazy"></iframe>
-              </div>
-            </div>
+          <%# Mortgage calculator CTA — same prefill mechanic via ?from_property=.
+              Subtler text-link style (not a full button) — calculator is a
+              lighter-weight tool than the full audit. %>
+          <%= link_to services_mortgage_calculator_path(from_property: @property.slug),
+                class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-2.5 transition-colors" do %>
+            РАССЧИТАТЬ ИПОТЕКУ →
           <% end %>
 
-          <!-- Location Map -->
-          <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-            <h2 class="text-2xl font-bold text-gray-900 mb-4">Расположение</h2>
-            
-            <% if @property.latitude && @property.longitude %>
-              <div class="h-96 bg-gray-200 rounded-lg mb-4" 
-                   data-controller="yandex-map"
-                   data-yandex-map-latitude-value="<%= @property.latitude %>"
-                   data-yandex-map-longitude-value="<%= @property.longitude %>"
-                   data-yandex-map-title-value="<%= @property.title %>"
-                   data-yandex-map-price-value="<%= @property.price_formatted %>">
-                <!-- Yandex Map will be inserted here -->
-              </div>
-            <% else %>
-              <div class="h-96 bg-gray-200 rounded-lg flex items-center justify-center text-gray-500">
-                <div class="text-center">
-                  <svg class="w-16 h-16 mx-auto mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                  </svg>
-                  <p>Карта будет доступна после геокодирования адреса</p>
-                </div>
-              </div>
+          <%# A3 — premium dossier PDF (5 страниц: cover/gallery/description/
+              agent/cta). Только для premium-объектов (price >= 15M ₽
+              или is_premium=true) — иначе CTA скрыт. %>
+          <% if @property.premium? %>
+            <%= link_to dossier_property_path(@property, format: :pdf),
+                  target: '_blank', rel: 'noopener',
+                  class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-foreground hover:bg-foreground hover:text-background border border-foreground/40 transition-colors mt-2" do %>
+              📑 СКАЧАТЬ ДОЗСЬЕ PDF
             <% end %>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 -mt-1">
+              PREMIUM · 5 СТРАНИЦ · ФОТО · ОПИСАНИЕ · АГЕНТ
+            </p>
+          <% end %>
+        </div>
 
-            <!-- Infrastructure -->
-            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div class="text-center p-4 bg-gray-50 rounded-lg">
-                <svg class="w-8 h-8 text-blue-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 14l9-5-9-5-9 5 9 5z"/>
-                  <path d="M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z"/>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222"/>
-                </svg>
-                <div class="text-sm text-gray-600">Школы</div>
-              </div>
+        <div class="mt-12 pt-8 border-t border-border">
+          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">КОНТАКТ АГЕНТА</p>
+          <%# 152-ФЗ — если агент попросил снять публичный профиль,
+              показываем «АН Виктори» + основной телефон агентства
+              вместо персональных данных. has_agent_profile? — единый
+              gate (то же что используется в publicly_listable_agents
+              scope для /agents/<slug> и /sitemap-blog.xml). %>
+          <% agent = @property.user %>
+          <% show_agent = agent&.has_agent_profile? %>
+          <p class="text-base tracking-wider text-foreground"><%= show_agent ? agent.full_name : 'АН Виктори' %></p>
+          <%# If the agent has no personal phone synced from CRM, или агент
+              снял публичный профиль — fallback на AgencyInfo::PHONE_PRIMARY
+              (the main office line). %>
+          <% phone = (show_agent ? (agent.display_phone || AgencyInfo::PHONE_PRIMARY) : AgencyInfo::PHONE_PRIMARY) %>
+          <a href="tel:<%= phone.gsub(/\D/, '') %>" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">
+            <%= phone %>
+          </a>
+          <% if !show_agent || agent.phone.blank? %>
+            <p class="text-xs tracking-wider text-muted-foreground mt-1">общий телефон агентства</p>
+          <% end %>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
 
-              <div class="text-center p-4 bg-gray-50 rounded-lg">
-                <svg class="w-8 h-8 text-green-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
-                </svg>
-                <div class="text-sm text-gray-600">Магазины</div>
-              </div>
+<!-- PhotoSwipe initialization -->
+<script type="module">
+  import PhotoSwipeLightbox from 'https://unpkg.com/photoswipe@5.4.4/dist/photoswipe-lightbox.esm.min.js';
 
-              <div class="text-center p-4 bg-gray-50 rounded-lg">
-                <svg class="w-8 h-8 text-red-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.871 4A17.926 17.926 0 003 12c0 2.874.673 5.59 1.871 8m14.13 0a17.926 17.926 0 001.87-8c0-2.874-.673-5.59-1.87-8M9 9h1.246a1 1 0 01.961.725l1.586 5.55a1 1 0 00.961.725H15m1-7h-.08a2 2 0 00-1.519.698L9.6 15.302A2 2 0 018.08 16H5"/>
-+                </svg>
-+                <div class="text-sm text-gray-600">Аптеки</div>
-+              </div>
-+
-+              <div class="text-center p-4 bg-gray-50 rounded-lg">
-+                <svg class="w-8 h-8 text-green-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-+                </svg>
-+                <div class="text-sm text-gray-600">Парки</div>
-+              </div>
-+            </div>
-+          </div>
-+
-+          <!-- Price History -->
-+          <% if defined?(@price_history) && @price_history.present? %>
-+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-+              <h2 class="text-2xl font-bold text-gray-900 mb-6">История изменения цены</h2>
-+              
-+              <div class="space-y-3">
-+                <% @price_history.each do |history| %>
-+                  <div class="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
-+                    <div>
-+                      <div class="font-semibold text-gray-900"><%= number_to_currency(history.price, unit: '₽', separator: ',', delimiter: ' ') %></div>
-+                      <div class="text-sm text-gray-500"><%= l(history.changed_at, format: :long) %></div>
-+                    </div>
-+                    <% if history.changed_from %>
-+                      <% change = ((history.price - history.changed_from) / history.changed_from * 100).round(1) %>
-+                      <div class="<%= change > 0 ? 'text-red-600' : 'text-green-600' %> font-semibold">
-+                        <%= change > 0 ? '+' : '' %><%= change %>%
-+                      </div>
-+                    <% end %>
-+                  </div>
-+                <% end %>
-+              </div>
-+            </div>
-+          <% end %>
-+
-+          <!-- Similar Properties -->
-+          <% if @similar_properties.present? %>
-+            <div class="bg-white rounded-lg shadow-md p-6 md:p-8 mb-6">
-+              <h2 class="text-2xl font-bold text-gray-900 mb-6">Похожие объекты</h2>
-+              
-+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-+                <% @similar_properties.each do |similar| %>
-+                  <%= render partial: 'properties/property_card', locals: { property: similar } %>
-+                <% end %>
-+              </div>
-+            </div>
-+          <% end %>
-+        </div>
-+
-+        <!-- Right Column: Sidebar -->
-+        <div class="lg:col-span-1">
-+          <div class="sticky top-24 space-y-6">
-+            <!-- Contact Form -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-xl font-bold text-gray-900 mb-4">Заинтересовала недвижимость?</h3>
-+              
-+              <%= form_with url: property_inquiries_path(@property), method: :post, class: "space-y-4", data: { controller: "form-submit" } do |f| %>
-+                <%= hidden_field_tag 'inquiry[property_id]', @property.id %>
-+                <%= hidden_field_tag 'inquiry[inquiry_type]', 'contact_agent' %>
-+                
-+                <div>
-+                  <%= text_field_tag 'inquiry[name]', nil, placeholder: "Ваше имя", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= telephone_field_tag 'inquiry[phone]', nil, placeholder: "+7 (___) ___-__-__", required: true, class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= email_field_tag 'inquiry[email]', nil, placeholder: "Email (опционально)", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+                
-+                <div>
-+                  <%= text_area_tag 'inquiry[message]', nil, rows: 3, placeholder: "Ваш вопрос или комментарий...", class: "w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent" %>
-+                </div>
-+
-+                <div class="text-xs text-gray-500">
-+                  Нажимая кнопку, вы соглашаетесь с <%= link_to "политикой конфиденциальности", privacy_path, class: "text-primary-600 hover:underline", target: "_blank" %>
-+                </div>
-+                
-+                <%= submit_tag "Отправить заявку", class: "w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-6 rounded-lg transition cursor-pointer" %>
-+              <% end %>
-+            </div>
-+
-+            <!-- Mortgage Calculator Widget -->
-+            <div class="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg shadow-md p-6 border border-blue-200">
-+              <h3 class="text-xl font-bold text-gray-900 mb-4">Калькулятор ипотеки</h3>
-+              
-+              <div class="space-y-4" data-controller="mortgage-calculator" data-mortgage-calculator-price-value="<%= @property.price %>">
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Первоначальный взнос</label>
-+                  <input type="number" data-mortgage-calculator-target="initialPayment" value="<%= (@property.price * 0.2).to_i %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+                
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Ставка (%)</label>
-+                  <input type="number" step="0.1" data-mortgage-calculator-target="rate" value="<%= ENV['DEFAULT_MORTGAGE_RATE'] || '10.5' %>" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+                
-+                <div>
-+                  <label class="block text-sm font-medium text-gray-700 mb-2">Срок (лет)</label>
-+                  <input type="number" data-mortgage-calculator-target="term" value="20" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 text-sm" data-action="input->mortgage-calculator#calculate">
-+                </div>
-+
-+                <div class="bg-white rounded-lg p-4 text-center">
-+                  <div class="text-sm text-gray-600 mb-1">Ежемесячный платеж</div>
-+                  <div class="text-2xl font-bold text-primary-600" data-mortgage-calculator-target="result">
-+                    0 ₽
-+                  </div>
-+                </div>
-+
-+                <%= link_to "Подробный расчет", services_mortgage_calculator_path, class: "block w-full text-center bg-primary-600 hover:bg-primary-700 text-white font-semibold py-2 px-4 rounded-lg transition text-sm" %>
-+              </div>
-+            </div>
-+
-+            <!-- Property Stats -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-lg font-bold text-gray-900 mb-4">Статистика просмотров</h3>
-+              
-+              <div class="space-y-3">
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">Просмотров:</span>
-+                  <span class="font-semibold text-gray-900"><%= @property.views_count %></span>
-+                </div>
-+                
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">В избранном:</span>
-+                  <span class="font-semibold text-gray-900"><%= @property.favorites_count %></span>
-+                </div>
-+                
-+                <div class="flex items-center justify-between">
-+                  <span class="text-gray-600 text-sm">Опубликовано:</span>
-+                  <span class="font-semibold text-gray-900"><%= time_ago_in_words(@property.created_at) %> назад</span>
-+                </div>
-+              </div>
-+            </div>
-+
-+            <!-- Share Buttons -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <h3 class="text-lg font-bold text-gray-900 mb-4">Поделиться</h3>
-+              
-+              <div class="grid grid-cols-3 gap-3">
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-600 hover:bg-blue-50 transition" data-action="click->property-detail#shareVk">
-+                  <svg class="w-6 h-6 text-blue-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M15.07 2H8.93C3.33 2 2 3.33 2 8.93v6.14C2 20.67 3.33 22 8.93 22h6.14c5.6 0 6.93-1.33 6.93-6.93V8.93C22 3.33 20.67 2 15.07 2z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">VK</span>
-+                </button>
-+
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition" data-action="click->property-detail#shareTelegram">
-+                  <svg class="w-6 h-6 text-blue-400 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">Telegram</span>
-+                </button>
+  // -----------------------------------------------------------
+  // UX configuration — feel free to tune these for your audience.
+  //   loop:        cycle to first photo after the last one
+  //   wheelToZoom: scroll-wheel zoom (vs. swipe-to-next)
+  //   bgOpacity:   backdrop dimming (1 = fully opaque)
+  //   pinchToClose: drag/pinch downwards closes the lightbox
+  // -----------------------------------------------------------
+  const lightbox = new PhotoSwipeLightbox({
+    gallery: '[data-photoswipe-gallery]',
+    children: 'a',
+    pswpModule: () => import('https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.esm.min.js'),
+    loop: true,
+    wheelToZoom: true,
+    bgOpacity: 0.95,
+    pinchToClose: true,
+    showHideAnimationType: 'fade',
+    initialZoomLevel: 'fit',
+    secondaryZoomLevel: 1.5,
+    maxZoomLevel: 3,
+    // Slower, easing-out slide transition for a calm, premium feel.
+    easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+  });
+  lightbox.init();
+</script>
 
-+                <button type="button" class="flex flex-col items-center justify-center p-3 border border-gray-300 rounded-lg hover:border-green-600 hover:bg-green-50 transition" data-action="click->property-detail#shareWhatsapp">
-+                  <svg class="w-6 h-6 text-green-600 mb-1" fill="currentColor" viewBox="0 0 24 24">
-+                    <path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771z"/>
-+                  </svg>
-+                  <span class="text-xs text-gray-600">WhatsApp</span>
-+                </button>
-+              </div>
+</article>
 
-+              <button type="button" class="mt-3 w-full flex items-center justify-center py-2 px-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm" data-action="click->property-detail#copyLink">
-+                <svg class="w-4 h-4 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-+                </svg>
-+                Скопировать ссылку
-+              </button>
-+            </div>
+<%# Helpful-content cross-links — surface market-context articles + agent
+    page from a high-intent page (someone reading a property listing is
+    the highest-funnel state for mortgage and trust signals). Without
+    this block, /properties/* concentrated PageRank without distributing
+    to /blog, /agents, /services. %>
+<section class="px-6 lg:px-12 py-12 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-6 uppercase">Полезно знать перед покупкой</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <%= link_to services_mortgage_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Калькулятор и подбор программы →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">РЫНОК РЯЗАНИ</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и тренды цен →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Кто будет вести вашу сделку →</p>
+      <% end %>
+    </div>
+  </div>
+</section>
 
-+            <!-- Report Problem -->
-+            <div class="bg-white rounded-lg shadow-md p-6">
-+              <button type="button" class="w-full text-left text-sm text-gray-600 hover:text-red-600 transition flex items-center" data-action="click->property-detail#openReportModal">
-+                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-+                </svg>
-+                Пожаловаться на объявление
-+              </button>
-+            </div>
-+          </div>
-+        </div>
-+      </div>
-+    </div>
-+  </section>
-+</div>
+<!-- Similar -->
+<% if @similar_properties.respond_to?(:any?) && @similar_properties.any? %>
+  <section class="px-6 lg:px-12 py-24 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ПОХОЖИЕ</p>
+          <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground">МОЖЕТ ПОНРАВИТЬСЯ</h2>
+        </div>
+        <%= link_to "ВСЕ ОБЪЕКТЫ →", properties_path, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <% @similar_properties.each do |p| %>
+          <%= render "property_card", property: p %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% end %>
 
-+<!-- Schedule Viewing Modal -->
-+<div class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4" data-property-detail-target="scheduleModal">
-+  <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-+    <div class="flex items-center justify-between mb-4">
-+      <h3 class="text-xl font-bold text-gray-900">Записаться на показ</h3>
-+      <button type="button" data-action="click->property-detail#closeScheduleModal" class="text-gray-400 hover:text-gray-600">
-+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-+        </svg>
-+      </button>
-+    </div>
+<!-- More in this district — geo-clustered internal linking -->
+<% if @district_properties.respond_to?(:any?) && @district_properties.any? %>
+  <% district_filter_url = properties_path(q: { district_eq: @property.district }) %>
+  <section class="px-6 lg:px-12 py-24 bg-background border-t border-border">
+    <div class="max-w-7xl mx-auto">
+      <div class="flex items-end justify-between mb-12">
+        <div>
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">РАЙОН</p>
+          <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground">
+            ЕЩЁ В <%= @property.district.to_s.upcase %>
+          </h2>
+        </div>
+        <%= link_to "ВСЕ В РАЙОНЕ →", district_filter_url, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <% @district_properties.each do |p| %>
+          <%= render "property_card", property: p %>
+        <% end %>
+      </div>
+    </div>
+  </section>
 
-+    <%= form_with url: property_schedule_viewing_path(@property), method: :post, class: "space-y-4" do |f| %>
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Имя</label>
-+        <%= text_field_tag 'name', nil, required: true, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
-+
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Телефон</label>
-+        <%= telephone_field_tag 'phone', nil, required: true, placeholder: "+7 (___) ___-__-__", class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
-
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Предпочтительная дата</label>
-+        <%= date_field_tag 'preferred_date', nil, min: Date.current, class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
-
-+      <div>
-+        <label class="block text-sm font-medium text-gray-700 mb-2">Время</label>
-+        <%= select_tag 'preferred_time', options_for_select([
-+          ['9:00 - 10:00', '09:00'],
-+          ['10:00 - 11:00', '10:00'],
-+          ['11:00 - 12:00', '11:00'],
-+          ['12:00 - 13:00', '12:00'],
-+          ['14:00 - 15:00', '14:00'],
-+          ['15:00 - 16:00', '15:00'],
-+          ['16:00 - 17:00', '16:00'],
-+          ['17:00 - 18:00', '17:00'],
-+          ['18:00 - 19:00', '18:00']
-+        ]), class: "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" %>
-+      </div>
-
-+      <div class="flex space-x-3">
-+        <%= submit_tag "Записаться", class: "flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer" %>
-+        <button type="button" data-action="click->property-detail#closeScheduleModal" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition">
-+          Отмена
-+        </button>
-+      </div>
-+    <% end %>
-+  </div>
-+</div>
-
-+<!-- Schema.org Markup for SEO -->
-+<script type="application/ld+json">
-+{
-+  "@context": "https://schema.org",
-+  "@type": "RealEstateListing",
-+  "name": "<%= @property.title %>",
-+  "description": "<%= @property.short_description %>",
-+  "url": "<%= property_url(@property) %>",
-+  "price": "<%= @property.price %>",
-+  "priceCurrency": "RUB",
-+  "address": {
-+    "@type": "PostalAddress",
-+    "streetAddress": "<%= @property.address %>",
-+    "addressLocality": "<%= @property.district %>"
-+  },
-+  "numberOfRooms": "<%= @property.rooms %>",
-+  "floorSize": {
-+    "@type": "QuantitativeValue",
-+    "value": "<%= @property.area %>",
-+    "unitCode": "MTK"
-+  }
-+  <% if @property.images.attached? && @property.images.first %>
-+  ,
-+  "image": "<%= url_for(@property.images.first) %>"
-+  <% end %>
-+}
-+</script>
+  <%# JSON-LD ItemList — gives crawlers explicit structure for the curated
+      district block, so "Ещё в Канищево" registers as a cluster, not 4 loose links. %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@type' => 'ItemList',
+    'name' => "Недвижимость в районе #{@property.district}, Рязань",
+    'url' => url_for(district_filter_url),
+    'itemListElement' => @district_properties.each_with_index.map { |p, i|
+      { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
+    }
+  }.to_json) %>
+  </script>
+<% end %>

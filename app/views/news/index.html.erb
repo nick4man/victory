@@ -1,0 +1,143 @@
+<% content_for :title, "Новости рынка недвижимости — Рязань | АН Виктори" %>
+
+<%
+  category_labels = {
+    'news'       => 'Новости',
+    'market'     => 'Рынок',
+    'mortgage'   => 'Ипотека',
+    'investment' => 'Инвестиции'
+  }
+%>
+
+<section class="px-6 lg:px-12 pt-32 pb-20 bg-background min-h-screen">
+  <%# ============================================================
+      HERO
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto mb-12">
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-4">НОВОСТИ РЫНКА</p>
+    <h1 class="text-4xl md:text-5xl lg:text-6xl font-light tracking-tight text-foreground leading-[1.1] mb-4">
+      Что происходит с рынком недвижимости
+    </h1>
+    <p class="text-base lg:text-lg text-muted-foreground max-w-2xl">
+      Ставки ЦБ РФ, ипотечные программы, цены и аналитика — обновляется автоматически из открытых источников.
+    </p>
+  </div>
+
+  <%# ============================================================
+      CATEGORY FILTER
+      ============================================================ %>
+  <div class="max-w-5xl mx-auto mb-10 flex flex-wrap items-center gap-2">
+    <%= link_to "ВСЕ · #{@counts.values.sum}".html_safe, news_path,
+          class: "px-3 py-1.5 text-[11px] tracking-[0.2em] border #{@category.nil? ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+    <% category_labels.each do |key, label| %>
+      <% count = @counts[key] || 0 %>
+      <% next if count.zero? %>
+      <%= link_to "#{label.upcase} · #{count}", news_path(category: key),
+            class: "px-3 py-1.5 text-[11px] tracking-[0.2em] border #{@category == key ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+    <% end %>
+  </div>
+
+  <%# Active tag filter banner — only when ?tag=… is present %>
+  <% if @tag.present? %>
+    <div class="max-w-7xl mx-auto mb-8 flex items-center gap-3 flex-wrap text-sm">
+      <span class="text-[10px] tracking-[0.3em] text-muted-foreground">ФИЛЬТР ПО ТЕГУ</span>
+      <span class="inline-flex items-center px-2.5 py-1 text-xs tracking-wider text-foreground border border-foreground">#<%= @tag %></span>
+      <%= link_to news_path, class: "text-xs tracking-wider text-muted-foreground hover:text-foreground border-b border-border/40 pb-px transition-colors" do %>
+        сбросить ×
+      <% end %>
+    </div>
+  <% end %>
+
+  <%# ============================================================
+      GRID + SIDEBAR
+      ============================================================ %>
+  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8 lg:gap-10">
+    <%# LEFT: article cards (3/4) %>
+    <div class="lg:col-span-3">
+      <% if @articles.any? %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <% @articles.each do |article| %>
+            <%= render 'shared/article_card', article: article %>
+          <% end %>
+        </div>
+
+        <% if @articles.respond_to?(:total_pages) && @articles.total_pages > 1 %>
+          <div class="mt-10 flex justify-center">
+            <%= paginate @articles, theme: 'default' rescue nil %>
+          </div>
+        <% end %>
+      <% else %>
+        <div class="bg-card border border-border p-12 text-center">
+          <p class="text-sm text-muted-foreground">
+            Пока новостей нет. Загляните попозже или подпишитесь на наш Telegram <a href="https://t.me/rznvictory" target="_blank" rel="noopener nofollow" class="text-foreground hover:underline">@rznvictory</a>.
+          </p>
+        </div>
+      <% end %>
+    </div>
+
+    <%# RIGHT: macro snapshot (1/4) %>
+    <aside class="lg:col-span-1 space-y-6">
+      <% if @macro && @macro[:key_rate] %>
+        <div class="bg-card border border-border p-6">
+          <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">ТЕКУЩИЕ СТАВКИ</p>
+          <div class="space-y-3 text-sm">
+            <div class="flex items-baseline justify-between">
+              <span class="text-muted-foreground">Ключевая ЦБ</span>
+              <span class="text-foreground text-base"><%= @macro[:key_rate] %>%</span>
+            </div>
+            <% if @macro[:mortgage_rate] %>
+              <div class="flex items-baseline justify-between">
+                <span class="text-muted-foreground">Ипотека</span>
+                <span class="text-foreground text-base"><%= @macro[:mortgage_rate] %>%</span>
+              </div>
+            <% end %>
+            <% if @macro[:deposit_rate] %>
+              <div class="flex items-baseline justify-between">
+                <span class="text-muted-foreground">Депозит</span>
+                <span class="text-foreground text-base"><%= @macro[:deposit_rate] %>%</span>
+              </div>
+            <% end %>
+            <% if @macro[:inflation] %>
+              <div class="flex items-baseline justify-between">
+                <span class="text-muted-foreground">Инфляция</span>
+                <span class="text-foreground text-base"><%= @macro[:inflation] %>%</span>
+              </div>
+            <% end %>
+          </div>
+          <% if @macro[:effective_date].present? %>
+            <p class="text-[10px] tracking-[0.25em] text-muted-foreground/70 mt-4 pt-4 border-t border-border">
+              ОБНОВЛЕНО · <%= l(Date.parse(@macro[:effective_date]), format: :long) rescue @macro[:effective_date] %>
+              <% if @macro[:source].present? %>
+                <br>ИСТОЧНИК · <%= @macro[:source].to_s.upcase %>
+              <% end %>
+            </p>
+          <% end %>
+        </div>
+      <% end %>
+
+      <div class="bg-card border border-border p-6">
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-3">ИНСТРУМЕНТЫ</p>
+        <div class="space-y-3">
+          <%= link_to services_mortgage_calculator_path,
+                class: "block text-sm text-foreground hover:text-muted-foreground transition-colors" do %>
+            Ипотечный калькулятор →
+          <% end %>
+          <%= link_to valuations_path,
+                class: "block text-sm text-foreground hover:text-muted-foreground transition-colors" do %>
+            Оценка / инвест-аудит →
+          <% end %>
+          <%= link_to properties_path,
+                class: "block text-sm text-foreground hover:text-muted-foreground transition-colors" do %>
+            Каталог объектов →
+          <% end %>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<%# Modal + per-article body templates — clicking any card on /news opens the
+    modal instead of navigating to a standalone page. `?article=:slug` in the
+    URL also auto-opens the matching article. %>
+<%= render 'shared/article_modal' %>
+<%= render 'shared/article_modal_templates', articles: @articles, autoopen_slug: @autoopen_slug %>

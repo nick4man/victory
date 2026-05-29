@@ -52,7 +52,7 @@ manager = User.create!(
   first_name: 'Иван',
   last_name: 'Менеджеров',
   phone: '+7 (999) 234-56-78',
-  role: 'manager',
+  role: 'agent',
   confirmed_at: Time.current
 )
 
@@ -72,7 +72,7 @@ users = []
     first_name: ['Александр', 'Мария', 'Дмитрий', 'Елена', 'Сергей'][i],
     last_name: ['Иванов', 'Петрова', 'Сидоров', 'Козлова', 'Смирнов'][i],
     phone: "+7 (999) #{100 + i}00-00-#{i}#{i}",
-    role: 'user',
+    role: 'client',
     confirmed_at: Time.current
   )
   users << user
@@ -334,7 +334,7 @@ puts '=' * 50
 puts "👤 Users: #{User.count}"
 puts "   - Admin: 1 (admin@viktory-realty.ru / password123)"
 puts "   - Manager: 1 (manager@viktory-realty.ru / password123)"
-puts "   - Regular users: #{User.where(role: 'user').count}"
+puts "   - Regular users: #{User.where(role: 'client').count}"
 puts "🏠 Properties: #{Property.count}"
 puts "   - For sale: #{Property.where(deal_type: 'sale').count}"
 puts "   - For rent: #{Property.where(deal_type: 'rent').count}"

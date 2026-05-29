@@ -1,0 +1,71 @@
+<%# Per-article JSON-LD. @type chosen by Article#schema_type:
+    - NewsArticle for market reports (Yandex/Google news-eligible)
+    - BlogPosting for evergreen guides
+    Both inherit from Article, so the field set is identical. %>
+<%
+  page_url = blog_post_url(slug: @article.slug, host: request.host_with_port)
+  author_name = (@article.author&.try(:display_name) || @article.author&.try(:full_name) || AgencyInfo::NAME)
+  # If the author is a published agent (has agent_slug), link Person → agent
+  # page so Yandex/Google can compose the entity graph: Article → Person →
+  # RealEstateAgent. Strong E-E-A-T signal for ranking.
+  author_url = if @article.author&.respond_to?(:agent_slug) && @article.author.agent_slug.present?
+                 agent_url(@article.author.agent_slug)
+               end
+  # Prefer the first image extracted from body_html — gives Google a
+  # per-article cover for the NewsArticle image carousel in Top Stories.
+  # Falls back to the global OG default for articles without inline images.
+  default_og  = ENV['OG_DEFAULT_IMAGE_URL'].presence || "#{request.protocol}#{request.host_with_port}/og-default.jpg"
+  body_cover  = @article.hero_image_url
+  body_cover  = "#{request.protocol}#{request.host_with_port}#{body_cover}" if body_cover.present? && body_cover.start_with?('/')
+  hero_image  = body_cover.presence || default_og
+
+  # articleBody is required by Google Rich Results for NewsArticle and
+  # increases trust for BlogPosting. Strip HTML and truncate to 5k chars
+  # so the JSON payload stays compact; Google explicitly does not need
+  # the full body, just enough to verify it matches the rendered DOM.
+  article_body_plain = ActionView::Base.full_sanitizer.sanitize(@article.body_html.to_s).squish
+
+  payload = {
+    '@context' => 'https://schema.org',
+    '@type' => @article.schema_type,
+    'headline' => @article.title,
+    'description' => @article.short_excerpt(length: 220),
+    'articleBody' => article_body_plain.truncate(5000),
+    'url' => page_url,
+    'datePublished' => @article.published_at&.iso8601,
+    'dateModified' => @article.updated_at&.iso8601,
+    'inLanguage' => 'ru-RU',
+    'isPartOf' => { '@id' => "#{AgencyInfo::WEBSITE_URL}/#website" },
+    'image' => [hero_image],
+    'author' => {
+      '@type' => 'Person',
+      'name' => author_name,
+      'url' => author_url
+    }.compact,
+    'publisher' => {
+      '@type' => 'Organization',
+      'name' => AgencyInfo::NAME,
+      '@id' => "#{AgencyInfo::WEBSITE_URL}/#agent"
+    },
+    'mainEntityOfPage' => { '@type' => 'WebPage', '@id' => page_url },
+    'articleSection' => @article.category.humanize,
+    'wordCount' => @article.body.to_s.split(/\s+/).size,
+    # timeRequired — Я.Wand carousel показывает «X min read» badge
+    # для NewsArticle/BlogPosting с этим полем
+    'timeRequired' => @article.iso_duration,
+    # keywords — comma-separated hashtags из metadata (webhook-ingested)
+    # либо category fallback (admin-created articles)
+    'keywords' => @article.keywords_for_seo.join(', ')
+  }.compact
+%>
+<script type="application/ld+json">
+<%= raw payload.to_json %>
+</script>
+
+<script type="application/ld+json">
+<%= breadcrumb_jsonld([
+  ['Главная', root_url],
+  ['Блог', blog_url],
+  [@article.title, page_url]
+]) %>
+</script>

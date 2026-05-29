@@ -1,0 +1,14 @@
+{
+  "property_type": "APARTMENT",
+  "complex_name": "ЖК Тестовый",
+  "apartment_type": "2BR",
+  "area_sqm": 65.0,
+  "price_total": 12000000,
+  "monthly_rent": 45000,
+  "mortgage_rate": 17.0,
+  "deposit_rate": 14.0,
+  "price_growth_annual": 7.9,
+  "horizon_years": 5,
+  "lat": 55.7558,
+  "lon": 37.6173
+}
