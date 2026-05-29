@@ -14,7 +14,10 @@ module Telegram
         def handle
           lead     = lead_event
           assignee = TelegramUser.find_by(id: @args[1])
-          return ack('⚠️ Сотрудник не найден', alert: true) unless assignee
+          unless assignee
+            log_soft_error('assignee_not_found', "lead=#{lead&.id} args=#{@args.inspect}")
+            return ack('⚠️ Сотрудник не найден', alert: true)
+          end
 
           # Phase 11 Iter 29 — capture audit trail (prev assignee) BEFORE call.
           # Iter 22 handles DM to prev; here мы фиксируем структурированный
@@ -31,6 +34,7 @@ module Telegram
             text += " (#{result.error_message})" if result.error_message
             ack(text[0, 200])
           else
+            log_soft_error('lead_assignment_failed', result.error_message.to_s)
             ack("⚠️ #{result.error_message[0, 180]}", alert: true)
           end
         end
@@ -59,6 +63,21 @@ module Telegram
           )
         rescue StandardError => e
           Rails.logger.warn("[AssignToCallback#log_reassignment_audit] #{e.class}: #{e.message}")
+        end
+
+        # Phase 16.7 — soft-error logger: ack() возвращает успешно (TG callback
+        # quited без exception), но это error-class outcome для admin /health
+        # dashboard. Дублируем msg в error_message column для structured queries.
+        def log_soft_error(result, error_msg)
+          BotCommandLog.create!(
+            tg_user_id: tg_user&.tg_user_id || callback_query.dig('from', 'id'),
+            command: 'callback:assign_to:soft_error',
+            args: error_msg.to_s.truncate(500),
+            result: result,
+            error_message: error_msg.to_s.truncate(500)
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[AssignToCallback#log_soft_error] #{e.class}: #{e.message}")
         end
 
         def delete_picker(lead)

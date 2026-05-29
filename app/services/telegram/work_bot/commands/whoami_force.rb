@@ -18,6 +18,7 @@ module Telegram
 
         def handle
           if args.blank?
+            log_audit('usage', nil)
             return reply(
               'Формат: <code>/whoami_force email@example.com</code> в DM сотрудника к боту.\n' \
               'Сотрудник должен сам написать эту команду — её надо запустить с его аккаунта, ' \
@@ -27,12 +28,16 @@ module Telegram
 
           email = args.strip.downcase
           unless email.match?(URI::MailTo::EMAIL_REGEXP)
+            log_audit('invalid_email', email)
             return reply("⚠️ Не похоже на email: <code>#{escape(email)}</code>")
           end
 
           from = message['from'] || {}
           tg_user_id = from['id']
-          return reply('⚠️ Не удалось определить ваш tg_user_id') if tg_user_id.blank?
+          if tg_user_id.blank?
+            log_audit('no_tg_user_id', email)
+            return reply('⚠️ Не удалось определить ваш tg_user_id')
+          end
 
           tu = TelegramUser.find_or_initialize_by(tg_user_id: tg_user_id)
           tu.assign_attributes(
@@ -56,13 +61,19 @@ module Telegram
 
         private
 
+        # Phase 16.7 — error-class results дублируют args в error_message
+        # для structured queries (admin /health dashboard).
+        ERROR_RESULTS = %w[invalid_email no_tg_user_id].freeze
+
         def log_audit(result, args_text)
-          BotCommandLog.create!(
+          attrs = {
             tg_user_id: message.dig('from', 'id'),
             command: '/whoami_force',
             args: args_text.to_s,
             result: result
-          )
+          }
+          attrs[:error_message] = args_text.to_s.truncate(500) if ERROR_RESULTS.include?(result.to_s)
+          BotCommandLog.create!(attrs)
         rescue StandardError => e
           Rails.logger.warn("[WhoamiForce#log_audit] #{e.class}: #{e.message}")
         end
