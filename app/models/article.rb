@@ -25,10 +25,18 @@ class Article < ApplicationRecord
   # in-page hero AND the og:image card (Telegram/VK/Дзен expect ~1200×630
   # aspect for previews). When attached, Article#hero_image_url prefers
   # this over the body-html regex fallback.
+  #
+  # OG variant остаётся ТОЛЬКО JPEG — social-card crawlers (VK/Telegram/Дзен)
+  # многие не понимают WebP/AVIF, parse failure = no preview. Hero и card
+  # получают webp/avif для in-page рендеринга через будущий picture-helper.
   has_one_attached :cover_image do |attachable|
-    attachable.variant :hero, resize_to_limit: [1920, 1080], saver: { quality: 85, strip: true }
-    attachable.variant :og,   resize_to_fill:  [1200, 630],  saver: { quality: 82, strip: true }
-    attachable.variant :card, resize_to_limit: [800, 600],   saver: { quality: 80, strip: true }
+    attachable.variant :hero,      resize_to_limit: [1920, 1080], saver: { quality: 85, strip: true }
+    attachable.variant :hero_webp, resize_to_limit: [1920, 1080], format: :webp, saver: { quality: 82, strip: true }
+    attachable.variant :hero_avif, resize_to_limit: [1920, 1080], format: :avif, saver: { quality: 72, strip: true }
+    attachable.variant :og,        resize_to_fill:  [1200, 630],  saver: { quality: 82, strip: true }
+    attachable.variant :card,      resize_to_limit: [800, 600],   saver: { quality: 80, strip: true }
+    attachable.variant :card_webp, resize_to_limit: [800, 600],   format: :webp, saver: { quality: 80, strip: true }
+    attachable.variant :card_avif, resize_to_limit: [800, 600],   format: :avif, saver: { quality: 70, strip: true }
   end
 
   CATEGORIES = %w[market guides news investment mortgage].freeze

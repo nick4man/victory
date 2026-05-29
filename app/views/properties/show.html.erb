@@ -50,16 +50,11 @@
   <%# LCP preload — kicks off the hero image fetch as soon as <head> parses,
       not when the picture tag in body is reached. Cuts ~300ms off Largest
       Contentful Paint on cold visits, which Yandex MatrixNet weights
-      heavily for mobile ranking. %>
+      heavily for mobile ranking. Helper эмитит AVIF + WebP preload links;
+      browser triggers только тот, чей type он поддерживает (no wasted bytes).
+      Modern imagesrcset attr учитывает responsive sizes автоматически. %>
   <% if @property.images.attached? %>
-    <% hero_img = @property.images.first %>
-    <% hero_webp = (url_for(hero_img.variant(:hero_webp)) rescue nil) %>
-    <% if hero_webp %>
-      <link rel="preload" as="image"
-            href="<%= hero_webp %>"
-            type="image/webp"
-            fetchpriority="high">
-    <% end %>
+    <%= property_hero_preloads(@property.images.first, sizes: '100vw') %>
   <% end %>
 
   <%= render 'jsonld_property' %>
