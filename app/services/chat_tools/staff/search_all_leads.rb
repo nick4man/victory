@@ -158,8 +158,9 @@ module ChatTools
 
         @semantic_distances = ranked.to_h { |r| [r.lead_event_id, r.neighbor_distance] }
         ids = ranked.map(&:lead_event_id)
-        order_sql = Arel.sql("array_position(ARRAY[#{ids.join(',')}]::bigint[], id)")
-        ::LeadEvent.where(id: ids).order(order_sql)
+        # Rails 7+ `in_order_of` сохраняет порядок без raw-interpolation — закрывает
+        # Brakeman HIGH (SQL Injection) на старом `Arel.sql("ARRAY[#{ids}]")` паттерне.
+        ::LeadEvent.in_order_of(:id, ids)
       rescue ::Embedding::GoogleClient::Error, StandardError => e
         Rails.logger.warn("[SearchAllLeads#semantic_scope] #{e.class} #{e.message}")
         nil

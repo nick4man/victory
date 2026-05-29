@@ -70,7 +70,16 @@
 
 <section class="px-6 lg:px-12 pb-16 bg-background">
   <div class="max-w-3xl mx-auto prose prose-lg text-foreground">
-    <%= @case_study.body_html&.html_safe || simple_format(@case_study.body) %>
+    <%# body_html уже sanitize'd при сохранении (CaseStudy#render_markdown),
+        но Brakeman flag'ит pattern `model.html_safe` как XSS HIGH. Re-sanitize
+        на render — idempotent + защита от bypass (direct SQL update). %>
+    <% if @case_study.body_html.present? %>
+      <%= sanitize @case_study.body_html,
+                   tags: Article::ALLOWED_HTML_TAGS,
+                   attributes: Article::ALLOWED_HTML_ATTRS %>
+    <% else %>
+      <%= simple_format(@case_study.body) %>
+    <% end %>
   </div>
 </section>
 
