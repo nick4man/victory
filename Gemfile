@@ -15,11 +15,11 @@ gem 'pg', '~> 1.5'
 gem 'puma', '~> 6.4'
 
 # Assets
-gem 'sprockets-rails'
 gem 'importmap-rails'
+gem 'jbuilder'
+gem 'sprockets-rails'
 gem 'stimulus-rails'
 gem 'turbo-rails'
-gem 'jbuilder'
 
 # CSS
 gem 'tailwindcss-rails'
@@ -43,7 +43,7 @@ gem 'prawn-table', '~> 0.2'
 
 # Background jobs
 gem 'sidekiq', '~> 7.2'
-gem 'sidekiq-cron', '~> 1.12'
+gem 'sidekiq-cron', '~> 2.4'
 
 # Redis (Action Cable + Sidekiq + cache)
 gem 'redis', '~> 5.0'
@@ -52,8 +52,8 @@ gem 'redis', '~> 5.0'
 gem 'kaminari', '~> 1.2'
 
 # Search
-gem 'ransack', '~> 4.1'
 gem 'pg_search', '~> 2.3'
+gem 'ransack', '~> 4.1'
 
 # URL slugs
 gem 'friendly_id', '~> 5.5'
@@ -101,8 +101,8 @@ gem 'stoplight', '~> 4.1'
 # SENTRY_DSN env: если не задан → Sentry.init вообще не вызывается
 # (sentry-ruby молчит, не ходит в Sentry servers). PII strip через
 # before_send hook в config/initializers/sentry.rb.
-gem 'sentry-ruby',     '~> 5.20', require: false
 gem 'sentry-rails',    '~> 5.20', require: false
+gem 'sentry-ruby',     '~> 5.20', require: false
 gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
 
 # === Development tooling ===
@@ -112,17 +112,16 @@ gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
 # AR-связей). require: false — гем грузится только когда LSP-сервер
 # поднимается, не нужен в runtime приложения.
 group :development do
-  gem 'ruby-lsp',       '~> 0.26', require: false
-  gem 'ruby-lsp-rails', require: false
-
   # Linters & security scanners — run locally via `bundle exec` and in CI
-  # (.github/workflows/lint.yml). All three are require: false so they
-  # don't load into the app process.
-  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
-  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
-  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  # (.github/workflows/lint.yml). All `require: false` so they don't load
+  # into the app process. Order: alphabetical (Bundler/OrderedGems cop).
   gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
   gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
+  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
+  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
+  gem 'ruby-lsp',       '~> 0.26', require: false
+  gem 'ruby-lsp-rails', require: false
 end
 
 # === Test framework ===
@@ -130,10 +129,10 @@ end
 # unit / request / model specs локально и в CI. Группа :development добавлена
 # чтобы `bin/rails generate model …` рендерил RSpec stubs вместо minitest.
 group :development, :test do
-  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
+  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
+  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
   gem 'factory_bot_rails',   '~> 6.4'    # fixtures replacement
   gem 'faker',               '~> 3.4'    # realistic test data (Ru locale в rails_helper)
+  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
   gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
-  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
-  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
 end
