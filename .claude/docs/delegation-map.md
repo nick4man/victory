@@ -6,7 +6,7 @@
 
 Стратегия — **Balanced**: явные match'ы → делегация; неопределённые → handle directly с упоминанием опции.
 
-## 16 проектных агентов
+## 17 проектных агентов
 
 | Trigger keywords / domain | Primary agent | Cross-refs / related |
 |---|---|---|
@@ -17,7 +17,8 @@
 | **property valuation**, оценка, экспресс-оценка, CMA, hedonic overshoot, аналоги Avito/Cian, /valuations submit | `property-valuation-expert` | `site-chatbot-dev` (если через chat_tool estimate_property_valuation), `market-analytics-publisher` (если нужен market context) |
 | **Prawn PDF**, audit_pdf, кириллица в PDF, theme.rb, layout PDF, графики в PDF, broken glyphs | `pdf-report-designer` | `pdf-telegram-dispatcher` (если просят отправить) |
 | **markdown → PDF → TG**, отправь план в ТГ, оформить как PDF, доставить в группу через бота | `pdf-telegram-dispatcher` | `pdf-report-designer` (если просят дизайн отчёта) |
-| **рефакторинг 500+ LOC**, fat model/controller, concerns, extract service, decomposition, AASM states, новый domain | `rails-architect` | `test-bootstrapper` (safety net перед refactor) |
+| **рефакторинг 500+ LOC**, fat model/controller, concerns, extract service, decomposition, AASM states, новый domain | `rails-architect` | `test-bootstrapper` (safety net перед refactor), `code-reviewer` (review post-refactor diff) |
+| **код-ревью**, review the diff, audit changes, before merge, PR review, before commit, проверь мой код, safety review, посмотри что наделал | `code-reviewer` | `test-bootstrapper` (safety net для untested paths), domain-agents (Topnlab/Yandex/SEO/TG/site-chatbot — для deep API contract review), `session-coordinator` (cross-session diff review) |
 | **RSpec**, добавить тесты, bootstrap rspec, factory нет, spec for service, тесты на legacy, coverage | `test-bootstrapper` | skill `rspec-bootstrap` |
 | **parallel session**, lock-file, conflict в правках, hand-off victory↔chat↔seo, кто правит файл | `session-coordinator` | skill `session-coordination` |
 | **client document intake** — паспорт/ИНН/выписка/ЕГРН через TG client-bot, OCR (Yandex Vision), DLP, валидация checksums | `client-onboarding-bot` | `telegram-staff-bot-dev` (НЕ путать — там staff inbox), `rails-architect` (Document model design) |
@@ -61,6 +62,8 @@
 | PDF design | TG delivery | если про **дизайн** → `pdf-report-designer`; если про **отправку готового** → `pdf-telegram-dispatcher` |
 | SEO meta | новый view | оба useful: `seo-content-curator` агент + skill `victory-seo-checklist` |
 | refactor | tests missing | сначала `test-bootstrapper` (safety net), потом `rails-architect` |
+| refactor design | review the result | сначала `rails-architect` (plan + diff), потом `code-reviewer` (severity-ordered findings on final diff). НЕ инверсия. |
+| domain change (Topnlab/Yandex/SEO) | safety pass before merge | domain-agent делает changes; `code-reviewer` финально pass (general conventions + 3 hard rules + delegation hints) |
 | TG inbox для **сотрудников** | TG bot для **клиентов** (паспорт/выписка) | staff = `telegram-staff-bot-dev`; client = `client-onboarding-bot` (НЕ путать — разные модули `work_bot/` vs `client_bot/`) |
 | market analytics | single-object valuation | если **аналитика для контента** (TG/blog/landing) → `market-analytics-publisher`; если **оценка конкретного объекта** → `property-valuation-expert` |
 | post-deal artifact | market data inside | `case-study-writer` primary, может звать `market-analytics-publisher` для market context |

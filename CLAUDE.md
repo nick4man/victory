@@ -55,6 +55,7 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 | **Prawn PDF**, audit_pdf, кириллица, theme, layout PDF | `pdf-report-designer` |
 | **markdown → PDF → TG**, отправь в TG, оформить как PDF | `pdf-telegram-dispatcher` |
 | **рефакторинг** 500+ LOC, fat model/controller, concerns, extract service, AASM | `rails-architect` |
+| **код-ревью**, review the diff, audit changes, before merge, PR review, before commit | `code-reviewer` |
 | **RSpec**, добавить тесты, factory нет, spec for, тесты legacy | `test-bootstrapper` + skill `rspec-bootstrap` |
 | **parallel session**, lock, conflict в правках, hand-off victory↔chat↔seo | `session-coordinator` + skill `session-coordination` |
 | **client document intake** — паспорт/ИНН/выписка через TG → OCR + DLP | `client-onboarding-bot` |
@@ -81,3 +82,5 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 - chat_responder + parallel session → `session-coordinator` first (locks), потом `site-chatbot-dev`
 - PDF design vs delivery → дизайн = `pdf-report-designer`; готовый PDF в TG = `pdf-telegram-dispatcher`
 - Refactor + tests missing → `test-bootstrapper` сначала (safety net), потом `rails-architect`
+- Refactor + review → сначала `rails-architect` (предложит план), потом `code-reviewer` (на готовый diff). НЕ инверсия.
+- Domain change (Topnlab/Yandex/etc) + safety review → domain-agent делает changes, `code-reviewer` финально pass before merge
