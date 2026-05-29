@@ -1,0 +1,43 @@
+<%# Quick-inquiry CTA form. POST → form_with auto-includes CSRF token
+    которое УНИКАЛЬНО per request — этот partial **НЕ заворачивать в cache do**.
+    Static markup можно было бы кэшировать вокруг формы, но split добавляет
+    сложности без значимой ROI (форма ~40 LOC). %>
+<section class="py-16 bg-gradient-to-r from-primary-600 to-primary-700 text-white">
+  <div class="container mx-auto px-4">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl md:text-4xl font-bold mb-4">Подберем квартиру за вас</h2>
+      <p class="text-xl mb-8 text-primary-100">Оставьте заявку и наш специалист свяжется с вами в течение 15 минут</p>
+
+      <%= form_with url: forms_quick_inquiry_path, method: :post, class: "bg-white bg-opacity-10 backdrop-blur rounded-xl p-6 md:p-8", data: { controller: "form-submit" } do |f| %>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div>
+            <%= f.text_field :name, placeholder: "Ваше имя", required: true, class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+          </div>
+
+          <div>
+            <%= f.telephone_field :phone, placeholder: "+7 (___) ___-__-__", required: true, class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <%= f.text_area :message, rows: 3, placeholder: "Опишите, какую недвижимость ищете...", class: "w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-white placeholder-opacity-70 focus:bg-opacity-30 focus:outline-none focus:ring-2 focus:ring-white" %>
+        </div>
+
+        <div class="mb-6 text-left">
+          <label class="flex items-start text-sm">
+            <%= f.check_box :agreement, required: true, class: "mt-1 mr-2" %>
+            <span class="text-white text-opacity-90">
+              Я согласен с <%= link_to "политикой конфиденциальности", privacy_path, class: "underline hover:text-white", target: "_blank" %> и даю согласие на обработку персональных данных
+            </span>
+          </label>
+        </div>
+
+        <%= f.submit "Отправить заявку", class: "w-full bg-white text-primary-600 hover:bg-gray-100 font-bold py-4 px-8 rounded-lg transition shadow-lg cursor-pointer" %>
+
+        <p class="text-sm text-white text-opacity-80 mt-4">
+          Нажимая кнопку, вы соглашаетесь с условиями обработки персональных данных
+        </p>
+      <% end %>
+    </div>
+  </div>
+</section>

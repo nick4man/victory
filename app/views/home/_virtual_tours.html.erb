@@ -1,0 +1,41 @@
+<%# Virtual 3D tours — 4-column grid с image overlay. Cacheable per collection. %>
+<section class="py-16 bg-gray-50">
+  <div class="container mx-auto px-4">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Виртуальные 3D-туры</h2>
+      <p class="text-xl text-gray-600">Осмотрите квартиру не выходя из дома</p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <% tours.each do |property| %>
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition group">
+          <%= link_to property_path(property), class: "block" do %>
+            <div class="relative h-48 bg-gray-200 overflow-hidden">
+              <% if property.primary_image %>
+                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover group-hover:scale-110 transition duration-300" %>
+              <% end %>
+
+              <div class="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
+                <div class="bg-white bg-opacity-90 p-4 rounded-full">
+                  <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4">
+              <div class="font-bold text-primary-600 mb-1"><%= property.price_formatted %></div>
+              <div class="text-sm text-gray-600"><%= property.rooms_info %>, <%= property.area %> м²</div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <div class="text-center mt-8">
+      <%= link_to "Все виртуальные туры", services_virtual_tours_path, class: "inline-block bg-primary-600 hover:bg-primary-700 text-white font-bold py-3 px-8 rounded-lg transition" %>
+    </div>
+  </div>
+</section>

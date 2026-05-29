@@ -1,0 +1,84 @@
+<%# Featured premium properties — 3-column grid. Cacheable когда Devise OFF
+    (user_signed_in? всегда false, branch не рендерится). Если Devise re-enable,
+    то надо либо `cache_unless user_signed_in?`, либо extract favorites toggle
+    как отдельный partial без cache. %>
+<section class="py-16 bg-white">
+  <div class="container mx-auto px-4">
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Избранные предложения</h2>
+        <p class="text-gray-600">Лучшие объекты от наших партнеров</p>
+      </div>
+      <%= link_to "Смотреть все", properties_path, class: "text-primary-600 hover:text-primary-700 font-semibold inline-flex items-center" %>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <% featured.each do |property| %>
+        <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
+          <%= link_to property_path(property), class: "block" do %>
+            <div class="relative h-64 bg-gray-200">
+              <% if property.primary_image %>
+                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover" %>
+              <% else %>
+                <div class="w-full h-full flex items-center justify-center text-gray-400">
+                  <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                </div>
+              <% end %>
+
+              <div class="absolute top-4 left-4">
+                <span class="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-xs font-bold">PREMIUM</span>
+              </div>
+
+              <% if user_signed_in? %>
+                <button type="button" class="absolute top-4 right-4 bg-white bg-opacity-90 p-2 rounded-full hover:bg-opacity-100 transition" data-action="click->favorites#toggle" data-property-id="<%= property.id %>">
+                  <svg class="w-5 h-5 <%= current_user.favorited?(property) ? 'text-red-500 fill-current' : 'text-gray-600' %>" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                  </svg>
+                </button>
+              <% end %>
+            </div>
+
+            <div class="p-6">
+              <div class="text-2xl font-bold text-primary-600 mb-2"><%= property.price_formatted %></div>
+              <h3 class="text-lg font-semibold text-gray-900 mb-2 line-clamp-2"><%= property.title %></h3>
+
+              <div class="flex items-center text-gray-600 text-sm mb-4">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                </svg>
+                <%= property.address %>
+              </div>
+
+              <div class="grid grid-cols-3 gap-4 text-sm text-gray-600">
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5z"/>
+                  </svg>
+                  <%= property.area %> м²
+                </div>
+                <% if property.rooms %>
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+                  </svg>
+                  <%= property.rooms %> комн.
+                </div>
+                <% end %>
+                <% if property.floor %>
+                <div class="flex items-center">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                  </svg>
+                  <%= property.floor %>/<%= property.total_floors %>
+                </div>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</section>

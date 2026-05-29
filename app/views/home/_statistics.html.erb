@@ -1,0 +1,36 @@
+<%# 4 real-time statistic counters. Counter Stimulus controller на первом
+    элементе анимирует число count-up при загрузке. Cacheable — Stimulus
+    reinitится после render'a, animation проигрывается заново (UX OK). %>
+<section class="py-16 bg-primary-600 text-white">
+  <div class="container mx-auto px-4">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2" data-controller="counter" data-counter-target="number" data-counter-end-value="<%= statistics[:total_properties] %>">
+          <%= number_with_delimiter(statistics[:total_properties]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Объектов недвижимости</div>
+      </div>
+
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= number_with_delimiter(statistics[:successful_deals]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Успешных сделок</div>
+      </div>
+
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= number_with_delimiter(statistics[:total_clients]) %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Довольных клиентов</div>
+      </div>
+
+      <div class="text-center">
+        <div class="text-4xl md:text-5xl font-bold mb-2">
+          <%= statistics[:this_week_new] %>
+        </div>
+        <div class="text-primary-100 text-sm md:text-base">Новых за неделю</div>
+      </div>
+    </div>
+  </div>
+</section>

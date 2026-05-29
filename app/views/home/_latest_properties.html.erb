@@ -1,0 +1,19 @@
+<%# Latest properties (last week). Uses existing shared/property_card partial. %>
+<section class="py-16 bg-gray-50">
+  <div class="container mx-auto px-4">
+    <div class="flex justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 mb-2">Новые предложения</h2>
+        <p class="text-gray-600">Свежие объявления за последнюю неделю</p>
+      </div>
+      <%= link_to "Смотреть все", properties_path(q: { created_at_gteq: 1.week.ago }), class: "text-primary-600 hover:text-primary-700 font-semibold" %>
+    </div>
+
+    <%# Collection rendering — ~30% быстрее N>5 vs each + render partial. Если
+        shared/property_card обернёт `<% cache property do %>`, Rails возьмёт
+        full multi_read из cache_store одним hop'ом. %>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <%= render partial: 'shared/property_card', collection: latest.first(8), as: :property %>
+    </div>
+  </div>
+</section>
