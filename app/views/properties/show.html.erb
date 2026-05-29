@@ -1,3 +1,11 @@
+<%# Property show page — orchestration only. Phase 3 design sprint (29.05.26):
+    647 LOC → ~110 LOC orchestration + 5 partials + 3 existing partials.
+    Cache discipline (Russian doll, keyed by property):
+      * gallery + helpful_links + similar + district_cluster: cached
+      * main_info: `cache_unless user_signed_in?` (favorite button per-user)
+      * SEO meta + PhotoSwipe init: inline (per-request / one-time)
+    Existing partials kept: jsonld_property, location_section, price_history. %>
+
 <%# Title + meta description — Seo::PropertyMetaGenerator (Phase 2C) writes
     LLM-generated copy into property.seo_title / .seo_description via
     rake seo_generation:property_meta:backfill. effective_seo_* helpers
@@ -63,127 +71,18 @@
 <%
   # All Active Storage images for this property; trigger lazy analysis so we
   # know real dimensions for PhotoSwipe (falls back to 1600x1200 if absent).
+  # NB: each loop fires ActiveStorage::Analyzer per missing-metadata image —
+  # follow-up: move к async analyze job чтобы избежать N+1-style blob touches.
   all_images = @property.images.attached? ? @property.images.to_a : []
   all_images.each { |img| img.analyze unless img.analyzed? } rescue nil
-
-  hero_img      = all_images.first
-  gallery_imgs  = all_images.drop(1)
-  fallback_url  = "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=1920&q=80"
 
   pswp_size = ->(image) {
     w = image&.metadata.is_a?(Hash) ? image.metadata['width']  : nil
     h = image&.metadata.is_a?(Hash) ? image.metadata['height'] : nil
     [w.presence || 1600, h.presence || 1200]
   }
-
-  hero_url = hero_img ? (url_for(hero_img) rescue fallback_url) : fallback_url
-  hero_w, hero_h = pswp_size.call(hero_img)
 %>
 
-<!-- PhotoSwipe assets (CDN) -->
-<%= stylesheet_link_tag "https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.css", media: "all" %>
-
-<!-- ============================================================
-     PhotoSwipe button overrides — match the site's monochrome
-     premium look. Larger arrows, semi-transparent until hover,
-     subtle scale on hover.
-============================================================ -->
-<style>
-  /* ----- Prev / Next arrows ----- */
-  .pswp__button--arrow {
-    width: 72px !important;
-    height: 112px !important;
-    margin: 0 18px !important;
-    /* Subtle, ALWAYS-the-same frosted-glass plate (no fill change on hover) */
-    background: rgba(255, 255, 255, 0.04) !important;
-    backdrop-filter: blur(10px) saturate(120%);
-    -webkit-backdrop-filter: blur(10px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    opacity: 0.55;
-    transition: transform .3s ease, opacity .3s ease;
-  }
-  .pswp__button--arrow:hover,
-  .pswp__button--arrow:focus-visible {
-    transform: scale(1.14);
-    opacity: 1;          /* whole button is just brighter */
-    /* no background / no border-color change */
-  }
-
-  /* SVG icon: large, slightly translucent in idle so the frosted glass shows
-     through. We REMOVE PhotoSwipe's default <use> sprite via opacity:0 and
-     stack our own chevron on top via :before. */
-  .pswp__button--arrow .pswp__icn {
-    width: 56px !important;
-    height: 56px !important;
-    top: 50% !important;
-    left: 50% !important;
-    margin: 0 !important;
-    transform: translate(-50%, -50%);
-    opacity: 0;
-  }
-  .pswp__button--arrow::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: 44px 44px;
-    opacity: 0.75;
-    transition: opacity .3s ease, filter .3s ease;
-  }
-  .pswp__button--arrow:hover::before,
-  .pswp__button--arrow:focus-visible::before {
-    opacity: 1;
-    /* keep white chevron — no inversion since the plate stays dark/glassy */
-  }
-  /* Inline SVG via data-URI — easy to tweak stroke-width here.
-     stroke-width="3" + stroke-linecap="round" gives the thick, soft tip. */
-  .pswp__button--arrow--prev::before {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='15 6 9 12 15 18'/></svg>");
-  }
-  .pswp__button--arrow--next::before {
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>");
-  }
-
-  /* ----- Close / Zoom buttons (top-right) ----- */
-  .pswp__button--close,
-  .pswp__button--zoom {
-    width: 56px !important;
-    height: 56px !important;
-    background: rgba(255, 255, 255, 0.04) !important;
-    backdrop-filter: blur(10px) saturate(120%);
-    -webkit-backdrop-filter: blur(10px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.10);
-    opacity: 0.6;
-    transition: transform .25s ease, background-color .25s ease, opacity .25s ease;
-  }
-  .pswp__button--close:hover,
-  .pswp__button--zoom:hover {
-    transform: scale(1.1);
-    opacity: 1;
-    /* no fill change — plate stays glassy */
-  }
-  .pswp__button--close .pswp__icn,
-  .pswp__button--zoom  .pswp__icn { color: #fff; opacity: 0.85; transition: opacity .25s ease; }
-  .pswp__button--close:hover .pswp__icn,
-  .pswp__button--zoom:hover  .pswp__icn { opacity: 1; }
-
-  /* ----- Smooth slide transitions between photos ----- */
-  /* Same tempo as the hero slider on the landing page (1500ms) */
-  .pswp { --pswp-transition-duration: 1500ms; }
-  .pswp__img,
-  .pswp__container {
-    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
-    transition-duration: 1500ms !important;
-  }
-</style>
-
-<%
-  # Hero slider cycles through ALL images of the property (full album).
-  # First image is rendered with loading="eager"; the rest are lazy-loaded so
-  # only the visible slide is fetched immediately.
-  hero_slides = all_images
-%>
 <%# Semantic <article> wraps the property-specific content (hero +
     details + location). Google and Yandex use <article> as a strong
     "this is the main content" signal — helps with content area detection
@@ -194,449 +93,75 @@
     pages emitted Apartment microdata + House JSON-LD, which Google Rich
     Results flags as "conflicting entity types". %>
 <article itemscope itemtype="https://schema.org/<%= @property.schema_org_type %>">
-<%= render 'shared/breadcrumb', items: [
-  ['Каталог', properties_path],
-  [@property.title, nil]
-] %>
-<!-- Hero — auto-rotating slider, clickable to open lightbox -->
-<section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
-  <% if hero_slides.any? %>
-    <% hero_slides.each_with_index do |img, i| %>
-      <button type="button"
-              class="hero-slide absolute inset-0 cursor-zoom-in bg-transparent border-0 p-0"
-              data-index="<%= i %>"
-              aria-label="Открыть фото <%= i + 1 %> в полноэкранном режиме"
-              style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;">
-        <div class="absolute inset-0 bg-background/60 z-10"></div>
-        <%= property_picture img,
-              alt: property_image_alt(@property, i),
-              sizes: '100vw',
-              priority: i.zero?,
-              html_class: 'w-full h-full object-cover grayscale',
-              fallback: :hero %>
-      </button>
-    <% end %>
-  <% else %>
-    <div class="absolute inset-0">
-      <div class="absolute inset-0 bg-background/60 z-10"></div>
-      <%= property_picture nil,
-            alt: property_image_alt(@property),
-            sizes: '100vw',
-            priority: true,
-            html_class: 'w-full h-full object-cover grayscale',
-            fallback: :hero %>
-    </div>
+  <%= render 'shared/breadcrumb', items: [
+    ['Каталог', properties_path],
+    [@property.title, nil]
+  ] %>
+
+  <% cache [@property, 'gallery/v1'] do %>
+    <%= render 'show_gallery', property: @property, all_images: all_images %>
   <% end %>
 
-  <!-- Arrows (manual navigation) -->
-  <% if hero_slides.size > 1 %>
-    <button type="button" id="hero-prev"
-            class="hero-arrow absolute left-4 lg:left-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
-            aria-label="Предыдущее фото">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="15 6 9 12 15 18"/></svg>
-    </button>
-    <button type="button" id="hero-next"
-            class="hero-arrow absolute right-4 lg:right-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
-            aria-label="Следующее фото">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="9 6 15 12 9 18"/></svg>
-    </button>
+  <!-- Location — moved above main info so location is "right on the page", not buried -->
+  <%= render 'location_section' %>
 
-    <!-- Slide counter (bottom-right) -->
-    <div class="absolute bottom-6 right-6 lg:bottom-8 lg:right-8 z-30 text-sm tracking-wider text-muted-foreground">
-      <span id="hero-counter" class="text-foreground text-lg">01</span>
-      <span class="mx-2">/</span>
-      <span><%= sprintf("%02d", hero_slides.size) %></span>
-    </div>
-
-    <!-- Autoplay progress bar -->
-    <div class="hero-progress" id="hero-progress"></div>
+  <%# cache_unless защита: текущая Devise OFF делает user_signed_in? всегда
+      false → partial cacheable. При re-enable favorites button рендерится
+      per-user → cache skip автоматический. price_history.size в key чтобы
+      добавление PriceHistory rows invalidated даже без property.touch. %>
+  <% cache_unless user_signed_in?, [@property, 'main_info/v1', (@price_history.respond_to?(:size) ? @price_history.size : 0), !!@is_favorited] do %>
+    <%= render 'show_main_info',
+          property: @property,
+          all_images: all_images,
+          pswp_size: pswp_size,
+          price_history: @price_history,
+          is_favorited: @is_favorited %>
   <% end %>
 
-  <!-- Foreground text overlay -->
-  <div class="relative z-20 h-full flex items-end px-6 lg:px-12 pb-12 pointer-events-none">
-    <div class="max-w-4xl pointer-events-auto">
-      <%= link_to "← К КАТАЛОГУ", properties_path, class: "inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-6" %>
-      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4 uppercase"><%= @property.deal_type == 'rent' ? 'Аренда' : 'Продажа' %></p>
-      <h1 class="text-4xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-6 uppercase"><%= @property.title %></h1>
-      <p class="text-lg tracking-wider text-muted-foreground"><%= @property.address %></p>
-      <% if all_images.size > 1 %>
-        <p class="mt-4 text-xs tracking-[0.3em] text-muted-foreground"><%= all_images.size %> ФОТО — КЛИК ДЛЯ ПРОСМОТРА</p>
-      <% end %>
-    </div>
-  </div>
-</section>
+  <!-- PhotoSwipe initialization -->
+  <script type="module">
+    import PhotoSwipeLightbox from 'https://unpkg.com/photoswipe@5.4.4/dist/photoswipe-lightbox.esm.min.js';
 
-<style>
-  /* Hero arrows: visible-but-discreet plate, brighten + scale on hover */
-  #hero-slider .hero-arrow {
-    background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(8px) saturate(120%);
-    -webkit-backdrop-filter: blur(8px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    opacity: 0.85;
-    transition: transform .3s ease, opacity .3s ease, background-color .3s ease;
-    cursor: pointer;
-  }
-  #hero-slider .hero-arrow:hover,
-  #hero-slider .hero-arrow:focus-visible {
-    transform: translateY(-50%) scale(1.12);
-    opacity: 1;
-    background: rgba(0, 0, 0, 0.55);
-  }
-  /* Auto-play interval (synchronised with the JS setInterval) */
-  #hero-slider { --hero-interval: 3000ms; }
-  #hero-slider .hero-progress {
-    position: absolute;
-    left: 0; bottom: 0;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.85);
-    width: 0%;
-    z-index: 30;
-    transition: width var(--hero-interval) linear;
-    pointer-events: none;
-  }
-  #hero-slider.is-paused .hero-progress { transition: none; }
-</style>
-
-<script>
-  (function () {
-    const root = document.getElementById('hero-slider');
-    if (!root) return;
-    const slides = Array.from(root.querySelectorAll('.hero-slide'));
-    if (slides.length <= 1) return;
-    const counter = document.getElementById('hero-counter');
-    const prevBtn = document.getElementById('hero-prev');
-    const nextBtn = document.getElementById('hero-next');
-
-    const progress = document.getElementById('hero-progress');
-    // Single source of truth for the cycle length (matches CSS --hero-interval).
-    const INTERVAL_MS = 3000;
-    let idx = 0;
-    let timer = null;
-
-    function show(n) {
-      idx = (n + slides.length) % slides.length;
-      slides.forEach((el, i) => {
-        const active = i === idx;
-        el.style.opacity = active ? '1' : '0';
-        el.style.pointerEvents = active ? 'auto' : 'none';
-      });
-      if (counter) counter.textContent = String(idx + 1).padStart(2, '0');
-      restartProgress();
-      // Any transition (auto or manual) restarts the timer — prevents double
-      // ticks and keeps each visible slide on screen for a full INTERVAL_MS.
-      resetAuto();
-    }
-
-    function restartProgress() {
-      if (!progress) return;
-      progress.style.transition = 'none';
-      progress.style.width = '0%';
-      void progress.offsetWidth;          // force reflow
-      progress.style.transition = `width ${INTERVAL_MS}ms linear`;
-      progress.style.width = '100%';
-    }
-
-    function resetAuto() {
-      if (timer) clearInterval(timer);
-      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
-    }
-    function startAuto() {
-      if (timer) return;                   // guard: don't stack timers
-      restartProgress();
-      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
-    }
-    function stopAuto()  {
-      if (timer) { clearInterval(timer); timer = null; }
-      if (progress) progress.style.transition = 'none';
-    }
-
-    // Manual navigation — stopPropagation so click doesn't bubble up to the slide button (which would open lightbox).
-    prevBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx - 1); });
-    nextBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx + 1); });
-
-    // Slides themselves open the lightbox at their own index.
-    slides.forEach((el) => {
-      el.addEventListener('click', () => {
-        const target = document.querySelector(`[data-photoswipe-gallery] a:nth-of-type(${idx + 1})`);
-        target?.click();
-      });
+    // -----------------------------------------------------------
+    // UX configuration — feel free to tune these for your audience.
+    //   loop:        cycle to first photo after the last one
+    //   wheelToZoom: scroll-wheel zoom (vs. swipe-to-next)
+    //   bgOpacity:   backdrop dimming (1 = fully opaque)
+    //   pinchToClose: drag/pinch downwards closes the lightbox
+    // -----------------------------------------------------------
+    const lightbox = new PhotoSwipeLightbox({
+      gallery: '[data-photoswipe-gallery]',
+      children: 'a',
+      pswpModule: () => import('https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.esm.min.js'),
+      loop: true,
+      wheelToZoom: true,
+      bgOpacity: 0.95,
+      pinchToClose: true,
+      showHideAnimationType: 'fade',
+      initialZoomLevel: 'fit',
+      secondaryZoomLevel: 1.5,
+      maxZoomLevel: 3,
+      // Slower, easing-out slide transition for a calm, premium feel.
+      easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
     });
-
-    // Pause autoplay on hover / focus inside the hero so the user can read.
-    root.addEventListener('mouseenter', stopAuto);
-    root.addEventListener('mouseleave', startAuto);
-    root.addEventListener('focusin',    stopAuto);
-    root.addEventListener('focusout',   startAuto);
-
-    startAuto();
-  })();
-</script>
-
-<!-- Location — moved above main info so location is "right on the page", not buried -->
-<%= render 'location_section' %>
-
-<!-- Main info -->
-<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
-  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12">
-    <div class="lg:col-span-2">
-      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОПИСАНИЕ</p>
-      <p class="text-base text-foreground leading-relaxed whitespace-pre-line"><%= @property.description %></p>
-
-      <%# AVM (B4) — Schema-clean estimate range from PropertyAvm. Hidden
-          when there aren't enough comparables for a reliable regression. %>
-      <%= render 'avm_estimate' %>
-
-      <% area_label = @property.property_type&.slug == 'house' ? display_house_area(@property) : display_area(@property) %>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border mt-12">
-        <% [
-          ["ПЛОЩАДЬ",  area_label.presence || "—"],
-          ["КОМНАТ",   @property.rooms.presence || "—"],
-          ["ЭТАЖ",     (@property.floor.present? ? "#{@property.floor}/#{@property.total_floors}" : "—")],
-          ["ГОД",      @property.building_year.presence || "—"]
-        ].each do |label, value| %>
-          <div class="bg-card p-6">
-            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2"><%= label %></p>
-            <p class="text-lg tracking-wider text-foreground"><%= value %></p>
-          </div>
-        <% end %>
-      </div>
-
-      <% if all_images.any? %>
-        <p class="text-sm tracking-[0.4em] text-muted-foreground mt-12 mb-4">ГАЛЕРЕЯ</p>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" data-photoswipe-gallery>
-          <% all_images.each_with_index do |img, idx| %>
-            <% lightbox_url = (url_for(img.variant(:hero)) rescue nil); next unless lightbox_url %>
-            <% w, h = pswp_size.call(img) %>
-            <a href="<%= lightbox_url %>"
-               data-pswp-width="<%= w %>"
-               data-pswp-height="<%= h %>"
-               class="aspect-[4/3] overflow-hidden block group cursor-zoom-in relative">
-              <%= property_picture img,
-                    alt: property_image_alt(@property, idx + 1),
-                    sizes: '(min-width: 768px) 33vw, 50vw',
-                    html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-500',
-                    fallback: :card %>
-              <span class="absolute bottom-2 right-2 text-[10px] tracking-widest text-background bg-foreground/80 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <%= idx + 1 %> / <%= all_images.size %>
-              </span>
-            </a>
-          <% end %>
-        </div>
-      <% end %>
-
-      <% extras = [] %>
-      <% extras << "Балкон"      if @property.respond_to?(:has_balcony)   && @property.has_balcony %>
-      <% extras << "Лоджия"      if @property.respond_to?(:has_loggia)    && @property.has_loggia %>
-      <% extras << "Парковка"    if @property.respond_to?(:has_parking)   && @property.has_parking %>
-      <% extras << "Лифт"        if @property.respond_to?(:has_elevator)  && @property.has_elevator %>
-      <% extras << "Консьерж"    if @property.respond_to?(:has_concierge) && @property.has_concierge %>
-      <% extras << "Охрана"      if @property.respond_to?(:has_security)  && @property.has_security %>
-      <% if extras.any? %>
-        <div class="mt-12">
-          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">УДОБСТВА</p>
-          <div class="flex flex-wrap gap-3">
-            <% extras.each do |e| %>
-              <span class="px-4 py-2 text-xs tracking-wider border border-border text-foreground"><%= e.upcase %></span>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
-    </div>
-
-    <aside class="lg:col-span-1">
-      <div class="bg-card border border-border p-8 sticky top-24">
-        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ЦЕНА</p>
-        <p class="text-3xl tracking-wider text-foreground mb-2"><%= @property.price_formatted %></p>
-        <% if (ppu = display_price_per_unit(@property)).present? %>
-          <p class="text-xs tracking-wider text-muted-foreground mb-2"><%= ppu %></p>
-        <% end %>
-        <%# Price-change timeline — silent until first PriceHistory row exists.
-            Tracker hook in Property#after_update fires automatically when
-            price changes; renders nothing while count==0. %>
-        <%= render 'price_history', history: @price_history %>
-
-        <div class="flex flex-col gap-3 mt-8">
-          <% if user_signed_in? %>
-            <%= button_to favorite_property_path(@property), method: :post, class: "w-full px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
-              <%= @is_favorited ? 'В ИЗБРАННОМ' : 'В ИЗБРАННОЕ' %>
-            <% end %>
-          <% else %>
-            <%= link_to "ВОЙТИ ДЛЯ ИЗБРАННОГО", new_user_session_path, class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
-          <% end %>
-          <%= link_to "ЗАПИСАТЬСЯ НА ПРОСМОТР", new_property_inquiry_path(@property), class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
-
-          <%# Investment Audit (Phase 4.5). Pre-fills the audit form with
-              this property's area/rooms/price/address so the buyer can run
-              EI/Monte Carlo with one extra step (entering an offer price
-              or hitting submit). Secondary CTA — visual hierarchy below the
-              primary "ЗАПИСАТЬСЯ" button. %>
-          <%= link_to investment_audit_new_path(from_property: @property.slug),
-                class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
-            СТОИТ ЛИ ПОКУПАТЬ?
-          <% end %>
-          <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
-            ИНВЕСТ-АУДИТ: ИНДЕКС · МОНТЕ-КАРЛО · РЕКОМЕНДАЦИЯ
-          </p>
-
-          <%# Mortgage calculator CTA — same prefill mechanic via ?from_property=.
-              Subtler text-link style (not a full button) — calculator is a
-              lighter-weight tool than the full audit. %>
-          <%= link_to services_mortgage_calculator_path(from_property: @property.slug),
-                class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-2.5 transition-colors" do %>
-            РАССЧИТАТЬ ИПОТЕКУ →
-          <% end %>
-
-          <%# A3 — premium dossier PDF (5 страниц: cover/gallery/description/
-              agent/cta). Только для premium-объектов (price >= 15M ₽
-              или is_premium=true) — иначе CTA скрыт. %>
-          <% if @property.premium? %>
-            <%= link_to dossier_property_path(@property, format: :pdf),
-                  target: '_blank', rel: 'noopener',
-                  class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-foreground hover:bg-foreground hover:text-background border border-foreground/40 transition-colors mt-2" do %>
-              📑 СКАЧАТЬ ДОЗСЬЕ PDF
-            <% end %>
-            <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 -mt-1">
-              PREMIUM · 5 СТРАНИЦ · ФОТО · ОПИСАНИЕ · АГЕНТ
-            </p>
-          <% end %>
-        </div>
-
-        <div class="mt-12 pt-8 border-t border-border">
-          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">КОНТАКТ АГЕНТА</p>
-          <%# 152-ФЗ — если агент попросил снять публичный профиль,
-              показываем «АН Виктори» + основной телефон агентства
-              вместо персональных данных. has_agent_profile? — единый
-              gate (то же что используется в publicly_listable_agents
-              scope для /agents/<slug> и /sitemap-blog.xml). %>
-          <% agent = @property.user %>
-          <% show_agent = agent&.has_agent_profile? %>
-          <p class="text-base tracking-wider text-foreground"><%= show_agent ? agent.full_name : 'АН Виктори' %></p>
-          <%# If the agent has no personal phone synced from CRM, или агент
-              снял публичный профиль — fallback на AgencyInfo::PHONE_PRIMARY
-              (the main office line). %>
-          <% phone = (show_agent ? (agent.display_phone || AgencyInfo::PHONE_PRIMARY) : AgencyInfo::PHONE_PRIMARY) %>
-          <a href="tel:<%= phone.gsub(/\D/, '') %>" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">
-            <%= phone %>
-          </a>
-          <% if !show_agent || agent.phone.blank? %>
-            <p class="text-xs tracking-wider text-muted-foreground mt-1">общий телефон агентства</p>
-          <% end %>
-        </div>
-      </div>
-    </aside>
-  </div>
-</section>
-
-<!-- PhotoSwipe initialization -->
-<script type="module">
-  import PhotoSwipeLightbox from 'https://unpkg.com/photoswipe@5.4.4/dist/photoswipe-lightbox.esm.min.js';
-
-  // -----------------------------------------------------------
-  // UX configuration — feel free to tune these for your audience.
-  //   loop:        cycle to first photo after the last one
-  //   wheelToZoom: scroll-wheel zoom (vs. swipe-to-next)
-  //   bgOpacity:   backdrop dimming (1 = fully opaque)
-  //   pinchToClose: drag/pinch downwards closes the lightbox
-  // -----------------------------------------------------------
-  const lightbox = new PhotoSwipeLightbox({
-    gallery: '[data-photoswipe-gallery]',
-    children: 'a',
-    pswpModule: () => import('https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.esm.min.js'),
-    loop: true,
-    wheelToZoom: true,
-    bgOpacity: 0.95,
-    pinchToClose: true,
-    showHideAnimationType: 'fade',
-    initialZoomLevel: 'fit',
-    secondaryZoomLevel: 1.5,
-    maxZoomLevel: 3,
-    // Slower, easing-out slide transition for a calm, premium feel.
-    easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
-  });
-  lightbox.init();
-</script>
-
+    lightbox.init();
+  </script>
 </article>
 
-<%# Helpful-content cross-links — surface market-context articles + agent
-    page from a high-intent page (someone reading a property listing is
-    the highest-funnel state for mortgage and trust signals). Without
-    this block, /properties/* concentrated PageRank without distributing
-    to /blog, /agents, /services. %>
-<section class="px-6 lg:px-12 py-12 bg-background border-t border-border">
-  <div class="max-w-4xl mx-auto">
-    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-6 uppercase">Полезно знать перед покупкой</p>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <%= link_to services_mortgage_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
-        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">ИПОТЕКА</p>
-        <p class="text-sm text-foreground group-hover:underline">Калькулятор и подбор программы →</p>
-      <% end %>
-      <%= link_to blog_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
-        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">РЫНОК РЯЗАНИ</p>
-        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и тренды цен →</p>
-      <% end %>
-      <%= link_to team_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
-        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">АГЕНТЫ</p>
-        <p class="text-sm text-foreground group-hover:underline">Кто будет вести вашу сделку →</p>
-      <% end %>
-    </div>
-  </div>
-</section>
-
-<!-- Similar -->
-<% if @similar_properties.respond_to?(:any?) && @similar_properties.any? %>
-  <section class="px-6 lg:px-12 py-24 bg-background border-t border-border">
-    <div class="max-w-7xl mx-auto">
-      <div class="flex items-end justify-between mb-12">
-        <div>
-          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ПОХОЖИЕ</p>
-          <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground">МОЖЕТ ПОНРАВИТЬСЯ</h2>
-        </div>
-        <%= link_to "ВСЕ ОБЪЕКТЫ →", properties_path, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <% @similar_properties.each do |p| %>
-          <%= render "property_card", property: p %>
-        <% end %>
-      </div>
-    </div>
-  </section>
+<% cache 'property_show/helpful_links/v1' do %>
+  <%= render 'show_helpful_links' %>
 <% end %>
 
-<!-- More in this district — geo-clustered internal linking -->
-<% if @district_properties.respond_to?(:any?) && @district_properties.any? %>
-  <% district_filter_url = properties_path(q: { district_eq: @property.district }) %>
-  <section class="px-6 lg:px-12 py-24 bg-background border-t border-border">
-    <div class="max-w-7xl mx-auto">
-      <div class="flex items-end justify-between mb-12">
-        <div>
-          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">РАЙОН</p>
-          <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground">
-            ЕЩЁ В <%= @property.district.to_s.upcase %>
-          </h2>
-        </div>
-        <%= link_to "ВСЕ В РАЙОНЕ →", district_filter_url, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <% @district_properties.each do |p| %>
-          <%= render "property_card", property: p %>
-        <% end %>
-      </div>
-    </div>
-  </section>
+<%# Anchor @property в key — иначе два разных property's с identical
+    similar-set max(updated_at) и count могли бы collide на one cache entry. %>
+<% if @similar_properties.respond_to?(:any?) && @similar_properties.any? %>
+  <% cache [@property, 'similar/v1', @similar_properties] do %>
+    <%= render 'show_similar', similar_properties: @similar_properties %>
+  <% end %>
+<% end %>
 
-  <%# JSON-LD ItemList — gives crawlers explicit structure for the curated
-      district block, so "Ещё в Канищево" registers as a cluster, not 4 loose links. %>
-  <script type="application/ld+json">
-  <%= raw({
-    '@context' => 'https://schema.org',
-    '@type' => 'ItemList',
-    'name' => "Недвижимость в районе #{@property.district}, Рязань",
-    'url' => url_for(district_filter_url),
-    'itemListElement' => @district_properties.each_with_index.map { |p, i|
-      { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
-    }
-  }.to_json) %>
-  </script>
+<% if @district_properties.respond_to?(:any?) && @district_properties.any? %>
+  <% cache ['property_show/district_cluster/v1', @property.district, @district_properties] do %>
+    <%= render 'show_district_cluster', property: @property, district_properties: @district_properties %>
+  <% end %>
 <% end %>

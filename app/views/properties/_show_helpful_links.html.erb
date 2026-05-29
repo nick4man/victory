@@ -1,0 +1,24 @@
+<%# Helpful-content cross-links — surface market-context articles + agent
+    page from a high-intent page (someone reading a property listing is
+    the highest-funnel state for mortgage and trust signals). Without
+    this block, /properties/* concentrated PageRank without distributing
+    to /blog, /agents, /services. Pure static — cache via version string. %>
+<section class="px-6 lg:px-12 py-12 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-6 uppercase">Полезно знать перед покупкой</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <%= link_to services_mortgage_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Калькулятор и подбор программы →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">РЫНОК РЯЗАНИ</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и тренды цен →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-5 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.2em] text-muted-foreground mb-1">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Кто будет вести вашу сделку →</p>
+      <% end %>
+    </div>
+  </div>
+</section>
