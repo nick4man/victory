@@ -7,6 +7,15 @@
 # Ignore bundler config.
 /.bundle
 
+# Core dumps (e.g. puma worker crash on restart — могут весить 1+ GB).
+/core
+/core.*
+
+# Runtime session locks (.claude/sessions/ + scheduled_tasks).
+.claude/scheduled_tasks.lock
+.claude/sessions/inbox/*/
+!.claude/sessions/inbox/*/.keep
+
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*
