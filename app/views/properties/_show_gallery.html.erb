@@ -100,10 +100,17 @@
   }
 </style>
 
+<%# HERO_SLIDER_LIMIT — макс slides в auto-rotating preview. Native
+    `loading=lazy` не работает для absolute-positioned overlays на одной
+    позиции (все evaluate как "in viewport") → browser скачивает все.
+    Ограничиваем до 5 (≈15s rotation) — полный gallery доступен через
+    PhotoSwipe по тапу. Без этого 30 hero variants ~6 MB initial bytes. %>
+<% hero_slides = all_images.first(5) %>
+
 <!-- Hero — auto-rotating slider, clickable to open lightbox -->
 <section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
-  <% if all_images.any? %>
-    <% all_images.each_with_index do |img, i| %>
+  <% if hero_slides.any? %>
+    <% hero_slides.each_with_index do |img, i| %>
       <button type="button"
               class="hero-slide absolute inset-0 cursor-zoom-in bg-transparent border-0 p-0"
               data-index="<%= i %>"
@@ -131,7 +138,7 @@
   <% end %>
 
   <!-- Arrows (manual navigation) -->
-  <% if all_images.size > 1 %>
+  <% if hero_slides.size > 1 %>
     <button type="button" id="hero-prev"
             class="hero-arrow absolute left-4 lg:left-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
             aria-label="Предыдущее фото">
@@ -147,7 +154,7 @@
     <div class="absolute bottom-6 right-6 lg:bottom-8 lg:right-8 z-30 text-sm tracking-wider text-muted-foreground">
       <span id="hero-counter" class="text-foreground text-lg">01</span>
       <span class="mx-2">/</span>
-      <span><%= sprintf("%02d", all_images.size) %></span>
+      <span><%= sprintf("%02d", hero_slides.size) %></span>
     </div>
 
     <!-- Autoplay progress bar -->
