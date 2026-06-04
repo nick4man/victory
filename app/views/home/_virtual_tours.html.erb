@@ -11,9 +11,13 @@
         <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition group">
           <%= link_to property_path(property), class: "block" do %>
             <div class="relative h-48 bg-gray-200 overflow-hidden">
-              <% if property.primary_image %>
-                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover group-hover:scale-110 transition duration-300" %>
-              <% end %>
+              <%# property_picture даёт AVIF+WebP+JPEG `<picture>` с srcset.
+                  Sizes: desktop 4-col (25vw), tablet 2-col (50vw), mobile (100vw). %>
+              <%= property_picture property.images.first,
+                    alt: property.title,
+                    sizes: '(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw',
+                    html_class: 'w-full h-full object-cover group-hover:scale-110 transition duration-300',
+                    fallback: :card %>
 
               <div class="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center">
                 <div class="bg-white bg-opacity-90 p-4 rounded-full">

@@ -17,15 +17,16 @@
         <div class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition">
           <%= link_to property_path(property), class: "block" do %>
             <div class="relative h-64 bg-gray-200">
-              <% if property.primary_image %>
-                <%= image_tag property.primary_image.url, alt: property.title, class: "w-full h-full object-cover" %>
-              <% else %>
-                <div class="w-full h-full flex items-center justify-center text-gray-400">
-                  <svg class="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                  </svg>
-                </div>
-              <% end %>
+              <%# Use property_picture для AVIF+WebP+JPEG `<picture>` markup
+                  с responsive srcset. Раньше `image_tag primary_image.url`
+                  отдавал raw original blob (~450KB JPEG/photo) → 2.2 MB на
+                  блок из 6 cards → LCP 12.5s mobile. Sizes hint матчит grid:
+                  desktop 33vw, tablet 50vw, mobile 100vw. %>
+              <%= property_picture property.images.first,
+                    alt: property.title,
+                    sizes: '(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw',
+                    html_class: 'w-full h-full object-cover',
+                    fallback: :card %>
 
               <div class="absolute top-4 left-4">
                 <span class="bg-yellow-400 text-gray-900 px-3 py-1 rounded-full text-xs font-bold">PREMIUM</span>
