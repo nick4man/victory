@@ -54,3 +54,29 @@ read-only) и закоммичен. Теперь `db:schema:load` восстан
 - Layer 0 spec cleanup (101 failures → 0)
 - ransack 4.4 / neighbor 0.6 runtime smoke (nearest_neighbors, admin search)
 - Staging deploy + 3-day acceptance + prod 24h watch (Section 7-8)
+
+## UPDATE — Layer 0 spec cleanup progress (04.06.26)
+
+Systemic fixes применены (commits 9bb677f, 4b0062a, 47d8b0b): **101 → 28 failures (-72%)**.
+Все — pre-existing test-debt, ноль Rails-7.2 regressions.
+
+| Fix | Failures closed | Commit |
+|---|---|---|
+| crm_id в inline BuyerOrder.create! (NOT-NULL factory drift) | 38 | 9bb677f |
+| User first_name/last_name в property_spec + auto_match let(:user) | 27 | 4b0062a |
+| webmock gem + require (stub_request в yandex_vision) | 7 | 4b0062a |
+| build_property attaches minimal image (published_must_be_complete) | 7 | 47d8b0b |
+
+### Remaining 28 — diverse long-tail (требует per-spec judgment, НЕ механика)
+
+| Тип | Кол-во | Файлы / пример | Решение требует |
+|---|---|---|---|
+| Stale assertions (текст reworded в коде) | ~10 | morning_digest (SLA-warnings/4-5/done/Просрочки), cheatsheet_renderer, weekly_summary_job, dashboard send_message wording | spec обновить под текущий текст, ИЛИ восстановить test-setup данных (StaffMetric/overdue tasks не создаются) |
+| Stale mocks (InstanceDouble не стабит новый метод) | 5 | parser_job_spec: `ClientDocument received unexpected :property / :nextcloud_path` | застабить .property/.nextcloud_path в doubles (код добавил вызовы) |
+| Schema-vs-spec конфликт | 2 | property_spec `.unassigned` нулит user_id (NOT NULL); builder lead_ref_type: nil (NOT NULL) | решить: nullable column или obsolete scope/spec |
+| Behavioral expectations | ~7 | sla_assessor tiers (4), topic_registry keys (auto_route/missing_keys 16/14), inn_parser full_name, lead_event anchor_url | сверить с текущей бизнес-логикой — spec или код authoritative? |
+| Enum prefix | 1 | property_spec ждёт `rent?`, enum `_prefix: true` → `deal_type_rent?` | spec под convention (CLAUDE.md rule #2) |
+
+**Эти 28 НЕ блокируют вывод**: Rails 7.2.3.1 звучен. Они — Layer-0 baseline debt, который
+существовал и на 7.1. Завершение (28 → 0) — per-spec работа владельца кода (нужно знать
+«код или spec прав» в каждом behavioral случае), не blind-fix (может замаскировать баг).
