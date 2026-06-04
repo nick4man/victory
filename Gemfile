@@ -5,14 +5,26 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
 ruby '3.2.2'
 
-# Core Rails
-gem 'rails', '~> 7.1.0'
+# Core Rails — EOL Phase 1 (04.06.26): 7.1.6 → 7.2.3.1.
+# Закрывает 8 Rails 7.1 CVE (XSS Action View, content-type bypass Active
+# Storage, path traversal, ReDoS number_to_delimited). Ruby остаётся 3.2.2 —
+# Rails 7.2 требует Ruby >= 3.1; bump до 3.3.6 — отдельный step (Docker base).
+gem 'rails', '~> 7.2.3', '>= 7.2.3.1'
 
 # Database
 gem 'pg', '~> 1.5'
 
 # Server
 gem 'puma', '~> 6.4'
+
+# Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
+# / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
+# host allowlist bypass CVE-2026-34827/34829; rack-session: secretless session
+# forgery CVE-2026-39324). Явные floor-пины, пока transitive deps не догонят.
+gem 'rack', '>= 3.2.6'
+gem 'rack-session', '>= 2.1.2'
+gem 'nokogiri', '>= 1.19.3' # XSLT memory leak GHSA-v2fc + xmlC14N GHSA-wx95
+gem 'net-imap', '>= 0.6.4' # command injection via Symbol inputs CVE-2026-42258
 
 # Assets
 gem 'sprockets-rails'
@@ -25,8 +37,8 @@ gem 'jbuilder'
 gem 'tailwindcss-rails'
 
 # Minimal auth
-gem 'bcrypt', '~> 3.1.7'
-gem 'jwt', '~> 2.8'
+gem 'bcrypt', '~> 3.1', '>= 3.1.22'
+gem 'jwt', '~> 2.10', '>= 2.10.3' # empty-key HMAC bypass CVE-2026-45363
 
 # Authorization
 gem 'pundit', '~> 2.3'
@@ -43,7 +55,7 @@ gem 'prawn-table', '~> 0.2'
 
 # Background jobs
 gem 'sidekiq', '~> 7.2'
-gem 'sidekiq-cron', '~> 1.12'
+gem 'sidekiq-cron', '~> 2.4' # 2.4+ закрывает XSS CVE-2025-67202
 
 # Redis (Action Cable + Sidekiq + cache)
 gem 'redis', '~> 5.0'
@@ -52,7 +64,7 @@ gem 'redis', '~> 5.0'
 gem 'kaminari', '~> 1.2'
 
 # Search
-gem 'ransack', '~> 4.1'
+gem 'ransack', '~> 4.2'
 gem 'pg_search', '~> 2.3'
 
 # URL slugs
@@ -72,7 +84,7 @@ gem 'geocoder', '~> 1.8'
 # semantic property search via cosine distance on Google gemini-embedding-001 vectors).
 # PostGIS is enabled at the DB level only; we use raw SQL for ST_DWithin to avoid
 # swapping the AR adapter from `postgresql` to `postgis`.
-gem 'neighbor', '~> 0.5'
+gem 'neighbor', '~> 0.6'
 
 # API
 gem 'rack-cors', '~> 2.0'
@@ -92,7 +104,7 @@ gem 'rqrcode', '~> 2.2'
 # (Express hybrid comparable fallback). Faraday-retry handles transient
 # 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
 # down sidecar degrades gracefully instead of stalling Puma threads.
-gem 'faraday', '~> 2.9'
+gem 'faraday', '~> 2.9', '>= 2.14.2' # protocol-relative URI host-scope bypass CVE-2026-33637
 gem 'faraday-retry', '~> 2.2'
 gem 'stoplight', '~> 4.1'
 

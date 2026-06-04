@@ -1,0 +1,18 @@
+# bundler-audit ignore list — documented, justified suppressions only.
+#
+# Каждая запись ДОЛЖНА иметь обоснование. Это НЕ свалка для «потом починим» —
+# только advisories, которые в нашем deployment не эксплуатируются ИЛИ
+# отложены в named Phase с явным решением.
+#
+# Review: при каждом EOL/upgrade спринте перечитать — снять ignore если gem
+# bump'нут, добавить если новый non-exploitable advisory.
+---
+ignore:
+  # ── Devise 4.9.4 — 2 advisories, оба требуют Devise 5.0.x (major bump) ──
+  # Devise ОТКЛЮЧЁН на victory62.org (CLAUDE.md: current_user → nil,
+  # user_signed_in? → false; admin через ?token, client cabinet — magic-link).
+  # Ни confirmable, ни timeoutable модули НЕ активны → CVE не эксплуатируются.
+  # Major bump 4.9 → 5.0 — Phase 2 Non-Goal (см. EOL design Section 2).
+  # Снять оба ignore когда Devise 5.0 поднимут в Phase 2 ИЛИ Devise удалят совсем.
+  - GHSA-57hq-95w6-v4fc  # CVE-2026-32700 confirmable change-email race (Medium) — confirmable OFF
+  - GHSA-jp94-3292-c3xv  # CVE-2026-40295 open-redirect в timeoutable (Medium) — timeoutable OFF
