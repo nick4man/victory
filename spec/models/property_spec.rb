@@ -20,7 +20,7 @@ RSpec.describe Property do
   end
 
   def build_property(attrs = {})
-    described_class.new({
+    prop = described_class.new({
       user: user,
       title: 'Тестовая квартира — 2-комн Канищево',
       description: 'Тестовое описание объекта.',
@@ -33,6 +33,14 @@ RSpec.describe Property do
       address: 'Рязань, ул. Тестовая, д. 1, кв. 10',
       district: 'Канищево'
     }.merge(attrs))
+    # published_properties_must_be_complete требует ≥1 изображение для
+    # active+published. Аттачим minimal valid JPEG (validation проверяет
+    # только content_type+size, не декодирует) чтобы scope-specs со
+    # status: :active проходили.
+    prop.images.attach(
+      io: StringIO.new("\xFF\xD8\xFF\xD9".b), filename: 'test.jpg', content_type: 'image/jpeg'
+    )
+    prop
   end
 
   describe 'associations' do
