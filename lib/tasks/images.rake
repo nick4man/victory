@@ -20,8 +20,8 @@ namespace :images do
   # Variants per model — must match has_many_attached / has_one_attached block.
   PROPERTY_VARIANTS = %i[
     thumb thumb_webp thumb_avif
-    card  card_webp  card_avif
-    hero  hero_webp  hero_avif
+    card card_webp card_avif
+    hero hero_webp hero_avif
   ].freeze
 
   COVER_VARIANTS = %i[
