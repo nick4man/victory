@@ -46,7 +46,7 @@ RSpec.describe Telegram::WorkBot::Commands::Whoami do
     end
 
     it 'topnlab_api_error — пишет error_message (включает класс ошибки)' do
-      # Note: при topnlab raise существующий код логирует 2 entries —
+      # NOTE: при topnlab raise существующий код логирует 2 entries —
       # сначала topnlab_api_error из rescue, потом email_not_in_topnlab из
       # main flow (т.к. find_topnlab_user вернул nil). Проверяем что НАШ
       # topnlab_api_error log заполнил error_message.

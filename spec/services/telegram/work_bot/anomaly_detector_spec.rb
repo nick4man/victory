@@ -5,7 +5,6 @@ require 'rails_helper'
 RSpec.describe Telegram::WorkBot::AnomalyDetector do
   let(:today) { Date.parse('2026-05-29') }
   before { travel_to today.to_time + 12.hours }
-  after  { travel_back }
 
   # 5 staff. По-умолчанию все «healthy». Каждый тест портит одного.
   let!(:alice) { create_staff(11_001, 'Алиса',  'alice') }

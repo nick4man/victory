@@ -24,6 +24,7 @@ RSpec.describe Telegram::WorkBot::AnomalyNotifier do
   end
 
   let(:tg_client) { instance_double(Telegram::Client, send_message: { 'message_id' => 1 }) }
+
   before { allow(Telegram::Client).to receive(:new).and_return(tg_client) }
 
   def anomaly(metric:, value:, baseline:, label: 'существенное', context: {})
