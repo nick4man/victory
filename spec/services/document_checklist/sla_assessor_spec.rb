@@ -8,7 +8,7 @@ require 'rails_helper'
 # Time.current внутри model) — поэтому build_dr возвращает saved record.
 RSpec.describe DocumentChecklist::SlaAssessor do
   let(:buyer_order) do
-    BuyerOrder.create!(client_name: 'Test', deal_type: 'sale',
+    BuyerOrder.create!(crm_id: 900_904, client_name: 'Test', deal_type: 'sale',
                        deal_state: 'lead', synced_at: Time.current)
   end
 

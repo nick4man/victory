@@ -25,7 +25,7 @@ RSpec.describe DocumentChecklist::Builder do
   describe 'template resolution' do
     context 'when lead.lead_ref is nil' do
       let(:buyer_order) do
-        BuyerOrder.create!(client_name: 'Test', deal_type: 'sale',
+        BuyerOrder.create!(crm_id: 900_903, client_name: 'Test', deal_type: 'sale',
                            deal_state: 'lead', synced_at: Time.current)
       end
       let(:lead) { build_lead(lead_ref: buyer_order) }
