@@ -13,6 +13,7 @@ RSpec.describe Property do
   let(:user) do
     User.create!(
       email: "test-#{SecureRandom.hex(4)}@victory.test",
+      first_name: 'Test', last_name: 'Agent',
       password: 'TestPass123!',
       password_confirmation: 'TestPass123!'
     )

@@ -148,4 +148,5 @@ group :development, :test do
   gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
   gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
   gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
+  gem 'webmock',             '~> 3.24'   # HTTP stubbing (stub_request в yandex_vision и др.)
 end
