@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
-# Renders Property image attachments as a responsive <picture> with webp+jpeg
+# Renders Property image attachments as a responsive <picture> with avif+webp+jpeg
 # sources and a srcset across three sizes (thumb 400 / card 800 / hero 1920).
 #
 # Why a <picture> tag instead of <img srcset>:
-#   - The <source type="image/webp"> lets the browser pick webp when supported
-#     (~40% smaller than jpeg at equivalent quality). Older Safari versions get
-#     the <img> fallback automatically.
+#   - Browser picks first <source> with supported type. Order matters: AVIF
+#     first (50% smaller than jpeg, Chrome 85+/Firefox 93+/Safari 16.4+),
+#     WebP second (broader support, ~30% smaller), <img> jpeg fallback for
+#     Safari ≤16, social crawlers, RSS readers.
 #   - One <img> with srcset can't switch formats; <picture> can.
 #
 # Why a helper rather than inline ERB:
@@ -27,11 +28,16 @@ module PropertyImageHelper
   def property_picture(image, alt:, sizes: '100vw', priority: false, html_class: nil, fallback: :card)
     return fallback_picture(alt: alt, html_class: html_class, fallback: fallback) unless image.respond_to?(:variant)
 
+    avif_srcset = build_srcset(image, format: :avif)
     webp_srcset = build_srcset(image, format: :webp)
     jpeg_srcset = build_srcset(image, format: :jpeg)
     img_src     = url_for(image.variant(:card))
 
+    # AVIF source first — browser выбирает первый supported type. Chrome 85+,
+    # Firefox 93+, Safari 16.4+ возьмут AVIF; всё ниже — WebP; всё ниже
+    # WebP — JPEG из <img>. Sizes attribute identical для всех source'ов.
     content_tag(:picture) do
+      concat tag.source(srcset: avif_srcset, sizes: sizes, type: 'image/avif')
       concat tag.source(srcset: webp_srcset, sizes: sizes, type: 'image/webp')
       concat image_tag(img_src,
                        alt: alt,
@@ -45,6 +51,32 @@ module PropertyImageHelper
   rescue StandardError => e
     Rails.logger.warn("[PropertyImageHelper] picture render failed: #{e.class} #{e.message}")
     fallback_picture(alt: alt, html_class: html_class, fallback: fallback)
+  end
+
+  # Render TWO <link rel=preload> for LCP hero — AVIF first, WebP second.
+  # Each browser triggers only one preload (matching its supported type),
+  # so no wasted bytes. Modern `imagesrcset`/`imagesizes` attrs позволяют
+  # preload respect responsive srcset (browser picks the right size без
+  # отдельного preload-per-breakpoint).
+  #
+  # Использование: в <head> перед закрытием — раннее чтение URL'ов парсера,
+  # не дожидаясь body. Экономит ~200-300ms LCP на cold visits (Yandex
+  # MatrixNet взвешивает LCP сильно для mobile-first ranking).
+  def property_hero_preloads(image, sizes: '100vw')
+    return '' unless image.respond_to?(:variant)
+
+    avif_srcset = build_srcset(image, format: :avif)
+    webp_srcset = build_srcset(image, format: :webp)
+
+    safe_join([
+      tag.link(rel: 'preload', as: 'image', imagesrcset: avif_srcset,
+               imagesizes: sizes, type: 'image/avif', fetchpriority: 'high'),
+      tag.link(rel: 'preload', as: 'image', imagesrcset: webp_srcset,
+               imagesizes: sizes, type: 'image/webp', fetchpriority: 'high')
+    ])
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyImageHelper] hero preload failed: #{e.class} #{e.message}")
+    ''
   end
 
   # URL for a single variant — used by JSON-LD and og:image, both of which
@@ -64,10 +96,17 @@ module PropertyImageHelper
 
   private
 
+  # format → variant suffix mapping. :jpeg использует базовые variants без
+  # суффикса (legacy default), :webp/:avif — соответствующие variants из
+  # Property модели. Suffix-based чтобы не плодить hashes; легко добавить
+  # новый формат (jxl, ...) когда libvips подтянет support.
+  VARIANT_SUFFIX = { jpeg: '', webp: '_webp', avif: '_avif' }.freeze
+
   def build_srcset(image, format:)
-    thumb_v = format == :webp ? :thumb_webp : :thumb
-    card_v  = format == :webp ? :card_webp  : :card
-    hero_v  = format == :webp ? :hero_webp  : :hero
+    suffix  = VARIANT_SUFFIX.fetch(format)
+    thumb_v = :"thumb#{suffix}"
+    card_v  = :"card#{suffix}"
+    hero_v  = :"hero#{suffix}"
     [
       "#{url_for(image.variant(thumb_v))} 400w",
       "#{url_for(image.variant(card_v))} 800w",

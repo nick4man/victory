@@ -125,16 +125,24 @@ class Property < ApplicationRecord
   has_many :documents, dependent: :destroy
   has_many :notes, as: :notable, dependent: :destroy
   has_one :property_embedding, dependent: :destroy
-  # Three responsive sizes × two formats: webp (modern browsers) + jpeg (fallback).
+  # Three responsive sizes × three formats: avif (modern, ~50% smaller than
+  # jpeg) + webp (broad modern, ~30% smaller) + jpeg (fallback for Safari ≤16,
+  # email clients, social crawlers). PropertyImageHelper эмитит <picture> с
+  # тремя <source> по убыванию приоритета (avif → webp → jpeg).
   # resize_to_limit preserves aspect ratio; strip removes EXIF (smaller files,
   # also strips GPS/camera data which we shouldn't leak from agent uploads).
+  # AVIF quality чуть ниже WebP/JPEG потому что perceptual quality на том же
+  # числе выше (libaom v3.6 — Phase 2 Lighthouse audit подтвердил savings).
   has_many_attached :images do |attachable|
     attachable.variant :thumb,      resize_to_limit: [400, 300],   saver: { quality: 78, strip: true }
     attachable.variant :thumb_webp, resize_to_limit: [400, 300],   format: :webp, saver: { quality: 75, strip: true }
+    attachable.variant :thumb_avif, resize_to_limit: [400, 300],   format: :avif, saver: { quality: 65, strip: true }
     attachable.variant :card,       resize_to_limit: [800, 600],   saver: { quality: 82, strip: true }
     attachable.variant :card_webp,  resize_to_limit: [800, 600],   format: :webp, saver: { quality: 80, strip: true }
+    attachable.variant :card_avif,  resize_to_limit: [800, 600],   format: :avif, saver: { quality: 70, strip: true }
     attachable.variant :hero,       resize_to_limit: [1920, 1440], saver: { quality: 85, strip: true }
     attachable.variant :hero_webp,  resize_to_limit: [1920, 1440], format: :webp, saver: { quality: 82, strip: true }
+    attachable.variant :hero_avif,  resize_to_limit: [1920, 1440], format: :avif, saver: { quality: 72, strip: true }
   end
   has_many_attached :floor_plans
 

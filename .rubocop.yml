@@ -3,7 +3,11 @@
 # https://rubystyle.guide/
 # https://rails.rubystyle.guide/
 
-require:
+# Legacy violation baseline — temporary disable до постепенной правки.
+# Каждая запись с TODO-комментарием. См. .rubocop_todo.yml.
+inherit_from: .rubocop_todo.yml
+
+plugins:
   - rubocop-rails
   - rubocop-rspec
   - rubocop-performance
@@ -107,7 +111,7 @@ Metrics/PerceivedComplexity:
 Naming/VariableNumber:
   Enabled: false
 
-Naming/PredicateName:
+Naming/PredicatePrefix:
   Enabled: false
 
 # Rails

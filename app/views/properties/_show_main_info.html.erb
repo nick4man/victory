@@ -1,0 +1,157 @@
+<%# Main info section — description + AVM + spec grid + gallery + extras +
+    sidebar (price + price_history + CTA buttons + agent contact).
+    Locals: property, all_images, pswp_size (lambda), price_history, is_favorited.
+
+    Cache strategy: показывается через `cache_unless user_signed_in?` снаружи —
+    user_signed_in? branch внутри (favorite button) сейчас всегда false (Devise
+    OFF), но cache_unless защищает на будущее. %>
+<section class="px-6 lg:px-12 py-16 lg:py-24 bg-background">
+  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-12">
+    <div class="lg:col-span-2">
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ОПИСАНИЕ</p>
+      <p class="text-base text-foreground leading-relaxed whitespace-pre-line"><%= property.description %></p>
+
+      <%# AVM (B4) — Schema-clean estimate range from PropertyAvm. Hidden
+          when there aren't enough comparables for a reliable regression. %>
+      <%= render 'avm_estimate' %>
+
+      <% area_label = property.property_type&.slug == 'house' ? display_house_area(property) : display_area(property) %>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-px bg-border mt-12">
+        <% [
+          ["ПЛОЩАДЬ",  area_label.presence || "—"],
+          ["КОМНАТ",   property.rooms.presence || "—"],
+          ["ЭТАЖ",     (property.floor.present? ? "#{property.floor}/#{property.total_floors}" : "—")],
+          ["ГОД",      property.building_year.presence || "—"]
+        ].each do |label, value| %>
+          <div class="bg-card p-6">
+            <p class="text-xs tracking-[0.3em] text-muted-foreground mb-2"><%= label %></p>
+            <p class="text-lg tracking-wider text-foreground"><%= value %></p>
+          </div>
+        <% end %>
+      </div>
+
+      <% if all_images.any? %>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mt-12 mb-4">ГАЛЕРЕЯ</p>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3" data-photoswipe-gallery>
+          <% all_images.each_with_index do |img, idx| %>
+            <% lightbox_url = (url_for(img.variant(:hero)) rescue nil); next unless lightbox_url %>
+            <% w, h = pswp_size.call(img) %>
+            <a href="<%= lightbox_url %>"
+               data-pswp-width="<%= w %>"
+               data-pswp-height="<%= h %>"
+               class="aspect-[4/3] overflow-hidden block group cursor-zoom-in relative">
+              <%= property_picture img,
+                    alt: property_image_alt(property, idx + 1),
+                    sizes: '(min-width: 768px) 33vw, 50vw',
+                    html_class: 'w-full h-full object-cover grayscale group-hover:grayscale-0 group-hover:scale-105 transition-all duration-500',
+                    fallback: :card %>
+              <span class="absolute bottom-2 right-2 text-[10px] tracking-widest text-background bg-foreground/80 px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <%= idx + 1 %> / <%= all_images.size %>
+              </span>
+            </a>
+          <% end %>
+        </div>
+      <% end %>
+
+      <% extras = [] %>
+      <% extras << "Балкон"      if property.respond_to?(:has_balcony)   && property.has_balcony %>
+      <% extras << "Лоджия"      if property.respond_to?(:has_loggia)    && property.has_loggia %>
+      <% extras << "Парковка"    if property.respond_to?(:has_parking)   && property.has_parking %>
+      <% extras << "Лифт"        if property.respond_to?(:has_elevator)  && property.has_elevator %>
+      <% extras << "Консьерж"    if property.respond_to?(:has_concierge) && property.has_concierge %>
+      <% extras << "Охрана"      if property.respond_to?(:has_security)  && property.has_security %>
+      <% if extras.any? %>
+        <div class="mt-12">
+          <p class="text-sm tracking-[0.4em] text-muted-foreground mb-6">УДОБСТВА</p>
+          <div class="flex flex-wrap gap-3">
+            <% extras.each do |e| %>
+              <span class="px-4 py-2 text-xs tracking-wider border border-border text-foreground"><%= e.upcase %></span>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <aside class="lg:col-span-1">
+      <div class="bg-card border border-border p-8 sticky top-24">
+        <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">ЦЕНА</p>
+        <p class="text-3xl tracking-wider text-foreground mb-2"><%= property.price_formatted %></p>
+        <% if (ppu = display_price_per_unit(property)).present? %>
+          <p class="text-xs tracking-wider text-muted-foreground mb-2"><%= ppu %></p>
+        <% end %>
+        <%# Price-change timeline — silent until first PriceHistory row exists.
+            Tracker hook in Property#after_update fires automatically when
+            price changes; renders nothing while count==0. %>
+        <%= render 'price_history', history: price_history %>
+
+        <div class="flex flex-col gap-3 mt-8">
+          <% if user_signed_in? %>
+            <%= button_to favorite_property_path(property), method: :post, class: "w-full px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+              <%= is_favorited ? 'В ИЗБРАННОМ' : 'В ИЗБРАННОЕ' %>
+            <% end %>
+          <% else %>
+            <%= link_to "ВОЙТИ ДЛЯ ИЗБРАННОГО", new_user_session_path, class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" %>
+          <% end %>
+          <%= link_to "ЗАПИСАТЬСЯ НА ПРОСМОТР", new_property_inquiry_path(property), class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors" %>
+
+          <%# Investment Audit (Phase 4.5). Pre-fills the audit form with
+              this property's area/rooms/price/address so the buyer can run
+              EI/Monte Carlo with one extra step (entering an offer price
+              or hitting submit). Secondary CTA — visual hierarchy below the
+              primary "ЗАПИСАТЬСЯ" button. %>
+          <%= link_to investment_audit_new_path(from_property: property.slug),
+                class: "w-full block text-center px-6 py-4 text-sm tracking-[0.3em] border border-border text-foreground hover:bg-foreground hover:text-background transition-colors" do %>
+            СТОИТ ЛИ ПОКУПАТЬ?
+          <% end %>
+          <p class="text-[10px] tracking-[0.3em] text-muted-foreground/70 -mt-1">
+            ИНВЕСТ-АУДИТ: ИНДЕКС · МОНТЕ-КАРЛО · РЕКОМЕНДАЦИЯ
+          </p>
+
+          <%# Mortgage calculator CTA — same prefill mechanic via ?from_property=.
+              Subtler text-link style (not a full button) — calculator is a
+              lighter-weight tool than the full audit. %>
+          <%= link_to services_mortgage_calculator_path(from_property: property.slug),
+                class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground border-b border-border/40 pb-2.5 transition-colors" do %>
+            РАССЧИТАТЬ ИПОТЕКУ →
+          <% end %>
+
+          <%# A3 — premium dossier PDF (5 страниц: cover/gallery/description/
+              agent/cta). Только для premium-объектов (price >= 15M ₽
+              или is_premium=true) — иначе CTA скрыт. %>
+          <% if property.premium? %>
+            <%= link_to dossier_property_path(property, format: :pdf),
+                  target: '_blank', rel: 'noopener',
+                  class: "w-full block text-center px-6 py-3 text-xs tracking-[0.3em] text-foreground hover:bg-foreground hover:text-background border border-foreground/40 transition-colors mt-2" do %>
+              📑 СКАЧАТЬ ДОЗСЬЕ PDF
+            <% end %>
+            <p class="text-[10px] tracking-[0.3em] text-muted-foreground/60 -mt-1">
+              PREMIUM · 5 СТРАНИЦ · ФОТО · ОПИСАНИЕ · АГЕНТ
+            </p>
+          <% end %>
+        </div>
+
+        <div class="mt-12 pt-8 border-t border-border">
+          <p class="text-xs tracking-[0.3em] text-muted-foreground mb-3">КОНТАКТ АГЕНТА</p>
+          <%# 152-ФЗ — если агент попросил снять публичный профиль,
+              показываем «АН Виктори» + основной телефон агентства
+              вместо персональных данных. has_agent_profile? — единый
+              gate (то же что используется в publicly_listable_agents
+              scope для /agents/<slug> и /sitemap-blog.xml). %>
+          <% agent = property.user %>
+          <% show_agent = agent&.has_agent_profile? %>
+          <p class="text-base tracking-wider text-foreground"><%= show_agent ? agent.full_name : 'АН Виктори' %></p>
+          <%# If the agent has no personal phone synced from CRM, или агент
+              снял публичный профиль — fallback на AgencyInfo::PHONE_PRIMARY
+              (the main office line). %>
+          <% phone = (show_agent ? (agent.display_phone || AgencyInfo::PHONE_PRIMARY) : AgencyInfo::PHONE_PRIMARY) %>
+          <a href="tel:<%= phone.gsub(/\D/, '') %>" class="text-base tracking-wider text-foreground hover:text-muted-foreground transition-colors mt-3 block">
+            <%= phone %>
+          </a>
+          <% if !show_agent || agent.phone.blank? %>
+            <p class="text-xs tracking-wider text-muted-foreground mt-1">общий телефон агентства</p>
+          <% end %>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>

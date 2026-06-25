@@ -150,6 +150,7 @@ cat <<'ROUTING'
   Prawn PDF / audit_pdf / кириллица   → pdf-report-designer
   markdown → PDF → TG group           → pdf-telegram-dispatcher
   рефакторинг / fat model / concerns  → rails-architect
+  код-ревью / before merge / PR check → code-reviewer
   RSpec / тесты legacy / factory      → test-bootstrapper (+ rspec-bootstrap)
   parallel session / lock / hand-off  → session-coordinator (+ session-coordination)
   context handoff between sessions    → skill: session-handoff-protocol

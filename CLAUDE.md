@@ -30,11 +30,25 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 
 ## Параллельные сессии Claude Code
 
-Над этим репо работают две сессии:
-- **victory** — Rails-сервер запущен, Ruby 3.2.2 активирован → сюда Edit/RSpec/runner.
-- **chat** — системный Ruby 3.3 → сюда планирование/документы; TG через `curl`, **не** `bin/rails runner`.
+Над этим репо работают **4 сессии** (см. `.claude/sessions/README.md`):
 
-См. `activeContext.md` для деталей.
+| Session | Назначение | Worktree |
+|---|---|---|
+| **victory** | Rails-сервер :3000, Ruby 3.2.2 chruby → Edit/RSpec/runner | `/home/q/victory-victory` |
+| **chat** | Site-chatbot dev + planning, системный Ruby 3.3 | `/home/q/victory-chat` |
+| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` |
+| **upgrade** | Rails 7.2 + Ruby 3.3 EOL upgrade | `/home/q/victory-upgrade` |
+
+`/home/q/victory` остаётся как **main checkout** (для merge/deploy hand-off, не для активной работы сессий). См. `.claude/sessions/README.md` + skill `session-coordination` для worktree setup команд.
+
+## Branch discipline (main = prod)
+
+- **`main`** — production. Деплоится автоматически (или через webhook) на https://victory62.org. **Никаких direct push to main.**
+- **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
+- **PR → main** — единственный путь в прод. CI gate: rubocop + brakeman + bundler-audit + (скоро) rspec all green. Code-reviewer agent на diff — обязательно для non-trivial.
+- **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
+
+См. `.claude/memory/strategicVector.md` секция «Infrastructure decision 04.06.26» для trigger metrics когда вернуться к разговору о микросервисах/K8s (сейчас 0/7 triggered).
 
 ## MCP-серверы (`.mcp.json`)
 
@@ -55,6 +69,7 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 | **Prawn PDF**, audit_pdf, кириллица, theme, layout PDF | `pdf-report-designer` |
 | **markdown → PDF → TG**, отправь в TG, оформить как PDF | `pdf-telegram-dispatcher` |
 | **рефакторинг** 500+ LOC, fat model/controller, concerns, extract service, AASM | `rails-architect` |
+| **код-ревью**, review the diff, audit changes, before merge, PR review, before commit | `code-reviewer` |
 | **RSpec**, добавить тесты, factory нет, spec for, тесты legacy | `test-bootstrapper` + skill `rspec-bootstrap` |
 | **parallel session**, lock, conflict в правках, hand-off victory↔chat↔seo | `session-coordinator` + skill `session-coordination` |
 | **client document intake** — паспорт/ИНН/выписка через TG → OCR + DLP | `client-onboarding-bot` |
@@ -81,3 +96,5 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 - chat_responder + parallel session → `session-coordinator` first (locks), потом `site-chatbot-dev`
 - PDF design vs delivery → дизайн = `pdf-report-designer`; готовый PDF в TG = `pdf-telegram-dispatcher`
 - Refactor + tests missing → `test-bootstrapper` сначала (safety net), потом `rails-architect`
+- Refactor + review → сначала `rails-architect` (предложит план), потом `code-reviewer` (на готовый diff). НЕ инверсия.
+- Domain change (Topnlab/Yandex/etc) + safety review → domain-agent делает changes, `code-reviewer` финально pass before merge

@@ -1,0 +1,283 @@
+<%# Hero slider + PhotoSwipe styles + inline slider JS. Locals: property, all_images.
+    Cacheable per-property — slider behavior fully encapsulated, JS reinitится
+    при reload. Outer cache_key включает property для auto-invalidation. %>
+
+<!-- PhotoSwipe assets (CDN) -->
+<%= stylesheet_link_tag "https://unpkg.com/photoswipe@5.4.4/dist/photoswipe.css", media: "all" %>
+
+<!-- ============================================================
+     PhotoSwipe button overrides — match the site's monochrome
+     premium look. Larger arrows, semi-transparent until hover,
+     subtle scale on hover.
+============================================================ -->
+<style>
+  /* ----- Prev / Next arrows ----- */
+  .pswp__button--arrow {
+    width: 72px !important;
+    height: 112px !important;
+    margin: 0 18px !important;
+    /* Subtle, ALWAYS-the-same frosted-glass plate (no fill change on hover) */
+    background: rgba(255, 255, 255, 0.04) !important;
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    opacity: 0.55;
+    transition: transform .3s ease, opacity .3s ease;
+  }
+  .pswp__button--arrow:hover,
+  .pswp__button--arrow:focus-visible {
+    transform: scale(1.14);
+    opacity: 1;          /* whole button is just brighter */
+    /* no background / no border-color change */
+  }
+
+  /* SVG icon: large, slightly translucent in idle so the frosted glass shows
+     through. We REMOVE PhotoSwipe's default <use> sprite via opacity:0 and
+     stack our own chevron on top via :before. */
+  .pswp__button--arrow .pswp__icn {
+    width: 56px !important;
+    height: 56px !important;
+    top: 50% !important;
+    left: 50% !important;
+    margin: 0 !important;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+  }
+  .pswp__button--arrow::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 44px 44px;
+    opacity: 0.75;
+    transition: opacity .3s ease, filter .3s ease;
+  }
+  .pswp__button--arrow:hover::before,
+  .pswp__button--arrow:focus-visible::before {
+    opacity: 1;
+    /* keep white chevron — no inversion since the plate stays dark/glassy */
+  }
+  /* Inline SVG via data-URI — easy to tweak stroke-width here.
+     stroke-width="3" + stroke-linecap="round" gives the thick, soft tip. */
+  .pswp__button--arrow--prev::before {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='15 6 9 12 15 18'/></svg>");
+  }
+  .pswp__button--arrow--next::before {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 6 15 12 9 18'/></svg>");
+  }
+
+  /* ----- Close / Zoom buttons (top-right) ----- */
+  .pswp__button--close,
+  .pswp__button--zoom {
+    width: 56px !important;
+    height: 56px !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    backdrop-filter: blur(10px) saturate(120%);
+    -webkit-backdrop-filter: blur(10px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    opacity: 0.6;
+    transition: transform .25s ease, background-color .25s ease, opacity .25s ease;
+  }
+  .pswp__button--close:hover,
+  .pswp__button--zoom:hover {
+    transform: scale(1.1);
+    opacity: 1;
+    /* no fill change — plate stays glassy */
+  }
+  .pswp__button--close .pswp__icn,
+  .pswp__button--zoom  .pswp__icn { color: #fff; opacity: 0.85; transition: opacity .25s ease; }
+  .pswp__button--close:hover .pswp__icn,
+  .pswp__button--zoom:hover  .pswp__icn { opacity: 1; }
+
+  /* ----- Smooth slide transitions between photos ----- */
+  /* Same tempo as the hero slider on the landing page (1500ms) */
+  .pswp { --pswp-transition-duration: 1500ms; }
+  .pswp__img,
+  .pswp__container {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    transition-duration: 1500ms !important;
+  }
+</style>
+
+<%# HERO_SLIDER_LIMIT — макс slides в auto-rotating preview. Native
+    `loading=lazy` не работает для absolute-positioned overlays на одной
+    позиции (все evaluate как "in viewport") → browser скачивает все.
+    Ограничиваем до 5 (≈15s rotation) — полный gallery доступен через
+    PhotoSwipe по тапу. Без этого 30 hero variants ~6 MB initial bytes. %>
+<% hero_slides = all_images.first(5) %>
+
+<!-- Hero — auto-rotating slider, clickable to open lightbox -->
+<section id="hero-slider" class="relative h-[70vh] w-full overflow-hidden bg-background">
+  <% if hero_slides.any? %>
+    <% hero_slides.each_with_index do |img, i| %>
+      <button type="button"
+              class="hero-slide absolute inset-0 cursor-zoom-in bg-transparent border-0 p-0"
+              data-index="<%= i %>"
+              aria-label="Открыть фото <%= i + 1 %> в полноэкранном режиме"
+              style="opacity: <%= i == 0 ? 1 : 0 %>; pointer-events: <%= i == 0 ? 'auto' : 'none' %>; transition: opacity 1500ms ease-in-out;">
+        <div class="absolute inset-0 bg-background/60 z-10"></div>
+        <%= property_picture img,
+              alt: property_image_alt(property, i),
+              sizes: '100vw',
+              priority: i.zero?,
+              html_class: 'w-full h-full object-cover grayscale',
+              fallback: :hero %>
+      </button>
+    <% end %>
+  <% else %>
+    <div class="absolute inset-0">
+      <div class="absolute inset-0 bg-background/60 z-10"></div>
+      <%= property_picture nil,
+            alt: property_image_alt(property),
+            sizes: '100vw',
+            priority: true,
+            html_class: 'w-full h-full object-cover grayscale',
+            fallback: :hero %>
+    </div>
+  <% end %>
+
+  <!-- Arrows (manual navigation) -->
+  <% if hero_slides.size > 1 %>
+    <button type="button" id="hero-prev"
+            class="hero-arrow absolute left-4 lg:left-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
+            aria-label="Предыдущее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
+    <button type="button" id="hero-next"
+            class="hero-arrow absolute right-4 lg:right-8 top-1/2 -translate-y-1/2 z-30 w-14 h-20 lg:w-16 lg:h-24 flex items-center justify-center"
+            aria-label="Следующее фото">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-7 h-7 lg:w-8 lg:h-8 text-foreground"><polyline points="9 6 15 12 9 18"/></svg>
+    </button>
+
+    <!-- Slide counter (bottom-right) -->
+    <div class="absolute bottom-6 right-6 lg:bottom-8 lg:right-8 z-30 text-sm tracking-wider text-muted-foreground">
+      <span id="hero-counter" class="text-foreground text-lg">01</span>
+      <span class="mx-2">/</span>
+      <span><%= sprintf("%02d", hero_slides.size) %></span>
+    </div>
+
+    <!-- Autoplay progress bar -->
+    <div class="hero-progress" id="hero-progress"></div>
+  <% end %>
+
+  <!-- Foreground text overlay -->
+  <div class="relative z-20 h-full flex items-end px-6 lg:px-12 pb-12 pointer-events-none">
+    <div class="max-w-4xl pointer-events-auto">
+      <%= link_to "← К КАТАЛОГУ", properties_path, class: "inline-block text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors mb-6" %>
+      <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4 uppercase"><%= property.deal_type == 'rent' ? 'Аренда' : 'Продажа' %></p>
+      <h1 class="text-4xl md:text-6xl lg:text-7xl font-light tracking-wider text-foreground mb-6 uppercase"><%= property.title %></h1>
+      <p class="text-lg tracking-wider text-muted-foreground"><%= property.address %></p>
+      <% if all_images.size > 1 %>
+        <p class="mt-4 text-xs tracking-[0.3em] text-muted-foreground"><%= all_images.size %> ФОТО — КЛИК ДЛЯ ПРОСМОТРА</p>
+      <% end %>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Hero arrows: visible-but-discreet plate, brighten + scale on hover */
+  #hero-slider .hero-arrow {
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    opacity: 0.85;
+    transition: transform .3s ease, opacity .3s ease, background-color .3s ease;
+    cursor: pointer;
+  }
+  #hero-slider .hero-arrow:hover,
+  #hero-slider .hero-arrow:focus-visible {
+    transform: translateY(-50%) scale(1.12);
+    opacity: 1;
+    background: rgba(0, 0, 0, 0.55);
+  }
+  /* Auto-play interval (synchronised with the JS setInterval) */
+  #hero-slider { --hero-interval: 3000ms; }
+  #hero-slider .hero-progress {
+    position: absolute;
+    left: 0; bottom: 0;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.85);
+    width: 0%;
+    z-index: 30;
+    transition: width var(--hero-interval) linear;
+    pointer-events: none;
+  }
+  #hero-slider.is-paused .hero-progress { transition: none; }
+</style>
+
+<script>
+  (function () {
+    const root = document.getElementById('hero-slider');
+    if (!root) return;
+    const slides = Array.from(root.querySelectorAll('.hero-slide'));
+    if (slides.length <= 1) return;
+    const counter = document.getElementById('hero-counter');
+    const prevBtn = document.getElementById('hero-prev');
+    const nextBtn = document.getElementById('hero-next');
+
+    const progress = document.getElementById('hero-progress');
+    // Single source of truth for the cycle length (matches CSS --hero-interval).
+    const INTERVAL_MS = 3000;
+    let idx = 0;
+    let timer = null;
+
+    function show(n) {
+      idx = (n + slides.length) % slides.length;
+      slides.forEach((el, i) => {
+        const active = i === idx;
+        el.style.opacity = active ? '1' : '0';
+        el.style.pointerEvents = active ? 'auto' : 'none';
+      });
+      if (counter) counter.textContent = String(idx + 1).padStart(2, '0');
+      restartProgress();
+      // Any transition (auto or manual) restarts the timer — prevents double
+      // ticks and keeps each visible slide on screen for a full INTERVAL_MS.
+      resetAuto();
+    }
+
+    function restartProgress() {
+      if (!progress) return;
+      progress.style.transition = 'none';
+      progress.style.width = '0%';
+      void progress.offsetWidth;          // force reflow
+      progress.style.transition = `width ${INTERVAL_MS}ms linear`;
+      progress.style.width = '100%';
+    }
+
+    function resetAuto() {
+      if (timer) clearInterval(timer);
+      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
+    }
+    function startAuto() {
+      if (timer) return;                   // guard: don't stack timers
+      restartProgress();
+      timer = setInterval(() => show(idx + 1), INTERVAL_MS);
+    }
+    function stopAuto()  {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (progress) progress.style.transition = 'none';
+    }
+
+    // Manual navigation — stopPropagation so click doesn't bubble up to the slide button (which would open lightbox).
+    prevBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx - 1); });
+    nextBtn?.addEventListener('click', (e) => { e.stopPropagation(); show(idx + 1); });
+
+    // Slides themselves open the lightbox at their own index.
+    slides.forEach((el) => {
+      el.addEventListener('click', () => {
+        const target = document.querySelector(`[data-photoswipe-gallery] a:nth-of-type(${idx + 1})`);
+        target?.click();
+      });
+    });
+
+    // Pause autoplay on hover / focus inside the hero so the user can read.
+    root.addEventListener('mouseenter', stopAuto);
+    root.addEventListener('mouseleave', startAuto);
+    root.addEventListener('focusin',    stopAuto);
+    root.addEventListener('focusout',   startAuto);
+
+    startAuto();
+  })();
+</script>

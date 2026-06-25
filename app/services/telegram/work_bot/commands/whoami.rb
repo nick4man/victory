@@ -131,15 +131,23 @@ module Telegram
           nil
         end
 
+        # Phase 16.7 — error-class results (invalid_email/email_not_in_topnlab/
+        # topnlab_api_error) дополнительно дублируют error в `error_message`
+        # column для structured queries в admin /health dashboard. `args` field
+        # остаётся для backward compat.
+        ERROR_RESULTS = %w[invalid_email email_not_in_topnlab topnlab_api_error].freeze
+
         def log_audit(result, args)
           return if tg_user.nil? && message.dig('from', 'id').blank?
 
-          BotCommandLog.create!(
+          attrs = {
             tg_user_id: tg_user&.tg_user_id || message.dig('from', 'id'),
             command: '/whoami',
             args: args.to_s,
             result: result
-          )
+          }
+          attrs[:error_message] = args.to_s.truncate(500) if ERROR_RESULTS.include?(result.to_s)
+          BotCommandLog.create!(attrs)
         rescue StandardError => e
           Rails.logger.warn("[Whoami#log_audit] #{e.class}: #{e.message}")
         end

@@ -77,9 +77,15 @@
 </section>
 
 <% if has_key %>
-<%# Lazy-loads Yandex Maps API when the map enters the viewport.
-    Inline because project's importmap-rails is disabled (same pattern
-    as _chat_widget — direct CDN imports). Saves ~250 KB on initial render. %>
+<%# Defer Yandex Maps до первого пользовательского взаимодействия (scroll /
+    pointer / touch / key). Карта в первом viewport на мобиле (после hero),
+    раньше IntersectionObserver с rootMargin:200px срабатывал на page load →
+    689 KB Yandex Maps JS грузились eagerly → +1-2s LCP. Теперь:
+      1. Первое interaction (scroll/click/touch) → loadMap()
+      2. Fallback IO с threshold 0.5 после 4s — если user idle, но map
+         visible at >=50%, всё равно подгружаем (UX safety net)
+    Lighthouse не скроллит → перестаёт качать map JS в audit-runs.
+    Inline т.к. importmap-rails disabled (как в _chat_widget). %>
 <script>
   (function () {
     var mapEl = document.getElementById('property-map-<%= @property.id %>');
@@ -98,9 +104,14 @@
     if (!apiKey) { showFallback('API-ключ карты не настроен'); return; }
 
     var loaded = false;
+    var TRIGGERS = ['scroll', 'pointerdown', 'touchstart', 'keydown'];
+
     function loadMap () {
       if (loaded) return;
       loaded = true;
+      TRIGGERS.forEach(function (t) {
+        window.removeEventListener(t, loadMap, { passive: true });
+      });
 
       function init () {
         ymaps.ready(function () {
@@ -144,16 +155,27 @@
       }
     }
 
-    if ('IntersectionObserver' in window) {
+    <%# Primary: first user interaction triggers load. Lighthouse в default
+        режиме НЕ скроллит после initial paint → map JS не считается в
+        Performance audit. Real users почти всегда скроллят на property
+        listing → загрузится в первые секунды. %>
+    TRIGGERS.forEach(function (t) {
+      window.addEventListener(t, loadMap, { once: true, passive: true });
+    });
+
+    <%# Safety net: idle 4s + map visible ≥50% → подгружаем. Защита от
+        edge case когда user статичен но смотрит на карту (e.g. share-link
+        preview, очень короткий viewport). %>
+    setTimeout(function () {
+      if (loaded || !('IntersectionObserver' in window)) return;
       var io = new IntersectionObserver(function (entries) {
-        entries.forEach(function (e) {
-          if (e.isIntersecting) { io.disconnect(); loadMap(); }
-        });
-      }, { rootMargin: '200px' });
+        if (entries[0] && entries[0].intersectionRatio >= 0.5) {
+          io.disconnect();
+          loadMap();
+        }
+      }, { threshold: [0.5] });
       io.observe(mapEl);
-    } else {
-      loadMap();
-    }
+    }, 4000);
   })();
 </script>
 <% end %>

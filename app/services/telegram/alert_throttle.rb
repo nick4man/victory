@@ -13,6 +13,11 @@ module Telegram
   #
   # Контракт:
   #   Telegram::AlertThrottle.allow?(key: 'MyJob:RuntimeError') → bool
+  #   Telegram::AlertThrottle.allow?(key: 'anomaly:7:overdue:2026-05-29', ttl: 24.hours)
+  #
+  # Phase 16.7 — optional `ttl:` kwarg. Default = WINDOW (5min, для legacy
+  # storm-protection). Custom ttl (24.hours) для pro-active anomaly alerts —
+  # per-staff-per-metric-per-day discipline. Backward-compatible.
   #
   # Граничные:
   #   • Redis down → return true (fail-open: лучше шум чем тишина)
@@ -21,8 +26,8 @@ module Telegram
   class AlertThrottle
     WINDOW = 5.minutes
 
-    def self.allow?(key:)
-      new(key: key).allow?
+    def self.allow?(key:, ttl: WINDOW)
+      new(key: key, ttl: ttl).allow?
     end
 
     def self.suppressed_count(key:)
@@ -60,9 +65,10 @@ module Telegram
       {}
     end
 
-    def initialize(key:)
+    def initialize(key:, ttl: WINDOW)
       @key = "alert_throttle:#{key}"
       @counter_key = "#{@key}:suppressed"
+      @ttl = ttl
     end
 
     # @return [Boolean] true если alert надо отправить (первый в окне),
@@ -73,12 +79,12 @@ module Telegram
 
       # SETNX-style: установить только если ключа нет. EX=TTL в секундах.
       # SET NX EX — атомарная операция.
-      ok = redis.set(@key, '1', nx: true, ex: WINDOW.to_i)
+      ok = redis.set(@key, '1', nx: true, ex: @ttl.to_i)
       return true if ok
 
       # В throttle window — increment suppressed counter, return false.
       redis.incr(@counter_key)
-      redis.expire(@counter_key, WINDOW.to_i)
+      redis.expire(@counter_key, @ttl.to_i)
       false
     rescue StandardError => e
       Rails.logger.warn("[AlertThrottle] redis error: #{e.message}")

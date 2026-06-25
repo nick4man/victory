@@ -1,0 +1,16 @@
+<%# Similar properties — 4 cards. Locals: similar_properties (AR relation).
+    Cache invalidates на max(updated_at) similar_properties. %>
+<section class="px-6 lg:px-12 py-24 bg-background border-t border-border">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-12">
+      <div>
+        <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ПОХОЖИЕ</p>
+        <h2 class="text-3xl lg:text-4xl font-light tracking-wider text-foreground">МОЖЕТ ПОНРАВИТЬСЯ</h2>
+      </div>
+      <%= link_to "ВСЕ ОБЪЕКТЫ →", properties_path, class: "text-sm tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors" %>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <%= render partial: "property_card", collection: similar_properties, as: :property %>
+    </div>
+  </div>
+</section>

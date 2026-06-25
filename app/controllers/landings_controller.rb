@@ -73,6 +73,12 @@ class LandingsController < ApplicationController
     @city          = Cities.find(@city_slug)
     return render_not_found("Unknown city: #{@city_slug}") unless @city
 
+    # `params[:city].blank?` ≠ «нет города»: route без префикса города всё ещё
+    # резолвится в Ryazan через DEFAULT_SLUG. Этот флаг нужен чтобы отличать
+    # explicit (`/moscow/kupit/...`) от implicit (`/kupit/...`) — для premium
+    # landing без explicit city мы показываем catalog-wide (см. build_scope).
+    @city_implicit = params[:city].blank?
+
     @intent        = params[:intent] || 'sale'
     @type          = params[:type]
     @district_slug = params[:district]
@@ -130,7 +136,14 @@ class LandingsController < ApplicationController
     # Phase 1.6 — filter by canonical city. For Рязань default (no city
     # prefix в route) сохраняем строгий filter тоже — иначе landings без
     # district вернули бы listings из всех cities в каталоге.
-    scope = scope.in_city(@city[:name])                      if @city
+    #
+    # Premium exception (29.05.26): при implicit city (URL без префикса) И
+    # modifier='premium' — НЕ фильтруем по городу. Catalog premium-фонд сейчас
+    # сосредоточен вне Рязани (СПб/МСК/Красногорск); city-filter обнуляет
+    # @total_count и triggerит soft-404 noindex (см. landings/show.html.erb).
+    # Когда премиум-фонд в Рязани наберётся — флаг убрать.
+    skip_city_for_premium = @city_implicit && @modifier == 'premium'
+    scope = scope.in_city(@city[:name])                      if @city && !skip_city_for_premium
     scope = scope.where(district: @district_aliases)         if @district_aliases
     scope = scope.where(rooms: @rooms)                       if @rooms
     scope = scope.premium                                    if @modifier == 'premium'
@@ -166,7 +179,15 @@ class LandingsController < ApplicationController
            end
     # @city always set по show action; canonical name used in H1.
     city_name = @city[:name]
-    location = @district_aliases ? "в районе #{@district_aliases.first}, #{city_name}" : "в #{declination_in(city_name)}"
+    location = if @district_aliases
+                 "в районе #{@district_aliases.first}, #{city_name}"
+               elsif @city_implicit && @modifier == 'premium'
+                 # Catalog-wide premium (см. build_scope premium exception) —
+                 # H1 не указывает один город; конкретика на карточках.
+                 'из каталога'
+               else
+                 "в #{declination_in(city_name)}"
+               end
     "#{verb} #{qualifier}#{head} #{location}"
   end
 
@@ -175,6 +196,10 @@ class LandingsController < ApplicationController
     region    = @city[:region]
     location = if @district_aliases
                  "в районе #{@district_aliases.first} (#{city_name})"
+               elsif @city_implicit && @modifier == 'premium'
+                 # Catalog-wide premium — см. build_scope. Перечисляем регионы
+                 # из фонда; пока hardcoded (Москва/СПб + Рязань когда появится).
+                 'по каталогу — Москва, Санкт-Петербург и Рязань'
                elsif city_name == region
                  # Города федерального значения (Москва, СПб) — нет смысла
                  # повторять «в Москве и Москва»; используем только город.

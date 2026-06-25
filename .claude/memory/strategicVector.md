@@ -141,6 +141,38 @@ pdf-report-designer → pdf-telegram-dispatcher
 - Детальные финмодели CAC/LTV/Payback — отдельный артефакт
 - Конкретные квартальные sprint plans — создаются по входу в спринт (избежать дрейфа)
 
+## Infrastructure decision (04.06.26)
+
+**Decision**: оставаться на Rails monolith + audit-engine sidecar (Python FastAPI). Не разбивать на микросервисы и не переходить на Kubernetes до конкретных trigger metrics. См. `splendid-imagining-lerdorf.md` секция «Strategic architecture assessment — 04.06.26».
+
+**Rationale**:
+- 55K LOC Rails app + 93 properties + 5 users + 1 разработчик + 4 AI sessions ≠ scale для микросервисов
+- Audit-engine **уже** extracted где имело смысл (CPU-intensive Monte Carlo)
+- Sidekiq queues = proper modular monolith (NOT coupling)
+- K8s минимум $200/мес + 40-80ч setup + 4-8ч/мес maintenance vs **zero benefit** at current scale
+- Strategic vector pillars (frictionless / expertise / AI×human): микросервисы neutral/negative, K8s negative. Worktree-fix для session coordination positive (Pillar 3).
+
+**Trigger metrics — когда вернуться к re-evaluation** (когда **3 из 7** triggered):
+
+| Metric | Current (04.06.26) | Threshold | Action |
+|---|---|---|---|
+| Property records | 93 | 500+ | Review sharding strategy |
+| Article published | 47 | 10,000+ | Extract Article+embedding service |
+| Concurrent users (daily peak) | <10 | 50+ | Add Sidekiq replicas |
+| Inquiry/day | <1 | 20+ | Consider CRM extraction |
+| Engineers (humans, не AI) | 1 | 3+ | Adopt feature-team-per-service |
+| Multi-region (PoP) | RU only | Москва PoP added | K8s или managed alternative |
+| Deploy cadence | weekly | hourly per-service | Independent deployments |
+
+**Текущий счёт: 0/7**. Не делаем декомпозицию.
+
+**Что делаем вместо**:
+1. `git worktree` per Claude session — устраняет shared-filesystem collisions (см. session-coordination skill)
+2. `main` = prod discipline (формализовать через CI gate + protected branch)
+3. CI/CD baseline (rspec + rubocop + brakeman + bundler-audit на feature branches) — уже частично есть
+4. Refactor hot-spots (Property model, dashboard controllers) через service-object pattern (NOT микросервисы)
+5. Когда (если) Telegram bot или embedding pipeline разрастутся ≥ 500 LOC + own scale dynamics — extract по audit-engine pattern (Python/Rails sidecar + own DB/Redis + bridge network), НЕ K8s deployment.
+
 ## Subplans (создаются по факту входа в спринт)
 
 Когда начинается каждая фаза/спринт — создаём отдельный subplan в `.claude/plans/`:

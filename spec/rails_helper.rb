@@ -6,8 +6,12 @@ require 'spec_helper'
 ENV['RAILS_ENV'] ||= 'test'
 require_relative '../config/environment'
 
-# Prevent database truncation if the environment is production
-abort("The Rails environment is running in production mode!") if Rails.env.production?
+# Prevent database truncation if the environment is production.
+# Standard rspec-rails generated guard — abort останавливает test boot если
+# RAILS_ENV случайно production (защита от truncation прод-БД).
+# rubocop:disable Rails/Exit
+abort('The Rails environment is running in production mode!') if Rails.env.production?
+# rubocop:enable Rails/Exit
 
 require 'rspec/rails'
 # Add additional requires below this line. Rails is not loaded until this point!
@@ -32,7 +36,7 @@ Dir[Rails.root.join('spec/support/**/*.rb')].sort.each { |f| require f }
 begin
   ActiveRecord::Migration.maintain_test_schema!
 rescue ActiveRecord::PendingMigrationError => e
-  abort e.to_s.strip
+  abort e.to_s.strip # rubocop:disable Rails/Exit
 end
 
 RSpec.configure do |config|

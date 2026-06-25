@@ -133,7 +133,8 @@ module ChatTools
       #   для русского gemini-embedding-001 на real estate. Выше — шум,
       #   ниже — пропуски парафразов.
       # • Preserve ranking — neighbor gem возвращает ordered by distance,
-      #   но `where(id: ids)` теряет порядок. array_position восстанавливает.
+      #   но `where(id: ids)` теряет порядок. Rails 7 `in_order_of` восстанавливает
+      #   через CASE/array_position под капотом без raw SQL interpolation.
       SIMILARITY_THRESHOLD = 0.50 # cosine_distance < 0.50 = достаточно близко для real-estate context
       SEMANTIC_INITIAL_LIMIT = 50
 
@@ -152,9 +153,10 @@ module ChatTools
         # Сохраняем distance scores в thread-local для serialize (используется в items output)
         @semantic_distances = ranked.to_h { |r| [r.telegram_group_message_id, r.neighbor_distance] }
 
+        # Rails 7+ `in_order_of` сохраняет порядок без raw-interpolation — закрывает
+        # Brakeman HIGH (SQL Injection) на старом `Arel.sql("ARRAY[#{ids}]")` паттерне.
         ids = ranked.map(&:telegram_group_message_id)
-        order_sql = Arel.sql("array_position(ARRAY[#{ids.join(',')}]::bigint[], id)")
-        TelegramGroupMessage.where(id: ids).order(order_sql)
+        TelegramGroupMessage.in_order_of(:id, ids)
       rescue ::Embedding::GoogleClient::Error, StandardError => e
         Rails.logger.warn("[SearchGroupMessages#semantic_scope] #{e.class} #{e.message}")
         nil
