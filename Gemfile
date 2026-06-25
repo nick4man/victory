@@ -3,19 +3,18 @@
 source 'https://rubygems.org'
 git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
-ruby '3.2.2'
+ruby '3.3.6'
 
-# Core Rails — EOL Phase 1 (04.06.26): 7.1.6 → 7.2.3.1.
-# Закрывает 8 Rails 7.1 CVE (XSS Action View, content-type bypass Active
-# Storage, path traversal, ReDoS number_to_delimited). Ruby остаётся 3.2.2 —
-# Rails 7.2 требует Ruby >= 3.1; bump до 3.3.6 — отдельный step (Docker base).
+# Core Rails — EOL Phase 1: 7.1.6 → 7.2.3.1 (CVE sweep 25.06.26: Ruby 3.2.2 →
+# 3.3.6, закрывает Brakeman EOLRuby; Ruby 3.3 YJIT on по умолчанию).
 gem 'rails', '~> 7.2.3', '>= 7.2.3.1'
 
 # Database
 gem 'pg', '~> 1.5'
 
-# Server
-gem 'puma', '~> 6.4'
+# Server — CVE sweep 25.06.26: puma 6.4 имеет advisory, fix в 7.2.1+. Major
+# bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
+gem 'puma', '~> 7.2', '>= 7.2.1'
 
 # Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
 # / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
@@ -23,8 +22,9 @@ gem 'puma', '~> 6.4'
 # forgery CVE-2026-39324). Явные floor-пины, пока transitive deps не догонят.
 gem 'rack', '>= 3.2.6'
 gem 'rack-session', '>= 2.1.2'
-gem 'nokogiri', '>= 1.19.3' # XSLT memory leak GHSA-v2fc + xmlC14N GHSA-wx95
-gem 'net-imap', '>= 0.6.4' # command injection via Symbol inputs CVE-2026-42258
+gem 'nokogiri', '>= 1.19.4' # XSLT/xmlC14N + new advisory (sweep 25.06.26)
+gem 'net-imap', '>= 0.6.4.1' # command injection CVE-2026-42258 + CVE-2026-47240
+gem 'concurrent-ruby', '>= 1.3.7' # CVE-2026-54904/54905/54906 (sweep 25.06.26)
 
 # Assets
 gem 'sprockets-rails'
@@ -104,7 +104,7 @@ gem 'rqrcode', '~> 2.2'
 # (Express hybrid comparable fallback). Faraday-retry handles transient
 # 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
 # down sidecar degrades gracefully instead of stalling Puma threads.
-gem 'faraday', '~> 2.9', '>= 2.14.2' # protocol-relative URI host-scope bypass CVE-2026-33637
+gem 'faraday', '~> 2.9', '>= 2.14.3' # CVE-2026-33637 + CVE-2026-54297 (High, sweep 25.06.26)
 gem 'faraday-retry', '~> 2.2'
 gem 'stoplight', '~> 4.1'
 
