@@ -78,7 +78,7 @@ RSpec.describe Kpi::MorningDigest do
 
   describe '#build_text — with leads' do
     before do
-      buyer_order = BuyerOrder.create!(client_name: 'Test', deal_type: 'sale',
+      buyer_order = BuyerOrder.create!(crm_id: 900_905, client_name: 'Test', deal_type: 'sale',
                                        deal_state: 'lead', synced_at: Time.current)
       LeadEvent.create!(
         lead_ref: buyer_order, source: 'site_form',
@@ -96,7 +96,7 @@ RSpec.describe Kpi::MorningDigest do
 
   describe '#build_text — SLA warnings' do
     before do
-      buyer_order = BuyerOrder.create!(client_name: 'SLA', deal_type: 'sale',
+      buyer_order = BuyerOrder.create!(crm_id: 900_906, client_name: 'SLA', deal_type: 'sale',
                                        deal_state: 'lead', synced_at: Time.current)
       # Assigned 31 minutes ago, no first_contact_at → SLA warning
       LeadEvent.create!(

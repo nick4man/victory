@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe DocumentRequirement do
   let(:buyer_order) do
-    BuyerOrder.create!(client_name: 'Test', deal_type: 'sale',
+    BuyerOrder.create!(crm_id: 900_902, client_name: 'Test', deal_type: 'sale',
                        deal_state: 'lead', synced_at: Time.current)
   end
 

@@ -17,6 +17,12 @@ require 'shoulda/matchers'
 require 'database_cleaner/active_record'
 require 'capybara/rspec'
 require 'pundit/rspec'
+require 'webmock/rspec'
+
+# WebMock: allow real net by default (specs которые бьют реальные сервисы не
+# ломаем), но stub_request перехватывает явно застабленные запросы. Specs,
+# требующие полной изоляции (yandex_vision/client), сами вызывают stub_request.
+WebMock.allow_net_connect!
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
 # spec/support/ and its subdirectories.

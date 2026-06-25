@@ -146,6 +146,11 @@ TAGS
 *.sql
 *.sqlite
 
+# Exception: db/structure.sql — canonical schema (schema_format=:sql), MUST be
+# committed для db:schema:load (clean-env rebuild в staging/CI). Раньше `*.sql`
+# выше его проглатывал → schema-rebuild дыра (EOL Phase 1 finding 04.06.26).
+!/db/structure.sql
+
 # Rails cache
 tmp/cache/
 
