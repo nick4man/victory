@@ -5,8 +5,11 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
 ruby '3.2.2'
 
-# Core Rails
-gem 'rails', '~> 7.1.0'
+# Core Rails — EOL Phase 1 (04.06.26): 7.1.6 → 7.2.3.1.
+# Закрывает 8 Rails 7.1 CVE (XSS Action View, content-type bypass Active
+# Storage, path traversal, ReDoS number_to_delimited). Ruby остаётся 3.2.2 —
+# Rails 7.2 требует Ruby >= 3.1; bump до 3.3.6 — отдельный step (Docker base).
+gem 'rails', '~> 7.2.3', '>= 7.2.3.1'
 
 # Database
 gem 'pg', '~> 1.5'
@@ -14,19 +17,28 @@ gem 'pg', '~> 1.5'
 # Server
 gem 'puma', '~> 6.4'
 
+# Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
+# / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
+# host allowlist bypass CVE-2026-34827/34829; rack-session: secretless session
+# forgery CVE-2026-39324). Явные floor-пины, пока transitive deps не догонят.
+gem 'rack', '>= 3.2.6'
+gem 'rack-session', '>= 2.1.2'
+gem 'nokogiri', '>= 1.19.3' # XSLT memory leak GHSA-v2fc + xmlC14N GHSA-wx95
+gem 'net-imap', '>= 0.6.4' # command injection via Symbol inputs CVE-2026-42258
+
 # Assets
-gem 'importmap-rails'
-gem 'jbuilder'
 gem 'sprockets-rails'
+gem 'importmap-rails'
 gem 'stimulus-rails'
 gem 'turbo-rails'
+gem 'jbuilder'
 
 # CSS
 gem 'tailwindcss-rails'
 
 # Minimal auth
-gem 'bcrypt', '~> 3.1.7'
-gem 'jwt', '~> 2.8'
+gem 'bcrypt', '~> 3.1', '>= 3.1.22'
+gem 'jwt', '~> 2.10', '>= 2.10.3' # empty-key HMAC bypass CVE-2026-45363
 
 # Authorization
 gem 'pundit', '~> 2.3'
@@ -43,7 +55,7 @@ gem 'prawn-table', '~> 0.2'
 
 # Background jobs
 gem 'sidekiq', '~> 7.2'
-gem 'sidekiq-cron', '~> 2.4'
+gem 'sidekiq-cron', '~> 2.4' # 2.4+ закрывает XSS CVE-2025-67202
 
 # Redis (Action Cable + Sidekiq + cache)
 gem 'redis', '~> 5.0'
@@ -52,8 +64,8 @@ gem 'redis', '~> 5.0'
 gem 'kaminari', '~> 1.2'
 
 # Search
+gem 'ransack', '~> 4.2'
 gem 'pg_search', '~> 2.3'
-gem 'ransack', '~> 4.1'
 
 # URL slugs
 gem 'friendly_id', '~> 5.5'
@@ -72,7 +84,7 @@ gem 'geocoder', '~> 1.8'
 # semantic property search via cosine distance on Google gemini-embedding-001 vectors).
 # PostGIS is enabled at the DB level only; we use raw SQL for ST_DWithin to avoid
 # swapping the AR adapter from `postgresql` to `postgis`.
-gem 'neighbor', '~> 0.5'
+gem 'neighbor', '~> 0.6'
 
 # API
 gem 'rack-cors', '~> 2.0'
@@ -92,7 +104,7 @@ gem 'rqrcode', '~> 2.2'
 # (Express hybrid comparable fallback). Faraday-retry handles transient
 # 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
 # down sidecar degrades gracefully instead of stalling Puma threads.
-gem 'faraday', '~> 2.9'
+gem 'faraday', '~> 2.9', '>= 2.14.2' # protocol-relative URI host-scope bypass CVE-2026-33637
 gem 'faraday-retry', '~> 2.2'
 gem 'stoplight', '~> 4.1'
 
@@ -101,8 +113,8 @@ gem 'stoplight', '~> 4.1'
 # SENTRY_DSN env: если не задан → Sentry.init вообще не вызывается
 # (sentry-ruby молчит, не ходит в Sentry servers). PII strip через
 # before_send hook в config/initializers/sentry.rb.
-gem 'sentry-rails',    '~> 5.20', require: false
 gem 'sentry-ruby',     '~> 5.20', require: false
+gem 'sentry-rails',    '~> 5.20', require: false
 gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
 
 # === Development tooling ===
@@ -112,16 +124,17 @@ gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
 # AR-связей). require: false — гем грузится только когда LSP-сервер
 # поднимается, не нужен в runtime приложения.
 group :development do
-  # Linters & security scanners — run locally via `bundle exec` and in CI
-  # (.github/workflows/lint.yml). All `require: false` so they don't load
-  # into the app process. Order: alphabetical (Bundler/OrderedGems cop).
-  gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
-  gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
-  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
-  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
-  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
   gem 'ruby-lsp',       '~> 0.26', require: false
   gem 'ruby-lsp-rails', require: false
+
+  # Linters & security scanners — run locally via `bundle exec` and in CI
+  # (.github/workflows/lint.yml). All three are require: false so they
+  # don't load into the app process.
+  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
+  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
+  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
+  gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
 end
 
 # === Test framework ===
@@ -129,10 +142,11 @@ end
 # unit / request / model specs локально и в CI. Группа :development добавлена
 # чтобы `bin/rails generate model …` рендерил RSpec stubs вместо minitest.
 group :development, :test do
-  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
-  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
+  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
   gem 'factory_bot_rails',   '~> 6.4'    # fixtures replacement
   gem 'faker',               '~> 3.4'    # realistic test data (Ru locale в rails_helper)
-  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
   gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
+  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
+  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
+  gem 'webmock',             '~> 3.24'   # HTTP stubbing (stub_request в yandex_vision и др.)
 end

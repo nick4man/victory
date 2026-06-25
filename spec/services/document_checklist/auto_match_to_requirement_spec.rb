@@ -18,6 +18,7 @@ RSpec.describe DocumentChecklist::AutoMatchToRequirement do
 
   let(:user) do
     User.create!(email: "auto-#{SecureRandom.hex(4)}@victory.test",
+                 first_name: 'Auto', last_name: 'Agent',
                  password: 'TestPass123!', password_confirmation: 'TestPass123!')
   end
 
