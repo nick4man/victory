@@ -35,12 +35,15 @@ module Topnlab
       # model doesn't exist yet (migration not run), it no-ops gracefully.
       sync_run = (TopnlabSyncRun.start rescue nil)
       result = call_inner
+      errors = []
+      errors << "#{result[:failed]} upsert failed" if result[:failed].to_i.positive?
+      errors << "#{result[:fetch_errors]} fetch error(s) — sweep incomplete, archive skipped" if result[:fetch_errors].to_i.positive?
       sync_run&.finish!(
         ids_seen:       result[:imported].to_i + result[:skipped].to_i + result[:failed].to_i,
         upserted:       result[:imported].to_i,
         archived:       result[:archived].to_i,
         photos_pending: 0,
-        errors:         (result[:failed].to_i.positive? ? ["#{result[:failed]} failed"] : [])
+        errors:         errors
       )
       result
     rescue StandardError => e
@@ -56,10 +59,11 @@ module Topnlab
       type_index   = PropertyType.where(slug: REALTY_TYPES).index_by(&:slug)
       fallback     = User.find_by(email: ENV.fetch('TOPNLAB_FALLBACK_USER_EMAIL', 'topnlab@viktory-realty.ru'))
 
-      seen_ids   = Set.new
-      imported   = 0
-      skipped    = 0
-      failed     = 0
+      seen_ids     = Set.new
+      imported     = 0
+      skipped      = 0
+      failed       = 0
+      fetch_errors = 0
 
       ACTIONS.each do |action|
         REALTY_TYPES.each do |realty_type|
@@ -81,18 +85,34 @@ module Topnlab
               end
             end
           rescue StandardError => e
+            # A fetch-stage failure (network/auth/timeout) means this sweep
+            # segment returned NOTHING — seen_ids is now incomplete. Track this
+            # separately from upsert `failed`, because archive_missing below must
+            # NOT run on an incomplete sweep (see guard).
             Rails.logger.error("Topnlab: action=#{action} type=#{realty_type} failed: #{e.class}: #{e.message}")
-            failed += 1
+            fetch_errors += 1
           end
         end
       end
 
-      # Completed-mode is additive: missing IDs from a deal-only sweep don't mean
-      # the property went away — it could just be in another (live) state. Don't
-      # archive in that mode.
-      archived = completed_mode? ? 0 : archive_missing(seen_ids)
+      # archive_missing retires every active Property whose id is absent from
+      # seen_ids — which is only safe when the sweep was COMPLETE. If any segment
+      # failed to fetch (e.g. a transient network blip), seen_ids is partial and
+      # archiving would falsely retire still-live listings. A single failed sweep
+      # once archived the ENTIRE catalogue this way; never archive on an
+      # incomplete sweep. Completed-mode is additive and never archives either.
+      archived =
+        if completed_mode?
+          0
+        elsif fetch_errors.positive?
+          Rails.logger.warn("Topnlab: #{fetch_errors} fetch error(s) — sweep incomplete, skipping archive_missing to avoid false archival")
+          0
+        else
+          archive_missing(seen_ids)
+        end
 
-      summary = { success: true, imported: imported, skipped: skipped, failed: failed, archived: archived }
+      summary = { success: fetch_errors.zero?, imported: imported, skipped: skipped,
+                  failed: failed, fetch_errors: fetch_errors, archived: archived }
       Rails.logger.info("Topnlab importer summary: #{summary}")
       summary
     end
