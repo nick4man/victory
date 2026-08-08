@@ -1,89 +1,114 @@
 #!/usr/bin/env bash
-# bin/lock-clean — stale lock cleaner for tmp/claude-locks/
+# bin/lock-clean — уборка claude-локов из tmp/claude-locks/.
 #
-# Stale = empty file (no metadata) OR mtime older than $TTL_HOURS.
-# Default mode is dry-run: shows candidates without removing.
-# Pass --force to actually rm.
+# Протухшим считается лок пустой (без метаданных) или старше TTL (2ч).
+# По умолчанию — dry-run: показывает кандидатов, ничего не удаляя.
+#
+#   bin/lock-clean                       # что бы удалилось в этом worktree
+#   bin/lock-clean --force               # удалить протухшие здесь
+#   bin/lock-clean --all                 # посмотреть по всем worktree
+#   bin/lock-clean --all --force         # удалить протухшие везде
+#   bin/lock-clean --release app/models/property.rb
+#                                        # снять КОНКРЕТНЫЙ лок в любом
+#                                        # worktree, невзирая на возраст
+#
+# --release — ручной override, когда блокирующий хук не пускает к файлу, а
+# держащая его сессия точно не работает. Возраст при этом не смотрим: смысл
+# флага именно в том, чтобы снять живой лок осознанным решением человека.
 
 set -e
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-LOCK_DIR="$ROOT/tmp/claude-locks"
-MODE="dry"
-TTL_HOURS=2
 
-for arg in "$@"; do
-  case "$arg" in
-    --force) MODE="force" ;;
-    --dry)   MODE="dry" ;;
+# shellcheck source=../.claude/hooks/lib/locks.sh
+. "$ROOT/.claude/hooks/lib/locks.sh"
+
+MODE='dry'
+SCOPE='here'
+RELEASE_PATH=''
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force) MODE='force'; shift ;;
+    --dry)   MODE='dry'; shift ;;
+    --all)   SCOPE='all'; shift ;;
+    --release)
+      RELEASE_PATH="${2:-}"
+      [ -n "$RELEASE_PATH" ] || { echo '--release требует путь к файлу' >&2; exit 1; }
+      shift 2 ;;
     --help|-h)
-      cat <<USAGE
-Usage: bin/lock-clean [--dry|--force]
-
-Removes stale locks from tmp/claude-locks/:
-  - empty files (no metadata)
-  - files older than ${TTL_HOURS} hours
-
-Default mode is --dry (show what would be removed without changes).
-Pass --force to actually delete stale locks.
-USAGE
-      exit 0
-      ;;
-    *)
-      echo "Unknown arg: $arg (use --help)" >&2
-      exit 1
-      ;;
+      sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *) echo "Неизвестный аргумент: $1 (см. --help)" >&2; exit 1 ;;
   esac
 done
 
-if [ ! -d "$LOCK_DIR" ]; then
-  echo "No lock directory: $LOCK_DIR"
+# ── Точечное снятие ─────────────────────────────────────────────────────────
+if [ -n "$RELEASE_PATH" ]; then
+  KEY=$(lock_key "$RELEASE_PATH" "$ROOT") || {
+    echo "Путь вне репозитория: $RELEASE_PATH" >&2; exit 1; }
+  found=0
+  for wt in $(lock_worktrees); do
+    LOCK="$wt/tmp/claude-locks/$KEY"
+    [ -f "$LOCK" ] || continue
+    found=$((found + 1))
+    printf '✓ снят лок %s (сессия %s, worktree %s)\n' \
+      "$RELEASE_PATH" "$(lock_meta "$LOCK" session)" "$wt"
+    rm -f "$LOCK"
+  done
+  [ "$found" -eq 0 ] && echo "Локов на $RELEASE_PATH нет."
   exit 0
+fi
+
+# ── Уборка протухших ────────────────────────────────────────────────────────
+if [ "$SCOPE" = 'all' ]; then
+  TARGETS=$(lock_worktrees)
+else
+  TARGETS="$ROOT"
 fi
 
 stale=0
 active=0
-now=$(date +%s)
 
 shopt -s nullglob
-for lock in "$LOCK_DIR"/*.lock; do
-  size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
-  mtime=$(stat -c%Y "$lock" 2>/dev/null || echo 0)
-  age_sec=$((now - mtime))
-  age_hours=$((age_sec / 3600))
+for wt in $TARGETS; do
+  LOCK_DIR="$wt/tmp/claude-locks"
+  [ -d "$LOCK_DIR" ] || continue
 
-  is_stale=false
-  reason=""
+  for lock in "$LOCK_DIR"/*.lock; do
+    size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
+    age_min=$(lock_age_minutes "$lock" 2>/dev/null || echo 0)
 
-  if [ "$size" -eq 0 ]; then
-    is_stale=true
-    reason="empty"
-  elif [ "$age_hours" -ge "$TTL_HOURS" ]; then
-    is_stale=true
-    reason="${age_hours}h old"
-  fi
-
-  if [ "$is_stale" = true ]; then
-    stale=$((stale + 1))
-    name=$(basename "$lock")
-    if [ "$MODE" = "force" ]; then
-      rm "$lock"
-      printf '✓ removed %s (%s)\n' "$name" "$reason"
-    else
-      printf '  %s (%s)\n' "$name" "$reason"
+    reason=''
+    if [ "$size" -eq 0 ]; then
+      reason='пустой'
+    elif lock_is_stale "$lock"; then
+      reason="$((age_min / 60))ч без активности"
     fi
-  else
-    active=$((active + 1))
-  fi
+
+    if [ -z "$reason" ]; then
+      active=$((active + 1))
+      continue
+    fi
+
+    stale=$((stale + 1))
+    path=$(lock_key_to_path "$(basename "$lock")")
+    if [ "$MODE" = 'force' ]; then
+      rm "$lock"
+      printf '✓ удалён %s (%s)\n' "$path" "$reason"
+    else
+      printf '  %s (%s) [%s]\n' "$path" "$reason" "$wt"
+    fi
+  done
 done
 shopt -u nullglob
 
-echo ""
-if [ "$MODE" = "dry" ]; then
-  echo "Found $stale stale, $active active lock(s)."
-  if [ "$stale" -gt 0 ]; then
-    echo "Run with --force to remove stale locks."
-  fi
+echo ''
+if [ "$MODE" = 'dry' ]; then
+  echo "Протухших: $stale, активных: $active."
+  [ "$stale" -gt 0 ] && echo 'Запусти с --force, чтобы удалить.'
 else
-  echo "Removed $stale stale, kept $active active lock(s)."
+  echo "Удалено: $stale, оставлено активных: $active."
 fi
+
+exit 0

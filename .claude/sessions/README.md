@@ -49,7 +49,7 @@ claude --resume chat
 | `.git/` | shared | Single repo, single config, single refs |
 | `tmp/` (cache, locks, sessions) | **per-worktree** | Lock files изолированы |
 | `.claude/sessions/inbox/` | **per-worktree** (gitignored) | Cross-worktree messages — use git, not inbox |
-| `Gemfile.lock` | shared (committed) | **Только victory делает `bundle install`** — иначе race |
+| `Gemfile.lock` | shared (committed) | `bundle install` — одна сессия за раз (через `bin/rb`), иначе race |
 | `node_modules/` | per-worktree (gitignored) | Каждый worktree может install отдельно |
 | Disk usage | 4× checkouts | ~1-2 GB each — OK |
 
@@ -112,7 +112,7 @@ bin/claude-inbox done <id>             # move to archive/
 
 1. Печатает `Session: <id>` + worktree path в header
 2. Сканирует `inbox/<id>/*.md`, count + headlines первых 3 (FIFO by mtime)
-3. Сканирует `tmp/claude-locks/*.lock`, подсвечивает stale (empty или > 2ч)
+3. Сканирует `tmp/claude-locks/*.lock` во ВСЕХ worktree, подсвечивает активные и протухшие
 4. Печатает KPI snapshot из `kpi-cache.txt` (если свежий)
 5. Показывает routing matrix (delegation-map.md quick-ref)
 
@@ -123,9 +123,9 @@ bin/claude-inbox done <id>             # move to archive/
 `kpi-cache.txt` — текстовый dump из `bundle exec rake kpi:phase_a`. Cron в `config/sidekiq_cron.yml` обновляет every 6h (см. host crontab также).
 
 ```bash
-# Manual refresh (только в victory worktree — нужен Rails 3.2.2 chruby):
+# Manual refresh (из любого worktree — Ruby приходит из контейнера bin/rb):
 cd /home/q/victory-victory   # или wherever victory worktree
-bundle exec rake kpi:phase_a > .claude/sessions/kpi-cache.txt
+bin/rb --db bundle exec rake kpi:phase_a > .claude/sessions/kpi-cache.txt
 ```
 
 Hook читает этот файл и печатает в SessionStart output. Stale (> 24ч) — предупреждение в hook.
@@ -138,24 +138,52 @@ Hook читает этот файл и печатает в SessionStart output. 
 - Strategic vector alignment (3 pillars)
 - Yandex SEO (SQI, top queries, opportunities, recrawl quota, diagnostics)
 
-## Lock-file hygiene
+## Локи — автоматические и блокирующие (08.08.26)
 
-`tmp/claude-locks/<file>.lock` (per-worktree) — convention для крупных правок (>50 LOC или >5 мин). Format:
+До этого локи ставились вручную «перед крупной правкой». За два месяца не создано **ни одного** — механизм существовал только на бумаге. Теперь всё автоматически:
+
+| Событие | Что происходит |
+|---|---|
+| Edit/Write любого файла | `post-edit-lock.sh` ставит лок в `tmp/claude-locks/` своего worktree |
+| Edit/Write файла, занятого другой сессией | `pre-edit-lock.sh` возвращает **exit 2** — правка отклоняется |
+| `git commit` | `.githooks/post-commit` снимает локи с закоммиченных файлов |
+| Лок без активности > 2ч | удаляется автоматически при следующей попытке правки |
+
+Ключ лока — repo-relative путь, `/` → `%`:
 
 ```
-session=victory,worktree=/home/q/victory-victory,started=2026-06-04T15:00:00+03:00,task=migration-add-seo-fields
+tmp/claude-locks/app%models%property.rb.lock
+
+session=upgrade
+worktree=/home/q/victory-upgrade
+path=app/models/property.rb
+started=08.08.26 21:14
+pid=812267
+task=edit
 ```
 
-`pre-edit-lock.sh` hook **(updated 04.06.26)** проверяет ВСЕ worktrees через shared `.git` и предупреждает о cross-worktree locks.
-
-Cleaner stale locks (empty или старше 2ч):
+Путь, а не basename: в репо 35 совпадающих имён (`base.rb`, `client.rb`, `_form.html.erb`…) — по basename блокировка запрещала бы правку невиновных файлов.
 
 ```bash
-bin/lock-clean              # dry-run, показывает кандидатов в current worktree
-bin/lock-clean --force      # actually rm
+bin/check-cross-worktree-locks                     # кто что держит
+bin/lock-clean --release app/models/property.rb    # снять конкретный лок
+bin/lock-clean --all --force                       # прибрать протухшие везде
+CLAUDE_LOCK_BYPASS=1                               # разовый обход
 ```
 
-Запускай раз в неделю (или Sunday 00:00 через cron) — или когда hook на старте подсвечивает stale.
+Общая логика — `.claude/hooks/lib/locks.sh`. git-хуки доставляются из отслеживаемого `.githooks/` через `bin/install-git-hooks` (вызывается идемпотентно из `session-start.sh`, потому что `.git/hooks` под git не попадает).
+
+## Планы — per-session
+
+Claude Code пишет план в `~/.claude/plans/` — один плоский каталог на все сессии и все проекты хоста, отсюда взаимные затирания. Путь буфера мы не контролируем, поэтому `plan-sync.sh` зеркалит его в репо:
+
+```
+.claude/plans/
+  _shared/                        ← мастер-документы, только через PR
+  victory/ chat/ seo/ upgrade/    ← планы своей сессии, под git
+```
+
+В чужой per-session каталог не пишем.
 
 ## Hand-off workflow
 
@@ -185,17 +213,19 @@ git fetch && git merge origin/dev/<sender>
 
 - ❌ Активная работа в `/home/q/victory` после worktree setup — это main checkout (зарезервирован для merges)
 - ❌ Запуск `claude` без `export CLAUDE_SESSION=*` — теряется session identity
-- ❌ Параллельная правка одного файла в двух worktrees без cross-worktree lock check (см. `pre-edit-lock.sh`)
-- ❌ `bundle install` в двух worktrees одновременно — Gemfile.lock race. Только victory.
+- ❌ `CLAUDE_LOCK_BYPASS=1` при живой сессии-владельце — обход нужен для мёртвой
+- ❌ `bundle install` в двух worktrees одновременно — Gemfile.lock race
+- ❌ `bundle`/`rspec` напрямую на хосте — нужного Ruby там нет, только `bin/rb`
 - ❌ Direct push to `main` — должен идти через PR + CI gate
 - ❌ Inbox для cross-worktree messages — не работает; используй git
 - ❌ Забыть `bin/claude-inbox done <id>` после обработки — inbox растёт
-- ❌ Lock-file без metadata (пустой) — нарушает stale-detection логику
+- ❌ Ручное создание lock-файлов — их ставит `post-edit-lock.sh`
 - ❌ KPI cache stale > 24ч — hook показывает несвежие числа
 
 ## Full reference
 
 - Skill `session-coordination` — convention в деталях (worktree gotchas, branch discipline)
 - Agent `session-coordinator` — для active coordination (worktree setup, lock generation, hand-off generation)
-- `.claude/hooks/pre-edit-lock.sh` — runtime cross-worktree lock warning
+- `.claude/hooks/pre-edit-lock.sh` — блокирующая cross-worktree проверка локов
+- `.claude/hooks/lib/locks.sh` — общая логика ключей/TTL для всех потребителей
 - `.claude/memory/strategicVector.md` — Infrastructure decision 04.06.26 + trigger metrics

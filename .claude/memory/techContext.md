@@ -5,7 +5,7 @@
 | Слой | Технология |
 |------|-----------|
 | Web framework | Rails 7.1 |
-| Language | Ruby **3.2.2** (через chruby/rbenv; системный 3.3 в сессии «chat») |
+| Language | Ruby **3.3.6** — только в контейнере (`bin/rb`); на хосте менеджера версий нет |
 | Database | PostgreSQL 15+ (с PostGIS + pgvector) |
 | Server | Puma 6.x, порт **3000** в Docker (reverse-proxy → 443 в проде) |
 | CSS | Tailwind CSS (`tailwindcss-rails`) |

@@ -26,7 +26,7 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 
 ## Стратегический вектор (24 мес)
 
-`.claude/memory/strategicVector.md` (короткое propagating-резюме) + `.claude/plans/splendid-imagining-lerdorf.md` (мастер-документ). Все решения прогоняй через 3 пиллара: **frictionless concierge / deep expertise / AI×human**. Усиливает 2+ — делаем; ослабляет хотя бы один — переформулируем.
+`.claude/memory/strategicVector.md` (короткое propagating-резюме) + `.claude/plans/_shared/splendid-imagining-lerdorf.md` (мастер-документ). Все решения прогоняй через 3 пиллара: **frictionless concierge / deep expertise / AI×human**. Усиливает 2+ — делаем; ослабляет хотя бы один — переформулируем.
 
 ## Параллельные сессии Claude Code
 
@@ -42,6 +42,20 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 Все 4 сессии — Ruby **3.3.6**. Идентичность — из marker-файла `.claude-session` в корне worktree (auto; override через `export CLAUDE_SESSION`).
 
 🚨 **`/home/q/victory` = main checkout, ТОЛЬКО deploy/merge — НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт. См. `.claude/sessions/README.md` + skill `session-coordination`.
+
+### Локи — автоматические и блокирующие (с 08.08.26)
+
+Правка файла ставит лок в `tmp/claude-locks/` **автоматически** (`post-edit-lock.sh`). Попытка тронуть файл, занятый другой сессией, **отклоняется** (`pre-edit-lock.sh`, exit 2) — руками ничего создавать не нужно. Ключ лока — путь, а не имя файла.
+
+Снятие: коммит (`post-commit` освобождает закоммиченные файлы), TTL 2ч, `bin/lock-clean --release <путь>` для точечного снятия, `CLAUDE_LOCK_BYPASS=1` — разовый обход. Посмотреть занятое: `bin/check-cross-worktree-locks`.
+
+### Планы — per-session
+
+Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` зеркалит его в `.claude/plans/<session>/` своей сессии (под git). Мастер-документы — в `.claude/plans/_shared/`, меняются **только через PR**. В чужой per-session каталог не пишем.
+
+### Ruby — только через `bin/rb`
+
+На хосте нет менеджера версий Ruby, системный ruby не совпадает с пином Gemfile. `bundle`, `rspec`, `bin/rails` запускай через `bin/rb` (контейнер с целевым Ruby, свой compose-проект на сессию): `bin/rb bundle install`, `bin/rb --db bundle exec rspec`. Подробности — в шапке `docker-compose.ruby.yml`.
 
 ## Branch discipline (main = prod)
 

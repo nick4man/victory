@@ -19,6 +19,12 @@ MARKER_SESSION=$(cat .claude-session 2>/dev/null || echo "")
 SESSION_ID="${CLAUDE_SESSION:-${MARKER_SESSION:-unknown}}"
 WORKTREE_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
+# git-хуки живут в .git/hooks, который под git не попадает — доставляем из
+# отслеживаемого .githooks/. Вызов идемпотентный (symlink уже на месте → no-op),
+# поэтому дёргаем на каждом старте вместо ручного шага при клонировании.
+# Нужен для post-commit: он снимает claude-локи с закоммиченных файлов.
+[ -x bin/install-git-hooks ] && bin/install-git-hooks >/dev/null 2>&1
+
 # Pull the first ~12 lines of activeContext.md if present — gives the
 # current phase / branch / focus without loading the whole memory-bank.
 ACTIVE_CTX=""
@@ -27,26 +33,37 @@ if [ -f .claude/memory/activeContext.md ]; then
 fi
 
 # Lock-file inventory + stale detection (empty OR > 2h old).
+#
+# 08.08.26: сканируем ВСЕ worktree, а не только свой. Локи теперь ставятся
+# автоматически и блокируют правку, поэтому на старте важнее всего знать, что
+# держат СОСЕДНИЕ сессии — свои локи и так не мешают. Имена декодируем из
+# %-ключа обратно в путь.
 LOCKS_ACTIVE=""
 LOCKS_STALE=""
-if [ -d tmp/claude-locks ]; then
-  NOW=$(date +%s)
-  for lock in tmp/claude-locks/*.lock; do
-    [ -e "$lock" ] || continue
-    name=$(basename "$lock")
-    size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
-    mtime=$(stat -c%Y "$lock" 2>/dev/null || echo 0)
-    age_hours=$(( (NOW - mtime) / 3600 ))
-    if [ "$size" -eq 0 ]; then
-      LOCKS_STALE="${LOCKS_STALE}    ⚠️  ${name} (empty, no metadata)
+if [ -r .claude/hooks/lib/locks.sh ]; then
+  . .claude/hooks/lib/locks.sh
+  ME_SESSION=$(lock_session "$WORKTREE_PATH")
+  for wt in $(lock_worktrees); do
+    for lock in "$wt"/tmp/claude-locks/*.lock; do
+      [ -e "$lock" ] || continue
+      path=$(lock_key_to_path "$(basename "$lock")")
+      owner=$(lock_meta "$lock" session)
+      size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
+      age_min=$(lock_age_minutes "$lock" 2>/dev/null || echo 0)
+      mark=''
+      [ "$owner" = "$ME_SESSION" ] && mark=' (свой)'
+
+      if [ "$size" -eq 0 ]; then
+        LOCKS_STALE="${LOCKS_STALE}    ⚠️  ${path} — пустой, без метаданных
 "
-    elif [ "$age_hours" -ge 2 ]; then
-      LOCKS_STALE="${LOCKS_STALE}    ⚠️  ${name} (${age_hours}h old)
+      elif lock_is_stale "$lock"; then
+        LOCKS_STALE="${LOCKS_STALE}    ⚠️  ${path} — ${owner}, $((age_min / 60))ч без активности
 "
-    else
-      LOCKS_ACTIVE="${LOCKS_ACTIVE}    ${name}
+      else
+        LOCKS_ACTIVE="${LOCKS_ACTIVE}    ${path} — ${owner}${mark}, $((age_min)) мин
 "
-    fi
+      fi
+    done
   done
 fi
 
@@ -147,8 +164,8 @@ fi
 if [ -n "$LOCKS_STALE" ]; then
   cat <<EOF
 
-⚠️  Stale lock(s) detected (empty or > 2h old):
-$LOCKS_STALE   Run \`bin/lock-clean --force\` to remove.
+⚠️  Протухшие локи (пустые или > 2ч без активности):
+$LOCKS_STALE   Снять: \`bin/lock-clean --all --force\` (или сами уйдут при первой правке).
 EOF
 fi
 
@@ -156,8 +173,8 @@ fi
 if [ -n "$LOCKS_ACTIVE" ]; then
   cat <<EOF
 
-🔒 Active lock(s) (another session may be editing these):
-$LOCKS_ACTIVE
+🔒 Активные локи (правка чужих — будет заблокирована):
+$LOCKS_ACTIVE   Снять конкретный: \`bin/lock-clean --release <путь>\` | обойти: CLAUDE_LOCK_BYPASS=1
 EOF
 fi
 
@@ -192,7 +209,7 @@ cat <<'ROUTING'
   user-facing русский копирайт        → skill: russian-real-estate-copywriting
 
   Strategic vector (24mo): .claude/memory/strategicVector.md
-  Master plan: .claude/plans/splendid-imagining-lerdorf.md
+  Master plan: .claude/plans/_shared/splendid-imagining-lerdorf.md
   Inter-session: .claude/sessions/README.md
   VDS infra cheatsheet: .claude/docs/vds-infra-cheatsheet.md
   Nextcloud cheatsheet: .claude/docs/nextcloud-cheatsheet.md

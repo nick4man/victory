@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# git post-commit — снимает claude-локи с файлов, попавших в коммит.
+#
+# Коммит = «правка закончена», поэтому держать файл занятым дальше незачем.
+# Это основной путь освобождения; TTL в pre-edit-lock.sh — лишь страховка на
+# случай, когда сессия ушла, ничего не закоммитив.
+#
+# .git/hooks лежит в common dir и общий для всех 5 worktree, поэтому хук
+# обязан работать с ТЕКУЩИМ worktree, а не с каким-то фиксированным путём.
+# Ставится через bin/install-git-hooks (сам .git/hooks под git не попадает).
+
+set +e
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+LOCK_DIR="$ROOT/tmp/claude-locks"
+[ -d "$LOCK_DIR" ] || exit 0
+
+# shellcheck source=../.claude/hooks/lib/locks.sh
+. "$ROOT/.claude/hooks/lib/locks.sh" 2>/dev/null || exit 0
+
+ME=$(lock_session "$ROOT")
+RELEASED=0
+
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  KEY=$(lock_key "$file" "$ROOT") || continue
+  LOCK="$LOCK_DIR/$KEY"
+  [ -f "$LOCK" ] || continue
+  # Чужие локи не трогаем — в своём worktree их быть не должно, но проверка
+  # дешёвая, а последствия ошибки неприятные.
+  [ "$(lock_meta "$LOCK" session)" = "$ME" ] || continue
+  rm -f "$LOCK" 2>/dev/null && RELEASED=$((RELEASED + 1))
+done < <(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null)
+
+[ "$RELEASED" -gt 0 ] && echo "🔓 claude-локов снято: $RELEASED"
+
+exit 0

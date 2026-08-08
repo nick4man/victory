@@ -23,7 +23,7 @@
 
 Работают **на одной кодбазе** `/home/q/victory` (минимум три сессии в проекте):
 
-- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. chruby/rbenv с Ruby 3.2.2 активирован. Сюда — Edit/Write/RSpec/runner, миграции, рефакторинги, тесты.
+- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. Ruby — через контейнер `bin/rb` (на хосте менеджера версий нет). Сюда — Edit/Write/RSpec/runner, миграции, рефакторинги, тесты.
 - **session «chat»** — **site-chatbot разработка** + планирование, документы, TG-доставка. Системный Ruby 3.3 — `bin/rails runner` НЕ работает. Сюда — Plan, AskUser, curl к TG Bot API напрямую, prompt-engineering для `chat_responder.rb` + `chat_tools/*`.
 - **session «seo»** — SEO-работа: meta-теги, JSON-LD, sitemap/robots, friendly_id, контент-SEO, lighthouse-аудиты. Эта сессия работает с тем же codebase; для Rails-изменений (helpers, view-partials, controllers) предпочитает hand-off в victory-сессию (там dev-server и тесты).
 
@@ -170,7 +170,7 @@ controller mix, если решим показывать.
 
 ## MLS/YRL launch — Phase 0 baseline (18.05.26)
 
-Запущен plan `.claude/plans/merry-honking-kay.md` («MLS/YRL feeds на полную
+Запущен plan `.claude/plans/_shared/merry-honking-kay.md` («MLS/YRL feeds на полную
 катушку + commission-strategy»). Phase 0 — baseline snapshot Yandex
 метрик для post-launch diff.
 
@@ -192,7 +192,7 @@ controller mix, если решим показывать.
 - ping Yandex.Webmaster recrawl для свежих URL'ов (~21 calls из 139 quota)
 - остаётся ~118 quota для Phase 2 + дальше
 
-Plan детально: `.claude/plans/merry-honking-kay.md`.
+Plan детально: `.claude/plans/_shared/merry-honking-kay.md`.
 Diff-instruction: через 7 дней после Phase 1+2 — re-run `rake yrl:baseline`,
 diff с `yandex_baseline_2026-05-18.json`.
 
