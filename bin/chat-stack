@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+#
+# Обёртка над docker-compose.chat.yml — изолированный Rails-стек chat-сессии.
+#
+# Зачем обёртка, а не голый `docker compose`:
+#   1. Гарантирует, что запуск идёт из chat-worktree (иначе -f подхватит
+#      прод-compose и правка уедет на живой сайт).
+#   2. Экспортирует HOST_UID/HOST_GID — в bash UID readonly, из compose не взять.
+#   3. Полный путь /usr/bin/docker — матчит allow-rule и не ловит алиасы.
+#
+#   bin/chat-stack up [--build]      поднять db + redis + web (:3001)
+#   bin/chat-stack seed-bundle       залить гемы из прод-волюма (вместо bundle install)
+#   bin/chat-stack db-setup          create + schema:load (без сломанных сидов)
+#   bin/chat-stack ps | logs | down
+#   bin/chat-stack sh                bash внутрь web
+#   bin/chat-stack rspec [args]      прогон спеков в RAILS_ENV=test
+#   bin/chat-stack rails <args>      bin/rails внутри контейнера
+#   bin/chat-stack runner '<ruby>'   rails runner
+#   bin/chat-stack nuke              down -v (сносит СВОИ волюмы, прод не трогает)
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DOCKER=/usr/bin/docker
+COMPOSE_FILE="$ROOT/docker-compose.chat.yml"
+PROD_BUNDLE_VOLUME=victory_bundle
+CHAT_BUNDLE_VOLUME=victory-chat_bundle
+
+# --- guard: только chat-worktree -------------------------------------------
+marker="$(cat "$ROOT/.claude-session" 2>/dev/null || echo '')"
+if [ "$marker" != 'chat' ]; then
+  echo "chat-stack: запущен вне chat-worktree (marker='${marker:-нет}', root=$ROOT)." >&2
+  echo "Перейди в /home/q/victory-chat. В main-checkout этот стек не поднимать — там прод." >&2
+  exit 1
+fi
+
+export HOST_UID="$(id -u)" HOST_GID="$(id -g)"
+
+dc() { "$DOCKER" compose -f "$COMPOSE_FILE" "$@"; }
+
+# Свежесозданный named volume принадлежит root, а web бежит под uid 1000 —
+# Rails падает на mkdir /app/tmp/cache. Чиним владельца одноразовым root-
+# контейнером (idempotent, дёшево, поэтому зовём на каждом `up`).
+fix_perms() {
+  for v in rails_tmp rails_log; do
+    "$DOCKER" volume create "victory-chat_$v" >/dev/null
+    "$DOCKER" run --rm -v "victory-chat_$v:/vol" alpine \
+      chown -R "$(id -u):$(id -g)" /vol
+  done
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  up)
+    fix_perms
+    dc up -d "$@"
+    echo
+    echo "web → http://localhost:3001  (логи: bin/chat-stack logs)"
+    ;;
+  down)   dc down "$@" ;;
+  nuke)   dc down -v "$@"; echo 'Волюмы victory-chat_* снесены. Прод-волюмы victory_* не тронуты.' ;;
+  ps)     dc ps "$@" ;;
+  logs)   dc logs -f --tail=100 "${@:-web}" ;;
+  sh)     dc exec web bash ;;
+  rails)  dc exec web bin/rails "$@" ;;
+  runner) dc exec web bin/rails runner "$@" ;;
+  rspec)
+    # run --rm, а не exec: спекам нужен RAILS_ENV=test, а живой web поднят в
+    # development. Отдельный контейнер — отдельная БД, dev-данные целы.
+    # db:test:prepare (а не db:prepare) — грузит схему и НЕ трогает сиды.
+    # DatabaseCleaner считает «удалённой» любую DATABASE_URL с хостом кроме
+    # localhost, а у нас это compose-сервис `db`. База своя, одноразовая и
+    # смотрит в victory-chat_pgdata — safeguard тут только мешает.
+    dc run --rm -e RAILS_ENV=test -e DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL=true web \
+      bash -c 'bin/rails db:test:prepare && bundle exec rspec "$@"' -- "$@"
+    ;;
+
+  db-setup)
+    # Явная замена db:prepare: create + schema:load БЕЗ сидов (db/seeds.rb
+    # сломан — см. комментарий в docker-compose.chat.yml).
+    dc exec web bin/rails db:create db:schema:load
+    ;;
+
+  seed-bundle)
+    # Гемы у прода и у нас идентичны (один Gemfile.lock, один коммит), поэтому
+    # копируем готовый bundle-волюм вместо `bundle install` — минуты вместо
+    # десятков минут и без похода в сеть. Прод-волюм монтируется :ro.
+    echo "Копирую $PROD_BUNDLE_VOLUME → $CHAT_BUNDLE_VOLUME ..."
+    "$DOCKER" volume create "$CHAT_BUNDLE_VOLUME" >/dev/null
+    "$DOCKER" run --rm \
+      -v "$PROD_BUNDLE_VOLUME:/src:ro" \
+      -v "$CHAT_BUNDLE_VOLUME:/dst" \
+      alpine sh -c 'cp -a /src/. /dst/ && echo OK'
+    echo 'Готово. Проверка: bin/chat-stack sh -> bundle check'
+    ;;
+
+  help|--help|-h)
+    sed -n '3,19p' "$0" ;;
+  *)
+    echo "chat-stack: неизвестная команда '$cmd'. См. bin/chat-stack help" >&2; exit 1 ;;
+esac

@@ -30,7 +30,7 @@ Rails **8.1.3.1**, Ruby **3.4.10** в worktree-сессиях (Ruby 3.3 EOL 31.0
 - **upgrade** — EOL закрыт; сейчас долг по спекам и инфра координации сессий.
 - **chat** — site-chatbot, мелкие фиксы кодовой базы.
 
-## Параллельные сессии Claude Code
+## Параллельные сессии Claude Code (актуально с 08.08.26)
 
 **4 сессии, у каждой свой git worktree** (не общая кодбаза — это изменилось
 08.08.26). Идентичность — из marker-файла `.claude-session` в корне worktree,
@@ -42,6 +42,26 @@ override через `export CLAUDE_SESSION`.
 | **chat** | `/home/q/victory-chat` | `dev/chat` | site-chatbot, `chat_tools/*`, prompts |
 | **seo** | `/home/q/victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
 | **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
+
+### Как chat-сессия исполняет код (08.08.26)
+
+На хосте нет менеджера версий Ruby, системный не совпадает с пином Gemfile
+(**3.4.10**), поэтому `bundle exec` с хоста не работает. Прод-контейнер
+примонтирован к main-checkout'у и наш код не видит. Отсюда два пути: общий
+`bin/rb` (разовая команда в контейнере) и свой поднятый стек — когда нужен
+живой сайт и БД:
+
+```bash
+bin/chat-stack up            # db + redis + web на http://localhost:3001
+bin/chat-stack rspec <path>  # спеки в RAILS_ENV=test, своя БД
+bin/chat-stack runner '...'  # rails runner
+bin/chat-stack logs | sh | down | nuke
+```
+
+Конфиг — `docker-compose.chat.yml` (compose-project `victory-chat`, свои волюмы
+`victory-chat_*`). Прод (project `victory`, порт 3000) не затрагивается.
+Sidekiq намеренно не поднят — фоновые джобы копятся в своём redis и не уходят
+в реальные TG/Topnlab.
 
 🚨 `/home/q/victory` — main checkout и **живой прод-bind-mount** (`victory-web-1`
 → `/app`, code-reload). Правка там уходит на сайт мгновенно. Только deploy/merge.
