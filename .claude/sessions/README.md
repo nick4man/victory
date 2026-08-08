@@ -4,12 +4,12 @@
 
 | Session | Purpose | Worktree path | Branch | Ruby |
 |---|---|---|---|---|
-| **victory** | Rails dev (migrations, controllers, models, specs). Dev-server :3000 | `/home/q/victory-victory` (migration pending) | `dev/victory` или `claude/<task>` | chruby → **3.2.2** |
-| **chat** | Site-chatbot dev + planning + TG via curl | `/home/q/victory-chat` | `dev/chat` | системный **3.3** |
-| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` | `dev/seo` | системный **3.3** |
-| **upgrade** | Rails 7.2 + Ruby 3.3 EOL upgrade | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | EOL target (3.3) |
+| **victory** | Rails dev (migrations, controllers, models, specs). Dev-server :3000 | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.3.6** |
+| **chat** | Site-chatbot dev + planning + TG via curl | `/home/q/victory-chat` | `dev/chat` | **3.3.6** |
+| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` | `dev/seo` | **3.3.6** |
+| **upgrade** | Rails/Ruby EOL upgrades (Rails 8.1 landed 08.08.26) | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.3.6** |
 
-`/home/q/victory` — **main checkout** (для merge/deploy hand-off, не для active session work).
+> 🚨 **`/home/q/victory` — main checkout, ТОЛЬКО deploy/merge.** Это **live-prod bind-mount**: `victory-web-1` монтирует его в `/app` (`RAILS_ENV=development`, code-reload), поэтому **любая правка там мгновенно попадает на живой сайт**. Никакой активной разработки — работай в своём `/home/q/victory-<session>`. Все 4 сессии на Ruby **3.3.6** (после EOL-апгрейда; старое разделение chruby 3.2.2 / system 3.3 устарело).
 
 ## Worktree setup (run once)
 
@@ -17,27 +17,30 @@
 
 ```bash
 cd /home/q/victory
+git worktree add /home/q/victory-victory  -b dev/victory  origin/main
 git worktree add /home/q/victory-chat     -b dev/chat     origin/main
 git worktree add /home/q/victory-seo      -b dev/seo      origin/main
 git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
-git worktree list                                          # подтвердить
+git worktree list                                          # подтвердить 5 checkout'ов
+# marker-файл идентичности в каждый worktree:
+for s in victory chat seo upgrade; do echo "$s" > /home/q/victory-$s/.claude-session; done
+echo main > /home/q/victory/.claude-session
 ```
 
 Каждая сессия открывает свой terminal:
 
 ```bash
-export CLAUDE_SESSION=chat       # или victory / seo / upgrade
-cd /home/q/victory-chat          # ← cd в свой worktree
+cd /home/q/victory-chat          # ← cd в свой worktree; identity берётся из .claude-session
 claude --resume chat
 ```
 
-`SessionStart` hook прочитает `CLAUDE_SESSION` + покажет worktree-local context.
+## Session identity — `.claude-session` marker (auto)
 
-## Session identity (mandatory)
+Идентичность сессии — из файла **`.claude-session`** в корне worktree (`victory|chat|seo|upgrade`; в main-checkout — `main`). Это durable source of truth: SessionStart-hook — подпроцесс и **не может** экспортировать env в сессию, поэтому каждый потребитель (`session-start.sh`, `bin/claude-inbox`, lock-скрипты) читает marker сам.
 
-Перед запуском `claude` — `export CLAUDE_SESSION=<session>`. Hook без env-var покажет «Session: unknown» и напомнит установить. Inbox не сканируется без identity.
-
-Долгосрочно — добавить в `~/.zshrc` per-tmux-pane через `.envrc` (direnv).
+- Hook печатает `Session` + `Worktree` + guard'ы: запуск в main-checkout → 🚨 prod-warning; `CLAUDE_SESSION` ≠ marker → mismatch-warning (запустил сессию в чужом worktree).
+- Override: `export CLAUDE_SESSION=<session>` перекрывает marker (нужно редко).
+- Marker **gitignored** (`/.claude-session`) — значения per-worktree, общий tracked-файл конфликтовал бы.
 
 ## Per-worktree gotchas
 

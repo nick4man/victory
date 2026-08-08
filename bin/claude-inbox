@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # bin/claude-inbox — inter-session message inbox
 #
-# Sessions identified by CLAUDE_SESSION env (victory|chat|seo).
+# Sessions identified by CLAUDE_SESSION env, else per-worktree .claude-session
+# marker file (victory|chat|seo|upgrade).
 # Messages stored as markdown in .claude/sessions/inbox/<session>/
 
 set -e
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 INBOX_DIR="$ROOT/.claude/sessions/inbox"
-MY_SESSION="${CLAUDE_SESSION:-unknown}"
+MY_SESSION="${CLAUDE_SESSION:-$(cat "$ROOT/.claude-session" 2>/dev/null || echo unknown)}"
 
-valid_sessions=("victory" "chat" "seo")
+valid_sessions=("victory" "chat" "seo" "upgrade")
 
 is_valid_session() {
   local s="$1"
@@ -25,7 +26,7 @@ usage() {
 Usage: bin/claude-inbox <command> [args...]
 
 Commands:
-  send <to> "<message>"     Create message FROM me TO <to> (victory|chat|seo)
+  send <to> "<message>"     Create message FROM me TO <to> (victory|chat|seo|upgrade)
   list                       List pending messages for my session
   read <id>                  Display message by id prefix (timestamp)
   done <id>                  Move message to archive/

@@ -12,12 +12,12 @@ You are the session coordinator. **4 Claude Code сессии** работают
 
 | Session | Worktree | Branch | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` (или `/home/q/victory` migration-pending) | `dev/victory` / `claude/<task>` | chruby → **3.2.2** | bin/rails, bundle, rspec |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | системный **3.3** | curl, python3, gem-less |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | системный **3.3** | curl, lighthouse, schema validators |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | EOL target (3.3, 3.4) | bundle, ruby (target) |
+| **victory** | `/home/q/victory-victory` | `dev/victory` / `claude/<task>` | **3.3.6** | bin/rails, bundle, rspec |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, gem-less |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, schema validators |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.3.6** | bundle, ruby (target) |
 
-`/home/q/victory` — main checkout, reserved для merge/deploy. **Не для активной работы сессий.**
+🚨 `/home/q/victory` — main checkout, **ТОЛЬКО merge/deploy** (live-prod bind-mount: `victory-web-1`→`/app`, dev-mode code-reload → правка мгновенно на живом сайте). **Не для активной работы сессий.** Идентичность сессий — marker-файл `.claude-session` (auto; `CLAUDE_SESSION` — override).
 
 ## Worktree setup (one-time invocation)
 
@@ -25,10 +25,13 @@ You are the session coordinator. **4 Claude Code сессии** работают
 
 ```bash
 cd /home/q/victory
+git worktree add /home/q/victory-victory  -b dev/victory  origin/main
 git worktree add /home/q/victory-chat     -b dev/chat     origin/main
 git worktree add /home/q/victory-seo      -b dev/seo      origin/main
 git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
-git worktree list   # verify 4 worktrees
+git worktree list   # verify 5 checkouts (main + 4 sessions)
+for s in victory chat seo upgrade; do echo "$s" > /home/q/victory-$s/.claude-session; done
+echo main > /home/q/victory/.claude-session
 ```
 
 Session start command:

@@ -11,12 +11,12 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 
 | Session | Worktree path | Branch convention | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` (или `/home/q/victory` migration-pending) | `dev/victory` или `claude/<task>` | chruby → **3.2.2** | bin/rails, bundle, rspec, gem |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | системный **3.3** | curl, python3, gem-less |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | системный **3.3** | curl, lighthouse, schema validators |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | EOL targets (3.3, 3.4) | bundle, ruby (target) |
+| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.3.6** | bin/rails, bundle, rspec, gem |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, gem-less |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, schema validators |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.3.6** | bundle, ruby (target) |
 
-`/home/q/victory` — **main checkout** (canonical, reserved для merge/deploy hand-off, НЕ для активной работы сессий).
+> 🚨 `/home/q/victory` — **main checkout, ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.3.6** (после Rails-8.1 EOL-апгрейда 08.08.26).
 
 ## Why worktree (vs shared working tree)
 
@@ -33,22 +33,24 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 
 ```bash
 cd /home/q/victory
+git worktree add /home/q/victory-victory  -b dev/victory  origin/main
 git worktree add /home/q/victory-chat     -b dev/chat     origin/main
 git worktree add /home/q/victory-seo      -b dev/seo      origin/main
 git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
-# /home/q/victory остаётся как main checkout либо victory worktree (TBD)
-git worktree list                  # подтвердить 4 entries
+git worktree list                  # подтвердить 5 checkout'ов (main + 4 сессии)
+# marker-файл идентичности в каждый worktree:
+for s in victory chat seo upgrade; do echo "$s" > /home/q/victory-$s/.claude-session; done
+echo main > /home/q/victory/.claude-session
 ```
 
 После setup каждая сессия открывает свой terminal и:
 
 ```bash
-export CLAUDE_SESSION=chat     # или victory / seo / upgrade
-cd /home/q/victory-chat        # cd в свой worktree
+cd /home/q/victory-chat        # identity берётся из .claude-session (marker-файл)
 claude --resume chat           # session restart inside worktree
 ```
 
-`SessionStart` hook прочитает `CLAUDE_SESSION` + покажет worktree-local context (branch, inbox, KPI).
+`SessionStart` hook читает `.claude-session` marker (или `CLAUDE_SESSION` override) + печатает `Session`/`Worktree` + guard'ы (main-checkout → prod-warning; env≠marker → mismatch). Marker gitignored (`/.claude-session`), значения per-worktree.
 
 ## Per-worktree gotchas
 
