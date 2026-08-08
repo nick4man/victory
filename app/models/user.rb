@@ -141,11 +141,11 @@ class User < ApplicationRecord
   # ============================================
   # ENUMS
   # ============================================
-  enum role: {
+  enum :role, {
     client: 0,    # Обычный клиент
     agent: 1,     # Агент по недвижимости
     admin: 2      # Администратор
-  }, _prefix: true
+  }, prefix: true
 
   # CRM-derived scopes
   scope :crm_active, -> { where(crm_status: 'active') }

@@ -75,14 +75,14 @@ class CaseStudy < ApplicationRecord
   # property_type значения 1:1 совпадают с Property enum чтобы кейс с
   # привязанным property_id мог корректно унаследовать или переопределить
   # тип в JSON-LD/breadcrumb. _prefix per CLAUDE.md convention.
-  enum property_type: { flat: 0, house: 1, commercial: 2, land: 3 },
-       _prefix: :type
+  enum :property_type, { flat: 0, house: 1, commercial: 2, land: 3 },
+       prefix: :type
 
   # _prefix: true → case_study.status_draft?, case_study.status_published?
   # (prefix prepended — это конвенция CLAUDE.md правила #2; suffix gave бы
   # «published_status?», но мы держим единообразие с другими моделями).
-  enum status: { draft: 0, published: 1, archived: 2 },
-       _prefix: true
+  enum :status, { draft: 0, published: 1, archived: 2 },
+       prefix: true
 
   validates :title,    presence: true, length: { minimum: 10, maximum: 200 }
   validates :body,     presence: true

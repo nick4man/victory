@@ -32,10 +32,10 @@ class PriceHistory < ApplicationRecord
   # ENUMS
   # ============================================
   
-  enum change_type: {
+  enum :change_type, {
     increase: 'increase',
     decrease: 'decrease'
-  }, _prefix: true
+  }, prefix: true
   
   # ============================================
   # VALIDATIONS

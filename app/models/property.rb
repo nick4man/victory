@@ -186,13 +186,13 @@ class Property < ApplicationRecord
   # ============================================
   # ENUMS
   # ============================================
-  enum deal_type: {
+  enum :deal_type, {
     sale: 0,      # Продажа
     rent: 1,      # Аренда
     daily: 2      # Посуточная аренда
-  }, _prefix: true
+  }, prefix: true
 
-  enum status: {
+  enum :status, {
     draft: 0,             # Черновик
     pending: 1,           # На модерации (admin review)
     active: 2,            # Активен (в рекламе)
@@ -201,15 +201,15 @@ class Property < ApplicationRecord
     archived: 5,          # Архив
     rejected: 6,          # Отклонен
     pending_consent: 7    # Ожидает подписи клиента (digital agency contract)
-  }, _prefix: true
+  }, prefix: true
 
-  enum condition: {
+  enum :condition, {
     needs_repair: 0,  # Требует ремонта
     normal: 1,        # Обычное состояние
     renovated: 2,     # С ремонтом
     euro: 3,          # Евроремонт
     designer: 4       # Дизайнерский ремонт
-  }, _prefix: true
+  }, prefix: true
 
   # ============================================
   # VALIDATIONS

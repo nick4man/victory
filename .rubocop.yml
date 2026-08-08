@@ -132,6 +132,14 @@ Rails/SkipsModelValidations:
 Rails/InverseOf:
   Enabled: false
 
+# Rails-8-gated cop: активируется от TargetRailsVersion 8.1 (Gemfile.lock) и
+# предлагает params.expect(...) вместо require().permit() в 149 местах / 61 файле.
+# params.expect — новый Rails 8 API с ИНЫМ поведением (бросает ParameterMissing
+# при отсутствии/неверном типе). Массовая конверсия = отдельная поведение-меняющая
+# миграция, вне scope EOL-бампа (7.2→8.1). Follow-up вместе с load_defaults 8.0.
+Rails/StrongParametersExpect:
+  Enabled: false
+
 # RSpec
 
 RSpec/ExampleLength:

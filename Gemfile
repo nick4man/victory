@@ -5,11 +5,9 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
 ruby '3.3.6'
 
-# Core Rails — EOL Phase 1: 7.1.6 → 7.2.3.1 (CVE sweep 25.06.26: Ruby 3.2.2 →
-# 3.3.6, закрывает Brakeman EOLRuby; Ruby 3.3 YJIT on по умолчанию).
-# CVE sweep 08.08.26: 7.2.3.1 → 7.2.3.2 — CVE-2026-66066 (arbitrary file read +
-# RCE в Active Storage variant processing; бьёт по нашему AVIF/webp pipeline).
-gem 'rails', '~> 7.2.3', '>= 7.2.3.2'
+# Core Rails — EOL Phase 2: 7.2.3.2 → 8.1 (7.2.x EOL 2026-08-09). Ruby 3.3.6 (YJIT
+# on) уже совместим. 8.1.3.1 также нативно закрывает CVE-2026-66066 (Active Storage).
+gem 'rails', '~> 8.0', '>= 8.1.3.1'
 
 # Database
 gem 'pg', '~> 1.5'

@@ -64,7 +64,7 @@ class Inquiry < ApplicationRecord
   # ============================================
   # ENUMS
   # ============================================
-  enum inquiry_type: {
+  enum :inquiry_type, {
     viewing: 0,           # Запрос на просмотр
     consultation: 1,      # Консультация
     mortgage: 2,          # Ипотека
@@ -72,9 +72,9 @@ class Inquiry < ApplicationRecord
     callback: 4,          # Обратный звонок
     quick_inquiry: 5,     # Быстрая заявка
     contact_agent: 6      # Связаться с агентом
-  }, _prefix: true
+  }, prefix: true
 
-  enum status: {
+  enum :status, {
     new: 0,              # Новая
     contacted: 1,        # Связались
     in_progress: 2,      # В работе
@@ -82,13 +82,13 @@ class Inquiry < ApplicationRecord
     completed: 4,        # Завершена
     cancelled: 5,        # Отменена
     spam: 6              # Спам
-  }, _prefix: true
+  }, prefix: true
 
-  enum priority: {
+  enum :priority, {
     normal: 0,
     high: 1,
     urgent: 2
-  }, _prefix: true
+  }, prefix: true
 
   # ============================================
   # VALIDATIONS

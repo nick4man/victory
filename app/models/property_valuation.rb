@@ -8,7 +8,7 @@ class PropertyValuation < ApplicationRecord
   has_many_attached :photos
   
   # Enums
-  enum property_type: {
+  enum :property_type, {
     apartment: 'apartment',
     house: 'house',
     land: 'land',
@@ -17,12 +17,12 @@ class PropertyValuation < ApplicationRecord
     room: 'room'
   }
   
-  enum deal_type: {
+  enum :deal_type, {
     sale: 'sale',
     rent: 'rent'
   }
   
-  enum status: {
+  enum :status, {
     pending: 'pending',
     completed: 'completed',
     failed: 'failed'
@@ -30,12 +30,12 @@ class PropertyValuation < ApplicationRecord
 
   # Express = local hedonic + bootstrap CI on Property+MlsListing.
   # Investment = full audit-engine-v2 pipeline (EI/Monte Carlo/PDF).
-  enum audit_mode: {
+  enum :audit_mode, {
     express: 'express',
     investment: 'investment'
-  }, _prefix: :audit_mode
+  }, prefix: :audit_mode
   
-  enum building_type: {
+  enum :building_type, {
     panel: 'panel',
     brick: 'brick',
     monolith: 'monolith',
@@ -45,13 +45,13 @@ class PropertyValuation < ApplicationRecord
   }
   
   attribute :property_condition, :string
-  enum property_condition: {
+  enum :property_condition, {
     needs_repair: 'needs_repair',
     average: 'average',
     good: 'good',
     excellent: 'excellent',
     designer: 'designer'
-  }, _prefix: :property_condition
+  }, prefix: :property_condition
   
   TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
   TYPES_REQUIRING_LAND_AREA = %w[land].freeze

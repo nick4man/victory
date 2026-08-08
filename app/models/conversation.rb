@@ -7,7 +7,7 @@ class Conversation < ApplicationRecord
   belongs_to :assigned_user, class_name: 'User', optional: true
   has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
 
-  enum status: { active: 0, escalated: 1, closed: 2 }, _prefix: :status
+  enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
 
   scope :for_visitor, ->(token) { where(visitor_token: token) }
   scope :open_state, -> { where(status: %i[active escalated]) }
