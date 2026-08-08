@@ -3,8 +3,11 @@
 # files in the background. Does NOT block (always exits 0). Stderr only on
 # fatal errors; auto-corrections are applied transparently.
 #
-# Requires rubocop in the bundle (added by Phase 3.2). Skips silently if
-# bundle/rubocop not available or wrong Ruby version.
+# 08.08.26: раньше звал `bundle exec rubocop` напрямую. На хосте нет менеджера
+# версий Ruby (системный ruby не совпадает с пином в Gemfile), поэтому вызов
+# молча падал и автокоррекция не работала ни в одной сессии. Теперь идём через
+# bin/rb — контейнер с целевым Ruby. Если bin/rb нет (старый checkout) —
+# тихо выходим, как и раньше.
 
 set +e
 
@@ -21,10 +24,11 @@ fi
 
 case "$FILE" in
   *.rb|*.rake|*.ru)
+    [ -x bin/rb ] || exit 0
     # Best-effort autocorrect in background. The whole pipeline cannot
     # afford to wait — `&` + nohup detaches.
     (
-      nohup bundle exec rubocop -a --force-exclusion "$FILE" >/dev/null 2>&1 &
+      nohup bin/rb bundle exec rubocop -a --force-exclusion "$FILE" >/dev/null 2>&1 &
     ) 2>/dev/null
     ;;
   *)
