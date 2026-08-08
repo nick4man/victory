@@ -27,7 +27,14 @@ module Topnlab
     end
 
     # GET /public/get-ids
-    # @return [Array<Integer>]
+    # @return [Array<Integer>]  bare array of ids; пусто = []
+    # @raise [Topnlab::Client::Error] если ответ — НЕ массив.
+    #
+    # Не-массивный 200 (`{"status":"error"}`, `{}`, `null`) или 404→nil трактуем как
+    # ошибку fetch, а НЕ как пустую выгрузку: молчаливый `[]` неотличим от легитимно
+    # пустого результата, и на нём Importer#archive_missing обнулил бы весь каталог
+    # (prod-инцидент). Raise отправляет такой сегмент через fetch_errors-guard (PR #6),
+    # где archive пропускается. Легитимный `[]` остаётся валидным и не бросает.
     def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
       params = filters.merge(key: @api_key, type: type)
       params[:action] = action if action
@@ -35,7 +42,14 @@ module Topnlab
       params[:is_feed] = is_feed unless is_feed.nil?
 
       data = http_get('/get-ids', params, throttle: :slow)
-      data.is_a?(Array) ? data : []
+      unless data.is_a?(Array)
+        raise Error,
+              "get-ids вернул не-массив (#{data.class}) — трактуем как fetch failure, " \
+              "не как пустую выгрузку (защита каталога от ложного archive): " \
+              "#{data.inspect.truncate(200)}"
+      end
+
+      data
     end
 
     # GET /public/get-entities — batches up to 300 ids
