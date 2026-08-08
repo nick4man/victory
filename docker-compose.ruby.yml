@@ -79,6 +79,10 @@ services:
       RAILS_ENV: ${RB_RAILS_ENV:-test}
       DATABASE_HOST: db
       REDIS_URL: redis://redis
+      # Контейнер бежит под uid хоста, которого нет в /etc/passwd → HOME
+      # разрешается в «/», писать туда нельзя. Bundler и RuboCop на каждый
+      # запуск сыпали «Permission denied @ dir_s_mkdir - /.cache».
+      HOME: /tmp
       # DatabaseCleaner считает «удалённым» любой DATABASE_URL с хостом не
       # localhost и отказывается чистить БД. У нас хост — `db`, т.е. соседний
       # контейнер СВОЕГО же compose-проекта, поднятый на один прогон: снести
