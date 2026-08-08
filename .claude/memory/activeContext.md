@@ -4,9 +4,9 @@
 
 ## Branch
 
-- Активная ветка: `claude/currency-converter-app-9Ljw6`
-- База: `main` (последний sync на момент создания: `02f8783`)
-- Состояние: ~229 uncommitted/staged файлов на ветке (большой инкремент в работе)
+- Ветка — по сессии: `dev/victory` | `dev/chat` | `dev/seo` | `dev/upgrade` (см. `.claude/sessions/README.md`)
+- База: `main` (прод; последний merge — PR #9, `ddcc3e9`, 08.08.26)
+- Ruby/Rails: 3.3.6 / 8.1.3.1 в проде. Локально Ruby только через `bin/rb` — менеджера версий на хосте нет.
 
 ## Текущая фаза
 
