@@ -15,8 +15,8 @@
 class MagicLinkToken < ApplicationRecord
   TTL = 30.minutes
 
-  enum identifier_type: { email: 'email', phone: 'phone' }, _prefix: true
-  enum scope: {
+  enum :identifier_type, { email: 'email', phone: 'phone' }, prefix: true
+  enum :scope, {
     login:          'login',
     password_reset: 'password_reset',
     partner_login:  'partner_login',
@@ -25,7 +25,7 @@ class MagicLinkToken < ApplicationRecord
     # использоваться для логина даже если перехвачен.
     email_change:   'email_change',
     phone_change:   'phone_change'
-  }, _prefix: :scope
+  }, prefix: :scope
 
   validates :token, :identifier, :expires_at, :identifier_type, :scope, presence: true
   validates :token, uniqueness: true

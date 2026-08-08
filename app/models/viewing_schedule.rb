@@ -9,7 +9,7 @@ class ViewingSchedule < ApplicationRecord
   belongs_to :agent, class_name: 'User', optional: true
   
   # Enums
-  enum status: {
+  enum :status, {
     pending: 'pending',
     confirmed: 'confirmed',
     completed: 'completed',

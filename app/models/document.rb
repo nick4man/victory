@@ -37,7 +37,7 @@ class Document < ApplicationRecord
   # ENUMS
   # ============================================
   
-  enum document_type: {
+  enum :document_type, {
     contract: 'contract',
     certificate: 'certificate',
     ownership: 'ownership',
@@ -46,13 +46,13 @@ class Document < ApplicationRecord
     appraisal_report: 'appraisal_report',
     inspection_report: 'inspection_report',
     other: 'other'
-  }, _prefix: true
+  }, prefix: true
   
-  enum status: {
+  enum :status, {
     pending: 'pending',
     approved: 'approved',
     rejected: 'rejected'
-  }, _prefix: true
+  }, prefix: true
   
   # ============================================
   # VALIDATIONS

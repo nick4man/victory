@@ -9,14 +9,6 @@
       "note": "Безопасно: путь не рендерится напрямую из параметра. Кандидаты строятся из @intent/@type и пропускаются через `lookup_context.exists?(p, [], true)` .find — рендерится ТОЛЬКО реально существующий шаблон из landings/content/. Allowlist-by-existence, не arbitrary path. Weak confidence."
     },
     {
-      "fingerprint": "98b26f60d776fd41ee6f088c833725145be9aac2d7c5b33780241c273622db42",
-      "check_name": "EOLRails",
-      "message": "Support for Rails 7.2.3.2 ends on 2026-08-09",
-      "file": "Gemfile.lock",
-      "line": 266,
-      "note": "BRIDGE-SUPPRESS (08.08.26, tracked). CVE sweep 08.08 поднял 7.2.3.1 -> 7.2.3.2 (закрыл activestorage-RCE CVE-2026-66066), но patch НЕ двигает EOL: вся ветка 7.2.x EOL 2026-08-09. Honest fix = Rails 8 (Phase 2: config.load_defaults 8.0 + enum positional-args + app:update) — запланирован СЛЕДУЮЩИМ PR сразу после этого sweep. Это временный мост, чтобы срочные CVE-фиксы (RCE + websocket High DoS) уехали в прод сегодня, а не ждали многочасовой Rails-8 апгрейд. DEADLINE: снять этот ignore при мёрже Rails 8. Medium confidence."
-    },
-    {
       "fingerprint": "2f8f5af6929d0bb667587c7d70df4659325f138947208a1430e7838a4d3e1eba",
       "check_name": "LinkToHref",
       "message": "Potentially unsafe model attribute in `link_to` href",

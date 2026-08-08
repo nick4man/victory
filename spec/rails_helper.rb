@@ -41,7 +41,8 @@ end
 
 RSpec.configure do |config|
   # Remove this line if you're not using ActiveRecord or ActiveRecord fixtures
-  config.fixture_path = Rails.root.join('spec/fixtures')
+  # Rails 8 / rspec-rails: singular `fixture_path=` removed → plural array form.
+  config.fixture_paths = [Rails.root.join('spec/fixtures')]
 
   # If you're not using ActiveRecord, or you'd prefer not to run each of your
   # examples within a transaction, remove the following line or assign false
@@ -72,6 +73,16 @@ RSpec.configure do |config|
   config.include Devise::Test::ControllerHelpers, type: :controller
   config.include Devise::Test::IntegrationHelpers, type: :request
   config.include Warden::Test::Helpers
+
+  # Rails 8 lazy-loads routes, so in non-request specs (model/service/job/mailer)
+  # the route set is never drawn and `Devise.mappings` stays empty. Any User
+  # created via factory then triggers Devise :confirmable → Devise::Mailer →
+  # find_scope!, which raises "Could not find a valid mapping for #<User>".
+  # Prod & request specs are unaffected (routes always loaded there). Force the
+  # route set once before the suite so Devise mappings are populated.
+  config.before(:suite) do
+    Rails.application.reload_routes!
+  end
 
   # Database Cleaner configuration
   config.before(:suite) do

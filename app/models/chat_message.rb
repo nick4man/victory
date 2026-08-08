@@ -9,7 +9,7 @@ class ChatMessage < ApplicationRecord
   belongs_to :conversation, touch: :last_message_at
   belongs_to :author, class_name: 'User', optional: true
 
-  enum role: { user: 0, assistant: 1, agent: 2, system: 3 }, _prefix: :role
+  enum :role, { user: 0, assistant: 1, agent: 2, system: 3 }, prefix: :role
 
   validates :body, presence: true, length: { maximum: 5000 }
 

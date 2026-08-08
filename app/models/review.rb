@@ -23,7 +23,7 @@ class Review < ApplicationRecord
   # ============================================
 
   # Schema column is integer (0..3); migration comment lists 0=pending 1=approved 2=rejected 3=hidden.
-  enum status: { pending: 0, approved: 1, rejected: 2, hidden: 3 }, _prefix: true
+  enum :status, { pending: 0, approved: 1, rejected: 2, hidden: 3 }, prefix: true
 
   # ============================================
   # VALIDATIONS
