@@ -34,12 +34,14 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 
 | Session | Назначение | Worktree |
 |---|---|---|
-| **victory** | Rails-сервер :3000, Ruby 3.2.2 chruby → Edit/RSpec/runner | `/home/q/victory-victory` |
-| **chat** | Site-chatbot dev + planning, системный Ruby 3.3 | `/home/q/victory-chat` |
+| **victory** | Rails-сервер :3000, Edit/RSpec/runner | `/home/q/victory-victory` |
+| **chat** | Site-chatbot dev + planning | `/home/q/victory-chat` |
 | **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` |
-| **upgrade** | Rails 7.2 + Ruby 3.3 EOL upgrade | `/home/q/victory-upgrade` |
+| **upgrade** | Rails/Ruby EOL upgrades (Rails 8.1.3.1 в проде c 08.08.26) | `/home/q/victory-upgrade` |
 
-`/home/q/victory` остаётся как **main checkout** (для merge/deploy hand-off, не для активной работы сессий). См. `.claude/sessions/README.md` + skill `session-coordination` для worktree setup команд.
+Все 4 сессии — Ruby **3.3.6**. Идентичность — из marker-файла `.claude-session` в корне worktree (auto; override через `export CLAUDE_SESSION`).
+
+🚨 **`/home/q/victory` = main checkout, ТОЛЬКО deploy/merge — НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт. См. `.claude/sessions/README.md` + skill `session-coordination`.
 
 ## Branch discipline (main = prod)
 

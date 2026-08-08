@@ -13,8 +13,15 @@
 
 # Runtime session locks (.claude/sessions/ + scheduled_tasks).
 .claude/scheduled_tasks.lock
-.claude/sessions/inbox/*/
+# Ignore inbox message CONTENTS but keep the per-session dirs tracked via .keep.
+# `/*/*` (not `/*/`) so git still descends into new session dirs (e.g. upgrade/)
+# and the .keep whitelist below can re-include them.
+.claude/sessions/inbox/*/*
 !.claude/sessions/inbox/*/.keep
+
+# Per-worktree session identity marker (value differs per worktree — must stay
+# untracked so worktrees don't fight over one committed file). See sessions/README.md.
+/.claude-session
 
 # Ignore all logfiles and tempfiles.
 /log/*

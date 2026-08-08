@@ -12,8 +12,12 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l)
 LAST_COMMIT=$(git log -1 --format='%h %s' 2>/dev/null)
 
-# Session identity from CLAUDE_SESSION env. Falls back to 'unknown'.
-SESSION_ID="${CLAUDE_SESSION:-unknown}"
+# Session identity: CLAUDE_SESSION env wins; else per-worktree .claude-session
+# marker file (the durable source of truth — a hook subprocess can't export env
+# back to the session, so each worktree self-identifies via its marker).
+MARKER_SESSION=$(cat .claude-session 2>/dev/null || echo "")
+SESSION_ID="${CLAUDE_SESSION:-${MARKER_SESSION:-unknown}}"
+WORKTREE_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # Pull the first ~12 lines of activeContext.md if present — gives the
 # current phase / branch / focus without loading the whole memory-bank.
@@ -90,6 +94,7 @@ fi
 cat <<EOF
 === VICTORY62 SESSION ===
   Session:       $SESSION_ID
+  Worktree:      $WORKTREE_PATH
   Branch:        $BRANCH
   Uncommitted:   $UNCOMMITTED file(s)
   Last commit:   $LAST_COMMIT
@@ -98,12 +103,34 @@ Active context (.claude/memory/activeContext.md head):
 $ACTIVE_CTX
 EOF
 
-# Session identity warning
-if [ "$SESSION_ID" = "unknown" ]; then
+# Session identity / worktree guards
+if [ "$SESSION_ID" = "main" ]; then
   cat <<'WARN'
 
-⚠️  Session identity not set — export CLAUDE_SESSION=victory|chat|seo before launching claude
-   to enable inbox + per-session routing. See .claude/sessions/README.md
+🚨  MAIN CHECKOUT (/home/q/victory) — this is the LIVE-PROD bind-mount
+   (victory-web-1 mounts it at /app in RAILS_ENV=development with code-reload,
+   so edits here hit the live site instantly). Reserved for deploy/merge ONLY —
+   do NOT do active development here. Work in your session worktree
+   (/home/q/victory-<session>). See .claude/sessions/README.md
+WARN
+elif [ "$SESSION_ID" = "unknown" ]; then
+  cat <<'WARN'
+
+⚠️  Session identity not set — no .claude-session marker and CLAUDE_SESSION unset.
+   Each worktree carries a .claude-session file (victory|chat|seo|upgrade); if
+   missing, `echo <session> > .claude-session` or export CLAUDE_SESSION. Inbox +
+   per-session routing stay disabled until set. See .claude/sessions/README.md
+WARN
+fi
+
+# Mismatch guard: env says one session but the worktree marker says another →
+# almost certainly launched in the wrong worktree.
+if [ -n "$CLAUDE_SESSION" ] && [ -n "$MARKER_SESSION" ] && [ "$CLAUDE_SESSION" != "$MARKER_SESSION" ]; then
+  cat <<WARN
+
+⚠️  SESSION/WORKTREE MISMATCH: CLAUDE_SESSION=$CLAUDE_SESSION but this worktree's
+   marker is '$MARKER_SESSION' ($WORKTREE_PATH). You may have launched the
+   '$CLAUDE_SESSION' session in the wrong worktree. Expected: /home/q/victory-$CLAUDE_SESSION
 WARN
 fi
 
