@@ -7,7 +7,9 @@ ruby '3.3.6'
 
 # Core Rails — EOL Phase 1: 7.1.6 → 7.2.3.1 (CVE sweep 25.06.26: Ruby 3.2.2 →
 # 3.3.6, закрывает Brakeman EOLRuby; Ruby 3.3 YJIT on по умолчанию).
-gem 'rails', '~> 7.2.3', '>= 7.2.3.1'
+# CVE sweep 08.08.26: 7.2.3.1 → 7.2.3.2 — CVE-2026-66066 (arbitrary file read +
+# RCE в Active Storage variant processing; бьёт по нашему AVIF/webp pipeline).
+gem 'rails', '~> 7.2.3', '>= 7.2.3.2'
 
 # Database
 gem 'pg', '~> 1.5'
@@ -25,6 +27,14 @@ gem 'rack-session', '>= 2.1.2'
 gem 'nokogiri', '>= 1.19.4' # XSLT/xmlC14N + new advisory (sweep 25.06.26)
 gem 'net-imap', '>= 0.6.4.1' # command injection CVE-2026-42258 + CVE-2026-47240
 gem 'concurrent-ruby', '>= 1.3.7' # CVE-2026-54904/54905/54906 (sweep 25.06.26)
+# CVE sweep 08.08.26 — новые advisory против transitive deps (advisory-db догнала
+# спустя ~6 недель после 25.06). Явные floor-пины до апстрим-догона.
+gem 'websocket-driver', '>= 0.8.2' # High: DoS via malformed Host header + 3 more (GHSA)
+gem 'loofah', '>= 2.25.2' # Medium: SVG href local-reference bypass (GHSA-9wjq-cp2p-hrgf)
+gem 'rails-html-sanitizer', '>= 1.7.1' # XSS (GHSA-cj75-f6xr-r4g7)
+gem 'crass', '>= 1.0.7' # 5× DoS advisories (транзитивно через loofah)
+gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
+gem 'msgpack', '>= 1.8.2' # CVE-2026-54522 use-after-free (DFVULN-839)
 
 # Assets
 gem 'sprockets-rails'
