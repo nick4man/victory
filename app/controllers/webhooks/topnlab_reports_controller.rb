@@ -12,8 +12,17 @@ module Webhooks
       report = CrmReport.find_by!(slug: params[:slug])
       payload = parsed_payload
 
+      # Defense-in-depth: template_class уже ограничен модельной валидацией
+      # (CrmReport: inclusion in TEMPLATE_CLASSES), но явный allowlist-guard на
+      # call-site закрывает constantize-RCE даже если запись попала в БД в обход
+      # валидации (raw SQL / seed). Brakeman UnsafeReflection — clean.
+      name = report.template_class
+      unless CrmReport::TEMPLATE_CLASSES.include?(name)
+        raise ArgumentError, "Unregistered template_class: #{name}"
+      end
+
       file_url = Timeout.timeout(TIMEOUT_BUFFER) do
-        klass = report.template_class.constantize
+        klass = name.constantize
         klass.new(ids: payload['ids'], user: payload['user'], report: report).generate_and_upload!
       end
 

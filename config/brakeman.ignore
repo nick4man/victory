@@ -1,0 +1,45 @@
+{
+  "ignored_warnings": [
+    {
+      "fingerprint": "18d50ee964d22e4b80d0d6670f73dfffbc1ef4cfe1d61311177d8d1e1bf9c1b3",
+      "check_name": "Render",
+      "message": "Render path contains parameter value",
+      "file": "app/views/landings/show.html.erb",
+      "line": 50,
+      "note": "Безопасно: путь не рендерится напрямую из параметра. Кандидаты строятся из @intent/@type и пропускаются через `lookup_context.exists?(p, [], true)` .find — рендерится ТОЛЬКО реально существующий шаблон из landings/content/. Allowlist-by-existence, не arbitrary path. Weak confidence."
+    },
+    {
+      "fingerprint": "21ab0fe00fdd5899ffc405cff75aadb91b805ee996a614f7e27b08a287e9062d",
+      "check_name": "EOLRails",
+      "message": "Support for Rails 7.2.3.1 ends on 2026-08-09",
+      "file": "Gemfile.lock",
+      "line": 269,
+      "note": "Известно и трекается: EOL Phase 1 поднял 7.1.6 -> 7.2.3.1 (закрыл серию CVE + EOLRuby через Ruby 3.3.6). Rails 8 = EOL Phase 2 (отдельный апгрейд: config.load_defaults 8.0 + enum positional-args + app:update). До 2026-08-09 7.2 ещё в security-support. Weak confidence."
+    },
+    {
+      "fingerprint": "2f8f5af6929d0bb667587c7d70df4659325f138947208a1430e7838a4d3e1eba",
+      "check_name": "LinkToHref",
+      "message": "Potentially unsafe model attribute in `link_to` href",
+      "file": "app/views/admin/reviews/index.html.erb",
+      "line": 52,
+      "note": "Admin-only view (доступ через ?token=ADMIN_TOKEN). external_url проставляется персоналом, не публичным вводом; link_to уже c rel='noopener nofollow' target='_blank'. Risk surface = trusted admin. Weak confidence."
+    },
+    {
+      "fingerprint": "6332b6948bf52f9c62c4b41794d3066b16cc9a966644bf45f85ea705aa8b8da6",
+      "check_name": "Redirect",
+      "message": "Possible unprotected redirect",
+      "file": "app/controllers/cabinet/profile_controller.rb",
+      "line": 293,
+      "note": "Цель redirect — https://t.me/#{bot_username}?start=token, где bot_username из ENV['TELEGRAM_BOT_USERNAME'] (server-controlled, fallback 'anvictorybot'), host жёстко t.me. allow_other_host: true намеренно (Telegram deeplink). Параметра пользователя в host нет. Weak confidence."
+    },
+    {
+      "fingerprint": "907364468c1de60e31178d4fede8c91ea604782dd50098520477d16fefbca135",
+      "check_name": "VerbConfusion",
+      "message": "Potential HTTP verb confusion. `HEAD` is routed like `GET` but `request.get?` will return false for it",
+      "file": "app/controllers/application_controller.rb",
+      "line": 269,
+      "note": "store_location лишь пишет session[:return_to] = request.fullpath при request.get?. Для HEAD условие false -> return_to просто не сохранится (benign no-op). Нет auth-обхода, нет state-mutation. Weak confidence."
+    }
+  ],
+  "brakeman_version": "6.2.2"
+}
