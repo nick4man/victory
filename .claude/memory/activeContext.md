@@ -2,30 +2,59 @@
 
 > Обновляй этот файл вручную или при смене фазы. Здесь — только «живое».
 
-## Branch
+## Branch (обновлено 08.08.26)
 
-- Активная ветка: `claude/currency-converter-app-9Ljw6`
-- База: `main` (последний sync на момент создания: `02f8783`)
-- Состояние: ~229 uncommitted/staged файлов на ветке (большой инкремент в работе)
+- Worktree: `/home/q/victory-chat`, marker `.claude-session` = `chat`
+- Активная ветка: `dev/chat`, синхронна с `main` (0 ahead / 0 behind, `ddcc3e9`)
+- Состояние: рабочее дерево чистое; в проде Rails 8.1.3.1 / Ruby 3.3.6 (PR #8)
 
 ## Текущая фаза
 
-**Phase 8 — TG ↔ victory62 cross-link (Rails side)**
+**Инфраструктура сессий закрыта (08.08.26)** — 4 worktree разведены, у chat
+есть свой изолированный Rails-стек (см. ниже). Дальше — по site-chatbot.
 
-Последние коммиты по теме:
+Предыдущая содержательная фаза — Phase 8 (TG ↔ victory62 cross-link), коммиты:
 - `98c5477 Phase 8: cross-link TG ↔ victory62 — Rails side`
 - `071563c Express PDF + TG notifier + QR codes on both reports`
 - `b5f5640 Phase 7: News UX — embeddings, share/TG CTA, swipe carousel, modal preview`
 - `3ac78a2 Fix: TG inbox photo download must be async`
 - `832f06b Production: status PROD + TG inbox + deploy docs`
 
-## Параллельные сессии Claude Code
+## Параллельные сессии Claude Code (актуально с 08.08.26)
 
-Работают **на одной кодбазе** `/home/q/victory` (минимум три сессии в проекте):
+**4 сессии, у каждой свой git worktree** (раньше все делили `/home/q/victory` →
+коллизии на checkout). Полная конвенция — `.claude/sessions/README.md`.
 
-- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. chruby/rbenv с Ruby 3.2.2 активирован. Сюда — Edit/Write/RSpec/runner, миграции, рефакторинги, тесты.
-- **session «chat»** — **site-chatbot разработка** + планирование, документы, TG-доставка. Системный Ruby 3.3 — `bin/rails runner` НЕ работает. Сюда — Plan, AskUser, curl к TG Bot API напрямую, prompt-engineering для `chat_responder.rb` + `chat_tools/*`.
-- **session «seo»** — SEO-работа: meta-теги, JSON-LD, sitemap/robots, friendly_id, контент-SEO, lighthouse-аудиты. Эта сессия работает с тем же codebase; для Rails-изменений (helpers, view-partials, controllers) предпочитает hand-off в victory-сессию (там dev-server и тесты).
+| Session | Worktree | Ветка |
+|---|---|---|
+| victory | `/home/q/victory-victory` | `dev/victory` |
+| chat | `/home/q/victory-chat` | `dev/chat` |
+| seo | `/home/q/victory-seo` | `dev/seo` |
+| upgrade | `/home/q/victory-upgrade` | `dev/upgrade` |
+
+🚨 `/home/q/victory` — main checkout и **live-prod bind-mount** (`victory-web-1`
+монтирует его в `/app` с code-reload). Только merge/deploy, не разработка.
+
+Идентичность — из marker-файла `.claude-session` в корне worktree.
+Секреты — symlink `.env → /home/q/victory/.env` (один источник на все worktree).
+
+### Как chat-сессия исполняет код (08.08.26)
+
+На хосте нет менеджера версий Ruby: системный — 3.3.8, Gemfile пинит 3.3.6,
+поэтому `bundle exec` с хоста не работает. Прод-контейнер примонтирован к
+main-checkout'у и наш код не видит. Решение — свой изолированный стек:
+
+```bash
+bin/chat-stack up            # db + redis + web на http://localhost:3001
+bin/chat-stack rspec <path>  # спеки в RAILS_ENV=test, своя БД
+bin/chat-stack runner '...'  # rails runner
+bin/chat-stack logs | sh | down | nuke
+```
+
+Конфиг — `docker-compose.chat.yml` (compose-project `victory-chat`, свои волюмы
+`victory-chat_*`). Прод (project `victory`, порт 3000) не затрагивается.
+Sidekiq намеренно не поднят — фоновые джобы копятся в своём redis и не уходят
+в реальные TG/Topnlab.
 
 Координация: Memory-bank, `.mcp.json`, `.claude/agents/`, `.claude/skills/` проектные → все сессии видят одинаковую конфигурацию. Для одновременных правок одного файла — lock-file pattern (см. skill `session-coordination` и agent `session-coordinator`).
 
@@ -33,6 +62,7 @@ Session-domain split (рекомендуемый):
 - Rails-код / migrations / specs → **victory**
 - Site-chatbot tools / prompts / LLM chain → **chat**
 - SEO meta / JSON-LD / sitemap / content-SEO → **seo** (Rails-side изменения — hand-off в victory)
+- Rails/Ruby EOL-апгрейды → **upgrade**
 - Документы / планирование / TG-доставка → любая, но обычно **chat**
 
 ## Что сейчас «в фокусе» при работе

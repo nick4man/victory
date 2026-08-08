@@ -1,0 +1,139 @@
+# Изолированный Rails-стек для chat-worktree (/home/q/victory-chat).
+#
+# Зачем: на хосте нет менеджера версий Ruby (ни chruby, ни rbenv), системный
+# ruby — 3.3.8, а Gemfile пинит 3.3.6. Прод-контейнеры (project `victory`)
+# примонтированы к /home/q/victory и трогать их нельзя — это live-prod
+# bind-mount. Этот файл поднимает отдельный project `victory-chat` со своими
+# db / redis / bundle: полная изоляция, снос одной командой `down -v`,
+# прод не замечает.
+#
+# Запуск — через bin/chat-stack (проверяет worktree, подставляет -f и HOST_UID):
+#
+#   bin/chat-stack up                     # поднять db + redis + web
+#   bin/chat-stack logs                   # хвост логов web
+#   bin/chat-stack sh                     # bash внутрь web
+#   bin/chat-stack rspec spec/services     # прогон спеков (RAILS_ENV=test)
+#   bin/chat-stack runner 'p Property.count'
+#   bin/chat-stack down                   # остановить (данные живы)
+#   bin/chat-stack nuke                   # снести вместе с волюмами
+#
+# Имя project'а задано явно — иначе compose возьмёт имя каталога и при
+# переименовании worktree мы потеряем волюмы.
+name: victory-chat
+
+services:
+  db:
+    # Тот же образ, что в проде (postgis + pgvector) — уже собран локально,
+    # build отработает из кэша. Данные — в СВОЁМ волюме victory-chat_pgdata.
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: viktory-postgres-pgvector:pg15-postgis35
+    restart: 'no'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: 'no'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    # image указан явно — переиспользуем УЖЕ собранный прод-образ, пересборки
+    # не будет (код всё равно приезжает bind-mount'ом, из образа нужны только
+    # системные пакеты). Нужна пересборка — bin/chat-stack up --build.
+    build: .
+    image: victory-web:latest
+    restart: 'no'
+    # HOST_UID/HOST_GID, а не UID/GID: в bash UID — readonly, скрипт-обёртка
+    # не смогла бы их экспортировать.
+    user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
+    env_file:
+      # symlink → /home/q/victory/.env. Один источник секретов на все worktree.
+      - .env
+    environment:
+      # .env тянет DATABASE_HOST=db / REDIS_URL=redis://redis:6379/0 — внутри
+      # project'а `victory-chat` эти имена резолвятся в СВОИ db/redis, не в
+      # прод-контейнеры. Дублируем явно, чтобы это не зависело от .env.
+      DATABASE_HOST: db
+      REDIS_URL: redis://redis:6379/0
+      # DATABASE_URL из .env чинится в entrypoint — см. комментарий там.
+      RAILS_ENV: ${CHAT_RAILS_ENV:-development}
+      # Entrypoint по умолчанию гоняет db:prepare, а тот на пустой БД тянет
+      # db/seeds.rb — он сломан (seeds.rb:74 строит телефон из 12 цифр при
+      # валидации 10-11) и роняет старт. Схему накатываем явно, без сидов:
+      #   bin/chat-stack db-setup
+      SKIP_DB_PREPARE: '1'
+      # .env содержит APP_HOST=victory62.org — иначе dev-контейнер начнёт
+      # генерить ссылки на живой домен (письма, OG, canonical).
+      APP_HOST: localhost:3001
+      APP_PROTOCOL: http
+      # У uid 1000 внутри образа нет домашнего каталога — bundler на каждый
+      # вызов ворчит «`/` is not writable» и уходит во временный HOME.
+      HOME: /tmp
+    # .env содержит DATABASE_URL с жёстко вшитым viktory_realty_development, а
+    # Rails накрывает ею КАЖДОЕ окружение — под RAILS_ENV=test спеки поехали бы
+    # в dev-базу (и db:test:prepare упёрся бы в protected-environments guard).
+    # Через compose её не «развидеть» (env_file всё равно протащит), а просто
+    # снять нельзя: config/database.yml:102 (секция staging) зовёт
+    # ENV.fetch('DATABASE_URL') без дефолта, а ERB рендерится целиком — без
+    # переменной падает загрузка конфига в ЛЮБОМ окружении. Поэтому пересобираем
+    # её под текущий RAILS_ENV и отдаём управление штатному entrypoint'у.
+    entrypoint:
+      - bash
+      - -c
+      # $$ — экранирование для compose: подстановка должна произойти в шелле
+      # контейнера, а не на хосте (там этих переменных нет).
+      - >-
+        export DATABASE_URL="postgresql://$${DATABASE_USERNAME}:$${DATABASE_PASSWORD}@db:5432/viktory_realty_$${RAILS_ENV}";
+        exec /app/bin/docker-entrypoint "$$@"
+      - '--'
+    # Свой entrypoint в compose обнуляет CMD из образа — дублируем его руками,
+    # иначе контейнер стартует с пустой командой и сразу выходит.
+    command: ['bin/rails', 'server', '-b', '0.0.0.0', '-p', '3000']
+    ports:
+      # :3000 занят продом. Слушаем 0.0.0.0 — как прод, чтобы открывалось не
+      # только с самого хоста. Нужен доступ строго локально — поменяй на
+      # "127.0.0.1:3001:3000".
+      - '0.0.0.0:3001:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+      - rails_tmp:/app/tmp
+      - rails_log:/app/log
+    tty: true
+    stdin_open: true
+
+# Sidekiq намеренно НЕ поднят: без воркера фоновые джобы просто копятся в СВОЁМ
+# redis и никуда не уходят. Это дешёвая страховка от того, что dev-прогон
+# отправит реальное сообщение в TG или дёрнет Topnlab API прод-ключами.
+# Понадобится — раскомментируй, скопировав блок sidekiq из docker-compose.yml.
+
+volumes:
+  # Свои волюмы: victory-chat_pgdata / _redisdata / _bundle / _rails_tmp / _rails_log.
+  # С прод-волюмами (victory_*) не пересекаются.
+  pgdata:
+  redisdata:
+  bundle:
+  rails_tmp:
+  rails_log:
