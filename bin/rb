@@ -15,9 +15,22 @@
 #   bin/rb --shell                            # интерактивный bash внутри
 #   RUBY_TARGET=3.4.1 bin/rb --build ruby -v  # пробный прогон на другом Ruby
 #
+# Живой web — для доменов, где проверка идёт руками в браузере и по вебхукам
+# (чат сайта, TG-боты), а не только спеками:
+#
+#   bin/rb --web up                            # поднять и оставить (development)
+#   bin/rb --web logs                          # хвост логов
+#   bin/rb --web bin/rails console             # в ЖИВОЙ процесс, не в новый
+#   bin/rb --web 'bin/rails runner "p Property.count"'
+#   bin/rb --web down                          # погасить, данные в волюмах живы
+#
+#   Порт — RB_WEB_PORT (по умолчанию 3001), адрес — RB_WEB_BIND (127.0.0.1).
+#   Sidekiq в стеке НЕТ намеренно, см. docker-compose.ruby.yml.
+#
 # Флаги:
 #   --db      поднять postgres+redis перед командой (нужно для rails/rspec;
 #             без него контейнер стартует один — быстрее в разы)
+#   --web     работать с живым web-контейнером вместо одноразового
 #   --build   пересобрать образ (после смены RUBY_TARGET или правки Gemfile)
 #   --shell   интерактивный bash вместо разовой команды
 #   --down    погасить стек ЭТОЙ сессии (данные в волюмах сохраняются)
@@ -72,12 +85,14 @@ COMPOSE=("$DOCKER" compose -p "$PROJECT" -f docker-compose.ruby.yml)
 
 WITH_DB=0
 DO_BUILD=0
+WEB=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --db)    WITH_DB=1; shift ;;
+    --web)   WEB=1; shift ;;
     --build) DO_BUILD=1; shift ;;
-    --down)  exec "${COMPOSE[@]}" down ;;
-    --nuke)  exec "${COMPOSE[@]}" down -v ;;
+    --down)  exec "${COMPOSE[@]}" --profile web down ;;
+    --nuke)  exec "${COMPOSE[@]}" --profile web down -v ;;
     --shell) shift; set -- 'bash'; break ;;
     --) shift; break ;;
     *) break ;;
@@ -86,8 +101,40 @@ done
 
 [ "$DO_BUILD" -eq 1 ] && "${COMPOSE[@]}" build ruby
 
+# ── Живой web ───────────────────────────────────────────────────────────────
+# Отдельная ветка, потому что здесь всё наоборот: не «запустить одноразовый
+# контейнер», а «зайти в уже работающий». Команда выполняется через exec, то
+# есть видит то же состояние процесса и ту же базу, что и браузер.
+if [ "$WEB" -eq 1 ]; then
+  case "${1:-}" in
+    up)
+      "${COMPOSE[@]}" --profile web up -d --wait web
+      # Схему накатываем сами: у web стоит SKIP_DB_PREPARE=1, потому что
+      # db:prepare на чистой базе доходит до db/seeds.rb и падает на формате
+      # телефона. db:prepare здесь идёт без сидов — схема есть, мусора нет.
+      "${COMPOSE[@]}" exec -T web bash -c 'bin/rails db:prepare 2>&1 | tail -3' || true
+      # app/assets/builds/* в .gitignore, поэтому в свежем worktree их нет и
+      # первый же запрос падает с «asset tailwind.css is not present».
+      # Идемпотентно, несколько секунд.
+      "${COMPOSE[@]}" exec -T web bash -c 'bin/rails tailwindcss:build 2>&1 | tail -2' || true
+      echo "✓ web поднят: http://${RB_WEB_BIND:-127.0.0.1}:${RB_WEB_PORT:-3001}"
+      echo "  логи: bin/rb --web logs   |   консоль: bin/rb --web bin/rails console"
+      exit 0 ;;
+    logs)  shift; exec "${COMPOSE[@]}" logs -f --tail=100 web ;;
+    ps)    exec "${COMPOSE[@]}" --profile web ps ;;
+    '')
+      echo 'usage: bin/rb --web up|logs|ps | bin/rb --web <команда в живом контейнере>' >&2
+      exit 2 ;;
+  esac
+
+  # Всё остальное — выполнить в живом web. Одна строка идёт как есть, несколько
+  # аргументов экранируются (та же логика, что для одноразового ruby ниже).
+  if [ $# -eq 1 ]; then WEB_CMD="$1"; else WEB_CMD=$(printf '%q ' "$@"); fi
+  exec "${COMPOSE[@]}" exec web bash -c "$WEB_CMD"
+fi
+
 if [ $# -eq 0 ]; then
-  echo 'usage: bin/rb [--db|--build|--shell|--down|--nuke] <команда...>' >&2
+  echo 'usage: bin/rb [--db|--web|--build|--shell|--down|--nuke] <команда...>' >&2
   exit 2
 fi
 

@@ -108,8 +108,59 @@ services:
       # не может писать log/test.log. Берём каталоги из worktree: права верные,
       # логи видно с хоста, оба в .gitignore.
     command: ['sleep infinity']
-    # Портов не публикуем: :3000 занят продом. Нужен браузер — добавь
-    # --service-ports и ports: ["127.0.0.1:3001:3000"].
+    # Портов не публикуем: этот сервис одноразовый. Живой web — профиль ниже.
+
+  # Долгоживущий web — для доменов, где проверка идёт руками в браузере и по
+  # вебхукам, а не только спеками (чат сайта, TG-боты). Профиль `web`, поэтому
+  # обычный `up` его не поднимает: платить контейнером за прогон спеков незачем.
+  #
+  #   bin/rb --web up                     # поднять и оставить
+  #   bin/rb --web logs                   # хвост логов
+  #   bin/rb --web bin/rails console      # в ЖИВОЙ процесс, не в новый
+  #   bin/rb --web down
+  #
+  # Sidekiq здесь НЕТ и не будет: в .env боевые ключи Telegram и Topnlab, и
+  # поднятый воркер разошлёт реальные сообщения реальным людям. Джобы копятся в
+  # своём redis и никуда не уходят — это осознанное свойство, а не недоделка.
+  web:
+    profiles: ['web']
+    build:
+      context: .
+      args:
+        RUBY_VERSION: ${RUBY_TARGET:-3.3.6}
+    image: victory-rubybox:${RUBY_TARGET:-3.3.6}
+    restart: 'no'
+    user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
+    env_file:
+      - .env
+    environment:
+      # Всегда development: состояние разговора с ботом живёт в dev-базе и не
+      # должно вычищаться прогоном спеков, который работает в test.
+      RAILS_ENV: development
+      DATABASE_HOST: db
+      REDIS_URL: redis://redis
+      HOME: /tmp
+      # DATABASE_URL из .env здесь оставляем как есть: он указывает на
+      # хост `db` и базу viktory_realty_development — в этом проекте это ровно
+      # наш контейнер и ровно нужная база. Снимать его (как для одноразового
+      # ruby) не требуется.
+      #
+      # db:prepare пропускаем: на чистой базе он доходит до db/seeds.rb, а тот
+      # падает на формате телефона. Схему накатывают явно — см. bin/rb --web up.
+      SKIP_DB_PREPARE: '1'
+    ports:
+      # По умолчанию только loopback: в .env боевые токены, и открывать такой
+      # контейнер в сеть нельзя. Нужен внешний доступ — RB_WEB_BIND=0.0.0.0,
+      # осознанно и ненадолго.
+      - '${RB_WEB_BIND:-127.0.0.1}:${RB_WEB_PORT:-3001}:3000'
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
