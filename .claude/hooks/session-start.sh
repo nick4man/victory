@@ -44,8 +44,8 @@ if [ -r .claude/hooks/lib/locks.sh ]; then
   . .claude/hooks/lib/locks.sh
   ME_SESSION=$(lock_session "$WORKTREE_PATH")
   for wt in $(lock_worktrees); do
-    for lock in "$wt"/tmp/claude-locks/*.lock; do
-      [ -e "$lock" ] || continue
+    while IFS= read -r lock; do
+      [ -n "$lock" ] || continue
       path=$(lock_key_to_path "$(basename "$lock")")
       owner=$(lock_meta "$lock" session)
       size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
@@ -63,14 +63,19 @@ if [ -r .claude/hooks/lib/locks.sh ]; then
         LOCKS_ACTIVE="${LOCKS_ACTIVE}    ${path} — ${owner}${mark}, $((age_min)) мин
 "
       fi
-    done
+    done < <(lock_files "$wt")
   done
 fi
 
 # Inbox scan — only if CLAUDE_SESSION is set and valid.
+#
+# 09.08.26: каталог переехал из worktree в ~/.claude-shared/inbox/. Прежний путь
+# был per-worktree, поэтому отправитель и получатель обязаны были сидеть в одном
+# checkout'е — между сессиями такого не бывает, и почта не работала ни дня.
+# Живой сессии теперь пишут напрямую через SendMessage; inbox — для оффлайна.
 INBOX_TOTAL=0
 INBOX_HEADLINES=""
-INBOX_DIR=".claude/sessions/inbox/$SESSION_ID"
+INBOX_DIR="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/inbox/$SESSION_ID"
 if [ "$SESSION_ID" != "unknown" ] && [ -d "$INBOX_DIR" ]; then
   # Total count (top-level *.md only, not archive/).
   INBOX_TOTAL=$(find "$INBOX_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)
@@ -176,6 +181,34 @@ if [ -n "$LOCKS_ACTIVE" ]; then
 🔒 Активные локи (правка чужих — будет заблокирована):
 $LOCKS_ACTIVE   Снять конкретный: \`bin/lock-clean --release <путь>\` | обойти: CLAUDE_LOCK_BYPASS=1
 EOF
+fi
+
+# Наблюдатель — только в victory: он там живёт.
+# Показываем не саму сводку (её собирает агент), а поводы его позвать.
+if [ "$SESSION_ID" = "victory" ]; then
+  CONFLICTS_FILE="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/events/conflicts.jsonl"
+  CONFLICTS_24H=0
+  if [ -f "$CONFLICTS_FILE" ]; then
+    CUTOFF=$(date -d '24 hours ago' -Iseconds 2>/dev/null || echo '')
+    if [ -n "$CUTOFF" ]; then
+      CONFLICTS_24H=$(awk -v c="$CUTOFF" -F'"' '$4 > c' "$CONFLICTS_FILE" 2>/dev/null | wc -l)
+    fi
+  fi
+
+  # Чужие сессии с незапушенной работой — главный повод свести их между собой.
+  OTHERS_AHEAD=$(bin/session-status --porcelain 2>/dev/null \
+    | awk -F'\t' '$1 != "victory" && $1 != "main" && $4 != "-" && $4 > 0 {n++} END {print n+0}')
+
+  if [ "$CONFLICTS_24H" -gt 0 ] || [ "${OTHERS_AHEAD:-0}" -gt 0 ]; then
+    cat <<EOF
+
+=== 👁  НАБЛЮДАТЕЛЬ ===
+  Конфликтов локов за сутки: $CONFLICTS_24H
+  Сессий с незапушенной работой: ${OTHERS_AHEAD:-0}
+  Свести картину: агент \`session-observer\` | снимок: \`bin/session-status\`
+  Полномочия ролей: .claude/docs/session-authority.md
+EOF
+  fi
 fi
 
 # KPI block

@@ -41,9 +41,23 @@ cd /home/q/victory-chat
 claude --resume chat
 ```
 
-## Lock-file pattern (per-worktree, cross-worktree warning)
+## Граница с наблюдателем (`session-observer`)
 
-После worktree setup, lock files в worktree-local `tmp/claude-locks/`. **`pre-edit-lock.sh` hook** (`.claude/hooks/pre-edit-lock.sh`) автоматически проверяет ВСЕ worktrees через shared `.git`. Manual check:
+Ты — **механика**: worktree setup, локи, hand-off по запросу, диагностика git-состояния.
+Наблюдатель — **суждение**: кто кому мешает, кто дублирует чужую работу, что расходится со
+стратегическим вектором, кто уступает файл в споре.
+
+Пришёл вопрос «кто прав» или «не делает ли это уже кто-то» — это не к тебе, передавай наблюдателю.
+Пришёл вопрос «как разложить worktree» или «сними лок» — твоё.
+
+Полномочия всех ролей: `.claude/docs/session-authority.md`.
+
+## Lock-file pattern (автоматический, блокирующий)
+
+Локи ставятся **сами** (`post-edit-lock.sh`) и **блокируют** правку чужого файла
+(`pre-edit-lock.sh`, exit 2). Ключ — repo-relative путь, а не basename. Посмотреть занятое:
+`bin/check-cross-worktree-locks`, снять точечно: `bin/lock-clean --release <путь>`.
+Устаревший ручной способ ниже оставлен для понимания механики:
 
 ```bash
 for wt in $(git worktree list --porcelain | awk '/^worktree/ {print $2}'); do
@@ -158,5 +172,8 @@ head -50 .claude/memory/activeContext.md
 
 - Skill `session-coordination` — convention в деталях (worktree gotchas, branch discipline, anti-patterns)
 - `.claude/sessions/README.md` — operational doc (CLAUDE_SESSION setup, inbox CLI, KPI cache)
-- `.claude/hooks/pre-edit-lock.sh` — runtime hook для cross-worktree lock warnings
+- `.claude/docs/session-authority.md` — **полномочия ролей** (кто что решает)
+- `.claude/agents/session-observer.md` — наблюдатель/арбитр, живёт в victory
+- `.claude/hooks/pre-edit-lock.sh` — блокирующая cross-worktree проверка локов
+- `bin/session-status` — снимок всех worktree одной командой
 - `.claude/memory/strategicVector.md` — Infrastructure decision 04.06.26 + trigger metrics

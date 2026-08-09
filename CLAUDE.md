@@ -49,6 +49,18 @@ Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language r
 
 Снятие: коммит (`post-commit` освобождает закоммиченные файлы), TTL 2ч, `bin/lock-clean --release <путь>` для точечного снятия, `CLAUDE_LOCK_BYPASS=1` — разовый обход. Посмотреть занятое: `bin/check-cross-worktree-locks`.
 
+### Полномочия и наблюдатель
+
+**`.claude/docs/session-authority.md`** — кто чем владеет, что обязан согласовать, чего не вправе
+трогать. Единственный источник правды по полномочиям; при споре апеллируй к нему.
+
+Живой сессии пиши напрямую (`ListAgents` → `SendMessage`), оффлайновой — `bin/claude-inbox send`.
+Снимок по всем worktree — `bin/session-status`.
+
+Агент **`session-observer`** (живёт в victory) сводит картину четырёх сессий, ловит дублирование
+работы и разрешает споры о локах и очереди в `main`. Зови его перед крупной задачей — проверить,
+не делает ли это уже кто-то.
+
 ### Планы — per-session
 
 Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` зеркалит его в `.claude/plans/<session>/` своей сессии (под git). Мастер-документы — в `.claude/plans/_shared/`, меняются **только через PR**. В чужой per-session каталог не пишем.

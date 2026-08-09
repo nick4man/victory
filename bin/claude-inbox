@@ -1,14 +1,24 @@
 #!/usr/bin/env bash
-# bin/claude-inbox — inter-session message inbox
+# bin/claude-inbox — почта для ОФФЛАЙН-сессии.
 #
-# Sessions identified by CLAUDE_SESSION env, else per-worktree .claude-session
-# marker file (victory|chat|seo|upgrade).
-# Messages stored as markdown in .claude/sessions/inbox/<session>/
+# Живой сессии пиши напрямую через SendMessage (см. ListAgents) — это мгновенно
+# и не требует инфраструктуры. Inbox нужен только тому, кого сейчас нет:
+# сообщение доставится на его следующем старте.
+#
+# 09.08.26 — хранилище переехало из `<worktree>/.claude/sessions/inbox/` в
+# `~/.claude-shared/inbox/`. Прежний путь был per-worktree, то есть требовал,
+# чтобы отправитель и получатель сидели в одном checkout'е. Между сессиями
+# такого не бывает никогда, и механизм не работал с самого перехода на worktree.
+#
+# Идентичность — CLAUDE_SESSION, иначе marker-файл .claude-session в корне
+# worktree (victory|chat|seo|upgrade).
 
 set -e
 
 ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-INBOX_DIR="$ROOT/.claude/sessions/inbox"
+
+# Общий каталог вне репо: один на все worktree, не попадает в git.
+INBOX_DIR="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/inbox"
 MY_SESSION="${CLAUDE_SESSION:-$(cat "$ROOT/.claude-session" 2>/dev/null || echo unknown)}"
 
 valid_sessions=("victory" "chat" "seo" "upgrade")
@@ -45,7 +55,7 @@ cmd_send() {
     exit 1
   fi
   if ! is_valid_session "$to"; then
-    echo "Unknown receiver: $to (expected victory|chat|seo)" >&2
+    echo "Unknown receiver: $to (expected victory|chat|seo|upgrade)" >&2
     exit 1
   fi
   if [ "$MY_SESSION" = "unknown" ]; then
@@ -55,7 +65,11 @@ cmd_send() {
   local ts
   ts=$(date +'%Y-%m-%dT%H-%M-%S')
   local slug
-  slug=$(printf '%s' "$msg" | head -c 60 | tr -c '[:alnum:][:cntrl:]' '-' | tr -s '-' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
+  # Кириллицу сохраняем: `tr -c '[:alnum:]'` в C-локали не считает её буквами,
+  # и у всех русских сообщений имя файла выходило одинаковым — «msg».
+  # Убираем только то, что мешает файловой системе, пробелы → дефисы.
+  slug=$(printf '%s' "$msg" | head -c 60 | tr -d '\n\r/\\:*?"<>|' | tr -s '[:space:]' '-' \
+         | sed 's/^-//;s/-$//')
   [ -z "$slug" ] && slug="msg"
   local fname="${ts}_from-${MY_SESSION}_${slug}.md"
   local fpath="$INBOX_DIR/$to/$fname"
@@ -79,7 +93,7 @@ EOF
 
 cmd_list() {
   if [ "$MY_SESSION" = "unknown" ]; then
-    echo "⚠️  CLAUDE_SESSION not set. Export CLAUDE_SESSION=victory|chat|seo first." >&2
+    echo "⚠️  CLAUDE_SESSION not set. Export CLAUDE_SESSION=victory|chat|seo|upgrade first." >&2
     exit 1
   fi
   local my_dir="$INBOX_DIR/$MY_SESSION"

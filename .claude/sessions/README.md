@@ -48,17 +48,17 @@ claude --resume chat
 |---|---|---|
 | `.git/` | shared | Single repo, single config, single refs |
 | `tmp/` (cache, locks, sessions) | **per-worktree** | Lock files изолированы |
-| `.claude/sessions/inbox/` | **per-worktree** (gitignored) | Cross-worktree messages — use git, not inbox |
+| inbox | **общий**, `~/.claude-shared/inbox/` вне репо | Живым сессиям — `SendMessage`, оффлайну — inbox |
 | `Gemfile.lock` | shared (committed) | `bundle install` — одна сессия за раз (через `bin/rb`), иначе race |
 | `node_modules/` | per-worktree (gitignored) | Каждый worktree может install отдельно |
 | Disk usage | 4× checkouts | ~1-2 GB each — OK |
 
-## Inbox protocol (same-worktree only)
+## Inbox protocol (для оффлайн-адресата)
 
 ### Структура
 
 ```
-.claude/sessions/inbox/
+~/.claude-shared/inbox/
 ├── victory/      # messages FOR victory session (в любом worktree)
 │   ├── 2026-05-14T08-30_from-chat_new-tool.md
 │   └── archive/
@@ -70,11 +70,16 @@ claude --resume chat
     └── archive/
 ```
 
-Inbox files gitignored, structure через `.gitkeep`.
+Каталог вне репо, под git не попадает вовсе.
 
 ### Cross-worktree?
 
-Inbox **не пересекает** worktrees — каждый worktree имеет свой `inbox/` dir. Для cross-worktree hand-off **используй git** (commit → push → merge), не inbox.
+Пересекает — с 09.08.26 каталог общий (`~/.claude-shared/inbox/`, вне репо). Прежде он лежал
+внутри worktree и требовал, чтобы отправитель и получатель сидели в одном checkout'е, поэтому
+между сессиями не работал ни дня.
+
+Для **живой** сессии inbox не нужен вовсе: `ListAgents` → `SendMessage` доставляет мгновенно.
+Для существенной работы (>10 мин, много файлов) — по-прежнему git: commit → push → PR.
 
 ### Message format
 
@@ -101,7 +106,7 @@ related_files:
 
 ```bash
 bin/claude-inbox send victory "стук-стук, нужна migration для news_embeddings"
-bin/claude-inbox list                  # pending FOR my session в текущем worktree
+bin/claude-inbox list                  # pending для моей сессии (общий каталог)
 bin/claude-inbox read <id>             # display by timestamp prefix
 bin/claude-inbox done <id>             # move to archive/
 ```
@@ -111,10 +116,11 @@ bin/claude-inbox done <id>             # move to archive/
 Когда `$CLAUDE_SESSION` set:
 
 1. Печатает `Session: <id>` + worktree path в header
-2. Сканирует `inbox/<id>/*.md`, count + headlines первых 3 (FIFO by mtime)
+2. Сканирует `~/.claude-shared/inbox/<id>/*.md`, count + headlines первых 3 (FIFO by mtime)
 3. Сканирует `tmp/claude-locks/*.lock` во ВСЕХ worktree, подсвечивает активные и протухшие
 4. Печатает KPI snapshot из `kpi-cache.txt` (если свежий)
-5. Показывает routing matrix (delegation-map.md quick-ref)
+5. В сессии **victory** — блок наблюдателя: конфликты локов за сутки и сессии с незапушенной работой
+6. Показывает routing matrix (delegation-map.md quick-ref)
 
 Если `$CLAUDE_SESSION` unset — секции inbox / session-identity skipped, hook продолжает работать.
 
@@ -173,6 +179,29 @@ CLAUDE_LOCK_BYPASS=1                               # разовый обход
 
 Общая логика — `.claude/hooks/lib/locks.sh`. git-хуки доставляются из отслеживаемого `.githooks/` через `bin/install-git-hooks` (вызывается идемпотентно из `session-start.sh`, потому что `.git/hooks` под git не попадает).
 
+## Полномочия — `.claude/docs/session-authority.md`
+
+Этот README и skill `session-coordination` описывают **механику**. Кто что вправе решить сам,
+что обязан согласовать и чего не имеет права трогать — в отдельном документе
+`.claude/docs/session-authority.md`. До 09.08.26 полномочия нигде не были записаны, и каждый
+спор разбирался вручную.
+
+Там же — полномочия агента `session-observer` (наблюдатель/арбитр, живёт в victory) и
+напоминание о том, что наблюдение и арбитраж со временем надо разнести на двух агентов.
+
+## Связь между сессиями
+
+| Адресат | Канал |
+|---|---|
+| Сессия жива (`ListAgents` → interactive) | `SendMessage` по имени — мгновенно, инфраструктуры не требует |
+| Сессия оффлайн | `bin/claude-inbox send <session> "..."` → доставится на её следующем старте |
+| Существенная работа | git: commit + push в `dev/<session>`, дальше PR |
+
+Общий inbox лежит в `~/.claude-shared/inbox/` — вне репо, один на все worktree. До 09.08.26 он
+был внутри worktree и потому между сессиями не работал ни дня.
+
+Снимок по всем сессиям одной командой — `bin/session-status`.
+
 ## Планы — per-session
 
 Claude Code пишет план в `~/.claude/plans/` — один плоский каталог на все сессии и все проекты хоста, отсюда взаимные затирания. Путь буфера мы не контролируем, поэтому `plan-sync.sh` зеркалит его в репо:
@@ -198,9 +227,18 @@ git add . && git commit -m "WIP: feature X" && git push
 git fetch && git merge origin/dev/<sender>
 ```
 
-### Inbox (same-worktree only — quick prompts)
+### SendMessage — живой сессии
 
-См. CLI выше. Для cross-worktree — переключайся на git.
+`ListAgents` показывает, кто сейчас поднят; `SendMessage` адресует по имени сессии. Мгновенно,
+инфраструктуры не требует. Это основной канал для коротких вещей: «не делаешь ли ты то же самое»,
+«отдай мне spec/support», «уступи файл на 10 минут».
+
+### Inbox — оффлайн-адресату
+
+`bin/claude-inbox send <session> "..."` → доставится на её следующем старте. Каталог общий
+(`~/.claude-shared/inbox/`), работает между worktree.
+
+Для существенной работы (>10 мин, много файлов) — по-прежнему git: commit → push → PR.
 
 ## Branch discipline
 

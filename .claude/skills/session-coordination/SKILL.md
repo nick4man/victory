@@ -74,13 +74,20 @@ Claude Code пишет план сессии в `~/.claude/plans/` — один 
 
 В чужой per-session каталог не пишем. `_shared/` — общий ресурс, правки туда идут PR-ом, как в код.
 
-### `.claude/sessions/inbox/` — per-worktree (был effectively shared via single dir)
+### Связь между сессиями — решено 09.08.26
 
-Inbox файлы — gitignored. Каждый worktree имеет свой пустой `inbox/`. Cross-worktree messaging:
-- **Option A** (current): отправитель и получатель должны быть в одном worktree (например, обоим cd в `/home/q/victory-chat`). Сейчас единственный реальный способ.
-- **Option B** (future): переехать inbox в `/home/q/.claude-shared/inbox/<session>/` (outside repo). Документировать в `bin/claude-inbox`.
+Канал для **живой** сессии уже есть на уровне харнесса: `ListAgents` показывает victory/chat/seo/
+upgrade, `SendMessage` адресует по имени. Никакой инфраструктуры не требуется.
 
-Кратко-сейчас: **prefer git for hand-offs** (commit + branch + PR) — inbox только для quick «пнул сессию» сообщений в той же worktree.
+Для **оффлайновой** — `bin/claude-inbox`, чьё хранилище переехало в `~/.claude-shared/inbox/`
+(бывший Option B). Прежний путь был per-worktree и требовал, чтобы отправитель и получатель
+сидели в одном checkout'е, — между сессиями такого не бывает, и почта не работала ни дня.
+
+| Адресат | Канал |
+|---|---|
+| жива | `SendMessage` |
+| оффлайн | `bin/claude-inbox send` |
+| существенная работа | git: commit + push + PR |
 
 ### `bundle install` — race на shared Gemfile.lock
 

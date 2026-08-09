@@ -57,13 +57,26 @@ for wt in $(lock_worktrees); do
   TASK=$(lock_meta "$LOCK" task)
   STARTED=$(lock_meta "$LOCK" started)
 
+  REL=$(lock_key_to_path "$KEY")
+
+  # След для наблюдателя: повторяющиеся отказы по одному пути означают, что
+  # границы доменов размыты и нужен арбитраж, а не очередной обход. Хук агентов
+  # не зовёт — он только оставляет запись, которую session-observer читает.
+  EVENTS_DIR="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/events"
+  if mkdir -p "$EVENTS_DIR" 2>/dev/null; then
+    printf '{"at":"%s","path":"%s","blocked":"%s","holder":"%s","task":"%s"}\n' \
+      "$(date -Iseconds)" "$REL" "$ME" "${OWNER:-?}" "${TASK:-?}" \
+      >> "$EVENTS_DIR/conflicts.jsonl" 2>/dev/null
+  fi
+
   {
-    echo "⛔ $(lock_key_to_path "$KEY") занят сессией ${OWNER:-?}"
+    echo "⛔ $REL занят сессией ${OWNER:-?}"
     echo "   worktree: $wt"
     echo "   с ${STARTED:-?} (${AGE:-?} мин назад)${TASK:+, task=$TASK}"
-    echo "   Снять: bin/lock-clean --release $(lock_key_to_path "$KEY")"
+    echo "   Снять: bin/lock-clean --release $REL"
     echo "   Обойти разово: CLAUDE_LOCK_BYPASS=1"
-    echo "   Правь другой файл или согласуй с той сессией (skill session-coordination)."
+    echo "   Согласуй с той сессией: живой — SendMessage, оффлайн — bin/claude-inbox send."
+    echo "   Повторяется по одному пути — это спор о границах: эскалируй наблюдателю в victory."
   } >&2
 
   exit 2
