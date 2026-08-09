@@ -51,5 +51,58 @@ RSpec.describe Topnlab::Client do
       expect { client.get_ids(type: 'realty', action: 'sale', realty_type: 'flat') }
         .to raise_error(Topnlab::Client::Error, /не-массив/)
     end
+
+    it 'не утаскивает api-key в текст исключения (он уходит в error_log и в админку)' do
+      stub_request(:get, get_ids_re)
+        .to_return(status: 200, body: { status: 'error', request: { key: 'test-key' } }.to_json)
+
+      expect { client.get_ids(type: 'realty', action: 'sale', realty_type: 'flat') }
+        .to raise_error(Topnlab::Client::Error) { |e|
+          expect(e.message).not_to include('test-key')
+          expect(e.message).to include('FILTERED')
+        }
+    end
+  end
+
+  describe '#get_entities' do
+    let(:get_entities_re) { %r{\Ahttps://crm\.example/get-entities} }
+
+    it 'мержит чанки при 200 + JSON-объекте' do
+      stub_request(:get, get_entities_re)
+        .to_return(status: 200, body: { '1' => { 'id' => 1 } }.to_json)
+
+      expect(client.get_entities([1])).to eq('1' => { 'id' => 1 })
+    end
+
+    it 'возвращает {} без запроса, если ids пуст' do
+      expect(client.get_entities([])).to eq({})
+      expect(a_request(:get, get_entities_re)).not_to have_been_made
+    end
+
+    # Ключевой регресс: раньше не-Hash молча пропускался (`merge! if is_a?(Hash)`),
+    # seen_ids оставался неполным при fetch_errors == 0 → archive снимал живые.
+    # `{"status":"error"}` — тоже Hash, поэтому проверки is_a?(Hash) мало:
+    # он бы смержился, дал ноль id и разблокировал archive при fetch_errors == 0.
+    it 'бросает Error на 200 с error-shaped телом (Hash, но не карта сущностей)' do
+      stub_request(:get, get_entities_re)
+        .to_return(status: 200, body: { status: 'error' }.to_json)
+
+      expect { client.get_entities([1]) }
+        .to raise_error(Topnlab::Client::Error, /не карту сущностей/)
+    end
+
+    it 'бросает Error на пустой массив — мы запросили конкретные id' do
+      stub_request(:get, get_entities_re).to_return(status: 200, body: [].to_json)
+
+      expect { client.get_entities([1]) }
+        .to raise_error(Topnlab::Client::Error, /не карту сущностей/)
+    end
+
+    it 'бросает Error на пустой Hash — запрошенные id обязаны вернуться' do
+      stub_request(:get, get_entities_re).to_return(status: 200, body: {}.to_json)
+
+      expect { client.get_entities([1]) }
+        .to raise_error(Topnlab::Client::Error, /не карту сущностей/)
+    end
   end
 end

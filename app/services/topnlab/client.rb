@@ -45,8 +45,8 @@ module Topnlab
       unless data.is_a?(Array)
         raise Error,
               "get-ids вернул не-массив (#{data.class}) — трактуем как fetch failure, " \
-              "не как пустую выгрузку (защита каталога от ложного archive): " \
-              "#{data.inspect.truncate(200)}"
+              'не как пустую выгрузку (защита каталога от ложного archive): ' \
+              "#{scrub(data).truncate(200)}"
       end
 
       data
@@ -54,6 +54,20 @@ module Topnlab
 
     # GET /public/get-entities — batches up to 300 ids
     # @return [Hash{String => Hash}]  { "123" => { id:, ... } }
+    # @raise [Topnlab::Client::Error] если чанк не является картой сущностей.
+    #
+    # Та же защита, что и в `get_ids`, и здесь она важнее: `Importer#seen_ids`
+    # набирается ИЗ ЭТИХ payload'ов, а не из get-ids. Молчаливый пропуск битого
+    # чанка (было: `merge! if data.is_a?(Hash)`) оставлял seen_ids неполным при
+    # fetch_errors == 0 — то есть guard PR #6 не срабатывал и archive_missing
+    # ретайрил живые объявления.
+    #
+    # Проверки `is_a?(Hash)` НЕДОСТАТОЧНО: error-shaped `{"status":"error"}` —
+    # тоже Hash, он спокойно мержится, а `payload['id']` на строковом значении
+    # отсеивается guard'ом в импортёре — то есть чанк тихо даёт ноль id. Поэтому
+    # требуем именно карту сущностей: непустой Hash, все значения — Hash'и.
+    # Раз мы запросили конкретные id, пустой ответ любой формы — аномалия.
+    # Ложный partial стоит «каталог не изменился», ложный archive — «каталога нет».
     def get_entities(ids, type: 'realty', append: nil)
       ids = Array(ids).compact.uniq
       return {} if ids.empty?
@@ -64,7 +78,14 @@ module Topnlab
         chunk.each_with_index { |id, i| params["id[#{i}]"] = id }
         params[:append] = append if append
         data = http_get('/get-entities', params, throttle: :slow)
-        result.merge!(data) if data.is_a?(Hash)
+        unless entity_map?(data)
+          raise Error,
+                "get-entities вернул не карту сущностей (#{data.class}) на чанк из #{chunk.size} id — " \
+                'трактуем как fetch failure, не как «объектов нет» ' \
+                "(защита каталога от ложного archive): #{scrub(data).truncate(200)}"
+        end
+
+        result.merge!(data)
       end
       result
     end
@@ -261,6 +282,19 @@ module Topnlab
     end
 
     private
+
+    # Валидный ответ get-entities — непустая карта `{ "123" => {...} }`.
+    # Error-shaped `{"status":"error"}` не проходит: значение не Hash.
+    def entity_map?(data)
+      data.is_a?(Hash) && data.any? && data.each_value.all?(Hash)
+    end
+
+    # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` — то есть в БД и на
+    # админ-страницу. Если Topnlab когда-нибудь отразит запрос в error-теле,
+    # туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того, как строка станет логом.
+    def scrub(data)
+      data.inspect.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}]+/i, '\1[FILTERED]')
+    end
 
     # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
     # Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.

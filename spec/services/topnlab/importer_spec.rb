@@ -56,17 +56,69 @@ RSpec.describe Topnlab::Importer do
     end
   end
 
-  context 'когда sweep успешен, но легитимно пуст ([] на всех сегментах)' do
+  # ВНИМАНИЕ: раньше здесь утверждалось обратное — что пустой sweep архивирует.
+  # Это и была механика обоих инцидентов: «ничего не увидели» = «архивируй всё».
+  # У агентства не бывает нуля активных объектов, поэтому пустой seen_ids
+  # трактуется как сбой, а не как сигнал к массовой архивации.
+  context 'когда sweep успешен, но seen_ids пуст ([] на всех сегментах)' do
     before { allow(client).to receive(:get_ids).and_return([]) }
 
-    it 'archive_missing срабатывает и архивирует отсутствующий объект' do
+    it 'НЕ архивирует ничего — пустой seen_ids трактуется как сбой' do
       property = active_topnlab_property(777)
 
       result = importer.call_inner
 
       expect(result[:fetch_errors]).to eq(0)
-      expect(result[:archived]).to be_positive
-      expect(property.reload.status).to eq('archived')
+      expect(result[:archived]).to eq(0)
+      expect(property.reload.status).to eq('active')
+    end
+  end
+
+  # Доминирующий путь, который PR #6 и первая версия PR #10 не закрывали:
+  # seen_ids набирается из payload'ов get_entities, а не из get-ids. Битый
+  # get-entities при валидном get-ids давал fetch_errors == 0 → guard молчал.
+  context 'когда get-ids валиден, но get-entities возвращает не-Hash' do
+    before do
+      allow(client).to receive(:get_ids).and_return([777])
+      allow(client).to receive(:get_entities)
+        .and_raise(Topnlab::Client::Error, 'get-entities вернул не-Hash')
+    end
+
+    it 'копит fetch_errors и оставляет каталог живым' do
+      property = active_topnlab_property(777)
+
+      result = importer.call_inner
+
+      expect(result[:fetch_errors]).to be_positive
+      expect(result[:archived]).to eq(0)
+      expect(property.reload.status).to eq('active')
+    end
+  end
+
+  # Частичный сбой опаснее полного: он тише. Один битый сегмент из двенадцати
+  # раньше уносил в архив всё, чего не оказалось в неполном seen_ids.
+  context 'когда часть сегментов отдала объекты, а один провалился' do
+    before do
+      call = 0
+      allow(client).to receive(:get_ids) do
+        call += 1
+        raise Topnlab::Client::Error, 'сегмент упал' if call == 2
+
+        call == 1 ? [777] : []
+      end
+      allow(client).to receive(:get_entities).and_return(
+        { '777' => { 'id' => 777, 'deal_state' => 'active' } }
+      )
+    end
+
+    it 'не архивирует объект, отсутствующий в неполном seen_ids' do
+      other = active_topnlab_property(888)
+
+      result = importer.call_inner
+
+      expect(result[:fetch_errors]).to be_positive
+      expect(result[:archived]).to eq(0)
+      expect(other.reload.status).to eq('active')
     end
   end
 end
