@@ -321,6 +321,45 @@ offsite_sync() {
   die 'offsite включён, но ещё не реализован'
 }
 
+cmd_restore() {
+  load_config; ensure_dirs
+  local target="${1:-}"
+
+  if [ -z "$target" ]; then
+    printf 'Доступные копии БД (свежие сверху):\n\n'
+    local f
+    while read -r f; do
+      [ -n "$f" ] || continue
+      printf '  %s  %8s  %s\n' \
+        "$(date -r "$f" '+%d.%m.%y %H:%M')" "$(human_size "$f")" "$f"
+    done < <(ls -t "$BACKUP_ROOT"/db/*.dump.gpg 2>/dev/null || true)
+    printf '\nЗапуск: bin/backup restore <путь-к-файлу>\n'
+    printf 'Проверить копию, не трогая прод: bin/backup verify\n'
+    return 0
+  fi
+
+  [ -r "$target" ] || die "не читается: $target"
+
+  printf '\n⚠️  ВОССТАНОВЛЕНИЕ В БОЕВУЮ БАЗУ %s (контейнер %s)\n' "$DB_NAME" "$DB_CONTAINER"
+  printf 'Текущие данные будут ЗАМЕЩЕНЫ содержимым %s\n' "$(basename "$target")"
+  printf 'Введите имя базы для подтверждения: '
+  local answer; read -r answer
+  [ "$answer" = "$DB_NAME" ] || die 'не подтверждено, выхожу'
+
+  # Страховочный дамп перед перезаписью: если восстановили не то, откатиться
+  # будет некуда — старые данные к этому моменту уже стёрты.
+  log 'делаю страховочный дамп текущего состояния'
+  cmd_db
+
+  log 'восстанавливаю'
+  if ! gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$target" 2>/dev/null \
+      | docker exec -i "$DB_CONTAINER" \
+          pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists --no-owner --no-acl; then
+    die 'восстановление завершилось с ошибкой — смотрите вывод выше'
+  fi
+  log 'готово; перезапустите приложение'
+}
+
 cmd_status() {
   load_config
   printf 'Хранилище: %s\n\n' "$BACKUP_ROOT"
@@ -348,6 +387,7 @@ case "$cmd" in
   all)             cmd_all "$@" ;;
   weekly)          cmd_weekly "$@" ;;
   verify)          cmd_verify "$@" ;;
+  restore)         cmd_restore "$@" ;;
   status)          cmd_status "$@" ;;
   help|--help|-h)  cmd_help ;;
   *) die "неизвестная команда '$cmd'. См. bin/backup help" ;;
