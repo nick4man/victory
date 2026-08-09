@@ -14,7 +14,9 @@
 # «ЖК на Циолковского» (_sale_kvartira_centr.html.erb:12) сознательно
 # пропущен — это оборот речи, а не название комплекса.
 
-SEED_COMPLEXES = [
+# Локальная переменная, не константа: файл прогоняется через `load`, и
+# повторный прогон в том же процессе сыпал бы «already initialized constant».
+seed_complexes = [
   { slug: 'priokskiy-park', name: 'Приокский парк',                 district_slug: 'priokskiy',          developer: 'Единство' },
   { slug: 'legenda',        name: 'Легенда',                        district_slug: 'kanishchevo',        developer: nil },
   { slug: 'vidnyy',         name: 'Видный',                         district_slug: 'semchino',           developer: nil },
@@ -27,17 +29,18 @@ SEED_COMPLEXES = [
 created = 0
 updated = 0
 
-SEED_COMPLEXES.each do |attrs|
+seed_complexes.each do |attrs|
   complex = ResidentialComplex.unscoped.find_or_initialize_by(slug: attrs[:slug])
   was_new = complex.new_record?
 
-  # Идемпотентность: трогаем только справочные поля. Всё, что мог править
-  # редактор (body_blocks, published, фактура), не перетираем.
-  complex.name          = attrs[:name]
-  complex.district_slug = attrs[:district_slug]
-  complex.developer   ||= attrs[:developer]
-  complex.city        ||= 'Рязань'
-  complex.published     = false if was_new
+  # Идемпотентность: заполняем только пустое. Всё, что мог править редактор
+  # (название, район, фактура, body_blocks, published), не перетираем —
+  # иначе прогон сида откатывал бы правки из админки.
+  complex.name          ||= attrs[:name]
+  complex.district_slug ||= attrs[:district_slug]
+  complex.developer     ||= attrs[:developer]
+  complex.city          ||= 'Рязань'
+  complex.published       = false if was_new
 
   if complex.changed?
     complex.save!

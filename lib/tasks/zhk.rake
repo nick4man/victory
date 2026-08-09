@@ -10,7 +10,13 @@ namespace :zhk do
   desc 'Показать покрытие справочника: контент / фото / объекты'
   task coverage: :environment do
     ResidentialComplex.unscoped.not_deleted.order(:name).each do |c|
-      photos = Rails.public_path.join("images/zhk/#{c.slug}").glob('*.jpg').size
+      # slug.presence — иначе путь схлопнется в images/zhk/ и глоб посчитает
+      # чужие файлы как фото этого ЖК.
+      photos = if c.slug.present?
+                 Rails.public_path.join("images/zhk/#{c.slug}").glob('*.{jpg,jpeg,webp}').size
+               else
+                 0
+               end
       marks  = []
       marks << 'нет текста' if c.body_html.blank?
       marks << 'нет фото'   if photos.zero?
