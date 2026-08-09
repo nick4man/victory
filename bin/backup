@@ -43,6 +43,23 @@ ensure_dirs() {
 # тревога, которой быть не должно.
 human_size() { numfmt --to=iec --suffix=B < <(stat -c %s "$1"); }
 
+# Метка времени имеет минутную гранулярность, поэтому два запуска внутри одной
+# минуты дали бы одно имя: второй молча затёр бы первый, а для снапшотов ещё и
+# --link-dest указал бы сам на себя. Добавляем -2, -3 и так далее.
+unique_path() {
+  # Объявления раздельные: внутри одного `local` переменная ещё не видна
+  # следующему присваиванию, и под `set -u` это падает.
+  local base="$1"
+  local suffix="${2:-}"
+  local candidate="$base$suffix"
+  local n=2
+  while [ -e "$candidate" ]; do
+    candidate="$base-$n$suffix"
+    n=$((n + 1))
+  done
+  printf '%s' "$candidate"
+}
+
 # Шифруем поток, а не готовый файл: незашифрованный дамп не появляется на диске
 # даже на секунду. gpg симметричный — пар ключей не нужно, пароль один.
 encrypt_to() {
@@ -66,7 +83,7 @@ prune() {
 
 cmd_db() {
   load_config; ensure_dirs
-  local dest="$BACKUP_ROOT/db/viktory-$(ts).dump.gpg"
+  local dest; dest=$(unique_path "$BACKUP_ROOT/db/viktory-$(ts)" ".dump.gpg")
   log "дамп $DB_NAME из $DB_CONTAINER"
 
   # -Fc: сжатый custom format, позволяет восстанавливать отдельные таблицы.
@@ -82,7 +99,7 @@ cmd_db() {
 
 cmd_secrets() {
   load_config; ensure_dirs
-  local dest="$BACKUP_ROOT/secrets/secrets-$(ts).tar.gpg"
+  local dest; dest=$(unique_path "$BACKUP_ROOT/secrets/secrets-$(ts)" ".tar.gpg")
   log 'архивирую секреты'
 
   # Относительные пути (-C): при восстановлении не тянем /home/q/victory наружу.
@@ -98,6 +115,39 @@ cmd_secrets() {
   [ -s "$dest" ] || die "архив секретов пустой: $dest"
   log "готово: $dest ($(human_size "$dest")), файлов: ${#items[@]}"
   prune "$BACKUP_ROOT/secrets" "${KEEP_DAILY:-7}"
+}
+
+cmd_files() {
+  load_config; ensure_dirs
+  local src="$APP_ROOT/storage"
+  [ -d "$src" ] || die "нет каталога $src"
+
+  local dest; dest=$(unique_path "$BACKUP_ROOT/files/storage-$(ts)")
+  local link_arg=()
+  # --link-dest: неизменившиеся файлы становятся жёсткими ссылками на предыдущий
+  # снапшот. Четыре недельных копии по 3.2 ГБ занимают немногим больше одной.
+  [ -d "$BACKUP_ROOT/files/latest" ] && link_arg=(--link-dest="$BACKUP_ROOT/files/latest")
+
+  log "снапшот storage → $(basename "$dest")"
+  rsync -a --delete "${link_arg[@]}" "$src/" "$dest/"
+  ln -sfn "$dest" "$BACKUP_ROOT/files/latest"
+
+  # Два числа: сколько данных в снапшоте (apparent) и сколько реально занято
+  # всеми снапшотами вместе. Второе меньше первого ровно настолько, насколько
+  # сработали жёсткие ссылки — это и есть проверка, что --link-dest жив.
+  log "готово: в снапшоте $(du -sh --apparent-size "$dest" | cut -f1), всего на диске $(du -sh "$BACKUP_ROOT/files" | cut -f1)"
+  prune_files_snapshots
+}
+
+# Отдельно от prune(): здесь каталоги, а не файлы, и есть симлинк latest,
+# который трогать нельзя.
+prune_files_snapshots() {
+  local keep="${KEEP_WEEKLY:-4}" dir
+  find "$BACKUP_ROOT/files" -maxdepth 1 -type d -name 'storage-*' -printf '%T@ %p\n' \
+    | sort -rn | tail -n "+$((keep + 1))" | cut -d' ' -f2- | while read -r dir; do
+      log "  ротация: удаляю $(basename "$dir")"
+      rm -rf -- "$dir"
+    done
 }
 
 cmd_status() {
@@ -122,6 +172,7 @@ cmd_help() { sed -n '3,13p' "$0"; }
 cmd="${1:-help}"; shift || true
 case "$cmd" in
   db)              cmd_db "$@" ;;
+  files)           cmd_files "$@" ;;
   secrets)         cmd_secrets "$@" ;;
   status)          cmd_status "$@" ;;
   help|--help|-h)  cmd_help ;;
