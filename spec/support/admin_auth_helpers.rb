@@ -12,10 +12,6 @@
 module AdminAuthHelpers
   ADMIN_TEST_TOKEN = 'test-admin-token-9f3a'
 
-  def admin_token
-    ADMIN_TEST_TOKEN
-  end
-
   def admin_get(path, params: {}, **opts)
     get path, params: params.merge(token: ADMIN_TEST_TOKEN), **opts
   end
@@ -29,17 +25,17 @@ module AdminAuthHelpers
   end
 end
 
-# Подключается явно (`include_context 'с админ-токеном'`), а не глобально:
-# не-админские request-спеки не должны видеть выставленный ADMIN_TOKEN.
+# Хелперы раздаются ВМЕСТЕ с ENV, одним include_context, а не глобальным
+# config.include: иначе `admin_get` доступен любому request-спеку, но без
+# подмены ADMIN_TOKEN он молча получит редирект вместо 200 — ровно тот
+# сорт тихого сюрприза, который этот файл и должен предотвращать.
 RSpec.shared_context 'с админ-токеном' do
+  include AdminAuthHelpers
+
   around do |example|
     original = ENV.fetch('ADMIN_TOKEN', nil)
     ENV['ADMIN_TOKEN'] = AdminAuthHelpers::ADMIN_TEST_TOKEN
     example.run
     ENV['ADMIN_TOKEN'] = original
   end
-end
-
-RSpec.configure do |config|
-  config.include AdminAuthHelpers, type: :request
 end

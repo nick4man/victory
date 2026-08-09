@@ -72,6 +72,16 @@ RSpec.describe 'Admin::LandingContents', type: :request do
 
       expect(response.parsed_body.css('#lc-blocks-json').size).to eq(1)
     end
+
+    # Вся защита держится на том, что сервер отдаёт маркер выключенным, а
+    # включает его только JS после успешной загрузки. Отрендерь тут '1' —
+    # и гвард в контроллере станет бесполезен, а остальные спеки этого не
+    # заметят.
+    it 'рендерит маркер живого редактора выключенным' do
+      admin_get edit_admin_landing_content_path(content)
+
+      expect(response.parsed_body.at_css('#lc-blocks-editor')['value']).to eq('0')
+    end
   end
 
   describe 'GET /admin/landing_contents/new' do

@@ -150,7 +150,16 @@
     let bootOk = true;
     try {
       const initial = JSON.parse(jsonEl.value || '[]');
-      if (Array.isArray(initial)) STATE.blocks = initial.map(b => ({ ...b, _uid: uid() }));
+      if (Array.isArray(initial)) {
+        STATE.blocks = initial.map(b => ({ ...b, _uid: uid() }));
+      } else {
+        // Не-массив (объект, null, строка) исключения не бросает, поэтому
+        // без этой ветки boot считался бы успешным: маркер ушёл бы в '1',
+        // commit() записал бы '[]', и гвард в контроллере пропустил бы
+        // очистку. Тот же баг, другой триггер.
+        bootOk = false;
+        console.error('[lc-block-editor] исходные блоки не массив', initial);
+      }
     } catch (e) {
       bootOk = false;
       console.error('[lc-block-editor] не удалось разобрать исходные блоки', e);
@@ -202,6 +211,13 @@
     }
 
     function commit() {
+      // Единственный писатель в поле — и единственное место, где нужен
+      // замок. Пока boot не удался, STATE не отражает сохранённый контент,
+      // поэтому любая запись отсюда затрёт его тем, что успел набрать
+      // пользователь (например одним пустым блоком через «+ ДОБАВИТЬ»).
+      // Поле остаётся с серверным JSON — сохранение безвредно.
+      if (!bootOk) return;
+
       jsonEl.value = JSON.stringify(STATE.blocks.map(b => { const { _uid, ...rest } = b; return rest; }));
     }
 
@@ -324,17 +340,26 @@
       commit();
     }
 
-    addMenuBtn.addEventListener('click', () => addMenu.classList.toggle('hidden'));
-    document.addEventListener('click', (e) => {
-      if (!addMenu.contains(e.target) && e.target !== addMenuBtn) addMenu.classList.add('hidden');
-    });
-    document.querySelectorAll('.lc-add-btn').forEach(b => {
-      b.addEventListener('click', () => {
-        STATE.blocks.push(makeBlock(b.dataset.kind));
-        addMenu.classList.add('hidden');
-        render();
+    // Обработчики навешиваем только при успешном boot: иначе клик по
+    // «+ ДОБАВИТЬ БЛОК» затирал бы аварийную плашку (render() начинается с
+    // replaceChildren) и делал вид, что редактор работает. Запись в поле
+    // отдельно закрыта замком в commit() — здесь это про честность UI.
+    if (bootOk) {
+      addMenuBtn.addEventListener('click', () => addMenu.classList.toggle('hidden'));
+      document.addEventListener('click', (e) => {
+        if (!addMenu.contains(e.target) && e.target !== addMenuBtn) addMenu.classList.add('hidden');
       });
-    });
+      document.querySelectorAll('.lc-add-btn').forEach(b => {
+        b.addEventListener('click', () => {
+          STATE.blocks.push(makeBlock(b.dataset.kind));
+          addMenu.classList.add('hidden');
+          render();
+        });
+      });
+    } else {
+      addMenuBtn.disabled = true;
+      addMenuBtn.classList.add('opacity-40', 'cursor-not-allowed');
+    }
 
     if (bootOk) {
       // Маркер живого редактора — только после успешной загрузки блоков.
