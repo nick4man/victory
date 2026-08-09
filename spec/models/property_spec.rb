@@ -91,10 +91,13 @@ RSpec.describe Property do
       expect(described_class.statuses.keys).to include('active', 'draft', 'archived')
     end
 
-    it 'predicate methods work (default style)' do
+    # deal_type объявлен с prefix: true (жёсткое правило проекта — см. CLAUDE.md),
+    # поэтому предикаты именуются deal_type_rent?, а не rent?. Спек проверял
+    # «default style», которого в этом проекте нет by design.
+    it 'predicate methods work (prefixed style)' do
       p = build_property(deal_type: :rent)
-      expect(p).to be_rent
-      expect(p).not_to be_sale
+      expect(p).to be_deal_type_rent
+      expect(p).not_to be_deal_type_sale
     end
   end
 
@@ -148,9 +151,17 @@ RSpec.describe Property do
     end
 
     describe '.unassigned' do
-      it 'returns records with nil user_id' do
-        orphan = build_property.tap { |p| p.user_id = nil; p.save!(validate: false) }
-        expect(described_class.unscoped.unassigned).to include(orphan)
+      # properties.user_id объявлен NOT NULL (db/structure.sql:78), поэтому scope
+      # не может совпасть ни с одной строкой. Спек раньше пытался создать такую
+      # через save!(validate: false) и падал на NotNullViolation — БД не пускает.
+      #
+      # Scope при этом жив в админке: фильтр в
+      # dashboard/admin/properties_controller.rb:15 и счётчик «Без агента» в
+      # dashboard/index.html.erb:87. Оба всегда пусты. Удаление мёртвой
+      # функциональности — отдельное решение, здесь фиксируем инвариант.
+      it 'не может совпасть — user_id объявлен NOT NULL' do
+        expect(described_class.unscoped.unassigned.to_sql).to include('"user_id" IS NULL')
+        expect(described_class.unscoped.unassigned).to be_empty
       end
     end
   end
