@@ -105,6 +105,11 @@ class Property < ApplicationRecord
   belongs_to :user
   belongs_to :property_type, optional: true
   belongs_to :moderated_by, class_name: 'User', optional: true
+  # A2 — привязка к ЖК. Заполняется вручную через админку (из CRM название
+  # ЖК не приходит), поэтому optional и не участвует в Topnlab-маппере.
+  # counter_cache НЕ используем: нужный счётчик — on_site-скоупный, а
+  # counter_cache считал бы и черновики, и soft-deleted.
+  belongs_to :residential_complex, optional: true
 
   # has_many :property_images, dependent: :destroy
   # PropertyImage model is not implemented; Active Storage `images` is used instead.
@@ -378,6 +383,8 @@ class Property < ApplicationRecord
   # 'Рязань' / 'Москва' / 'Санкт-Петербург' / 'Красногорск' / др.
   # Используется LandingsController когда роут даёт city-param (/moskva/* etc).
   scope :in_city, ->(city) { where(city: city) if city.present? }
+  # A2 — объекты одного ЖК. Принимает ResidentialComplex или id.
+  scope :in_complex, ->(complex) { where(residential_complex_id: complex) if complex.present? }
   # PostGIS ST_DWithin against geography(Point, 4326). Distance is in meters
   # natively; falls back to lat/lng comparison only if geom is unset.
   scope :within_radius, ->(lat, lng, radius_km) {

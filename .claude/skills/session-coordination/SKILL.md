@@ -209,6 +209,7 @@ head -50 .claude/memory/activeContext.md
 
 - ❌ Запуск `claude` без `export CLAUDE_SESSION=*` — теряется session identity, inbox + hook не работают
 - ❌ Активная работа в `/home/q/victory` после worktree setup — это main checkout, reserved для merges/deploys
+- ❌ **Write-операции за пределами своего worktree** — создание/правка/удаление файлов (включая gitignored: `.env`, симлинки, `mkdir`) и git-команды в чужом `/home/q/victory-<other>` или в main checkout. Даже «заодно, это же мелочь». Read-only диагностика (`git worktree list`, cross-worktree lock check, сравнение состояния) — можно. Нужно что-то в соседней сессии → отдать пользователю командой или через hand-off (commit + branch + PR)
 - ❌ Параллельно править один файл в двух worktree без cross-worktree lock check
 - ❌ `bundle install` в двух worktree одновременно — Gemfile.lock race
 - ❌ Direct push to `main` — CI gate должен gate'ить (PR + review + green)
