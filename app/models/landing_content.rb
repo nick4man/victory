@@ -15,6 +15,9 @@
 class LandingContent < ApplicationRecord
   self.inheritance_column = nil  # `type` is a real catalog field, not STI
 
+  # Пре-рендер body_html / body_plain на save. Общий с ResidentialComplex.
+  include RendersLandingBlocks
+
   BLOCK_KINDS = %w[heading paragraph quote link image list faq].freeze
   INTENTS     = %w[sale rent].freeze
   TYPES       = %w[kvartira dom uchastok komnata kommercheskaya].freeze
@@ -26,8 +29,6 @@ class LandingContent < ApplicationRecord
   validates :title,  presence: true, length: { maximum: 200 }
   validates :meta_description, length: { maximum: 300 }, allow_blank: true
   validates :intent, uniqueness: { scope: %i[type district_slug rooms] }
-
-  before_save :rerender_caches, if: -> { body_blocks_changed? }
 
   scope :published, -> { where(published: true) }
   scope :for_landing, ->(intent:, type:, district_slug: nil, rooms: nil) {
@@ -43,18 +44,5 @@ class LandingContent < ApplicationRecord
     parts << "rayon/#{district_slug}" if district_slug.present?
     parts << (rooms == 'studiya' ? 'studiya' : "#{rooms}-komnatnaya") if rooms.present?
     parts.join('/')
-  end
-
-  private
-
-  def rerender_caches
-    helper = ActionController::Base.helpers
-    # Mix in our helper so we have access to render_landing_blocks /
-    # landing_blocks_to_plain. ActionController::Base.helpers carries
-    # only built-in tag helpers by default.
-    helper.extend(LandingBlocksHelper)
-
-    self.body_html  = helper.render_landing_blocks(body_blocks).to_s
-    self.body_plain = helper.landing_blocks_to_plain(body_blocks).to_s
   end
 end
