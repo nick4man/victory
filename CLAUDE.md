@@ -1,6 +1,6 @@
 # CLAUDE.md — АН «Виктори» Real Estate Platform
 
-Rails 7.1 / Ruby 3.2.2 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language real estate platform. **PRODUCTION** at https://victory62.org.
+Rails 8.1.3.1 / Ruby 3.3.6 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language real estate platform. **PRODUCTION** at https://victory62.org.
 
 ## Где брать контекст (memory-bank)
 

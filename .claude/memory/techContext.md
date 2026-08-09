@@ -4,8 +4,8 @@
 
 | Слой | Технология |
 |------|-----------|
-| Web framework | Rails 7.1 |
-| Language | Ruby **3.2.2** (через chruby/rbenv; системный 3.3 в сессии «chat») |
+| Web framework | Rails **8.1.3.1** (в проде с 08.08.26; `load_defaults` пока 7.1) |
+| Language | Ruby **3.3.6** — во всех 4 сессиях одинаково |
 | Database | PostgreSQL 15+ (с PostGIS + pgvector) |
 | Server | Puma 6.x, порт **3000** в Docker (reverse-proxy → 443 в проде) |
 | CSS | Tailwind CSS (`tailwindcss-rails`) |
@@ -13,7 +13,7 @@
 | Auth | Devise (**отключен**) |
 | Search | PgSearch (full-text, Russian dictionary) |
 | Pagination | Kaminari |
-| Background jobs | Sidekiq 7 + sidekiq-cron 1.12 (в Gemfile, частично активирован) / fallback Active Job `:async` |
+| Background jobs | Sidekiq 7 + sidekiq-cron — **активны в проде** (контейнер `victory-sidekiq-1`), расписание в `config/sidekiq_cron.yml` |
 | API | Rack::CORS, jbuilder, JWT (для `/api/v1/`) |
 | Geocoding | Geocoder gem |
 | Scheduling | Whenever (cron) |
@@ -54,8 +54,12 @@
 | `LOG_LEVEL` | `debug`/`info` | logger verbosity |
 | `SESSION_TIMEOUT` | `1800` | session expiry (sec) |
 | `ADMIN_TOKEN` | — | query-param admin guard (Admin::Reviews, Admin::Articles) |
-| `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта |
+| `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта (`@anvictorybot`) |
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
+| `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |
+| `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
+| `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
+| `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
 
 ## DB и миграции
 
@@ -115,10 +119,14 @@ bundle exec whenever --clear-crontab
 
 ## MCP / Claude Code инфра (Phase 1)
 
-- `.mcp.json` в корне — конфиг 4 MCP-серверов: `serena`, `postgres`, `github`, `rails-mcp-server`.
+- `.mcp.json` в корне — конфиг 4 MCP-серверов: `serena`, `postgres`, `github`, `rails-guides`.
+  MCP `postgres` поднимается контейнером `node:20-alpine` в docker-сети `victory_default`
+  — по одному на сессию, безымянные, накапливаются после ребутов.
 - `.claude/memory/` — этот memory-bank.
-- `.claude/repo-map.md` — сжатая карта репо от repomix.
-- `.claude/agents/` — проектные субагенты (`property-valuation-expert`, `pdf-telegram-dispatcher`).
-- `.remember/logs/` — дневной журнал remember-плагина.
+- `.claude/repo-index.md` — компактный индекс «файл → классы» (~5k токенов, читать первым).
+- `.claude/repo-map.md` — полный сигнатурный дамп (~190k, on-demand). Оба: `rake repo:map`.
+- `.claude/agents/` — проектные субагенты; routing-таблица — `.claude/docs/delegation-map.md`.
+- `~/.claude-shared/` — межсессионный обмен: `inbox/`, `events/`, `locks/`.
+- `.remember/logs/` — дневной журнал remember-плагина (лежит в main checkout).
 
 Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `/home/q/.claude/plugins/installed_plugins.json`.
