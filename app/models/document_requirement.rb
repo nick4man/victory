@@ -177,11 +177,19 @@ class DocumentRequirement < ApplicationRecord
   end
 
   # === SLA helpers ===
+  #
+  # `now:` (08.08.26) — точка отсчёта времени. Раньше здесь был жёсткий
+  # Time.current, из-за чего SlaAssessor.assess(dr, now:) врал: он принимал
+  # момент времени и честно применял его к weekend-проверке и rewindow-cooldown,
+  # но фактор просрочки считался по настоящим часам. В проде это незаметно
+  # (now ≈ Time.current), а вот любой backfill, replay или симуляция получали
+  # неверный tier молча. Дефолт сохраняет поведение всех текущих вызывающих.
+
   # Returns seconds since requested_at OR nil если ещё не requested.
-  def time_since_requested
+  def time_since_requested(now: Time.current)
     return nil if requested_at.blank?
 
-    Time.current - requested_at
+    now - requested_at
   end
 
   # Per-kind SLA — может быть overridden через sla_seconds column для кастом.
@@ -191,8 +199,8 @@ class DocumentRequirement < ApplicationRecord
 
   # Overdue factor: > 1.0 = просрочка, < 1.0 = в SLA. nil если не requested.
   # Используется Phase 4F SLA assessor для ramping reminders (1.0/2.0/3.0 cutoffs).
-  def overdue_factor
-    elapsed = time_since_requested
+  def overdue_factor(now: Time.current)
+    elapsed = time_since_requested(now: now)
     return nil if elapsed.nil?
 
     sla = effective_sla.to_f
@@ -201,8 +209,8 @@ class DocumentRequirement < ApplicationRecord
     elapsed / sla
   end
 
-  def overdue?
-    factor = overdue_factor
+  def overdue?(now: Time.current)
+    factor = overdue_factor(now: now)
     factor && factor >= 1.0
   end
 
