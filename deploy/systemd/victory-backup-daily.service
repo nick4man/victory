@@ -1,0 +1,16 @@
+[Unit]
+Description=Бэкап victory62 — БД и секреты
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=q
+Group=q
+# /usr/local/bin/victory-backup — симлинк на /home/q/victory/bin/backup.
+# Через симлинк, а не напрямую: обновления скрипта приезжают с деплоем main,
+# а unit при этом трогать не нужно.
+ExecStart=/usr/local/bin/victory-backup all
+StandardOutput=append:/var/backups/victory/logs/daily.log
+StandardError=append:/var/backups/victory/logs/daily.log
+TimeoutStartSec=1800
