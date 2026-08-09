@@ -1,161 +1,138 @@
-# Per-session планы + обязательные локи
+# Зелёный rspec + rspec в CI-gate
 
 ## Context
 
-Над репо victory62 работают 4 параллельные сессии Claude Code, каждая в своём git worktree
-(`/home/q/victory-{victory,chat,seo,upgrade}`). Две проблемы, обе подтверждены осмотром:
+После появления `bin/rb` сьют наконец запускается из любой сессии: **895 examples, 29 failures**.
 
-**1. Планы затирают друг друга.** Каталог `.claude/plans/` в репо **пуст во всех 5 checkout'ах**
-и не отслеживается git, хотя на него ссылаются 8 мест (`CLAUDE.md:29`,
-`.claude/hooks/session-start.sh:195`, `strategicVector.md:3,178,188`, `activeContext.md:173,195`,
-`session-handoff-protocol/SKILL.md:147`). Реальные планы лежат в глобальном `/home/q/.claude/plans/` —
-одном плоском каталоге на все сессии и все проекты хоста. Туда же harness кладёт план текущей
-сессии, туда же попали оба мастер-документа. Общий каталог без разделения = гонка на запись.
+Это **не регрессии Rails 8.1**. В PR #5 (эпоха Rails 7.2) было «895/34» при том же числе примеров —
+то есть перед нами накопленный долг спеков, один настоящий дефект и одна инфраструктурная мина.
+Пока сьют красный, включить `rspec` в CI-gate нельзя, а раз он не в gate — долг растёт дальше.
+Цель: 895/0 и `rspec` в обязательных проверках PR.
 
-**2. Локи не работают.** `tmp/claude-locks/` пуст во всех worktree — за два месяца не создано
-ни одного лока. Причина структурная: `pre-edit-lock.sh` подключён на `PreToolUse Edit|Write`,
-но (а) всегда `exit 0`, то есть только предупреждает, и (б) создавать локи надо вручную, чего
-никто не делает. Механизм существует на бумаге и не защищает ничего.
-
-**Цель:** у каждой сессии свой каталог планов под git; локи ставятся автоматически и физически
-блокируют правку файла, занятого другой сессией.
-
-**Решения приняты пользователем:** планы — в репо, per-session; локи — блокирующие;
-жизненный цикл — авто-постановка на правке, авто-снятие на коммите.
+**Решения приняты пользователем:** `now` протягиваем в модель; `null_store` обходим точечно в спеке;
+чиним все 29 и сразу включаем rspec в CI.
 
 ---
 
-## Ключевое проектное решение: ключ лока — путь, а не имя файла
+## Разбор 29 падений по корневым причинам
 
-Текущая схема кладёт лок в `tmp/claude-locks/<basename>.lock`. В репо **35 дублирующихся
-basename** (`base.rb`, `client.rb`, `base_controller.rb`, `_form.html.erb`, `index.html.erb`…).
-В предупреждающем режиме ложное срабатывание — это шум; в блокирующем — это заблокированная
-правка `app/services/yandex/client.rb`, потому что другая сессия держит
-`app/services/topnlab/client.rb`. Поэтому ключ = repo-relative путь со слэшами, заменёнными на `%`:
+### Группа 1 — тесты ходят в реальный интернет (2 падения + флакость всего сьюта)
 
-```
-tmp/claude-locks/app%models%property.rb.lock
-```
+`spec/rails_helper.rb:29` — `WebMock.allow_net_connect!`. Property-спеки падают с
+`OpenSSL::SSL::SSLError` на `151.101.1.91:443`. Источники сетевых вызовов: гем `geocoder`
+(`Gemfile:89`) по `address`, плюс `after_commit` хуки `notify_indexnow_on_publish` и
+`notify_yandex_recrawl_on_publish` (`app/models/property.rb:251,257`).
 
-Существующих локов нет (0 во всех worktree), так что смена формата ничего не ломает.
+Это не «2 падения», а недетерминированность всего прогона: любой спек может ткнуться во внешний
+сервис и упасть по чужой недоступности. **Чинить первым** — иначе остальные цифры невоспроизводимы.
 
----
+### Группа 2 — настоящий дефект: `now:` протянут наполовину (4 падения)
 
-## Часть 1. Планы per-session
+`DocumentChecklist::SlaAssessor.assess(dr, now:)` использует `@now` для weekend-проверки и
+rewindow-cooldown (`sla_assessor.rb:61,103,109`), но `overdue_factor` берёт из модели, где
+жёстко `Time.current` (`app/models/document_requirement.rb:184`).
 
-### Раскладка
+Спек фиксирует `now: 19.05.26`; реальное время ушло на ~81 день, фактор считается по настоящим
+часам → всегда tier 3 вместо 1/2/nil. В проде безвредно (`now ≈ Time.current`), но параметр
+обманывает вызывающего: backfill, replay или симуляция получат неверный tier молча.
 
-```
-.claude/plans/
-  _shared/                          ← мастер-документы, меняются только через PR
-    splendid-imagining-lerdorf.md
-    merry-honking-kay.md
-  victory/  chat/  seo/  upgrade/   ← планы сессии, каждый со своим .keep
-```
+### Группа 3 — verified doubles отстали от кода (5 падений)
 
-Переместить из `/home/q/.claude/plans/` в `.claude/plans/_shared/` оба мастер-документа
-(`splendid-imagining-lerdorf.md` 10 КБ, `merry-honking-kay.md` 7 КБ). Глобальный
-`~/.claude/plans/` остаётся рабочим буфером harness'а — его путь мы не контролируем.
+`spec/jobs/document_intake/parser_job_spec.rb`: `InstanceDouble(ClientDocument)` не стабит
+`property` и `nextcloud_path`, которые код начал звать
+(`app/services/document_intake/nextcloud_mirror.rb:80`, `app/jobs/document_intake/parser_job.rb:29`).
+Верифицирующий двойник отработал ровно как задумано — это механическая доработка стабов.
 
-### Новый hook `.claude/hooks/plan-sync.sh`
+### Группа 4 — конфиг ушёл вперёд спеков (4 падения, TopicRegistry)
 
-`PostToolUse` на `Write|Edit`. Если `tool_input.file_path` лежит внутри `$HOME/.claude/plans/` —
-копирует файл в `$CLAUDE_PROJECT_DIR/.claude/plans/<session>/` (session — из marker-файла
-`.claude-session`, как в `session-start.sh:15-19`). Плоское копирование, имя сохраняется.
+- `missing_keys` ждёт 16, получает 0: в `config/telegram_topics.yml` теперь 18 заполненных
+  `message_thread_id` — топики discovered, «недостающих» честно нет. Спек фиксировал состояние
+  до discovery.
+- `record_discovery` → `thread_id` возвращает 17 вместо 42: `config.cache_store = :null_store`
+  (`config/environments/test.rb:30`) делает запись в кэш no-op, `overrides` всегда пуст и
+  побеждает значение из YAML.
+- `auto_route_for('site_valuation_form')` → nil: канонический источник везде `site_valuation`
+  (`app/models/lead_event.rb:14`, `app/services/lead/intake.rb:21`), значения `site_valuation_form`
+  не существует нигде. **Спек выдумал источник** — код и YAML правы.
 
-Так план, который harness пишет в глобальный буфер, немедленно оказывается в репо под своей
-сессией — попадает в git, виден в PR, переживает переезд. Хук идемпотентный, всегда `exit 0`:
-сбой синхронизации плана не должен ломать сессию.
+### Группа 5 — тексты и поведение изменились (9 падений)
 
-### Обновление ссылок
+`WeeklySummaryJob` («Недельный отчёт» → «📊 Сводка за неделю»), `CheatsheetRenderer` ×2,
+`Kpi::MorningDigest` ×4, `Commands::Dashboard` (ответ в исходный чат `500001`, спек ждёт DM `500002`),
+`LeadEvent#anchor_url` (строит ссылку без thread_id, спек ждёт nil).
 
-8 мест выше — заменить `.claude/plans/<файл>.md` → `.claude/plans/_shared/<файл>.md`.
-В `CLAUDE.md` добавить абзац о раскладке (per-session каталоги + `_shared` только через PR).
+По каждому решаем «код прав / спек прав». Большинство — спек. **Исключение:** MorningDigest
+отдаёт «Вчера: данных пока нет», хотя спек создал `StaffMetric` — здесь сначала выясняем, почему
+lookup не находит запись; это может оказаться реальным багом, а не устаревшим ожиданием.
 
----
+### Группа 6 — фикстуры против новых ограничений (5 падений)
 
-## Часть 2. Блокирующие локи
-
-### `.claude/hooks/pre-edit-lock.sh` (переписать)
-
-Сейчас: cross-worktree скан по basename, всегда `exit 0`.
-Станет: cross-worktree скан по path-ключу с реальной блокировкой.
-
-Логика:
-1. Достать `file_path` (jq с fallback на grep — оставить как есть, строки 19-25).
-2. Привести к repo-relative. **Если файл вне репо — пропустить** (`exit 0`): иначе хук
-   заблокирует правку самого plan-файла в `~/.claude/plans/`.
-3. Ключ = путь, `/` → `%`.
-4. Скан всех worktree через `git worktree list --porcelain` (существующая логика, строка 33).
-5. Найден лок чужой сессии:
-   - возраст > TTL (2ч) → удалить, предупредить, пропустить;
-   - иначе → сообщение в stderr и **`exit 2`** (Claude Code блокирует вызов и отдаёт stderr модели).
-6. Лок своей сессии — не блокирует никогда.
-7. Аварийный обход: `CLAUDE_LOCK_BYPASS=1`.
-
-Формат сообщения при блоке — с указанием, кто держит, сколько времени и как снять:
-
-```
-⛔ app/models/property.rb занят сессией chat
-   worktree: /home/q/victory-chat
-   с 08.08.26 20:14 (12 мин назад), task=extract concerns
-   Снять: bin/lock-clean --force   |   обойти: CLAUDE_LOCK_BYPASS=1
-```
-
-### `.claude/hooks/post-edit-lock.sh` (новый)
-
-`PostToolUse` на `Write|Edit`: создаёт (или обновляет mtime) лок на только что изменённый файл
-в `tmp/claude-locks/` **своего** worktree. Метаданные — `session`, `worktree`, `path`, `started`,
-`pid`, `task`. Даты — `dd.MM.yy` по конвенции проекта. Всегда `exit 0`.
-
-Это ядро решения: ручная постановка провалилась (0 локов за 2 месяца), автоматическая
-не требует от сессии ничего.
-
-### Снятие на коммите
-
-`.githooks/post-commit` (новый, отслеживается git) + `bin/install-git-hooks` (новый, ставит
-symlink в `.git/hooks/`). Для каждого файла из `git diff-tree --no-commit-id --name-only -r HEAD`
-удаляет соответствующий лок в текущем worktree.
-
-Важно: `.git/hooks` лежит в common dir (`/home/q/victory/.git`, `core.hooksPath` не задан),
-то есть хук общий для всех 5 worktree — это и нужно. Сейчас там нет ни одного не-sample хука.
-`.git/hooks` под git не попадает, поэтому нужен установщик; вызывать его из `session-start.sh`
-идемпотентно, чтобы не требовать ручного шага на каждой машине.
-
-### Правка существующих утилит под новый ключ
-
-- `bin/lock-clean` — TTL-логика остаётся, обновить разбор имён (`%` → `/`) для читаемого вывода.
-- `bin/check-cross-worktree-locks` — принимать путь, считать ключ так же, как хук.
-  ⚠️ Файл создан в этой сессии и ещё не закоммичен.
-
-### `.claude/settings.json`
-
-Добавить в существующие массивы: `plan-sync.sh` и `post-edit-lock.sh` в `PostToolUse`
-(рядом с `post-edit-rubocop.sh`), `pre-edit-lock.sh` в `PreToolUse` уже есть.
+- `builder_spec.rb:33` — `update_columns(lead_ref_type: nil)` против NOT NULL на
+  `lead_events.lead_ref_type`. Сценарий стал невозможен на уровне схемы. Ветка `default_sale`
+  (`app/services/document_checklist/builder.rb:102`) **не мертва** — достижима, когда
+  `lead_ref` разрешается в nil или тип не найден в `TemplateRegistry`; переписать спек на
+  достижимый путь.
+- `builder_spec.rb:154` — `Inquiry.create!(name: 'R')` → «Name Слишком короткое», валидация
+  добавлена позже фикстуры.
+- `TelegramGroupMessage` uniqueness, `InnParser` full_name, `Property` enums `be_rent`.
 
 ---
 
-## Часть 3. Документация
+## Порядок работ
 
-- `.claude/skills/session-coordination/SKILL.md` — секция lock-file: переписать под авто-режим
-  и блокировку, убрать инструкции по ручному `echo ... > lock`, поправить пример ключа.
-  Там же — раскладка планов.
-- `.claude/sessions/README.md` — то же самое.
-- `CLAUDE.md` — короткий абзац: план пишется в свой per-session каталог; локи автоматические
-  и блокирующие; аварийный обход.
+**Шаг 0 — сетевая изоляция (обязательно первым).**
+`WebMock.disable_net_connect!(allow_localhost: true)` в `spec/rails_helper.rb`. Дальше по факту
+падений: отключить geocoding в test (`Geocoder.configure(lookup: :test)` + stub), заглушить
+IndexNow/Yandex-хуки Property. Ожидаемо вскроет спеки, которые молча ходили в сеть и «проходили» —
+их считаем частью работы.
+
+**Шаг 1 — дефект `now:`.** `time_since_requested(now: Time.current)` и `overdue_factor(now: Time.current)`
+в `document_requirement.rb`, вызов `@dr.overdue_factor(now: @now)` в `sla_assessor.rb:65`.
+Проверить остальных вызывающих `overdue_factor`/`overdue?` — сигнатура с дефолтом обратно совместима.
+Спеки становятся детерминированными без `travel_to`.
+
+**Шаг 2 — механические группы 3, 4, 6.** Дополнить стабы; обновить ожидания TopicRegistry
+(`missing_keys` → 0, источник `site_valuation`); `:memory_store` подменить точечно в
+`topic_registry_spec.rb` (не трогая `test.rb` — остальные 895 примеров сохраняют семантику);
+починить фикстуры под актуальные валидации и NOT NULL.
+
+**Шаг 3 — группа 5, по одному.** Для MorningDigest сначала диагностика lookup'а `StaffMetric`.
+
+**Шаг 4 — CI-gate.** Новая job `rspec` в `.github/workflows/lint.yml`.
+
+Две вещи, которые обязательно всплывут:
+
+- **БД.** Нужны `postgis`, `vector`, `pg_trgm`, `unaccent` (`db/structure.sql:16-58`). Ни один
+  публичный образ не несёт postgis и pgvector одновременно, поэтому `services:` не подойдёт —
+  собираем `Dockerfile.postgres` прямо в job и запускаем `docker run` с healthcheck. Сам rspec
+  гоняем нативно через `ruby/setup-ruby` (как три существующие job), а не через `bin/rb`:
+  так CI не зависит от compose-файла.
+- **`DATABASE_URL` обязателен.** `config/database.yml:102` (блок `staging`) делает
+  `ENV.fetch("DATABASE_URL")` без дефолта, а ERB рендерит весь файл на любой среде — без
+  переменной падает `KeyError` ещё до выбора секции. Ровно на это я наткнулся при настройке
+  `bin/rb`. Правильный фикс — `ENV.fetch("DATABASE_URL", nil)` в database.yml: убирает мину
+  для всех окружений разом.
+
+Ещё: `config.eager_load = ENV['CI'].present?` (`config/environments/test.rb:19`) — в CI грузится
+всё приложение, что может вскрыть load-ошибки, невидимые локально. Первый CI-прогон может дать
+больше 29 падений; это ожидаемо и входит в работу. Заодно поправить устаревший комментарий
+«Gemfile (ruby '3.2.2')` в `lint.yml` — там давно 3.3.6.
 
 ---
 
-## Риски
+## Файлы
 
-**Дедлок при падении сессии.** Три страховки: TTL 2ч (истёкший лок снимается автоматически при
-первой же попытке правки), `bin/lock-clean --force`, `CLAUDE_LOCK_BYPASS=1`.
-
-**Ложная блокировка** — снята переходом на path-ключ.
-
-**Шум от авто-локов.** Лок будет на каждый отредактированный файл. Это не проблема, пока снятие
-работает: post-commit + TTL. Если сессия правит и долго не коммитит — файлы остаются занятыми,
-что и является задуманным поведением.
+| Файл | Что |
+|---|---|
+| `spec/rails_helper.rb` | `disable_net_connect!`, Geocoder test-lookup |
+| `app/models/document_requirement.rb` | `time_since_requested(now:)`, `overdue_factor(now:)` |
+| `app/services/document_checklist/sla_assessor.rb` | передать `@now` в фактор |
+| `config/database.yml` | `ENV.fetch('DATABASE_URL', nil)` в staging-блоке |
+| `.github/workflows/lint.yml` | job `rspec` + сборка `Dockerfile.postgres` |
+| `spec/jobs/document_intake/parser_job_spec.rb` | стабы `property`, `nextcloud_path` |
+| `spec/services/telegram/topic_registry_spec.rb` | ожидания + точечный `:memory_store` |
+| `spec/services/document_checklist/{builder,sla_assessor}_spec.rb` | фикстуры |
+| ещё 6 spec-файлов | группы 5 и 6 |
 
 ---
 
@@ -164,46 +141,45 @@ symlink в `.git/hooks/`). Для каждого файла из `git diff-tree 
 ```bash
 cd /home/q/victory-upgrade
 
-# 1. Планы: раскладка на месте, мастер-доки переехали, ссылки не битые
-ls .claude/plans/{_shared,victory,chat,seo,upgrade}
-grep -rn '\.claude/plans/' CLAUDE.md .claude/ | grep -v '_shared\|plans/<session>' # должно быть пусто
+# 1. Сетевой изоляции достаточно — сьют не ходит наружу.
+#    Отключить сеть у контейнера и убедиться, что результат тот же:
+bin/rb --db 'bundle exec rspec --no-color 2>&1 | tail -3'
 
-# 2. plan-sync: правка файла в ~/.claude/plans → копия в своём каталоге
-#    (проверяется следующим же входом в plan mode)
+# 2. Дефект now: починен — фактор считается от переданного времени
+bin/rb --db "bin/rails runner \"
+  dr = DocumentRequirement.new(kind: 'passport_main', requested_at: 36.hours.ago)
+  puts dr.overdue_factor(now: Time.current).round(2)          # ~1.5
+  puts dr.overdue_factor(now: dr.requested_at + 12.hours).round(2)  # 0.5
+\""
 
-# 3. Лок ставится автоматически
-#    отредактировать любой файл → появится:
-ls tmp/claude-locks/
+# 3. Полный прогон — цель
+bin/rb --db 'bundle exec rspec --no-color 2>&1 | grep -E "^[0-9]+ examples"'
+#    → 895 examples, 0 failures
 
-# 4. Блокировка чужого лока — эмулируем лок от chat
-mkdir -p /home/q/victory-chat/tmp/claude-locks
-printf 'session=chat\nworktree=/home/q/victory-chat\npath=app/models/property.rb\nstarted=%s\ntask=test\n' \
-  "$(date -Iseconds)" > '/home/q/victory-chat/tmp/claude-locks/app%models%property.rb.lock'
-#    → попытка Edit app/models/property.rb должна быть ОТКЛОНЕНА с указанием chat
-#    → Edit app/services/topnlab/client.rb (дубль basename с yandex/client.rb) должен ПРОЙТИ
+# 4. Детерминированность: два прогона с разными seed дают одно и то же
+for s in 111 222; do bin/rb --db "bundle exec rspec --no-color --seed $s 2>&1 | grep -E '^[0-9]+ examples'"; done
 
-# 5. Обход и снятие
-CLAUDE_LOCK_BYPASS=1 # → правка проходит
-bin/check-cross-worktree-locks app/models/property.rb   # → покажет лок chat
-rm '/home/q/victory-chat/tmp/claude-locks/app%models%property.rb.lock'
+# 5. eager_load, как в CI (может вскрыть load-ошибки)
+bin/rb --db 'CI=1 bundle exec rspec --no-color 2>&1 | grep -E "^[0-9]+ examples"'
 
-# 6. Снятие на коммите
-bin/install-git-hooks && git commit -am 'test' && ls tmp/claude-locks/  # локи закоммиченных файлов ушли
-
-# 7. Ничего не сломали
+# 6. Ничего не сломали в остальном
 bin/rb bundle exec rubocop --parallel
+bin/rb bundle exec brakeman --exit-on-warn --quiet --format text
+
+# 7. CI — проверяется на PR: job `rspec` должен стать обязательным вместе с
+#    rubocop / brakeman / bundler-audit
 ```
 
 ---
 
-## Не входит в этот план (но лежит в рабочем дереве)
+## Риски
 
-В этой сессии уже сделан и проверен изолированный Ruby-box (`docker-compose.ruby.yml`, `bin/rb`,
-`ARG RUBY_VERSION` в `Dockerfile`, `bin/check-cross-worktree-locks`) — закрывает отсутствие
-менеджера версий Ruby для всех 4 сессий. Прогон: `895 examples, 29 failures`. Эти файлы не
-закоммичены; их стоит развести с локами/планами по отдельным коммитам в одном PR.
+**Шаг 0 вскроет больше падений, чем 29.** Спеки, которые молча ходили в сеть и «проходили» на
+живых ответах, станут красными. Это не регресс, а обнажение уже существующей проблемы — но объём
+работы может вырасти. Если вылезет много, разумно остановиться и пересогласовать.
 
-Также остаются незакрытыми хвосты миграции worktree: `origin/dev/upgrade` разошёлся с локальной
-веткой (ahead 1 / behind 1 после squash-мержа PR #9), `.env` есть только в upgrade-worktree
-(остальным трём нужен для `bin/rb`), `activeContext.md` указывает на давно закрытую ветку
-`claude/currency-converter-app-9Ljw6`.
+**Правка `overdue_factor` трогает прод-код.** Дефолт `now: Time.current` сохраняет поведение всех
+текущих вызывающих; риск низкий, но перед мержем нужен прогон `document_checklist` целиком.
+
+**CI-job с docker build постгреса медленный** (сборка образа на каждый прогон). Если станет
+узким местом — кэшировать через GHCR отдельным шагом.

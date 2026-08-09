@@ -101,14 +101,14 @@ else
 fi
 
 # DATABASE_URL прилетает из .env прибитым к viktory_realty_development и
-# перебивает database.yml — RAILS_ENV=test молча ушёл бы в dev-базу.
+# перебивает database.yml — RAILS_ENV=test молча ушёл бы в dev-базу. Снимаем:
+# блоки development/test в database.yml собираются из
+# DATABASE_HOST/USERNAME/PASSWORD/PORT и в URL не нуждаются.
 #
-# Просто снять его нельзя: staging-блок в database.yml делает
-# ENV.fetch("DATABASE_URL") без дефолта, а ERB рендерит весь файл на любой
-# среде — получаем KeyError ещё до выбора секции. Поэтому не снимаем, а
-# переписываем имя БД под текущий RAILS_ENV (всё до последнего «/» — хост,
-# порт и креды — остаётся из .env).
-CMD='DATABASE_URL="${DATABASE_URL%/*}/viktory_realty_${RAILS_ENV}"; export DATABASE_URL; '"${CMD}"
+# Раньше здесь URL переписывался под текущий env, потому что снять его было
+# нельзя: staging-блок делал ENV.fetch без дефолта, а ERB рендерит весь файл на
+# любой среде → KeyError. Блок исправлен, костыль больше не нужен.
+CMD='unset DATABASE_URL; '"${CMD}"
 
 if [ "$WITH_DB" -eq 1 ]; then
   "${COMPOSE[@]}" up -d --wait db redis
