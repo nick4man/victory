@@ -101,6 +101,8 @@
 
 ### Фаза 2 — админка → PR #2
 
+> Детализация: `.claude/plans/seo/a2-phase2-detail.md` (09.08.26). Там же — PR-A, починка блок-редактора: разведка перед Фазой 2 обнаружила, что редактор молча стирает `body_blocks` при сохранении, и извлекать этот код в общий партиал без починки нельзя. Также зафиксировано, что «селект ЖК на форме объекта» невозможен — формы редактирования `Property` в админке не существует, привязка идёт только с экрана ЖК.
+
 - `app/controllers/admin/residential_complexes_controller.rb` — калька `admin/landing_contents_controller.rb` (`include AdminTokenAuth`, `assign_body_blocks_from_form`), index с coverage-картой (нет body / нет фото / нет объектов) по образцу `:30-33`.
 - `app/views/admin/residential_complexes/{index,new,edit,_form}.html.erb`.
 - Извлечение блок-редактора: `admin/landing_contents/_form.html.erb:122-319` (~200 строк inline JS, завязан на id `lc-blocks-json` и имя `landing_content[body_blocks_json]`) → `app/views/admin/shared/_block_editor.html.erb` с locals `param_name:`, `field_id:`, `upload_url:`. **Самая рискованная правка фазы** — обязателен ручной smoke старого редактора после.

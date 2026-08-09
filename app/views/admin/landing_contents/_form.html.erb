@@ -74,7 +74,18 @@
     </div>
 
     <div id="lc-blocks" class="space-y-3"></div>
-    <%= hidden_field_tag 'landing_content[body_blocks_json]', '[]', id: 'lc-blocks-json' %>
+    <%# Начальное состояние едет прямо в value того поля, которое редактор
+        и сериализует. Если JS не выполнится вообще (ошибка, CSP, старый
+        браузер) — форма отправит исходные блоки, а не пустоту. Раньше
+        состояние передавалось через data-атрибут + raw(), и апостроф в
+        тексте ломал разметку. %>
+    <%= hidden_field_tag 'landing_content[body_blocks_json]',
+                         (landing_content.body_blocks || []).to_json,
+                         id: 'lc-blocks-json' %>
+    <%# Маркер живого редактора: '1' ставит JS после успешной загрузки.
+        Контроллер по нему отличает осознанное «удалить все блоки» от
+        POST'а из редактора, который не смог подняться. %>
+    <%= hidden_field_tag 'landing_content[body_blocks_editor]', '0', id: 'lc-blocks-editor' %>
   </div>
 
   <div class="flex items-center gap-3 p-4 border border-border">
@@ -119,20 +130,31 @@
   .lc-block-card .lc-faq-pairs > div { margin-bottom: 0.5rem; }
 </style>
 
-<script type="module" data-lc-initial='<%= raw((landing_content.body_blocks || []).to_json) %>'>
+<script type="module">
   (function() {
-    const STATE = { blocks: [] };
-    try {
-      const initial = JSON.parse(document.currentScript.dataset.lcInitial || '[]');
-      if (Array.isArray(initial)) STATE.blocks = initial.map(b => ({ ...b, _uid: uid() }));
-    } catch (e) { /* ignore */ }
-
+    // Порядок важен: узлы берём ДО парсинга. Раньше состояние читалось
+    // выше объявления const'ов, и любая ошибка внутри try (TDZ, а до
+    // 09.08.26 — обращение к currentScript, который в модульном скрипте
+    // всегда null) молча давала пустой STATE. Дальше render() вызывал
+    // commit(), тот записывал '[]' в поле, и сохранение стирало текст
+    // лендинга. Пустого catch здесь больше нет по той же причине.
     const blocksEl   = document.getElementById('lc-blocks');
     const jsonEl     = document.getElementById('lc-blocks-json');
+    const editorEl   = document.getElementById('lc-blocks-editor');
     const addMenuBtn = document.getElementById('lc-add-menu-btn');
     const addMenu    = document.getElementById('lc-add-menu');
     const csrfMeta   = document.querySelector('meta[name="csrf-token"]');
     const uploadUrl  = '<%= upload_image_admin_landing_contents_path %>';
+
+    const STATE = { blocks: [] };
+    let bootOk = true;
+    try {
+      const initial = JSON.parse(jsonEl.value || '[]');
+      if (Array.isArray(initial)) STATE.blocks = initial.map(b => ({ ...b, _uid: uid() }));
+    } catch (e) {
+      bootOk = false;
+      console.error('[lc-block-editor] не удалось разобрать исходные блоки', e);
+    }
 
     function uid() { return 'b' + Math.random().toString(36).slice(2, 9); }
 
@@ -314,6 +336,21 @@
       });
     });
 
-    render();
+    if (bootOk) {
+      // Маркер живого редактора — только после успешной загрузки блоков.
+      // Контроллер по нему разрешает сохранить пустой массив.
+      editorEl.value = '1';
+      render();
+    } else {
+      // Осознанно НЕ вызываем render(): он дёрнул бы commit() и записал
+      // '[]' в поле, то есть повторил бы ровно ту потерю данных, от
+      // которой мы тут защищаемся. Поле остаётся с исходным JSON, маркер
+      // остаётся '0' — сохранение не тронет текст.
+      blocksEl.replaceChildren(
+        el('div', { class: 'p-4 border border-destructive text-destructive text-sm' },
+           'Редактор блоков не смог загрузиться. Текст страницы цел — его можно ' +
+           'сохранить как есть, но не редактируйте блоки, пока ошибка не устранена.')
+      );
+    }
   })();
 </script>

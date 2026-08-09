@@ -119,7 +119,16 @@ module Admin
       return if raw.blank?
 
       parsed = JSON.parse(raw)
-      @landing_content.body_blocks = parsed if parsed.is_a?(Array)
+      return unless parsed.is_a?(Array)
+
+      # Пустой массив принимаем только от живого редактора (маркер ставит JS
+      # после успешной загрузки блоков). «Удалить все блоки» — легитимный
+      # сценарий, а вот POST из редактора, который не поднялся, не должен
+      # стирать текст: именно так 09.08.26 обнаружилась потеря контента.
+      editor_alive = params.dig(:landing_content, :body_blocks_editor) == '1'
+      return if parsed.empty? && !editor_alive && @landing_content.body_blocks.present?
+
+      @landing_content.body_blocks = parsed
     rescue JSON::ParserError => e
       Rails.logger.warn("[Admin::LandingContents] bad body_blocks_json: #{e.message}")
     end
