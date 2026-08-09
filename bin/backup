@@ -150,6 +150,82 @@ prune_files_snapshots() {
     done
 }
 
+# Таблицы для сверки: не все 100+, а те, потеря которых видна бизнесу.
+VERIFY_TABLES='properties users inquiries conversations property_valuations'
+
+cmd_verify() {
+  load_config; ensure_dirs
+  local dump
+  dump=$(ls -t "$BACKUP_ROOT"/db/*.dump.gpg 2>/dev/null | head -1 || true)
+  [ -n "$dump" ] || die 'нет ни одного дампа'
+  log "проверяю $(basename "$dump")"
+
+  local cname="victory-verify-$$"
+  # Тот же образ, что и в проде — иначе не проверить расширения.
+  docker run -d --rm --name "$cname" \
+    -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=verify \
+    viktory-postgres-pgvector:pg15-postgis35 >/dev/null
+  # shellcheck disable=SC2064
+  trap "docker rm -f '$cname' >/dev/null 2>&1 || true" EXIT
+
+  # Образ postgres при первом запуске поднимает ВРЕМЕННЫЙ сервер для initdb, а
+  # затем перезапускает его. pg_isready отвечает успехом уже на временный, и
+  # восстановление, начатое в этот момент, обрывается на середине с «terminating
+  # connection due to administrator command». Поэтому сначала ждём в логах
+  # отметку о завершении инициализации, и только потом проверяем готовность.
+  local i
+  for i in $(seq 1 90); do
+    docker logs "$cname" 2>&1 | grep -q 'init process complete' && break
+    [ "$i" = 90 ] && die 'контейнер проверки не инициализировался за 90 с'
+    sleep 1
+  done
+  for i in $(seq 1 30); do
+    docker exec "$cname" pg_isready -U postgres -q 2>/dev/null && break
+    [ "$i" = 30 ] && die 'постоянный сервер не принял соединения за 30 с'
+    sleep 1
+  done
+
+  log '  восстанавливаю дамп'
+  # pg_restore возвращает ненулевой код на безобидных warning'ах (отсутствующие
+  # роли, уже существующие расширения), поэтому судим по фактическому
+  # результату ниже, а не по коду возврата.
+  gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$dump" 2>/dev/null \
+    | docker exec -i "$cname" pg_restore -U postgres -d verify --no-owner --no-acl \
+    >"$BACKUP_ROOT/tmp/verify-restore.log" 2>&1 || true
+
+  # postgis в этом образе присутствует в свежесозданной базе и без дампа, поэтому
+  # сам по себе он ничего не доказывает — реальную нагрузку несут vector, pg_trgm
+  # и unaccent, которые появляются только из восстановленных данных. Проверено на
+  # намеренно битом дампе: postgis нашёлся, остальные три — нет.
+  log '  проверяю расширения'
+  local ext missing=''
+  for ext in postgis vector pg_trgm unaccent; do
+    docker exec "$cname" psql -U postgres -d verify -tAc \
+      "SELECT 1 FROM pg_extension WHERE extname='$ext'" 2>/dev/null | grep -q 1 \
+      || missing="$missing $ext"
+  done
+  [ -z "$missing" ] || die "в восстановленной базе нет расширений:$missing"
+
+  log '  сверяю количество строк'
+  local t live restored bad=''
+  for t in $VERIFY_TABLES; do
+    live=$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -tAc \
+      "SELECT COUNT(*) FROM $t" 2>/dev/null | tr -d ' ' || echo 0)
+    restored=$(docker exec "$cname" psql -U postgres -d verify -tAc \
+      "SELECT COUNT(*) FROM $t" 2>/dev/null | tr -d ' ' || echo 0)
+    live=${live:-0}; restored=${restored:-0}
+    log "    $t: копия=$restored прод=$live"
+    # Тревога только если в КОПИИ меньше — признак усечённого дампа. Обратное
+    # (в проде стало меньше) законно: soft-delete, архивация, удаление по 152-ФЗ.
+    if [ "$live" -gt 0 ] && [ "$restored" -lt $((live * 90 / 100)) ]; then
+      bad="$bad $t(копия=$restored прод=$live)"
+    fi
+  done
+  [ -z "$bad" ] || die "в копии существенно меньше строк:$bad"
+
+  log 'проверка пройдена'
+}
+
 cmd_status() {
   load_config
   printf 'Хранилище: %s\n\n' "$BACKUP_ROOT"
@@ -174,6 +250,7 @@ case "$cmd" in
   db)              cmd_db "$@" ;;
   files)           cmd_files "$@" ;;
   secrets)         cmd_secrets "$@" ;;
+  verify)          cmd_verify "$@" ;;
   status)          cmd_status "$@" ;;
   help|--help|-h)  cmd_help ;;
   *) die "неизвестная команда '$cmd'. См. bin/backup help" ;;
