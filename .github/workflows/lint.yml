@@ -133,6 +133,12 @@ jobs:
           # нужно лишь потому, что Telegram::Client отказывается стартовать с
           # пустым, — поэтому явная заглушка вместо чего-то похожего на секрет.
           TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          # Llm::OmniClient падает в initialize, если любая из двух пуста —
+          # то есть спеки не могут даже СОЗДАТЬ объект без конфига LLM-шлюза.
+          # Локально значения приходят из .env, в CI его нет. Заглушки, наружу
+          # никто не ходит.
+          OMNIROUTE_BASE_URL: http://llm.invalid/v1
+          OMNIROUTE_API_KEY: not-a-key-webmock-blocks-network
         run: bin/rails db:test:prepare
 
       - name: Run RSpec
