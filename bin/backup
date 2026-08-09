@@ -315,10 +315,35 @@ cmd_weekly() {
   log 'еженедельный бэкап готов'
 }
 
-# Заглушка до Task 8: offsite реализуется отдельно и включается флагом.
+# Синхронизация в российский S3 через rclone crypt.
+#
+# Почему sync, а не заливка архива: crypt шифрует ПОФАЙЛОВО, поэтому синхронизация
+# остаётся инкрементальной — летят только изменившиеся файлы. Один зашифрованный
+# tar был бы новым объектом целиком, то есть 3.2 ГБ в облако каждую неделю.
+#
+# Настройка remote: docs/runbooks/offsite-setup.md
 offsite_sync() {
   [ "${OFFSITE_ENABLED:-0}" = 1 ] || { log 'offsite выключен, пропускаю'; return 0; }
-  die 'offsite включён, но ещё не реализован'
+  : "${OFFSITE_REMOTE:?не задан OFFSITE_REMOTE}"
+  command -v rclone >/dev/null || die 'rclone не установлен, а offsite включён'
+
+  log "offsite → $OFFSITE_REMOTE"
+  local failed=''
+  # Дампы и секреты уже зашифрованы gpg; crypt поверх — второй слой, он дёшев и
+  # скрывает заодно имена файлов.
+  rclone sync "$BACKUP_ROOT/db"      "$OFFSITE_REMOTE/db"      --transfers 4 --stats-one-line \
+    || failed="$failed db"
+  rclone sync "$BACKUP_ROOT/secrets" "$OFFSITE_REMOTE/secrets" --transfers 4 --stats-one-line \
+    || failed="$failed secrets"
+  # Файлы — только последний снапшот: историю версий держит versioning на bucket,
+  # заливать все четыре локальных снапшота бессмысленно, они почти идентичны.
+  if [ -d "$BACKUP_ROOT/files/latest" ]; then
+    rclone sync "$BACKUP_ROOT/files/latest/" "$OFFSITE_REMOTE/storage" \
+      --transfers 8 --stats-one-line || failed="$failed storage"
+  fi
+
+  [ -z "$failed" ] || die "offsite не выгружен:$failed"
+  log 'offsite готов'
 }
 
 cmd_restore() {
