@@ -3901,7 +3901,7 @@ CREATE INDEX idx_doc_req_lead_status ON public.document_requirements USING btree
 -- Name: idx_doc_req_sla_assessor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_doc_req_sla_assessor ON public.document_requirements USING btree (status, requested_at) WHERE ((deleted_at IS NULL) AND ((status)::text = ANY ((ARRAY['requested'::character varying, 'received'::character varying])::text[])));
+CREATE INDEX idx_doc_req_sla_assessor ON public.document_requirements USING btree (status, requested_at) WHERE ((deleted_at IS NULL) AND ((status)::text = ANY (ARRAY[('requested'::character varying)::text, ('received'::character varying)::text])));
 
 
 --

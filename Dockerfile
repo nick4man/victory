@@ -16,7 +16,12 @@ RUN apt-get update -qq && \
         libpq-dev \
         libyaml-dev \
         libvips42 \
-        postgresql-client \
+        # Мажорная версия пинуется намеренно: db/structure.sql грузится и
+        # дампится через psql/pg_dump, а сервер у нас pg15. Метапакет
+        # postgresql-client при бампе базового образа молча уедет на 16/17, и
+        # дамп начнёт отличаться у тех, кто пересобрал образ, от тех, кто нет.
+        # Сегодня расхождения нет (везде 15.18) — это защита на будущее.
+        postgresql-client-15 \
         git \
         curl \
         tzdata && \
