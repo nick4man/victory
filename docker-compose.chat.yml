@@ -75,9 +75,14 @@ services:
       # DATABASE_URL из .env чинится в entrypoint — см. комментарий там.
       RAILS_ENV: ${CHAT_RAILS_ENV:-development}
       # Entrypoint по умолчанию гоняет db:prepare, а тот на пустой БД тянет
-      # db/seeds.rb — он сломан (seeds.rb:74 строит телефон из 12 цифр при
-      # валидации 10-11) и роняет старт. Схему накатываем явно, без сидов:
-      #   bin/chat-stack db-setup
+      # db/seeds.rb — он падает и роняет старт. Схему накатываем явно, без
+      # сидов:  bin/chat-stack db-setup
+      #
+      # Первый барьер (seeds.rb:74 строил телефон из 13 цифр при валидации
+      # 10-11) снят в PR #12. Оставшийся глубже: Property-блок сидов отстал от
+      # схемы — последняя правка seeds.rb 09.05.26, с тех пор property_type
+      # стал belongs_to, year_built/amenities удалены, user стал обязателен.
+      # Пока это не переписано, SKIP_DB_PREPARE нужен.
       SKIP_DB_PREPARE: '1'
       # .env содержит APP_HOST=victory62.org — иначе dev-контейнер начнёт
       # генерить ссылки на живой домен (письма, OG, canonical).
@@ -94,6 +99,9 @@ services:
     # ENV.fetch('DATABASE_URL') без дефолта, а ERB рендерится целиком — без
     # переменной падает загрузка конфига в ЛЮБОМ окружении. Поэтому пересобираем
     # её под текущий RAILS_ENV и отдаём управление штатному entrypoint'у.
+    #
+    # Второе (staging-блок) чинит upgrade-сессия в 7182bc9 — когда коммит дойдёт
+    # до main, entrypoint здесь сведётся к простому `unset DATABASE_URL`.
     entrypoint:
       - bash
       - -c
