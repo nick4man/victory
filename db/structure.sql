@@ -1758,7 +1758,8 @@ CREATE TABLE public.properties (
     city character varying,
     force_archive boolean DEFAULT false NOT NULL,
     signed_agency_contract_at timestamp(6) without time zone,
-    commercial_type character varying
+    commercial_type character varying,
+    residential_complex_id bigint
 );
 
 
@@ -2043,6 +2044,65 @@ CREATE SEQUENCE public.referrals_id_seq
 --
 
 ALTER SEQUENCE public.referrals_id_seq OWNED BY public.referrals.id;
+
+
+--
+-- Name: residential_complexes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.residential_complexes (
+    id bigint NOT NULL,
+    name character varying NOT NULL,
+    slug character varying,
+    city character varying DEFAULT 'Рязань'::character varying NOT NULL,
+    district_slug character varying,
+    developer character varying,
+    address character varying,
+    address_patterns character varying[] DEFAULT '{}'::character varying[],
+    latitude numeric(10,6),
+    longitude numeric(10,6),
+    built_from integer,
+    built_to integer,
+    buildings_count integer,
+    floors_min integer,
+    floors_max integer,
+    wall_material character varying,
+    housing_class integer,
+    build_status integer,
+    has_parking boolean DEFAULT false NOT NULL,
+    has_closed_yard boolean DEFAULT false NOT NULL,
+    has_playground boolean DEFAULT false NOT NULL,
+    has_kindergarten boolean DEFAULT false NOT NULL,
+    has_school boolean DEFAULT false NOT NULL,
+    title character varying,
+    meta_description character varying(300),
+    body_blocks jsonb DEFAULT '[]'::jsonb,
+    body_html text,
+    body_plain text,
+    published boolean DEFAULT false NOT NULL,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: residential_complexes_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.residential_complexes_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: residential_complexes_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.residential_complexes_id_seq OWNED BY public.residential_complexes.id;
 
 
 --
@@ -3151,6 +3211,13 @@ ALTER TABLE ONLY public.referrals ALTER COLUMN id SET DEFAULT nextval('public.re
 
 
 --
+-- Name: residential_complexes id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.residential_complexes ALTER COLUMN id SET DEFAULT nextval('public.residential_complexes_id_seq'::regclass);
+
+
+--
 -- Name: reviews id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3627,6 +3694,14 @@ ALTER TABLE ONLY public.property_views
 
 ALTER TABLE ONLY public.referrals
     ADD CONSTRAINT referrals_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: residential_complexes residential_complexes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.residential_complexes
+    ADD CONSTRAINT residential_complexes_pkey PRIMARY KEY (id);
 
 
 --
@@ -5405,6 +5480,13 @@ CREATE INDEX index_properties_on_published_at ON public.properties USING btree (
 
 
 --
+-- Name: index_properties_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_properties_on_residential_complex_id ON public.properties USING btree (residential_complex_id);
+
+
+--
 -- Name: index_properties_on_rooms; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5717,6 +5799,34 @@ CREATE INDEX index_referrals_on_partner_agency_id_and_status ON public.referrals
 --
 
 CREATE INDEX index_referrals_on_status ON public.referrals USING btree (status);
+
+
+--
+-- Name: index_residential_complexes_on_city_and_district_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_residential_complexes_on_city_and_district_slug ON public.residential_complexes USING btree (city, district_slug);
+
+
+--
+-- Name: index_residential_complexes_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_residential_complexes_on_deleted_at ON public.residential_complexes USING btree (deleted_at);
+
+
+--
+-- Name: index_residential_complexes_on_published; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_residential_complexes_on_published ON public.residential_complexes USING btree (published);
+
+
+--
+-- Name: index_residential_complexes_on_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_residential_complexes_on_slug ON public.residential_complexes USING btree (slug);
 
 
 --
@@ -6877,6 +6987,14 @@ ALTER TABLE ONLY public.activation_events
 
 
 --
+-- Name: properties fk_rails_c049a2d607; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.properties
+    ADD CONSTRAINT fk_rails_c049a2d607 FOREIGN KEY (residential_complex_id) REFERENCES public.residential_complexes(id) ON DELETE SET NULL;
+
+
+--
 -- Name: active_storage_attachments fk_rails_c3b3935057; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7019,6 +7137,8 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260808210100'),
+('20260808210000'),
 ('20260528100000'),
 ('20260528090000'),
 ('20260528080100'),
