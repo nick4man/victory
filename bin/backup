@@ -43,6 +43,13 @@ ensure_dirs() {
 # тревога, которой быть не должно.
 human_size() { numfmt --to=iec --suffix=B < <(stat -c %s "$1"); }
 
+# Пороги «слишком мало, чтобы быть правдой». Нужны потому, что gpg честно
+# зашифрует и пустой поток: при недоступной БД на диск лёг бы 70-байтовый файл,
+# формально непустой. Значения с большим запасом ниже реальных (дамп ~10 МБ,
+# архив секретов ~4.5 КБ) — ловим обрыв, а не колебания объёма.
+MIN_DUMP_BYTES=$((100 * 1024))
+MIN_SECRETS_BYTES=$((1024))
+
 # Метка времени имеет минутную гранулярность, поэтому два запуска внутри одной
 # минуты дали бы одно имя: второй молча затёр бы первый, а для снапшотов ещё и
 # --link-dest указал бы сам на себя. Добавляем -2, -3 и так далее.
@@ -88,11 +95,26 @@ cmd_db() {
 
   # -Fc: сжатый custom format, позволяет восстанавливать отдельные таблицы.
   # Идёт по сети внутри контейнера — прод не останавливается.
-  docker exec "$DB_CONTAINER" \
-      pg_dump -U "$DB_USER" -Fc --no-owner --no-acl "$DB_NAME" \
-    | encrypt_to "$dest"
+  #
+  # Код возврата проверяем ЯВНО, а не полагаемся на set -e: вызывающий
+  # (cmd_all) оборачивает нас в `( ... ) || ...`, а внутри такой конструкции
+  # bash отключает set -e для всех вложенных команд. Без явной проверки
+  # недоступный контейнер давал бы gpg пустой поток, а на диск ложился бы
+  # 70-байтовый «дамп», и скрипт рапортовал бы успех.
+  if ! docker exec "$DB_CONTAINER" \
+        pg_dump -U "$DB_USER" -Fc --no-owner --no-acl "$DB_NAME" \
+      | encrypt_to "$dest"; then
+    rm -f "$dest"
+    die "pg_dump не отработал (контейнер $DB_CONTAINER, база $DB_NAME)"
+  fi
 
-  [ -s "$dest" ] || die "дамп пустой: $dest"
+  # Порог, а не просто «непустой». Схема victory62 — 900+ объектов, её дамп не
+  # бывает меньше десятков килобайт. Всё, что мельче, — признак обрыва.
+  local size; size=$(stat -c %s "$dest")
+  if [ "$size" -lt "$MIN_DUMP_BYTES" ]; then
+    rm -f "$dest"
+    die "дамп подозрительно мал: $size Б при пороге $MIN_DUMP_BYTES Б — вероятно, обрыв"
+  fi
   log "готово: $dest ($(human_size "$dest"))"
   prune "$BACKUP_ROOT/db" "${KEEP_DAILY:-7}"
 }
@@ -110,9 +132,17 @@ cmd_secrets() {
   [ -f "$APP_ROOT/config/master.key" ]    && items+=(config/master.key)
   [ ${#items[@]} -gt 0 ] || die "в $APP_ROOT нечего архивировать"
 
-  tar -C "$APP_ROOT" -cf - "${items[@]}" | encrypt_to "$dest"
+  # Явная проверка — по той же причине, что в cmd_db: set -e здесь не работает.
+  if ! tar -C "$APP_ROOT" -cf - "${items[@]}" | encrypt_to "$dest"; then
+    rm -f "$dest"
+    die "не удалось заархивировать секреты из $APP_ROOT"
+  fi
 
-  [ -s "$dest" ] || die "архив секретов пустой: $dest"
+  local size; size=$(stat -c %s "$dest")
+  if [ "$size" -lt "$MIN_SECRETS_BYTES" ]; then
+    rm -f "$dest"
+    die "архив секретов подозрительно мал: $size Б при пороге $MIN_SECRETS_BYTES Б"
+  fi
   log "готово: $dest ($(human_size "$dest")), файлов: ${#items[@]}"
   prune "$BACKUP_ROOT/secrets" "${KEEP_DAILY:-7}"
 }
@@ -226,6 +256,71 @@ cmd_verify() {
   log 'проверка пройдена'
 }
 
+# Через curl, а не через Rails/Sidekiq: бэкап обязан работать и тогда, когда
+# приложение лежит — именно тогда он и нужен.
+#
+# Переводы строк передаём настоящими символами: --data-urlencode кодирует их сам.
+# Писать «%0A» здесь нельзя — оно уехало бы в сообщение буквально.
+notify() {
+  local text="$1"
+  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_STAFF_CHAT_ID:-}" ] || {
+    log 'уведомления не настроены, пропускаю'; return 0; }
+  # Ответ API проверяем: канал уведомлений — единственный способ узнать о провале,
+  # и его собственная поломка не должна остаться незамеченной. Токен в лог не
+  # попадает: печатаем только код и признак ok.
+  local code
+  code=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_STAFF_CHAT_ID}" \
+    --data-urlencode "text=${text}" 2>/dev/null) || code='нет ответа'
+  if [ "$code" = 200 ]; then
+    log '  уведомление отправлено'
+  else
+    log "  НЕ УДАЛОСЬ отправить уведомление (HTTP $code)"   # но бэкап не валим
+  fi
+}
+
+# Ежедневно: БД и секреты.
+#
+# Шаги вызываются в подоболочке ( ... ). Внутри cmd_db/cmd_secrets ошибка идёт
+# через die(), а die делает `exit 1` — он завершил бы ВЕСЬ скрипт, и ветка
+# `|| failed=...` не отработала бы никогда, то есть уведомление о провале не
+# ушло бы ни разу.
+cmd_all() {
+  load_config
+  local failed=''
+  ( cmd_db )      || failed="$failed БД"
+  ( cmd_secrets ) || failed="$failed секреты"
+  ( offsite_sync ) || failed="$failed offsite"
+  if [ -n "$failed" ]; then
+    notify "$(printf '🔴 Бэкап victory62 провалился\nне сделано:%s\n%s' "$failed" "$(date '+%d.%m.%y %H:%M')")"
+    die "провал:$failed"
+  fi
+  log 'ежедневный бэкап готов'
+}
+
+# Еженедельно: файлы, проверка восстановления, сводка.
+cmd_weekly() {
+  load_config
+  local failed=''
+  ( cmd_files )    || failed="$failed файлы"
+  ( cmd_verify )   || failed="$failed проверка-восстановления"
+  ( offsite_sync ) || failed="$failed offsite"
+  if [ -n "$failed" ]; then
+    notify "$(printf '🔴 Еженедельный бэкап victory62 провалился\nне сделано:%s\n%s' "$failed" "$(date '+%d.%m.%y %H:%M')")"
+    die "провал:$failed"
+  fi
+  # Сводка при УСПЕХЕ обязательна: молчащий бэкап неотличим от сломанного.
+  notify "$(printf '🟢 Бэкап victory62 за неделю\n\n%s' "$(cmd_status)")"
+  log 'еженедельный бэкап готов'
+}
+
+# Заглушка до Task 8: offsite реализуется отдельно и включается флагом.
+offsite_sync() {
+  [ "${OFFSITE_ENABLED:-0}" = 1 ] || { log 'offsite выключен, пропускаю'; return 0; }
+  die 'offsite включён, но ещё не реализован'
+}
+
 cmd_status() {
   load_config
   printf 'Хранилище: %s\n\n' "$BACKUP_ROOT"
@@ -250,6 +345,8 @@ case "$cmd" in
   db)              cmd_db "$@" ;;
   files)           cmd_files "$@" ;;
   secrets)         cmd_secrets "$@" ;;
+  all)             cmd_all "$@" ;;
+  weekly)          cmd_weekly "$@" ;;
   verify)          cmd_verify "$@" ;;
   status)          cmd_status "$@" ;;
   help|--help|-h)  cmd_help ;;
