@@ -23,8 +23,12 @@ ts()   { date '+%d.%m.%y-%H%M'; }
 
 load_config() {
   [ -r "$CONFIG_FILE" ] || die "нет конфига $CONFIG_FILE (образец: config/backup.env.example)"
-  # shellcheck disable=SC1090
-  set -a; . "$CONFIG_FILE"; set +a
+  # set -a — чтобы переменные конфига стали экспортируемыми и были видны
+  # вызываемым командам (rclone читает свои настройки из окружения).
+  set -a
+  # shellcheck source=/dev/null
+  . "$CONFIG_FILE"
+  set +a
   : "${BACKUP_ROOT:?не задан BACKUP_ROOT}"
   : "${DB_CONTAINER:?не задан DB_CONTAINER}"
   : "${DB_NAME:?не задан DB_NAME}"
@@ -80,6 +84,7 @@ encrypt_to() {
 # Оставляем N самых свежих файлов, остальные удаляем. Сортировка по времени
 # модификации, а не по имени: имя содержит dd.MM.yy и лексикографически по
 # возрасту не упорядочивается.
+# shellcheck disable=SC2012  # имена генерируем сами, нужна сортировка по mtime
 prune() {
   local dir="$1" keep="$2" file
   ls -t "$dir" 2>/dev/null | tail -n "+$((keep + 1))" | while read -r file; do
@@ -263,8 +268,10 @@ cmd_verify() {
 # Писать «%0A» здесь нельзя — оно уехало бы в сообщение буквально.
 notify() {
   local text="$1"
-  [ -n "${TELEGRAM_BOT_TOKEN:-}" ] && [ -n "${TELEGRAM_STAFF_CHAT_ID:-}" ] || {
-    log 'уведомления не настроены, пропускаю'; return 0; }
+  if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_STAFF_CHAT_ID:-}" ]; then
+    log 'уведомления не настроены, пропускаю'
+    return 0
+  fi
   # Ответ API проверяем: канал уведомлений — единственный способ узнать о провале,
   # и его собственная поломка не должна остаться незамеченной. Токен в лог не
   # попадает: печатаем только код и признак ok.
