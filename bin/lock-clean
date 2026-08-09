@@ -70,12 +70,14 @@ fi
 stale=0
 active=0
 
-shopt -s nullglob
 for wt in $TARGETS; do
   LOCK_DIR="$wt/tmp/claude-locks"
   [ -d "$LOCK_DIR" ] || continue
 
-  for lock in "$LOCK_DIR"/*.lock; do
+  # lock_files, а не glob `*.lock`: ключи для .claude/** начинаются с точки, и
+  # glob их не видел — такие локи не чистились вообще (см. locks.sh).
+  while IFS= read -r lock; do
+    [ -n "$lock" ] || continue
     size=$(stat -c%s "$lock" 2>/dev/null || echo 0)
     age_min=$(lock_age_minutes "$lock" 2>/dev/null || echo 0)
 
@@ -99,9 +101,8 @@ for wt in $TARGETS; do
     else
       printf '  %s (%s) [%s]\n' "$path" "$reason" "$wt"
     fi
-  done
+  done < <(lock_files "$wt")
 done
-shopt -u nullglob
 
 echo ''
 if [ "$MODE" = 'dry' ]; then

@@ -26,17 +26,16 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo 'не git-репоз
 # ── Без аргументов: показать всё ────────────────────────────────────────────
 if [ $# -lt 1 ]; then
   found=0
-  shopt -s nullglob
   for wt in $(lock_worktrees); do
-    for lock in "$wt/tmp/claude-locks"/*.lock; do
+    while IFS= read -r lock; do
+      [ -n "$lock" ] || continue
       found=1
       printf '🔒 %-45s session=%-8s %s\n' \
         "$(lock_key_to_path "$(basename "$lock")")" \
         "$(lock_meta "$lock" session)" \
         "$(lock_meta "$lock" started)"
-    done
+    done < <(lock_files "$wt")
   done
-  shopt -u nullglob
   [ "$found" -eq 0 ] && echo '✅ активных локов нет ни в одном worktree'
   exit 0
 fi

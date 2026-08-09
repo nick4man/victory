@@ -20,15 +20,24 @@ lock_root() {
   git rev-parse --show-toplevel 2>/dev/null || echo "${CLAUDE_PROJECT_DIR:-$PWD}"
 }
 
-# Идентичность сессии: env-override, затем marker-файл, затем имя каталога.
+# Идентичность МОЕЙ сессии: env-override, затем marker-файл, затем имя каталога.
 # Тот же порядок, что в .claude/hooks/session-start.sh.
+#
+# Для ЧУЖОГО worktree это неверно — CLAUDE_SESSION перебьёт marker, и все
+# checkout'ы подпишутся именем текущей сессии. Там нужен lock_marker_session.
 lock_session() {
   local root="${1:-$(lock_root)}"
   if [ -n "${CLAUDE_SESSION:-}" ]; then
     echo "$CLAUDE_SESSION"
     return
   fi
-  local marker
+  lock_marker_session "$root"
+}
+
+# Идентичность worktree по его marker-файлу, БЕЗ учёта env. Единственный
+# корректный способ узнать, чей это checkout, когда речь не о своём.
+lock_marker_session() {
+  local root="${1:-$(lock_root)}" marker
   marker=$(cat "$root/.claude-session" 2>/dev/null)
   if [ -n "$marker" ]; then
     echo "$marker"
@@ -86,4 +95,15 @@ lock_is_stale() {
 # Все worktree репозитория.
 lock_worktrees() {
   git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}'
+}
+
+# Все lock-файлы worktree, по одному на строку.
+#
+# Именно find, а не glob `*.lock`: ключ строится из repo-relative пути, поэтому
+# лок на `.claude/agents/x.md` называется `.claude%agents%x.md.lock` — с точки.
+# Glob такие файлы не видит (нужен dotglob), и они выпадали из листингов и,
+# что хуже, из lock-clean — то есть не чистились никогда. Блокировку это не
+# ломало: pre-edit-lock.sh проверяет конкретное имя, а не перебирает каталог.
+lock_files() {
+  find "$1/tmp/claude-locks" -maxdepth 1 -name '*.lock' 2>/dev/null || true
 }
