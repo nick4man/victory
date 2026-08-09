@@ -37,12 +37,77 @@ ensure_dirs() {
   mkdir -p "$BACKUP_ROOT"/{db,secrets,files,logs,tmp}
 }
 
+# Размер файла — по stat, а НЕ по `du`. На ZFS отложенная запись приводит к тому,
+# что сразу после создания файла du показывает выделенные блоки (512 байт) вместо
+# настоящего размера. В логе это выглядит как пустой бэкап — ровно та ложная
+# тревога, которой быть не должно.
+human_size() { numfmt --to=iec --suffix=B < <(stat -c %s "$1"); }
+
+# Шифруем поток, а не готовый файл: незашифрованный дамп не появляется на диске
+# даже на секунду. gpg симметричный — пар ключей не нужно, пароль один.
+encrypt_to() {
+  local dest="$1"
+  gpg --batch --yes --quiet \
+      --symmetric --cipher-algo AES256 \
+      --passphrase-file "$PASSPHRASE_FILE" \
+      --output "$dest"
+}
+
+# Оставляем N самых свежих файлов, остальные удаляем. Сортировка по времени
+# модификации, а не по имени: имя содержит dd.MM.yy и лексикографически по
+# возрасту не упорядочивается.
+prune() {
+  local dir="$1" keep="$2" file
+  ls -t "$dir" 2>/dev/null | tail -n "+$((keep + 1))" | while read -r file; do
+    log "  ротация: удаляю $file"
+    rm -f -- "$dir/$file"
+  done
+}
+
+cmd_db() {
+  load_config; ensure_dirs
+  local dest="$BACKUP_ROOT/db/viktory-$(ts).dump.gpg"
+  log "дамп $DB_NAME из $DB_CONTAINER"
+
+  # -Fc: сжатый custom format, позволяет восстанавливать отдельные таблицы.
+  # Идёт по сети внутри контейнера — прод не останавливается.
+  docker exec "$DB_CONTAINER" \
+      pg_dump -U "$DB_USER" -Fc --no-owner --no-acl "$DB_NAME" \
+    | encrypt_to "$dest"
+
+  [ -s "$dest" ] || die "дамп пустой: $dest"
+  log "готово: $dest ($(human_size "$dest"))"
+  prune "$BACKUP_ROOT/db" "${KEEP_DAILY:-7}"
+}
+
+cmd_secrets() {
+  load_config; ensure_dirs
+  local dest="$BACKUP_ROOT/secrets/secrets-$(ts).tar.gpg"
+  log 'архивирую секреты'
+
+  # Относительные пути (-C): при восстановлении не тянем /home/q/victory наружу.
+  # Отсутствующее пропускаем молча — credentials может не быть.
+  local items=()
+  [ -f "$APP_ROOT/.env" ]                 && items+=(.env)
+  [ -d "$APP_ROOT/config/credentials" ]   && items+=(config/credentials)
+  [ -f "$APP_ROOT/config/master.key" ]    && items+=(config/master.key)
+  [ ${#items[@]} -gt 0 ] || die "в $APP_ROOT нечего архивировать"
+
+  tar -C "$APP_ROOT" -cf - "${items[@]}" | encrypt_to "$dest"
+
+  [ -s "$dest" ] || die "архив секретов пустой: $dest"
+  log "готово: $dest ($(human_size "$dest")), файлов: ${#items[@]}"
+  prune "$BACKUP_ROOT/secrets" "${KEEP_DAILY:-7}"
+}
+
 cmd_status() {
   load_config
   printf 'Хранилище: %s\n\n' "$BACKUP_ROOT"
   local d size last
   for d in db secrets files; do
-    size=$(du -sh "$BACKUP_ROOT/$d" 2>/dev/null | cut -f1 || true)
+    # --apparent-size по той же причине, что и human_size(): свежие файлы на ZFS
+    # показывают заниженный размер на диске.
+    size=$(du -sh --apparent-size "$BACKUP_ROOT/$d" 2>/dev/null | cut -f1 || true)
     last=$(ls -t "$BACKUP_ROOT/$d" 2>/dev/null | head -1 || true)
     printf '%-9s %7s  последний: %s\n' "$d" "${size:---}" "${last:-нет копий}"
   done
@@ -56,6 +121,8 @@ cmd_help() { sed -n '3,13p' "$0"; }
 
 cmd="${1:-help}"; shift || true
 case "$cmd" in
+  db)              cmd_db "$@" ;;
+  secrets)         cmd_secrets "$@" ;;
   status)          cmd_status "$@" ;;
   help|--help|-h)  cmd_help ;;
   *) die "неизвестная команда '$cmd'. См. bin/backup help" ;;
