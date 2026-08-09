@@ -19,6 +19,8 @@
 | Admin panels | ✅ active (token-guarded) | `Admin::Reviews`, `Admin::Articles` — `?token=$ADMIN_TOKEN` |
 | Telegram inbox | ✅ active | приём входящих в site, async photo download |
 | TG ↔ victory62 cross-link | ✅ Phase 8 deployed | bilateral notifications, QR codes на обоих отчётах |
+| Sidekiq + sidekiq-cron | ✅ active | контейнер `victory-sidekiq-1`; расписание в `config/sidekiq_cron.yml` (Topnlab sync каждые 30 мин и др.) |
+| Rails 8.1.3.1 / Ruby 3.3.6 | ✅ в проде с 08.08.26 | EOL Phase 2 закрыт; `load_defaults` осознанно оставлен на 7.1 |
 
 ## Отключено / заглушки
 
@@ -27,7 +29,7 @@
 | **Devise** (user login) | отключен | future iteration; до этого admin через `?token=$ADMIN_TOKEN` |
 | `current_user` | заглушка — всегда `nil` | вместе с Devise |
 | `user_signed_in?` | заглушка — всегда `false` | вместе с Devise |
-| **Sidekiq workers** | в Gemfile есть, частично активирован | для high-load очередей |
+| ~~**Sidekiq workers**~~ | ✅ переехало в «Активно в проде» — контейнер `victory-sidekiq-1`, cron в `config/sidekiq_cron.yml` | — |
 | **Pundit** policies | gem может быть, но политик нет; guards `require_admin!` / `require_agent!` живут в ApplicationController как stubs | при возврате Devise |
 
 ## Аспирационные роуты (без контроллеров)

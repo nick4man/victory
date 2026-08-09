@@ -71,7 +71,7 @@ users = []
     password_confirmation: 'password123',
     first_name: ['Александр', 'Мария', 'Дмитрий', 'Елена', 'Сергей'][i],
     last_name: ['Иванов', 'Петрова', 'Сидоров', 'Козлова', 'Смирнов'][i],
-    phone: "+7 (999) #{100 + i}00-00-#{i}#{i}",
+    phone: "+7 (999) #{100 + i}-00-0#{i}",
     role: 'client',
     confirmed_at: Time.current
   )

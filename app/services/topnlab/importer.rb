@@ -181,8 +181,20 @@ module Topnlab
 
     def archive_missing(seen_ids)
       ids = seen_ids.to_a.map(&:to_s)
+
+      # Пустой seen_ids означал «архивируй ВСЁ»: без фильтра `where.not` под
+      # update_all попадал весь активный topnlab-каталог. Именно так каталог
+      # обнулялся дважды. «Ничего не увидели» — это всегда сбой, а не сигнал
+      # к массовой архивации: у агентства не бывает нуля активных объектов.
+      # Последний рубеж после fetch_errors-guard — на случай, если сбой
+      # где-то ещё не долетел до счётчика ошибок.
+      if ids.empty?
+        Rails.logger.error('Topnlab: archive_missing получил пустой seen_ids — архивация отменена (защита каталога)')
+        return 0
+      end
+
       scope = Property.unscoped.where(external_source: 'topnlab')
-      scope = scope.where.not(external_id: ids) if ids.any?
+      scope = scope.where.not(external_id: ids)
       scope.where(status: Property.statuses[:active]).update_all(
         status: Property.statuses[:archived],
         published_at: nil,

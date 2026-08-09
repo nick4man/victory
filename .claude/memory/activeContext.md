@@ -2,45 +2,66 @@
 
 > Обновляй этот файл вручную или при смене фазы. Здесь — только «живое».
 
-## Branch
+> Актуальность верхних секций: **09.08.26**. Ниже по файлу — датированные
+> исторические разборы, они не обновляются.
 
-- Ветка — по сессии: `dev/victory` | `dev/chat` | `dev/seo` | `dev/upgrade` (см. `.claude/sessions/README.md`)
-- База: `main` (прод; последний merge — PR #9, `ddcc3e9`, 08.08.26)
-- Ruby/Rails: 3.3.6 / 8.1.3.1 в проде. Локально Ruby только через `bin/rb` — менеджера версий на хосте нет.
+## Стек — коротко
+
+Rails **8.1.3.1**, Ruby **3.3.6** во всех сессиях (EOL Phase 2 в проде с 08.08.26).
+`config.load_defaults` намеренно оставлен на **7.1** — подъём отложен, см.
+`project_rails8_eol_phase2` в auto-memory. Подробности — `techContext.md`.
+
+## Ветки и открытые PR
+
+`main` = прод, деплой автоматический. Прямой push в `main` запрещён, только PR.
+
+| PR | Ветка | Что |
+|---|---|---|
+| #10 | `fix/topnlab-get-ids-nonarray-guard` | get-ids non-array 200 → fetch error, защита каталога от ложного archive |
+| #11 | `dev/seo` | A2 Фаза 1 — справочник ЖК, слой данных под лендинги `/zhk` |
+| #12 | `fix/seeds-phone-format` | формат телефона в `db/seeds.rb` |
 
 ## Текущая фаза
 
-**Phase 8 — TG ↔ victory62 cross-link (Rails side)**
+Единой «фазы» нет — сессии идут параллельно по своим направлениям:
 
-Последние коммиты по теме:
-- `98c5477 Phase 8: cross-link TG ↔ victory62 — Rails side`
-- `071563c Express PDF + TG notifier + QR codes on both reports`
-- `b5f5640 Phase 7: News UX — embeddings, share/TG CTA, swipe carousel, modal preview`
-- `3ac78a2 Fix: TG inbox photo download must be async`
-- `832f06b Production: status PROD + TG inbox + deploy docs`
+- **victory** — надёжность Topnlab-синка и каталога (PR #10), прод-инфра.
+- **seo** — Phase A2 programmatic SEO: справочник ЖК → лендинги `/zhk`.
+- **upgrade** — EOL закрыт; сейчас долг по спекам и инфра координации сессий.
+- **chat** — site-chatbot, мелкие фиксы кодовой базы.
 
 ## Параллельные сессии Claude Code
 
-Работают **на одной кодбазе** `/home/q/victory` (минимум три сессии в проекте):
+**4 сессии, у каждой свой git worktree** (не общая кодбаза — это изменилось
+08.08.26). Идентичность — из marker-файла `.claude-session` в корне worktree,
+override через `export CLAUDE_SESSION`.
 
-- **session «victory»** — основная разработческая. Rails dev-сервер (порт 3000) уже поднят. Ruby — через контейнер `bin/rb` (на хосте менеджера версий нет). Сюда — Edit/Write/RSpec/runner, миграции, рефакторинги, тесты.
-- **session «chat»** — **site-chatbot разработка** + планирование, документы, TG-доставка. Системный Ruby 3.3 — `bin/rails runner` НЕ работает. Сюда — Plan, AskUser, curl к TG Bot API напрямую, prompt-engineering для `chat_responder.rb` + `chat_tools/*`.
-- **session «seo»** — SEO-работа: meta-теги, JSON-LD, sitemap/robots, friendly_id, контент-SEO, lighthouse-аудиты. Эта сессия работает с тем же codebase; для Rails-изменений (helpers, view-partials, controllers) предпочитает hand-off в victory-сессию (там dev-server и тесты).
+| Session | Worktree | Ветка | Назначение |
+|---|---|---|---|
+| **victory** | `/home/q/victory-victory` | feature-ветки | Rails-код, миграции, RSpec, runner |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | site-chatbot, `chat_tools/*`, prompts |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
 
-Координация: Memory-bank, `.mcp.json`, `.claude/agents/`, `.claude/skills/` проектные → все сессии видят одинаковую конфигурацию. Для одновременных правок одного файла — lock-file pattern (см. skill `session-coordination` и agent `session-coordinator`).
+🚨 `/home/q/victory` — main checkout и **живой прод-bind-mount** (`victory-web-1`
+→ `/app`, code-reload). Правка там уходит на сайт мгновенно. Только deploy/merge.
 
-Session-domain split (рекомендуемый):
-- Rails-код / migrations / specs → **victory**
-- Site-chatbot tools / prompts / LLM chain → **chat**
-- SEO meta / JSON-LD / sitemap / content-SEO → **seo** (Rails-side изменения — hand-off в victory)
-- Документы / планирование / TG-доставка → любая, но обычно **chat**
+Границы: write/edit/git — **только внутри своего worktree**. Чужие worktree и
+main checkout — read-only диагностика.
+
+Координация: inbox и локи в `~/.claude-shared/` (`inbox/`, `events/`, `locks/`),
+`bin/session-status`. См. skill `session-coordination` + agent `session-coordinator`.
 
 ## Что сейчас «в фокусе» при работе
 
-Топ-3 области, куда наиболее вероятно идут изменения:
-1. **TG интеграция**: `app/services/telegram/`, `app/services/express_report_notifier.rb`, `app/services/audit_report_notifier.rb`
-2. **Express PDF / audit-PDF**: `app/services/audit_pdf/`, `app/services/pdf_generator_service.rb`
-3. **Property AVM / valuations**: `app/services/property_evaluation/`, `app/services/valuations/`, `app/controllers/property_valuations_controller.rb`
+1. **Topnlab-синк и целостность каталога**: `app/services/topnlab/`,
+   `app/services/mls_sync/`, `app/jobs/topnlab_*`. Инвариант — при неполном
+   sweep archive пропускается (`status=partial`), каталог не схлопывается.
+2. **Programmatic SEO / ЖК**: `app/models/residential_complex.rb` (dev/seo),
+   лендинги `/zhk`, JSON-LD партиалы.
+3. **Прод-инфра**: CT 122 на NVMe с 09.08.26; конфликт подсетей sing-box ↔ docker
+   устранён (`tun0` → `10.255.255.1/30`). См. auto-memory
+   `project_subnet_conflict_singbox_docker`.
 
 ## Security/bugfix sweep (18.05.26) — 5 итераций closed
 
@@ -170,7 +191,7 @@ controller mix, если решим показывать.
 
 ## MLS/YRL launch — Phase 0 baseline (18.05.26)
 
-Запущен plan `.claude/plans/_shared/merry-honking-kay.md` («MLS/YRL feeds на полную
+Запущен plan `.claude/plans/merry-honking-kay.md` («MLS/YRL feeds на полную
 катушку + commission-strategy»). Phase 0 — baseline snapshot Yandex
 метрик для post-launch diff.
 
@@ -192,7 +213,7 @@ controller mix, если решим показывать.
 - ping Yandex.Webmaster recrawl для свежих URL'ов (~21 calls из 139 quota)
 - остаётся ~118 quota для Phase 2 + дальше
 
-Plan детально: `.claude/plans/_shared/merry-honking-kay.md`.
+Plan детально: `.claude/plans/merry-honking-kay.md`.
 Diff-instruction: через 7 дней после Phase 1+2 — re-run `rake yrl:baseline`,
 diff с `yandex_baseline_2026-05-18.json`.
 

@@ -22,13 +22,14 @@ module Topnlab
       # Topnlab `type=order` does NOT respect realty_type filter (verified empirically),
       # so we fetch by action only and infer realty_type from `object_type` payload field.
       ACTIONS.each do |action|
-        ids = safe_get_ids(action: action)
+        ids = safe_get_ids(action: action, errors: errors)
         total_ids += ids.size
         next if ids.empty?
 
         ids.each_slice(100) do |chunk|
+          # get_entities сам бросает на не-Hash (см. Client#get_entities) —
+          # ошибка уйдёт в `errors` через rescue ниже и заблокирует archive.
           entities = @client.get_entities(chunk, type: 'order', append: 'stages')
-          next unless entities.is_a?(Hash)
 
           entities.each_value do |payload|
             attrs = Topnlab::OrderMapper.new(payload, agents_index).to_attributes
@@ -48,17 +49,32 @@ module Topnlab
         errors << "#{action}: #{e.message}"
       end
 
-      archived = BuyerOrder.where.not(id: seen_ids).where(deal_state: ACTIVE_STATES).update_all(deal_state: 'archive')
+      # Тот же инвариант, что и в Importer#archive_missing: архивируем только
+      # после ПОЛНОГО обхода. Раньше archive шёл безусловно — один битый ответ
+      # CRM отправлял все активные BuyerOrder (их ~950) в архив.
+      archived =
+        if errors.any?
+          Rails.logger.warn("[OrdersImporter] #{errors.size} ошибок — обход неполный, archive пропущен")
+          0
+        elsif seen_ids.empty?
+          Rails.logger.error('[OrdersImporter] seen_ids пуст — archive отменён (защита от массовой архивации)')
+          0
+        else
+          BuyerOrder.where.not(id: seen_ids).where(deal_state: ACTIVE_STATES).update_all(deal_state: 'archive')
+        end
 
       { success: errors.empty?, ids_seen: total_ids, upserted: total_upserted, archived: archived, errors: errors }
     end
 
     private
 
-    def safe_get_ids(action:)
+    # Ошибка регистрируется в `errors`, а не глотается: иначе сбой fetch'а
+    # деградировал в «заказов нет» и разблокировал массовую архивацию.
+    def safe_get_ids(action:, errors:)
       Array(@client.get_ids(type: 'order', action: action))
     rescue Topnlab::Client::Error => e
       Rails.logger.warn("[OrdersImporter] get_ids #{action} failed: #{e.message}")
+      errors << "#{action} get_ids: #{e.message}"
       []
     end
 
