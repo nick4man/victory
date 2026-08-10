@@ -69,6 +69,14 @@ module Telegram
         return Telegram::ClientBot::ActivationRequestProcessor.call(msg)
       end
 
+      # Сбор собственника: сотрудник нажал «Прислать контакт» под запросом по
+      # объекту и теперь присылает карточку контакта или текст. Проверяем рано —
+      # состояние pending_action делает срабатывание точечным, а без перехвата
+      # контакт ушёл бы в client-intake или в LLM-Q&A как обычное сообщение.
+      if Telegram::WorkBot::OwnerIntakeProcessor.applies?(msg)
+        return Telegram::WorkBot::OwnerIntakeProcessor.call(msg)
+      end
+
       # Iter 60 — manager+ photo в DM → WorkBot photo disposition flow.
       # Должен проверяться РАНЬШЕ client_photo_intake (это перехватывает
       # только staff с manager_or_director?, agents падают дальше в client path).

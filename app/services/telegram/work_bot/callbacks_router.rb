@@ -31,7 +31,10 @@ module Telegram
         'dashboard' => 'Telegram::WorkBot::Callbacks::DashboardDrillCallback',
         # Связывание телеграм-аккаунта с учёткой сотрудника кнопками (директор).
         # Заменяет команду /link, которой не пользовались ни разу.
-        'link_staff' => 'Telegram::WorkBot::Callbacks::LinkStaffCallback'
+        'link_staff' => 'Telegram::WorkBot::Callbacks::LinkStaffCallback',
+        # Сбор собственника объекта у агента: контакт / отложить / не мой /
+        # отправить приглашение на подписание.
+        'owner' => 'Telegram::WorkBot::Callbacks::OwnerRequestCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

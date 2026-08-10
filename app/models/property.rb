@@ -103,6 +103,11 @@ class Property < ApplicationRecord
   # ASSOCIATIONS
   # ============================================
   belongs_to :user
+  # Собственник объекта — тот, кто подписывает агентский договор в кабинете.
+  # Отличается от `user`: там агент, ведущий объект. Пока связь не заполнена,
+  # объект не может быть опубликован (гейт D5), а заполнить её умеют только
+  # Topnlab-синк и сбор контакта у агента через телеграм.
+  belongs_to :owner_user, class_name: 'User', optional: true, inverse_of: :owned_properties
   belongs_to :property_type, optional: true
   belongs_to :moderated_by, class_name: 'User', optional: true
   # A2 — привязка к ЖК. Заполняется вручную через админку (из CRM название

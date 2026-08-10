@@ -10,6 +10,48 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: tiger; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA tiger;
+
+
+--
+-- Name: tiger_data; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA tiger_data;
+
+
+--
+-- Name: topology; Type: SCHEMA; Schema: -; Owner: -
+--
+
+CREATE SCHEMA topology;
+
+
+--
+-- Name: SCHEMA topology; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON SCHEMA topology IS 'PostGIS Topology schema';
+
+
+--
+-- Name: fuzzystrmatch; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION fuzzystrmatch; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION fuzzystrmatch IS 'determine similarities and distance between strings';
+
+
+--
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -35,6 +77,34 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
+
+
+--
+-- Name: postgis_tiger_geocoder; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder WITH SCHEMA tiger;
+
+
+--
+-- Name: EXTENSION postgis_tiger_geocoder; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION postgis_tiger_geocoder IS 'PostGIS tiger geocoder and reverse geocoder';
+
+
+--
+-- Name: postgis_topology; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis_topology WITH SCHEMA topology;
+
+
+--
+-- Name: EXTENSION postgis_topology; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION postgis_topology IS 'PostGIS topology spatial types and functions';
 
 
 --
@@ -1759,7 +1829,10 @@ CREATE TABLE public.properties (
     force_archive boolean DEFAULT false NOT NULL,
     signed_agency_contract_at timestamp(6) without time zone,
     commercial_type character varying,
-    residential_complex_id bigint
+    residential_complex_id bigint,
+    owner_request_sent_at timestamp(6) without time zone,
+    owner_request_snoozed_until timestamp(6) without time zone,
+    owner_request_declined_at timestamp(6) without time zone
 );
 
 
@@ -2822,7 +2895,8 @@ CREATE TABLE public.users (
     tg_user_id bigint,
     tg_username character varying(64),
     tg_linked_at timestamp(6) without time zone,
-    public_profile_hidden_at timestamp(6) without time zone
+    public_profile_hidden_at timestamp(6) without time zone,
+    telegram_user_id bigint
 );
 
 
@@ -3901,7 +3975,7 @@ CREATE INDEX idx_doc_req_lead_status ON public.document_requirements USING btree
 -- Name: idx_doc_req_sla_assessor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_doc_req_sla_assessor ON public.document_requirements USING btree (status, requested_at) WHERE ((deleted_at IS NULL) AND ((status)::text = ANY ((ARRAY['requested'::character varying, 'received'::character varying])::text[])));
+CREATE INDEX idx_doc_req_sla_assessor ON public.document_requirements USING btree (status, requested_at) WHERE ((deleted_at IS NULL) AND ((status)::text = ANY (ARRAY[('requested'::character varying)::text, ('received'::character varying)::text])));
 
 
 --
@@ -5452,6 +5526,13 @@ CREATE INDEX index_properties_on_moderated_by_id ON public.properties USING btre
 
 
 --
+-- Name: index_properties_on_owner_request_pending; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_properties_on_owner_request_pending ON public.properties USING btree (owner_request_sent_at, owner_request_snoozed_until) WHERE ((owner_user_id IS NULL) AND (deleted_at IS NULL));
+
+
+--
 -- Name: index_properties_on_owner_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6474,6 +6555,13 @@ CREATE INDEX index_users_on_role ON public.users USING btree (role);
 
 
 --
+-- Name: index_users_on_telegram_user_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_users_on_telegram_user_id ON public.users USING btree (telegram_user_id);
+
+
+--
 -- Name: index_users_on_tg_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6851,6 +6939,14 @@ ALTER TABLE ONLY public.documents
 
 
 --
+-- Name: users fk_rails_8f176a9b49; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT fk_rails_8f176a9b49 FOREIGN KEY (telegram_user_id) REFERENCES public.telegram_users(id) ON DELETE SET NULL;
+
+
+--
 -- Name: article_embeddings fk_rails_95f36a2235; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7134,9 +7230,12 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public;
+SET search_path TO "$user", public, topology, tiger;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260810064000'),
+('20260809191100'),
+('20260809191000'),
 ('20260808210100'),
 ('20260808210000'),
 ('20260528100000'),
