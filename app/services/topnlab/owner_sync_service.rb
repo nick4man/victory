@@ -66,10 +66,13 @@ module Topnlab
         # Use only the first client record (primary seller). Multiple clients
         # per object (e.g. co-owners) are rare and unsupported in cabinet v1.
         client_data = clients_payload.first
-        user, was_created = find_or_create_user_from_client(client_data)
+        # Общая логика с телеграм-сбором собственника: правила нормализации
+        # телефона и поиска дубля обязаны совпадать, иначе один человек,
+        # пришедший разными путями, заведётся дважды.
+        user, was_created = Crm::OwnerLinker.from_topnlab(client_data)
 
         if user
-          property.update_columns(owner_user_id: user.id)
+          Crm::OwnerLinker.attach!(property, user)
           linked        += 1
           created_users += 1 if was_created
           send_cabinet_invitation(user, property)
@@ -94,37 +97,6 @@ module Topnlab
 
     private
 
-    # Returns [User, created_boolean] or [nil, false].
-    # Match priority: email → phone → none (skip).
-    # Creates with role=:client, active=true.  Never overwrites existing user's role.
-    def find_or_create_user_from_client(data)
-      email = extract_email(data)
-      phone = extract_phone(data)
-
-      # Try to find existing user
-      user = find_existing_user(email, phone)
-      return [user, false] if user
-
-      # Need at least email or phone to create a usable account
-      return [nil, false] if email.blank? && phone.blank?
-
-      # Email-only creation (magic-link login requires email). If we only have
-      # phone, we create the User but they can't login via magic-link until
-      # we collect their email (e.g. consent form, agent update).
-      attrs = build_user_attrs(data, email, phone)
-      user = User.new(attrs)
-      if user.save(validate: false)
-        [user, true]
-      else
-        Rails.logger.warn("[OwnerSync] User create failed: #{user.errors.full_messages.inspect}")
-        [nil, false]
-      end
-    rescue ActiveRecord::RecordNotUnique
-      # Race condition — another process created the same user between find and create.
-      user = find_existing_user(email, phone)
-      [user, false]
-    end
-
     # D3 — Send «вам привязан объект» invitation через channels: %i[email tg].
     # SMS НАМЕРЕННО отключён — после #413f phone-only клиенты активируются
     # одним из двух путей:
@@ -146,89 +118,6 @@ module Topnlab
     rescue StandardError => e
       Rails.logger.warn("[OwnerSync] invitation failed user=#{user.id}: #{e.class}: #{e.message}")
       Sentry.capture_exception(e, extra: { user_id: user.id, property_id: property&.id }) if defined?(Sentry)
-    end
-
-    # Find existing User for matching Topnlab client. Critical safety rules:
-    #
-    # 1. Exclude soft-deleted: `User.unscoped` (default_scope filter bypass)
-    #    приводил к match'у на deleted users → broken cabinet linkage.
-    #    Используем `User.where(deleted_at: nil)` explicit.
-    #
-    # 2. Role filter: phone-last-10 collision — admin/agent users могут иметь
-    #    placeholder phones (+79991234567 etc.). Без role-filter sync будет
-    #    линковать Property к admin User вместо нового client. Ограничиваем
-    #    phone-lookup до `role IN (client, agent)`. Email-match безопаснее —
-    #    real клиент не должен иметь admin@ email, но даже там фильтруем.
-    def find_existing_user(email, phone)
-      scope = User.where(deleted_at: nil, active: true)
-      if email.present?
-        user = scope.find_by('LOWER(email) = ?', email.downcase)
-        return user if user
-      end
-      if phone.present?
-        digits = phone.gsub(/\D/, '').last(10)
-        return nil if digits.length < 10
-        # Phone match — только среди real clients/agents, не admin'ов.
-        return scope.where(role: %i[client agent])
-                    .where('phone LIKE ?', "%#{digits}").first
-      end
-      nil
-    end
-
-    def build_user_attrs(data, email, phone)
-      first_name  = data['firstname'].to_s.strip.presence || 'Клиент'
-      last_name   = data['lastname'].to_s.strip.presence  || '—'
-      middle_name = data['fathername'].to_s.strip.presence
-
-      attrs = {
-        first_name:  first_name,
-        last_name:   last_name,
-        middle_name: middle_name,
-        role:        :client,
-        active:      true,
-        password:    SecureRandom.urlsafe_base64(32),
-        crm_synced_at: Time.current
-      }
-      # Store Topnlab client id in crm_user_id so future staff syncs can
-      # cross-reference (Topnlab client ids are in a separate namespace from
-      # staff user ids, but the column serves as the CRM linkage for clients too).
-      crm_id = data['id'].to_i
-      attrs[:crm_user_id] = crm_id if crm_id.positive?
-      attrs[:email] = email if email.present?
-      attrs[:phone] = normalize_phone(phone) if phone.present?
-      attrs
-    end
-
-    # clients/get-by-entity returns emails as an array of objects:
-    #   [{"value": "foo@bar.ru", "is_main": 1}, ...]
-    # or as a plain string in some older accounts.
-    def extract_email(data)
-      raw = data['emails'] || data['email']
-      case raw
-      when Array
-        main = raw.find { |e| e.is_a?(Hash) && (e['is_main'].to_i == 1) } || raw.first
-        main.is_a?(Hash) ? main['value'].to_s.strip.downcase.presence : main.to_s.strip.downcase.presence
-      when String
-        raw.strip.downcase.presence
-      end
-    end
-
-    # phones similarly: [{"value": "79001234567", "is_main": 1}, ...] or String
-    def extract_phone(data)
-      raw = data['phones'] || data['phone']
-      case raw
-      when Array
-        main = raw.find { |p| p.is_a?(Hash) && (p['is_main'].to_i == 1) } || raw.first
-        main.is_a?(Hash) ? main['value'].to_s.strip.presence : main.to_s.strip.presence
-      when String
-        raw.strip.presence
-      end
-    end
-
-    def normalize_phone(raw)
-      digits = raw.to_s.gsub(/\D/, '')
-      return nil if digits.empty?
-      digits.start_with?('7', '8') ? "+7#{digits[-10..]}" : "+#{digits}"
     end
   end
 end
