@@ -65,11 +65,6 @@ class User < ApplicationRecord
   
   # Properties
   has_many :properties, dependent: :destroy
-  # Объекты, где этот пользователь — собственник (а не ведущий агент).
-  # nullify, а не destroy: удаление учётки клиента не должно уносить объект из
-  # каталога, он остаётся у агентства.
-  has_many :owned_properties, class_name: 'Property', foreign_key: :owner_user_id,
-                              dependent: :nullify, inverse_of: :owner_user
   has_many :published_properties, -> { published }, class_name: 'Property'
   has_many :moderated_properties, class_name: 'Property', foreign_key: 'moderated_by_id'
   
@@ -132,7 +127,8 @@ class User < ApplicationRecord
 
   # Properties the user is selling THROUGH AN (vs `properties` which is
   # «assigned agent» — same column, different role).
-  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id', dependent: :nullify
+  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id',
+                              dependent: :nullify, inverse_of: :owner_user
 
   # Viewing Schedules
   has_many :viewing_schedules, dependent: :destroy
