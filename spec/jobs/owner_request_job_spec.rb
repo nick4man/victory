@@ -17,9 +17,13 @@ RSpec.describe OwnerRequestJob do
     create(:user, role: :agent, telegram_user: tg_account(**opts))
   end
 
+  # По умолчанию — объект, который действительно претендует на витрину:
+  # deal_state='ad' и незакрытый статус. Именно про такие бот и должен
+  # спрашивать; закрытые сделки проверяются отдельными примерами ниже.
   def property_for(agent, **attrs)
     Property.new({ title: 'Объект', price: 5_000_000, address: 'Рязань, ул. Ленина',
-                   user_id: agent.id }.merge(attrs)).tap { |p| p.save!(validate: false) }
+                   user_id: agent.id, deal_state: 'ad', status: :active }.merge(attrs))
+            .tap { |p| p.save!(validate: false) }
   end
 
   describe 'кому и сколько шлём' do
@@ -90,6 +94,51 @@ RSpec.describe OwnerRequestJob do
       property_for(agent, owner_request_declined_at: 1.hour.ago)
 
       expect(described_class.new.perform).to include(sent: 0)
+    end
+
+    # На проде это большинство: 28 закрытых сделок и 37 отложенных против 25
+    # живых. Без фильтра `.order(:updated_at)` поднимал бы их наверх — синк их
+    # больше не трогает, поэтому они «самые старые», — и первым сообщением
+    # агенту приходило бы «объект не попадает на витрину» про проданный в мае
+    # участок.
+    it 'не спрашивает про закрытые сделки' do
+      agent = agent_with_tg(tg_user_id: 900_215)
+      property_for(agent, deal_state: 'deal', status: :archived)
+
+      expect(described_class.new.perform).to include(sent: 0)
+    end
+
+    it 'не спрашивает про снятые с продажи' do
+      agent = agent_with_tg(tg_user_id: 900_216)
+      property_for(agent, deal_state: 'deferred', status: :archived)
+
+      expect(described_class.new.perform).to include(sent: 0)
+    end
+
+    it 'не спрашивает про проданные, даже если стадия рекламная' do
+      agent = agent_with_tg(tg_user_id: 900_217)
+      property_for(agent, deal_state: 'ad', status: :sold)
+
+      expect(described_class.new.perform).to include(sent: 0)
+    end
+
+    it 'спрашивает про черновик в рекламной стадии' do
+      agent = agent_with_tg(tg_user_id: 900_218)
+      property_for(agent, deal_state: 'ad', status: :draft)
+
+      expect(described_class.new.perform).to include(sent: 1)
+    end
+
+    # Выбор идёт по updated_at, поэтому закрытая сделка не должна «занимать
+    # очередь» перед живым объектом того же агента.
+    it 'выбирает живой объект, а не давно не обновлявшуюся закрытую сделку' do
+      agent = agent_with_tg(tg_user_id: 900_219)
+      property_for(agent, deal_state: 'deal', status: :archived, updated_at: 3.months.ago)
+      alive = property_for(agent, updated_at: 1.day.ago)
+
+      described_class.new.perform
+
+      expect(alive.reload.owner_request_sent_at).to be_present
     end
   end
 

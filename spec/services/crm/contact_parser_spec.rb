@@ -64,5 +64,17 @@ RSpec.describe Crm::ContactParser do
     it 'не принимает короткие числа за номер' do
       expect(described_class.from_text('квартира 54 дом 12')).to be_nil
     end
+
+    # Без границы слева из длинной последовательности вырезался бы
+    # десятизначный хвост, и кандидат от ИНН стоял бы в тексте раньше
+    # настоящего телефона — клиент завёлся бы с чужим номером.
+    it 'не вырезает телефон из ИНН' do
+      result = described_class.from_text('Иванов, ИНН 771234567890, тел 9001234567')
+      expect(result[:phone].gsub(/\D/, '')).to eq('9001234567')
+    end
+
+    it 'не принимает номер счёта за телефон' do
+      expect(described_class.from_text('счёт 40817810099910004312')).to be_nil
+    end
   end
 end

@@ -10,6 +10,10 @@
 # Сравнение регистронезависимое: на проде в TG заведён `Oks07@yandex.ru`, и
 # точное сравнение уже подводило. Регистр — не повод считать людей разными.
 #
+# Мягко удалённые учётки пропускаем: связь заняла бы telegram_user_id, а
+# `tg.user` из-за default_scope вернул бы nil — экран связывания потом падал
+# бы на unique-индексе с сырым PG::UniqueViolation.
+#
 # Связываем только однозначные пары. Если на один email приходится больше
 # одной записи с любой из сторон, пропускаем: угадать, кто из двух настоящий,
 # нельзя, а неверная связь тише и опаснее отсутствующей — уведомления уйдут
@@ -21,6 +25,7 @@ class BackfillUserTelegramLinksByEmail < ActiveRecord::Migration[7.1]
       SET telegram_user_id = t.id
       FROM telegram_users t
       WHERE u.telegram_user_id IS NULL
+        AND u.deleted_at IS NULL
         AND u.email IS NOT NULL AND u.email <> ''
         AND t.email IS NOT NULL AND t.email <> ''
         AND LOWER(TRIM(u.email)) = LOWER(TRIM(t.email))

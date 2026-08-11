@@ -23,6 +23,13 @@ module Telegram
         return false if from_id.blank? || msg.dig('from', 'is_bot')
         return false if msg['contact'].blank? && msg['text'].blank?
 
+        # Команды не перехватываем. Процессор стоит выше WorkBot::Router, и без
+        # этой строки на всё время ожидания (полчаса) сотрудник терял бы /help,
+        # /dashboard, /task — бот отвечал бы «не нашёл телефон» на каждую, а
+        # состояние намеренно не сбрасывается, так что выйти было бы нечем.
+        # Соседние DM-обработчики делают ровно ту же проверку.
+        return false if msg['contact'].blank? && msg['text'].to_s.lstrip.start_with?('/')
+
         tg_user ||= ::TelegramUser.find_by(tg_user_id: from_id)
         return false unless tg_user&.status == 'active'
 

@@ -47,6 +47,20 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
       expect_pending!
       expect(described_class.applies?(msg(text: 'Светлана 9001234567', from_id: 999_999))).to be false
     end
+
+    # Процессор стоит выше роутера команд. Без этой проверки сотрудник на всё
+    # время ожидания терял бы /help, /dashboard, /task: бот отвечал бы «не нашёл
+    # телефон», а состояние намеренно не сбрасывается — выйти было бы нечем.
+    it 'пропускает команды к роутеру' do
+      expect_pending!
+      expect(described_class.applies?(msg(text: '/dashboard'))).to be false
+      expect(described_class.applies?(msg(text: '  /help'))).to be false
+    end
+
+    it 'но карточку контакта принимает всегда' do
+      expect_pending!
+      expect(described_class.applies?(msg(contact: { 'phone_number' => '79001234567' }))).to be true
+    end
   end
 
   describe 'приём контакта' do

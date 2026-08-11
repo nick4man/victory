@@ -13,6 +13,13 @@ RSpec.describe Crm::OwnerLinker do
       expect(described_class.normalize_phone('8 (900) 123-45-67')).to eq('+79001234567')
     end
 
+    # Голые десять цифр — самый частый ответ агента. Раньше получалось
+    # `+9001234567`, без кода страны: правило пришло из Topnlab-синка, где на
+    # вход шли номера вида `79…`. В проде такой мусор уже лежит (`+9209780508`).
+    it 'достраивает код страны к десятизначному номеру' do
+      expect(described_class.normalize_phone('9001234567')).to eq('+79001234567')
+    end
+
     it 'возвращает nil, когда цифр нет' do
       expect(described_class.normalize_phone('нет номера')).to be_nil
       expect(described_class.normalize_phone(nil)).to be_nil

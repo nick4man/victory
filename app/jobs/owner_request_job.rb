@@ -40,8 +40,10 @@ class OwnerRequestJob < ApplicationJob
       property = next_property_for(agent)
       next if property.nil?
 
-      ask(agent, property)
-      sent += 1
+      # Считаем только фактически отправленное: ask глотает исключение, чтобы
+      # один сбой не ронял рассылку остальным, и без возвращаемого значения в
+      # сводке «отправлено: N» оказывались бы неотправленные тоже.
+      sent += 1 if ask(agent, property)
     end
 
     Rails.logger.info("[OwnerRequest] отправлено: #{sent}, недостижимы: #{skipped_unreachable}")
@@ -63,10 +65,23 @@ class OwnerRequestJob < ApplicationJob
       .first
   end
 
+  # Статусы, при которых объект уже никуда не поедет: спрашивать про них
+  # собственника бессмысленно и вредно.
+  CLOSED_STATUSES = %i[sold rented archived rejected].freeze
+
   # Объекты, по которым вопрос уместен: собственника нет, агент не отказался,
-  # отсрочка истекла.
+  # отсрочка истекла — и объект вообще претендует на витрину.
+  #
+  # Фильтр по deal_state/status обязателен. Без него в выборку попадают 28
+  # закрытых сделок и 37 отложенных, а `.order(:updated_at)` поднимает их
+  # наверх — синк перестал их трогать, поэтому они «самые старые». Агент
+  # получил бы «объект не попадает на витрину» про проданный в мае участок, и
+  # только четырнадцатым по счёту — вопрос, который действительно снимает
+  # блокировку публикации.
   def pending_scope(agent)
     Property.where(user_id: agent.id, owner_user_id: nil, deleted_at: nil)
+            .where(deal_state: Property::PUBLISHABLE_DEAL_STATES)
+            .where.not(status: CLOSED_STATUSES)
             .where(owner_request_declined_at: nil)
             .where('owner_request_snoozed_until IS NULL OR owner_request_snoozed_until <= ?', Time.current)
   end
@@ -81,9 +96,11 @@ class OwnerRequestJob < ApplicationJob
     property.update_columns( # rubocop:disable Rails/SkipsModelValidations
       owner_request_sent_at: Time.current, updated_at: Time.current
     )
+    true
   rescue StandardError => e
     # Один недоставленный вопрос не должен ронять рассылку остальным.
     Rails.logger.warn("[OwnerRequest] не отправлено agent=#{agent.id} property=#{property.id}: #{e.class}: #{e.message}")
+    false
   end
 
   def text_for(property)
