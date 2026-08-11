@@ -1,0 +1,125 @@
+<% content_for :title, 'Админка · Жилые комплексы — АН Виктори' %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-6">
+      <%= link_to '← К дашборду', admin_root_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <div class="flex items-baseline justify-between mb-8 flex-wrap gap-3">
+      <div>
+        <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+        <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground">Жилые комплексы</h1>
+      </div>
+      <%= link_to '+ Новый ЖК', new_admin_residential_complex_path,
+            class: 'px-5 py-2.5 text-xs tracking-[0.25em] bg-foreground text-background hover:bg-foreground/85 transition-colors' %>
+    </div>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <% tabs = [
+      ['all',       "ВСЕ · #{@counts[:all]}"],
+      ['published', "ОПУБЛИКОВАНО · #{@counts[:published]}"],
+      ['drafts',    "ЧЕРНОВИКИ · #{@counts[:drafts]}"],
+      ['deleted',   "УДАЛЁННЫЕ · #{@counts[:deleted]}"]
+    ] %>
+    <div class="flex flex-wrap gap-2 mb-8">
+      <% tabs.each do |slug, label| %>
+        <%= link_to label, admin_residential_complexes_path(scope: slug),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{@scope == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+    </div>
+
+    <% if @complexes.any? %>
+      <table class="w-full text-sm border border-border">
+        <thead class="bg-card text-[10px] tracking-[0.25em] text-muted-foreground uppercase">
+          <tr>
+            <th class="text-left p-3">Название</th>
+            <th class="text-left p-3">Район</th>
+            <th class="text-left p-3">Застройщик</th>
+            <th class="text-left p-3">Объектов</th>
+            <th class="text-left p-3">Блоков</th>
+            <th class="text-left p-3">Готовность</th>
+            <th class="text-left p-3">Статус</th>
+            <th class="text-right p-3">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% @complexes.each do |c| %>
+            <% listings_count = @listing_counts[c.id].to_i %>
+            <% marks = Zhk::Coverage.marks_for(c, listings_count: listings_count, photos_count: @photo_counts[c.slug].to_i) %>
+            <tr class="border-t border-border hover:bg-card/40 transition-colors">
+              <td class="p-3">
+                <%= c.name %>
+                <div class="text-[10px] text-muted-foreground"><code><%= c.slug %></code></div>
+              </td>
+              <td class="p-3 text-muted-foreground">
+                <%= c.district_slug.present? ? (RyazanDistricts.name_for(c.district_slug) || c.district_slug) : '—' %>
+              </td>
+              <td class="p-3 text-muted-foreground"><%= c.developer.presence || '—' %></td>
+              <td class="p-3"><%= listings_count %></td>
+              <td class="p-3 text-muted-foreground"><%= (c.body_blocks || []).size %></td>
+              <td class="p-3 text-xs text-muted-foreground">
+                <%= marks.empty? ? '✓ готов' : marks.join(', ') %>
+              </td>
+              <td class="p-3">
+                <% if c.deleted_at.present? %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-zinc-500/10 text-zinc-400 border border-zinc-500/30">УДАЛЁН</span>
+                <% elsif c.published? %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">ОНЛАЙН</span>
+                <% else %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">ЧЕРНОВИК</span>
+                <% end %>
+              </td>
+              <td class="p-3 text-right space-x-3">
+                <% if c.deleted_at.present? %>
+                  <%= button_to 'Восстановить', restore_admin_residential_complex_path(c),
+                        method: :post, class: 'text-xs text-foreground hover:opacity-80 inline' %>
+                <% else %>
+                  <%= link_to 'Объекты →', listings_admin_residential_complex_path(c),
+                        class: 'text-xs text-muted-foreground hover:text-foreground' %>
+                  <%= link_to 'Редактировать', edit_admin_residential_complex_path(c),
+                        class: 'text-xs text-foreground underline hover:no-underline' %>
+                  <% if c.published? %>
+                    <%= button_to 'Снять', unpublish_admin_residential_complex_path(c),
+                          method: :post, class: 'text-xs text-muted-foreground hover:text-foreground inline' %>
+                  <% else %>
+                    <%= button_to 'Опубликовать', publish_admin_residential_complex_path(c),
+                          method: :post, class: 'text-xs text-foreground hover:opacity-80 inline' %>
+                  <% end %>
+                  <%= button_to 'Удалить', soft_delete_admin_residential_complex_path(c),
+                        method: :post,
+                        data: { turbo_confirm: "Удалить ЖК «#{c.name}»? Привязанные объекты (#{listings_count}) сохранят связь и вернутся вместе с ЖК." },
+                        class: 'text-xs text-destructive hover:opacity-80 inline' %>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+
+      <div class="mt-6"><%= paginate @complexes rescue nil %></div>
+    <% else %>
+      <p class="text-sm text-muted-foreground">В этой вкладке пусто.</p>
+    <% end %>
+
+    <% if @duplicate_leads.any? %>
+      <div class="mt-12 p-6 border border-amber-500/40 bg-amber-500/5">
+        <h3 class="text-sm tracking-[0.3em] text-amber-300 mb-4">СОВПАДАЕТ ПЕРВЫЙ АБЗАЦ</h3>
+        <p class="text-xs text-muted-foreground mb-4">
+          Шаблонный текст по нескольким ЖК — прямая дорога к склейке страниц в выдаче.
+          Каждый комплекс должен нести хотя бы два своих проверяемых факта.
+        </p>
+        <ul class="text-sm text-muted-foreground list-disc list-inside">
+          <% @duplicate_leads.each_value do |names| %>
+            <li><%= names.join(' / ') %></li>
+          <% end %>
+        </ul>
+      </div>
+    <% end %>
+  </div>
+</section>

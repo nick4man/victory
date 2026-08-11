@@ -10,6 +10,7 @@ module Admin
   # team knows what still needs editorial copy.
   class LandingContentsController < ApplicationController
     include AdminTokenAuth
+    include Admin::UploadsBlockImages
     layout 'application'
 
     before_action :set_landing_content, only: %i[show edit update destroy publish unpublish]
@@ -77,26 +78,7 @@ module Admin
       redirect_back fallback_location: admin_landing_contents_path, notice: 'Снято с публикации.'
     end
 
-    # Receives a single file via the form's drag-and-drop block editor.
-    # Returns the ActiveStorage signed_id so the JS can embed it into
-    # the in-progress block. The image is attached to a "scratch" LandingContent
-    # if its id is sent; otherwise it's a free-floating blob that the
-    # LandingContent picks up when the parent form is submitted.
-    def upload_image
-      blob = ActiveStorage::Blob.create_and_upload!(
-        io: params.require(:file),
-        filename: params[:file].original_filename,
-        content_type: params[:file].content_type
-      )
-      render json: {
-        signed_id: blob.signed_id,
-        filename:  blob.filename.to_s,
-        url:       url_for(blob)
-      }
-    rescue StandardError => e
-      Rails.logger.warn("[Admin::LandingContents#upload_image] #{e.class}: #{e.message}")
-      render json: { error: e.message }, status: :unprocessable_entity
-    end
+    # upload_image — в concern Admin::UploadsBlockImages (общий с ЖК).
 
     private
 

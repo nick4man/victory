@@ -1,0 +1,19 @@
+<% content_for :title, "Админка · #{@complex.display_name} — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-5xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-6">
+      <%= link_to '← К списку ЖК', admin_residential_complexes_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА · РЕДАКТИРОВАНИЕ</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2"><%= @complex.display_name %></h1>
+    <%# Не ссылка: роут /zhk/:slug появится только в Фазе 3, битая ссылка
+        в админке месяцами — хуже, чем текст. %>
+    <p class="text-xs text-muted-foreground mb-8">
+      <code><%= @complex.public_path %></code> — страница появится в Фазе 3
+    </p>
+
+    <%= render 'form', complex: @complex %>
+  </div>
+</section>

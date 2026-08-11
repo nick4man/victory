@@ -37,6 +37,14 @@ module Admin
         total:     LandingContent.count,
         published: LandingContent.published.count
       }
+      # `ready` — не украшение: гейт Фазы 3 это «≥3 ЖК с собственным
+      # текстом», пусть редактор видит прогресс с дашборда.
+      @zhk_counts = {
+        total:     ResidentialComplex.count,
+        published: ResidentialComplex.visible.count,
+        ready:     ResidentialComplex.sitemap_ready.count,
+        attached:  Property.on_site.where.not(residential_complex_id: nil).count
+      }
     end
   end
 end

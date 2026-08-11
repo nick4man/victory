@@ -1,0 +1,190 @@
+<%# Карточка ЖК. Поля сгруппированы по смыслу: сначала то, без чего
+    страница не существует, потом фактура, которую редактор дозаполняет
+    по официальным источникам. %>
+<%= form_with model: [:admin, complex], html: { class: 'space-y-8' } do |f| %>
+
+  <% if complex.errors.any? %>
+    <div class="p-4 border border-destructive text-destructive text-sm">
+      <strong>Не удалось сохранить:</strong>
+      <ul class="list-disc list-inside mt-2">
+        <% complex.errors.full_messages.each do |msg| %>
+          <li><%= msg %></li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+
+  <fieldset class="space-y-4">
+    <legend class="text-xs tracking-[0.25em] text-muted-foreground mb-3">ОСНОВНОЕ</legend>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">НАЗВАНИЕ (без «ЖК»)</label>
+        <%= f.text_field :name, class: 'admin-input', required: true, placeholder: 'Легенда' %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">СЛАГ (публичный URL)</label>
+        <%= f.text_field :slug, class: 'admin-input', placeholder: 'пусто → сгенерируется из названия' %>
+        <% if complex.persisted? %>
+          <p class="text-xs text-amber-300/80 mt-1">
+            Это адрес страницы <code>/zhk/<%= complex.slug %></code>. Старый URL продолжит
+            резолвиться, но позиции в выдаче временно просядут — меняйте до публикации.
+          </p>
+        <% end %>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="text-xs tracking-[0.25em] text-muted-foreground mb-3">ЛОКАЦИЯ</legend>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ГОРОД</label>
+        <%= f.select :city, ResidentialComplex::CITY_NAMES, {}, class: 'admin-input' %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">РАЙОН</label>
+        <%# Список — из модуля СОХРАНЁННОГО города: связка «район от города»
+            без JS. Каталог сегодня рязанский, а модель валидирует слаг. %>
+        <% mod = Cities.districts_module(Cities::REGISTRY.find { |_s, c| c[:name] == complex.city }&.first || Cities::DEFAULT_SLUG) %>
+        <% district_options = (mod::MICRO.merge(mod::ADMIN)).map { |slug, info| [info[:name], slug] } %>
+        <%= f.select :district_slug, district_options, { include_blank: '— не указан —' }, class: 'admin-input' %>
+        <p class="text-xs text-muted-foreground mt-1">Сменили город — сохраните, список районов обновится.</p>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">АДРЕС</label>
+        <%= f.text_field :address, class: 'admin-input', placeholder: 'ул. Костычева, 8' %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ШИРОТА / ДОЛГОТА</label>
+        <div class="flex gap-2">
+          <%= f.number_field :latitude,  step: 0.000001, class: 'admin-input', placeholder: '54.6269' %>
+          <%= f.number_field :longitude, step: 0.000001, class: 'admin-input', placeholder: '39.6916' %>
+        </div>
+        <% if complex.latitude.blank? || complex.longitude.blank? %>
+          <p class="text-xs text-destructive mt-1">
+            Без координат подсказчик объектов не работает — привязывать придётся из общего списка.
+          </p>
+        <% end %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">АДРЕСНЫЕ ПАТТЕРНЫ</label>
+        <%= text_area_tag 'residential_complex[address_patterns_text]',
+                          Array(complex.address_patterns).join("\n"),
+                          rows: 3, class: 'admin-input', placeholder: "Костычева, 8\nКостычева, 10" %>
+        <p class="text-xs text-muted-foreground mt-1">По одному в строке. Запасной критерий подсказчика, когда нет координат.</p>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="text-xs tracking-[0.25em] text-muted-foreground mb-3">ФАКТУРА</legend>
+    <p class="text-xs text-muted-foreground -mt-2">
+      Заполняйте только проверенное (сайт застройщика, наш.дом.рф). Неверные факты на
+      странице ЖК хуже отсутствующих.
+    </p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ЗАСТРОЙЩИК</label>
+        <%= f.text_field :developer, class: 'admin-input' %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ГОДЫ СДАЧИ (от / до)</label>
+        <div class="flex gap-2">
+          <%= f.number_field :built_from, class: 'admin-input', min: 1901, max: 2100 %>
+          <%= f.number_field :built_to,   class: 'admin-input', min: 1901, max: 2100 %>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">КОРПУСОВ</label>
+        <%= f.number_field :buildings_count, class: 'admin-input', min: 1 %>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">ЭТАЖНОСТЬ (от / до)</label>
+        <div class="flex gap-2">
+          <%= f.number_field :floors_min, class: 'admin-input', min: 1 %>
+          <%= f.number_field :floors_max, class: 'admin-input', min: 1 %>
+        </div>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">МАТЕРИАЛ СТЕН</label>
+        <%= f.text_field :wall_material, class: 'admin-input', placeholder: 'монолит-кирпич' %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">КЛАСС ЖИЛЬЯ</label>
+        <%= f.select :housing_class,
+                     [['эконом', 'econom'], ['комфорт', 'comfort'], ['бизнес', 'business'], ['элит', 'elite']],
+                     { include_blank: '— не указан —' }, class: 'admin-input' %>
+      </div>
+      <div>
+        <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">СТАТУС СТРОЙКИ</label>
+        <%= f.select :build_status,
+                     [['проектируется', 'planned'], ['строится', 'under_construction'], ['сдан', 'completed']],
+                     { include_blank: '— не указан —' }, class: 'admin-input' %>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend class="text-xs tracking-[0.25em] text-muted-foreground mb-3">ИНФРАСТРУКТУРА</legend>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <% {
+           has_parking:      'Парковка',
+           has_closed_yard:  'Закрытый двор',
+           has_playground:   'Детская площадка',
+           has_kindergarten: 'Детский сад',
+           has_school:       'Школа'
+         }.each do |field, label| %>
+        <label class="flex items-center gap-2 p-3 border border-border text-sm">
+          <%= f.check_box field %>
+          <span><%= label %></span>
+        </label>
+      <% end %>
+    </div>
+  </fieldset>
+
+  <fieldset class="space-y-4">
+    <legend class="text-xs tracking-[0.25em] text-muted-foreground mb-3">SEO</legend>
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">TITLE</label>
+      <%= f.text_field :title, class: 'admin-input', placeholder: 'пусто → соберётся из названия в Фазе 3' %>
+    </div>
+    <div>
+      <label class="text-xs tracking-[0.25em] text-muted-foreground block mb-1">META DESCRIPTION (до 300 знаков)</label>
+      <%= f.text_area :meta_description, rows: 2, class: 'admin-input', maxlength: 300 %>
+    </div>
+  </fieldset>
+
+  <%= render 'admin/shared/block_editor',
+        param_name: 'residential_complex',
+        blocks:     complex.body_blocks || [],
+        upload_url: upload_image_admin_residential_complexes_path,
+        prefix:     'zhk' %>
+
+  <div class="flex items-center gap-3 p-4 border border-border">
+    <%= f.check_box :published, id: 'zhk-published' %>
+    <label for="zhk-published" class="text-sm">Опубликован</label>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <%= f.submit (complex.persisted? ? 'Сохранить' : 'Создать'),
+          class: 'px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] hover:bg-foreground/85 transition-colors cursor-pointer' %>
+    <%= link_to 'Отмена', admin_residential_complexes_path,
+          class: 'px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors' %>
+    <% if complex.persisted? %>
+      <%= link_to "Объекты (#{complex.on_site_listings_count}) →",
+            listings_admin_residential_complex_path(complex),
+            class: 'ml-auto text-xs text-foreground underline hover:no-underline' %>
+    <% end %>
+  </div>
+<% end %>
+
+<%= render 'admin/shared/admin_form_styles' %>
