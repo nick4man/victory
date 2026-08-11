@@ -11,7 +11,13 @@
 bin/backup verify
 ```
 
-Она поднимает одноразовый PostgreSQL, восстанавливает в него последний дамп,
+Без аргумента берётся самый свежий дамп; можно указать конкретный:
+
+```bash
+bin/backup verify /var/backups/victory/db/viktory-<дата>.dump.gpg
+```
+
+Она поднимает одноразовый PostgreSQL, восстанавливает в него указанный дамп,
 сверяет расширения и количество строк, затем гасит контейнер. Если проверка не
 прошла — берите копию постарше (`bin/backup restore` без аргументов покажет
 список) и проверяйте её.
@@ -24,8 +30,8 @@ bin/backup verify
 # 1. Посмотреть, что есть
 bin/backup restore
 
-# 2. Убедиться, что нужная копия целая
-bin/backup verify
+# 2. Убедиться, что целая ИМЕННО та копия, которую собираетесь ставить
+bin/backup verify /var/backups/victory/db/viktory-<дата>.dump.gpg
 
 # 3. Восстановить (спросит имя базы для подтверждения)
 bin/backup restore /var/backups/victory/db/viktory-<дата>.dump.gpg
@@ -46,17 +52,19 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/
 
 ```bash
 # 1. На новой машине: docker, git, gpg, rsync, rclone
-sudo apt-get update && sudo apt-get install -y docker.io git gnupg rsync rclone
+sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin git gnupg rsync rclone
+# docker-compose-plugin обязателен: в пакет docker.io команда `docker compose` не входит
 
-# 2. Достать копии из offsite (пароль crypt — тот же, что PASSPHRASE_FILE)
+# 2. Код — ДО восстановления storage: git clone в непустой каталог падает
+git clone https://github.com/nick4man/victory.git /home/q/victory
+cd /home/q/victory
+
+# 3. Достать копии из offsite (пароль crypt — тот же, что PASSPHRASE_FILE)
 rclone config          # завести victory-s3 и victory-crypt заново
+mkdir -p /var/backups/victory/{db,secrets,logs,tmp} && chmod 0700 /var/backups/victory
 rclone copy victory-crypt:victory-backups/db      /var/backups/victory/db
 rclone copy victory-crypt:victory-backups/secrets /var/backups/victory/secrets
 rclone copy victory-crypt:victory-backups/storage /home/q/victory/storage
-
-# 3. Код
-git clone https://github.com/nick4man/victory.git /home/q/victory
-cd /home/q/victory
 
 # 4. Секреты — из последнего архива
 gpg --batch --decrypt --passphrase-file /etc/victory-backup/passphrase \
@@ -93,11 +101,49 @@ find /home/q/victory/storage -type f | wc -l    # ожидается поряд�
 храниться вне сервера** — в менеджере паролей или на бумаге.
 
 Без пароля ни один бэкап расшифровать нельзя: ни локальный, ни offsite. Это не
-починить никакими средствами — данные будут потеряны безвозвратно. Если копии
-пароля вне сервера нет, сделайте её прямо сейчас:
+починить никакими средствами — данные будут потеряны безвозвратно.
+
+Если копии вне сервера нет, снимите её так, чтобы пароль не осел в истории
+терминала (и уж тем более не в транскрипте ассистента):
 
 ```bash
-cat /etc/victory-backup/passphrase
+# скопировать в буфер обмена, ничего не печатая
+xclip -selection clipboard < /etc/victory-backup/passphrase
+# либо записать на съёмный носитель
+cp /etc/victory-backup/passphrase /media/usb/victory-backup-key.txt
+```
+
+## Установка и обновление скрипта
+
+Таймеры запускают `/usr/local/bin/victory-backup`. **Сейчас это копия, а не
+симлинк**, поэтому после мержа изменений в `main` и деплоя её нужно переустановить
+— иначе прод продолжит гонять старую версию:
+
+```bash
+sudo install -m 0755 -o q -g q /home/q/victory/bin/backup /usr/local/bin/victory-backup
+```
+
+Первичная установка на чистой машине:
+
+```bash
+sudo mkdir -p /etc/victory-backup /var/backups/victory
+sudo chown -R "$(id -u):$(id -g)" /etc/victory-backup /var/backups/victory
+sudo chmod 0700 /var/backups/victory
+sudo cp /home/q/victory/config/backup.env.example /etc/victory-backup/backup.env
+sudo chmod 0600 /etc/victory-backup/backup.env      # заполнить токены TG
+sudo install -m 0755 -o q -g q /home/q/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp /home/q/victory/deploy/systemd/victory-backup-*.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now victory-backup-daily.timer victory-backup-weekly.timer
+```
+
+Пароль шифрования при восстановлении берётся из внешней копии, а не создаётся
+заново: новый пароль не расшифрует старые бэкапы.
+
+```bash
+sudo tee /etc/victory-backup/passphrase < /media/usb/victory-backup-key.txt >/dev/null
+sudo chmod 0600 /etc/victory-backup/passphrase
+sudo chown "$(id -u):$(id -g)" /etc/victory-backup/passphrase
 ```
 
 ## Как убедиться, что бэкапы живы
