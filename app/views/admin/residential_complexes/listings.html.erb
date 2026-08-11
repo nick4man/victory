@@ -1,0 +1,115 @@
+<% content_for :title, "Админка · Объекты #{@complex.display_name} — АН Виктори" %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-6">
+      <%= link_to '← К карточке ЖК', edit_admin_residential_complex_path(@complex), class: 'hover:text-foreground' %>
+    </nav>
+
+    <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА · ОБЪЕКТЫ</p>
+    <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-8"><%= @complex.display_name %></h1>
+
+    <% flash.each do |type, msg| %>
+      <div class="mb-6 px-4 py-3 border <%= type == 'alert' ? 'border-destructive text-destructive' : 'border-border text-muted-foreground' %> text-sm">
+        <%= msg %>
+      </div>
+    <% end %>
+
+    <h2 class="text-sm tracking-[0.3em] text-muted-foreground mb-3">ПРИВЯЗАННЫЕ · <%= @attached.size %></h2>
+    <% if @attached.any? %>
+      <table class="w-full text-sm border border-border mb-12">
+        <tbody>
+          <% @attached.each do |p| %>
+            <tr class="border-t border-border first:border-t-0 hover:bg-card/40 transition-colors">
+              <td class="p-3"><%= p.address.to_s.truncate(70) %></td>
+              <td class="p-3 text-muted-foreground"><%= p.rooms.present? ? "#{p.rooms}-комн" : '—' %></td>
+              <td class="p-3 text-muted-foreground"><%= number_to_currency(p.price, unit: '₽', precision: 0, delimiter: ' ', format: '%n %u') %></td>
+              <td class="p-3">
+                <% if p.status_active? && p.published_at.present? %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">НА САЙТЕ</span>
+                <% else %>
+                  <span class="px-2 py-0.5 text-[10px] tracking-wider bg-zinc-500/10 text-zinc-400 border border-zinc-500/30"><%= p.status %></span>
+                <% end %>
+              </td>
+              <td class="p-3 text-right">
+                <%= button_to 'Отвязать', detach_property_admin_residential_complex_path(@complex, property_id: p.id),
+                      method: :post,
+                      data: { turbo_confirm: 'Отвязать объект от ЖК?' },
+                      class: 'text-xs text-destructive hover:opacity-80 inline' %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% else %>
+      <p class="text-sm text-muted-foreground mb-12">Пока ни одного объекта.</p>
+    <% end %>
+
+    <h2 class="text-sm tracking-[0.3em] text-muted-foreground mb-3">
+      КАНДИДАТЫ · стратегия «<%= @suggestion.strategy %>»
+    </h2>
+
+    <% if @suggestion.notes.any? %>
+      <div class="mb-4 p-4 border <%= @suggestion.strategy == 'none' ? 'border-amber-500/40 bg-amber-500/5 text-amber-300' : 'border-border text-muted-foreground' %> text-xs space-y-1">
+        <% @suggestion.notes.each do |note| %>
+          <p><%= note %></p>
+        <% end %>
+      </div>
+    <% end %>
+
+    <div class="flex flex-wrap items-center gap-2 mb-4">
+      <% [['auto', 'АВТО'], ['radius', 'РАДИУС'], ['patterns', 'ПО АДРЕСУ'], ['district', 'РАЙОН'],
+          ['all', "ВСЕ НЕПРИВЯЗАННЫЕ · #{@suggestion.pool_size}"]].each do |slug, label| %>
+        <%= link_to label, listings_admin_residential_complex_path(@complex, strategy: slug, q: params[:q]),
+              class: "px-3 py-1.5 text-[11px] tracking-[0.25em] border #{(params[:strategy].presence || 'auto') == slug ? 'border-foreground text-foreground bg-foreground/5' : 'border-border text-muted-foreground hover:text-foreground hover:border-foreground/60'} transition-colors" %>
+      <% end %>
+
+      <%= form_with url: listings_admin_residential_complex_path(@complex), method: :get, class: 'flex gap-2 ml-auto' do %>
+        <%= hidden_field_tag :strategy, params[:strategy] %>
+        <%= text_field_tag :q, params[:q], placeholder: 'поиск по адресу', class: 'admin-input' %>
+        <%= submit_tag 'Найти', class: 'px-4 py-2 text-xs tracking-[0.25em] border border-border hover:border-foreground transition-colors cursor-pointer' %>
+      <% end %>
+    </div>
+
+    <% if @candidates.any? %>
+      <%= form_with url: attach_properties_admin_residential_complex_path(@complex, listings_filters), method: :post do %>
+        <table class="w-full text-sm border border-border">
+          <thead class="bg-card text-[10px] tracking-[0.25em] text-muted-foreground uppercase">
+            <tr>
+              <th class="p-3 w-8"></th>
+              <th class="text-left p-3">Адрес</th>
+              <th class="text-left p-3">Комнат</th>
+              <th class="text-left p-3">Цена</th>
+              <th class="text-left p-3">Район</th>
+              <th class="text-left p-3">Коорд.</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @candidates.each do |p| %>
+              <tr class="border-t border-border hover:bg-card/40 transition-colors">
+                <td class="p-3"><%= check_box_tag 'property_ids[]', p.id, false, id: "prop-#{p.id}" %></td>
+                <td class="p-3"><label for="prop-<%= p.id %>"><%= p.address.to_s.truncate(70) %></label></td>
+                <td class="p-3 text-muted-foreground"><%= p.rooms.presence || '—' %></td>
+                <td class="p-3 text-muted-foreground"><%= number_to_currency(p.price, unit: '₽', precision: 0, delimiter: ' ', format: '%n %u') %></td>
+                <td class="p-3 text-muted-foreground"><%= p.district.presence || '—' %></td>
+                <td class="p-3 text-muted-foreground"><%= p.geom.present? ? '✓' : '—' %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+
+        <div class="flex items-center gap-4 mt-4">
+          <%= submit_tag 'Привязать выбранные',
+                class: 'px-6 py-3 bg-foreground text-background text-xs tracking-[0.3em] hover:bg-foreground/85 transition-colors cursor-pointer' %>
+          <p class="text-xs text-muted-foreground">Выбор не переносится между страницами — привязывайте постранично.</p>
+        </div>
+      <% end %>
+
+      <div class="mt-6"><%= paginate @candidates %></div>
+    <% else %>
+      <p class="text-sm text-muted-foreground">Кандидатов нет.</p>
+    <% end %>
+  </div>
+</section>
+
+<%= render 'admin/shared/admin_form_styles' %>

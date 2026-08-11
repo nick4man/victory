@@ -133,6 +133,32 @@
         </dl>
       <% end %>
 
+      <%# === Residential complexes (A2 Фаза 2) === %>
+      <%= link_to admin_residential_complexes_path,
+            class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>
+        <p class="text-[10px] tracking-[0.4em] text-muted-foreground mb-4">SEO</p>
+        <h2 class="text-xl text-foreground mb-2 group-hover:text-foreground/80">Жилые комплексы</h2>
+        <p class="text-sm text-muted-foreground mb-6">Справочник ЖК — фактура, тексты, привязка объектов каталога.</p>
+        <dl class="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt class="text-muted-foreground text-xs">Всего</dt>
+            <dd class="text-foreground"><%= @zhk_counts[:total] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Опубликовано</dt>
+            <dd class="text-foreground"><%= @zhk_counts[:published] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Готовы к sitemap</dt>
+            <dd class="text-foreground"><%= @zhk_counts[:ready] %></dd>
+          </div>
+          <div>
+            <dt class="text-muted-foreground text-xs">Объектов привязано</dt>
+            <dd class="text-foreground"><%= @zhk_counts[:attached] %></dd>
+          </div>
+        </dl>
+      <% end %>
+
       <%# === Topnlab CRM status === %>
       <%= link_to admin_topnlab_status_path,
             class: 'block bg-card border border-border p-7 hover:border-foreground/60 transition-colors group' do %>

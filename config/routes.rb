@@ -665,6 +665,25 @@ Rails.application.routes.draw do
       end
     end
 
+    # A2 Фаза 2 — справочник ЖК. Публичные страницы /zhk/:slug — Фаза 3.
+    # `show` не нужен (конвенция админ-разделов: index → edit).
+    # `destroy` намеренно нет: слаг ЖК — публичный URL, поэтому удаление
+    # только мягкое, с возможностью восстановить.
+    resources :residential_complexes, only: %i[index new create edit update] do
+      member do
+        get  :listings           # экран привязки объектов каталога
+        post :attach_properties
+        post :detach_property
+        post :publish
+        post :unpublish
+        post :soft_delete
+        post :restore
+      end
+      collection do
+        post :upload_image
+      end
+    end
+
     # Property publication dashboard — shows the result of the
     # ready_for_site? gate for every CRM-synced Property, plus the
     # force_publish override toggle. Lets admins fix "missing from
