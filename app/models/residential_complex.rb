@@ -129,6 +129,19 @@ class ResidentialComplex < ApplicationRecord
     "ЖК «#{name}»"
   end
 
+  # Человеческое имя района — из реестра СВОЕГО города, не рязанского:
+  # у московского ЖК RyazanDistricts.name_for вернул бы nil и в UI
+  # показался бы слаг.
+  def district_name
+    return if district_slug.blank?
+
+    slug = city_slug
+    return district_slug if slug.nil?
+
+    mod = Cities.districts_module(slug)
+    mod::MICRO.dig(district_slug, :name) || mod::ADMIN.dig(district_slug, :name) || district_slug
+  end
+
   def public_path
     "/zhk/#{slug}"
   end

@@ -105,9 +105,11 @@
         </div>
       <% end %>
 
-      <div class="mt-6"><%= paginate @candidates rescue nil %></div>
+      <div class="mt-6"><%= paginate @candidates %></div>
     <% else %>
       <p class="text-sm text-muted-foreground">Кандидатов нет.</p>
     <% end %>
   </div>
 </section>
+
+<%= render 'admin/shared/admin_form_styles' %>

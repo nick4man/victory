@@ -32,7 +32,7 @@ RSpec.describe Zhk::AttachmentSuggester do
       result = described_class.call(complex)
       expect(result.strategy).to eq('none')
       expect(result.candidates).to be_empty
-      expect(result.notes.join).to include('Ни одного сигнала')
+      expect(result.notes.join).to include('ни одного сигнала')
     end
   end
 

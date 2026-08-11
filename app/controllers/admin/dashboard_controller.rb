@@ -43,7 +43,10 @@ module Admin
         total:     ResidentialComplex.count,
         published: ResidentialComplex.visible.count,
         ready:     ResidentialComplex.sitemap_ready.count,
-        attached:  Property.on_site.where.not(residential_complex_id: nil).count
+        # Через ассоциацию, а не where.not(nil): иначе в счётчик попали бы
+        # объекты мягко удалённых ЖК, тогда как соседние цифры — под
+        # default_scope. Одна карточка не должна смешивать две вселенные.
+        attached:  Property.on_site.where(residential_complex_id: ResidentialComplex.select(:id)).count
       }
     end
   end
