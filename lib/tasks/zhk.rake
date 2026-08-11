@@ -25,7 +25,9 @@ namespace :zhk do
     end
 
     dupes = Zhk::Coverage.duplicate_first_paragraphs
-    return if dupes.empty?
+    # `next`, а не `return`: тело таски — proc, и return из него даёт
+    # LocalJumpError ровно на нормальном пути (когда дублей нет).
+    next if dupes.empty?
 
     puts "\n⚠ совпадает первый абзац (дубли контента — риск для программного SEO):"
     dupes.each_value { |names| puts "  #{names.join(' / ')}" }

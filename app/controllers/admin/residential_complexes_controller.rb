@@ -86,7 +86,7 @@ module Admin
     # Экран привязки — отдельный от формы: тут пагинация и переключение
     # стратегий, а `?page=` на форме терял бы несохранённые правки.
     def listings
-      @attached = @complex.properties.includes(:property_type).order(updated_at: :desc)
+      @attached = @complex.properties.order(updated_at: :desc)
       @suggestion = Zhk::AttachmentSuggester.call(
         @complex,
         strategy: params[:strategy],
@@ -98,11 +98,20 @@ module Admin
 
     def attach_properties
       ids = Array(params[:property_ids]).map(&:to_i).reject(&:zero?)
-      attached = Property.where(id: ids).update_all(
-        residential_complex_id: @complex.id, updated_at: Time.current
-      )
-      redirect_to listings_admin_residential_complex_path(@complex, listings_filters),
-                  notice: "Привязано объектов: #{attached}."
+
+      # Скоуп тот же, что у пула подсказчика. Без него устаревшая форма или
+      # ручной запрос молча перетащили бы объект у другого ЖК (прежний
+      # потерял бы его без следа) либо привязали архивный/чужого города —
+      # тот, который подсказчик никогда не показывал бы.
+      attached = Property.on_site.where(id: ids, residential_complex_id: nil)
+                         .in_city(@complex.city)
+                         .update_all(residential_complex_id: @complex.id, updated_at: Time.current)
+
+      skipped = ids.size - attached
+      notice = "Привязано объектов: #{attached}."
+      notice += " Пропущено: #{skipped} — уже привязаны к другому ЖК, не на сайте или из другого города." if skipped.positive?
+
+      redirect_to listings_admin_residential_complex_path(@complex, listings_filters), notice: notice
     end
 
     def detach_property

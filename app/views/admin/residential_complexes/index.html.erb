@@ -58,7 +58,7 @@
                 <div class="text-[10px] text-muted-foreground"><code><%= c.slug %></code></div>
               </td>
               <td class="p-3 text-muted-foreground">
-                <%= c.district_slug.present? ? (RyazanDistricts.name_for(c.district_slug) || c.district_slug) : '—' %>
+                <%= c.district_name.presence || '—' %>
               </td>
               <td class="p-3 text-muted-foreground"><%= c.developer.presence || '—' %></td>
               <td class="p-3"><%= listings_count %></td>
@@ -102,7 +102,7 @@
         </tbody>
       </table>
 
-      <div class="mt-6"><%= paginate @complexes rescue nil %></div>
+      <div class="mt-6"><%= paginate @complexes %></div>
     <% else %>
       <p class="text-sm text-muted-foreground">В этой вкладке пусто.</p>
     <% end %>

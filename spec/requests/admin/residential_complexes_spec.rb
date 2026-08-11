@@ -46,13 +46,24 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
       expect(response.body).not_to include('Черновик')
     end
 
+    # on_site_listings_count мемоизирован per-instance: в цикле по строкам
+    # он дал бы запрос на каждую. Считаем SELECT'ы, а не просто статус —
+    # иначе возврат к N+1 останется зелёным.
     it 'считает объекты одним запросом, а не по строке' do
-      complex = create(:residential_complex, name: 'Скобелев')
-      create(:property, :on_site, residential_complex: complex)
+      3.times do |i|
+        complex = create(:residential_complex, name: "ЖК #{i}")
+        create(:property, :on_site, residential_complex: complex)
+      end
 
-      admin_get admin_residential_complexes_path
+      queries = 0
+      counter = ->(_n, _s, _f, _i, payload) { queries += 1 unless payload[:name] == 'SCHEMA' }
 
-      expect(response).to have_http_status(:ok)
+      ActiveSupport::Notifications.subscribed(counter, 'sql.active_record') do
+        admin_get admin_residential_complexes_path
+      end
+
+      # Порог с запасом: важно, что число не растёт линейно от числа ЖК.
+      expect(queries).to be < 25
     end
   end
 
@@ -111,6 +122,42 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
       expect(complex.reload.address_patterns).to eq([])
     end
 
+    # Гвард — копия из лендингов, и без своей сети следующий, кто «уберёт
+    # дублирование», сломает ЖК и не узнает. Ровно этот класс бага стёр
+    # контент лендинга в PR #15.
+    it 'пустые блоки от НЕ поднявшегося редактора не стирают текст' do
+      with_body = create(:residential_complex, :with_body)
+
+      admin_patch admin_residential_complex_path(with_body), params: {
+        residential_complex: { body_blocks_json: '[]', body_blocks_editor: '0' }
+      }
+
+      with_body.reload
+      expect(with_body.body_blocks).to be_present
+      expect(with_body.body_html).to be_present
+    end
+
+    it 'пустые блоки от живого редактора очищают текст' do
+      with_body = create(:residential_complex, :with_body)
+
+      admin_patch admin_residential_complex_path(with_body), params: {
+        residential_complex: { body_blocks_json: '[]', body_blocks_editor: '1' }
+      }
+
+      expect(with_body.reload.body_blocks).to eq([])
+    end
+
+    it 'битый JSON не трогает блоки' do
+      with_body = create(:residential_complex, :with_body)
+      original = with_body.body_blocks
+
+      admin_patch admin_residential_complex_path(with_body), params: {
+        residential_complex: { body_blocks_json: '{oops', body_blocks_editor: '1' }
+      }
+
+      expect(with_body.reload.body_blocks).to eq(original)
+    end
+
     it 'пустой enum-селект даёт nil, а не падение' do
       admin_patch admin_residential_complex_path(complex),
                   params: { residential_complex: { housing_class: '', build_status: '' } }
@@ -158,10 +205,38 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
     let!(:free)   { create(:property, :on_site) }
 
     it 'привязывает выбранные и двигает updated_at' do
+      free.update_columns(updated_at: 3.days.ago)
+
       expect do
         admin_post attach_properties_admin_residential_complex_path(complex),
                    params: { property_ids: [free.id] }
       end.to change { free.reload.residential_complex_id }.from(nil).to(complex.id)
+
+      # updated_at выставляется руками, потому что update_all минует
+      # колбэки; Фаза 4 читает его для sitemap lastmod.
+      expect(free.reload.updated_at).to be > 1.hour.ago
+    end
+
+    # Симметрия с detach: без скоупа устаревшая форма молча перетащила бы
+    # объект у другого ЖК, и прежний потерял бы его без следа.
+    it 'не перетаскивает объект, уже привязанный к другому ЖК' do
+      other = create(:residential_complex, name: 'Другой ЖК')
+      free.update!(residential_complex: other)
+
+      admin_post attach_properties_admin_residential_complex_path(complex),
+                 params: { property_ids: [free.id] }
+
+      expect(free.reload.residential_complex_id).to eq(other.id)
+      expect(flash[:notice]).to include('Пропущено')
+    end
+
+    it 'не привязывает объект, которого нет на сайте' do
+      draft = create(:property)
+
+      admin_post attach_properties_admin_residential_complex_path(complex),
+                 params: { property_ids: [draft.id] }
+
+      expect(draft.reload.residential_complex_id).to be_nil
     end
 
     it 'отвязывает только свой объект' do
@@ -177,7 +252,7 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
       admin_get listings_admin_residential_complex_path(complex)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include('координаты')
+      expect(response.body).to include('координат')
     end
   end
 end
