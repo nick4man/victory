@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+#
+# rb — «ruby box». Запускает команду в контейнере с целевым Ruby из ЛЮБОГО
+# worktree-сессии (victory / chat / seo / upgrade).
+#
+# На хосте менеджера версий Ruby нет (ни chruby, ни rbenv, ни mise), системный
+# ruby не совпадает с пином в Gemfile — поэтому `bundle`, `rspec` и `bin/rails`
+# напрямую в worktree не работают. Этот скрипт — их замена.
+#
+#   bin/rb ruby -v
+#   bin/rb bundle install
+#   bin/rb bundle exec rubocop
+#   bin/rb --db bin/rails db:prepare          # --db поднимет postgres+redis
+#   bin/rb --db bundle exec rspec spec/models
+#   bin/rb --shell                            # интерактивный bash внутри
+#   RUBY_TARGET=3.4.1 bin/rb --build ruby -v  # пробный прогон на другом Ruby
+#
+# Живой web — для доменов, где проверка идёт руками в браузере и по вебхукам
+# (чат сайта, TG-боты), а не только спеками:
+#
+#   bin/rb --web up                            # поднять и оставить (development)
+#   bin/rb --web logs                          # хвост логов
+#   bin/rb --web bin/rails console             # в ЖИВОЙ процесс, не в новый
+#   bin/rb --web 'bin/rails runner "p Property.count"'
+#   bin/rb --web down                          # погасить, данные в волюмах живы
+#
+#   Порт — RB_WEB_PORT (по умолчанию 3001), адрес — RB_WEB_BIND (127.0.0.1).
+#   Sidekiq в стеке НЕТ намеренно, см. docker-compose.ruby.yml.
+#
+# Флаги:
+#   --db      поднять postgres+redis перед командой (нужно для rails/rspec;
+#             без него контейнер стартует один — быстрее в разы)
+#   --web     работать с живым web-контейнером вместо одноразового
+#   --build   пересобрать образ (после смены RUBY_TARGET или правки Gemfile)
+#   --shell   интерактивный bash вместо разовой команды
+#   --down    погасить стек ЭТОЙ сессии (данные в волюмах сохраняются)
+#   --nuke    погасить + снести волюмы ЭТОЙ сессии (чужие и прод не трогает)
+#
+# У каждой сессии свой compose-проект `victory-rb-<session>`, поэтому четыре
+# сессии могут работать параллельно, не деля ни БД, ни bundle-волюм. Образ
+# (victory-rubybox:<version>) общий — собирается один раз на всех.
+
+set -euo pipefail
+
+# Полный путь — совпадает с allow-rule в permissions, не ловим лишний промпт.
+DOCKER=/usr/bin/docker
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo '')
+if [ -z "$ROOT" ]; then
+  echo 'bin/rb: не git-репозиторий.' >&2
+  exit 1
+fi
+
+# ── Guard: прод-checkout ────────────────────────────────────────────────────
+# /home/q/victory — live bind-mount в victory-web-1 (RAILS_ENV=development +
+# code-reload). Поднимать здесь второй стек = гонять миграции по каталогу,
+# который сию секунду обслуживает victory62.org. Отказ, без вариантов.
+if [ "$ROOT" = '/home/q/victory' ]; then
+  cat >&2 <<'MSG'
+❌ Это main checkout (/home/q/victory) — live-prod bind-mount victory-web-1.
+   ruby-box здесь не поднимаем. Перейди в свой worktree, например:
+       cd /home/q/victory-upgrade && bin/rb ...
+MSG
+  exit 1
+fi
+
+cd "$ROOT"
+
+# Идентичность — из marker-файла (та же схема, что у SessionStart-хука).
+# Fallback на имя каталога: worktree без маркера всё равно получит свой проект,
+# а не свалится в чужие волюмы.
+SESSION=$(cat "$ROOT/.claude-session" 2>/dev/null || echo '')
+[ -n "$SESSION" ] || SESSION=$(basename "$ROOT" | sed 's/^victory-//')
+PROJECT="victory-rb-${SESSION}"
+
+if [ ! -f .env ]; then
+  echo "❌ Нет $ROOT/.env — контейнер не получит DATABASE_URL/REDIS_URL." >&2
+  echo '   Забери из main checkout:  cp /home/q/victory/.env .env && chmod 600 .env' >&2
+  exit 1
+fi
+
+export HOST_UID="$(id -u)" HOST_GID="$(id -g)"
+
+COMPOSE=("$DOCKER" compose -p "$PROJECT" -f docker-compose.ruby.yml)
+
+WITH_DB=0
+DO_BUILD=0
+WEB=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --db)    WITH_DB=1; shift ;;
+    --web)   WEB=1; shift ;;
+    --build) DO_BUILD=1; shift ;;
+    --down)  exec "${COMPOSE[@]}" --profile web down ;;
+    --nuke)  exec "${COMPOSE[@]}" --profile web down -v ;;
+    --shell) shift; set -- 'bash'; break ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+
+[ "$DO_BUILD" -eq 1 ] && "${COMPOSE[@]}" build ruby
+
+# ── Живой web ───────────────────────────────────────────────────────────────
+# Отдельная ветка, потому что здесь всё наоборот: не «запустить одноразовый
+# контейнер», а «зайти в уже работающий». Команда выполняется через exec, то
+# есть видит то же состояние процесса и ту же базу, что и браузер.
+if [ "$WEB" -eq 1 ]; then
+  case "${1:-}" in
+    up)
+      "${COMPOSE[@]}" --profile web up -d --wait web
+      # Схему накатываем сами: у web стоит SKIP_DB_PREPARE=1, потому что
+      # db:prepare на чистой базе доходит до db/seeds.rb и падает на формате
+      # телефона. db:prepare здесь идёт без сидов — схема есть, мусора нет.
+      "${COMPOSE[@]}" exec -T web bash -c 'bin/rails db:prepare 2>&1 | tail -3' || true
+      # app/assets/builds/* в .gitignore, поэтому в свежем worktree их нет и
+      # первый же запрос падает с «asset tailwind.css is not present».
+      # Идемпотентно, несколько секунд.
+      "${COMPOSE[@]}" exec -T web bash -c 'bin/rails tailwindcss:build 2>&1 | tail -2' || true
+      echo "✓ web поднят: http://${RB_WEB_BIND:-127.0.0.1}:${RB_WEB_PORT:-3001}"
+      echo "  логи: bin/rb --web logs   |   консоль: bin/rb --web bin/rails console"
+      exit 0 ;;
+    logs)  shift; exec "${COMPOSE[@]}" logs -f --tail=100 web ;;
+    ps)    exec "${COMPOSE[@]}" --profile web ps ;;
+    '')
+      echo 'usage: bin/rb --web up|logs|ps | bin/rb --web <команда в живом контейнере>' >&2
+      exit 2 ;;
+  esac
+
+  # Всё остальное — выполнить в живом web. Одна строка идёт как есть, несколько
+  # аргументов экранируются (та же логика, что для одноразового ruby ниже).
+  if [ $# -eq 1 ]; then WEB_CMD="$1"; else WEB_CMD=$(printf '%q ' "$@"); fi
+  exec "${COMPOSE[@]}" exec web bash -c "$WEB_CMD"
+fi
+
+if [ $# -eq 0 ]; then
+  echo 'usage: bin/rb [--db|--web|--build|--shell|--down|--nuke] <команда...>' >&2
+  exit 2
+fi
+
+# Одна строка — это уже готовая shell-команда, отдаём как есть (иначе `bin/rb
+# 'a; b'` сломается). Несколько аргументов — экранируем каждый, чтобы кавычки
+# и пробелы дожили до контейнера (важно для `rspec -e 'foo bar'`).
+if [ $# -eq 1 ]; then
+  CMD="$1"
+else
+  CMD=$(printf '%q ' "$@")
+fi
+
+# DATABASE_URL прилетает из .env прибитым к viktory_realty_development и
+# перебивает database.yml — RAILS_ENV=test молча ушёл бы в dev-базу. Снимаем:
+# блоки development/test в database.yml собираются из
+# DATABASE_HOST/USERNAME/PASSWORD/PORT и в URL не нуждаются.
+#
+# Раньше здесь URL переписывался под текущий env, потому что снять его было
+# нельзя: staging-блок делал ENV.fetch без дефолта, а ERB рендерит весь файл на
+# любой среде → KeyError. Блок исправлен, костыль больше не нужен.
+CMD='unset DATABASE_URL; '"${CMD}"
+
+if [ "$WITH_DB" -eq 1 ]; then
+  "${COMPOSE[@]}" up -d --wait db redis
+  exec "${COMPOSE[@]}" run --rm ruby "$CMD"
+fi
+
+# --no-deps: без БД контейнер стартует за доли секунды.
+exec "${COMPOSE[@]}" run --rm --no-deps ruby "$CMD"

@@ -29,6 +29,23 @@ Rails.application.configure do
   config.action_controller.perform_caching = false
   config.cache_store = :null_store
 
+  # ActiveJob — in-memory очередь вместо Sidekiq.
+  #
+  # config/application.rb:46 ставит :sidekiq для ВСЕХ сред, включая test, и
+  # нигде не выставлен Sidekiq::Testing. Из-за этого спеки писали задания в
+  # настоящий Redis: один прогон spec/models/property_spec.rb добавлял 19 job'ов
+  # в queue:default (after_commit в property.rb дёргает Seo::IndexNowNotifyJob и
+  # Yandex::RecrawlUrlJob, а в транзакционных тестах Rails after_commit
+  # выполняется). Задания при этом никогда не исполнялись — воркера нет, — но
+  # копились между прогонами: к моменту находки в очереди лежало 226 штук.
+  #
+  # Следствия: сьют зависел от доступности Redis и накапливал состояние, а это
+  # источник недетерминизма (seo видел плавающее число падений на одном наборе).
+  #
+  # Смена адаптера безопасна: ни один спек не использует have_enqueued_job,
+  # perform_enqueued_jobs или Sidekiq::Worker — проверено грепом.
+  config.active_job.queue_adapter = :test
+
   # Raise exceptions instead of rendering exception templates.
   config.action_dispatch.show_exceptions = false
 

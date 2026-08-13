@@ -13,7 +13,11 @@ RSpec.describe DocumentIntake::ParserJob, type: :job do
       status:        'received',
       status_ocr_completed?: false,
       status_reviewed?:      false,
-      parsed_data_masked:    { 'passport_series' => '12 ** ******' }
+      parsed_data_masked:    { 'passport_series' => '12 ** ******' },
+      # Phase 9 Iter 5 добавил в ParserJob#perform ветку retry-mirror, которая
+      # читает nextcloud_path до всякого OCR (parser_job.rb:29). Без стаба
+      # verified double честно падал на незнакомом сообщении.
+      nextcloud_path: nil
     )
   end
 
@@ -63,6 +67,23 @@ RSpec.describe DocumentIntake::ParserJob, type: :job do
 
     allow(doc).to receive(:update!)
     allow(doc).to receive(:parsed_data).and_return(mock_parsed)
+
+    # Зеркалирование в Nextcloud и авто-привязка к DocumentRequirement — отдельные
+    # ответственности со своими спеками. Здесь они только мешают: обе лезут в
+    # ассоциации ClientDocument (property / inquiry / inquiry_id) и дальше в сеть,
+    # а эти примеры про OCR-конвейер. Оба сервиса подключены к ParserJob уже
+    # после того, как спек был написан, — отсюда и падения verified double.
+    allow(DocumentIntake::NextcloudMirror).to receive(:call).and_return(
+      DocumentIntake::NextcloudMirror::Result.new(
+        nextcloud_path: nil, document_upload: nil, error: 'stubbed in spec'
+      )
+    )
+
+    allow(DocumentChecklist::AutoMatchToRequirement).to receive(:call).and_return(
+      DocumentChecklist::AutoMatchToRequirement::Result.new(
+        status: :skipped, requirement: nil, lead_event: nil, reason: 'stubbed in spec'
+      )
+    )
   end
 
   describe '#perform' do
@@ -81,9 +102,11 @@ RSpec.describe DocumentIntake::ParserJob, type: :job do
     end
 
     it 'sends staff notification after completion' do
+      # notify_staff читает ENV.fetch('TELEGRAM_STAFF_CHAT_ID', nil), а спек
+      # подменял только ENV.[] — из-за чего в тест подставлялся настоящий
+      # chat_id рабочей группы из .env.
       allow(ENV).to receive(:fetch).and_call_original
-      allow(ENV).to receive(:[]).and_call_original
-      allow(ENV).to receive(:[]).with('TELEGRAM_STAFF_CHAT_ID').and_return('-1001234567890')
+      allow(ENV).to receive(:fetch).with('TELEGRAM_STAFF_CHAT_ID', nil).and_return('-1001234567890')
 
       expect(tg_client).to receive(:send_message).with(
         anything,

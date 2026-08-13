@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+#
+# Компактный снимок всех worktree — чем заняты четыре сессии прямо сейчас.
+#
+# Сделан для агента session-observer, чтобы он не собирал картину двумя
+# десятками git-вызовов. Годится и человеку.
+#
+#   bin/session-status            # человекочитаемо
+#   bin/session-status --porcelain # по строке на сессию, поля через TAB
+#
+# Живость сессий здесь НЕ показывается — её знает только харнесс.
+# Наблюдатель дополняет этот снимок вызовом ListAgents.
+
+set -euo pipefail
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo 'не git-репозиторий' >&2; exit 1; }
+
+# shellcheck source=../.claude/hooks/lib/locks.sh
+. "$ROOT/.claude/hooks/lib/locks.sh"
+
+PORCELAIN=0
+[ "${1:-}" = '--porcelain' ] && PORCELAIN=1
+
+# Свежесть плана: самый недавно изменённый файл в .claude/plans/<session>/.
+plan_age() {
+  local wt="$1" session="$2" newest
+  # `|| true` обязателен: у main-checkout'а каталога планов нет, find выходит с
+  # ошибкой, а pipefail превращает это в падение всего скрипта.
+  newest=$( { find "$wt/.claude/plans/$session" -maxdepth 1 -name '*.md' -printf '%T@\n' 2>/dev/null || true; } \
+           | sort -rn | head -1)
+  [ -n "$newest" ] || { echo '-'; return; }
+  local mins=$(( ($(date +%s) - ${newest%.*}) / 60 ))
+  if   [ "$mins" -lt 60 ]   ; then echo "${mins}м"
+  elif [ "$mins" -lt 1440 ] ; then echo "$((mins / 60))ч"
+  else                             echo "$((mins / 1440))д"
+  fi
+}
+
+for wt in $(lock_worktrees); do
+  # marker, а не lock_session: CLAUDE_SESSION перебил бы имя чужого worktree.
+  session=$(lock_marker_session "$wt")
+
+  branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')
+  dirty=$(git -C "$wt" status --porcelain 2>/dev/null | wc -l)
+  last=$(git -C "$wt" log -1 --format='%h %s' 2>/dev/null | head -c 60)
+
+  # Расхождение со своим remote и с main — две разные вещи: первое говорит
+  # «не запушено», второе «насколько отстал от прода».
+  ahead_origin=$(git -C "$wt" rev-list --count "@{upstream}..HEAD" 2>/dev/null || echo '-')
+  behind_main=$(git -C "$wt" rev-list --count 'HEAD..main' 2>/dev/null || echo '-')
+
+  # lock_files, а не glob: ключи для .claude/** начинаются с точки (см. locks.sh).
+  locks=$(lock_files "$wt" | wc -l)
+  plan=$(plan_age "$wt" "$session")
+
+  if [ "$PORCELAIN" -eq 1 ]; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$session" "$branch" "$dirty" "$ahead_origin" "$behind_main" "$locks" "$plan" "$last"
+    continue
+  fi
+
+  mark=''
+  [ "$session" = 'main' ] && mark='  🚨 prod bind-mount, только merge/deploy'
+
+  printf '%-9s %-16s uncommitted:%-4s не запушено:%-4s отстал от main:%-4s локов:%-3s план:%s%s\n' \
+    "$session" "$branch" "$dirty" "$ahead_origin" "$behind_main" "$locks" "$plan" "$mark"
+  printf '          %s\n' "${last:-—}"
+done
+
+[ "$PORCELAIN" -eq 1 ] && exit 0
+
+# Кто что держит — самое ценное для разведения конфликтов.
+echo ''
+echo 'Активные локи:'
+found=0
+for wt in $(lock_worktrees); do
+  while IFS= read -r lock; do
+    [ -n "$lock" ] || continue
+    found=1
+    printf '  %-45s %s (%s мин)\n' \
+      "$(lock_key_to_path "$(basename "$lock")")" \
+      "$(lock_meta "$lock" session)" \
+      "$(lock_age_minutes "$lock")"
+  done < <(lock_files "$wt")
+done
+[ "$found" -eq 0 ] && echo '  нет'
+
+# Непрочитанное в общем inbox — кто кому не ответил.
+INBOX="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/inbox"
+if [ -d "$INBOX" ]; then
+  echo ''
+  echo 'Непрочитанное в inbox:'
+  any=0
+  for d in "$INBOX"/*/; do
+    [ -d "$d" ] || continue
+    n=$(find "$d" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)
+    [ "$n" -gt 0 ] || continue
+    any=1
+    printf '  %-9s %s\n' "$(basename "$d")" "$n"
+  done
+  [ "$any" -eq 0 ] && echo '  нет'
+fi
+
+exit 0

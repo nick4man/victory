@@ -1,0 +1,168 @@
+# Ruby-box: контейнер с целевым Ruby для ЛЮБОГО worktree-сессии.
+#
+# Зачем: на хосте нет менеджера версий Ruby (ни chruby, ни rbenv, ни mise),
+# системный ruby не совпадает с пином в Gemfile — `bundle`/`rspec` напрямую в
+# worktree падают с «Your Ruby version is X, but your Gemfile specified Y».
+# Прод-контейнеры (project `victory`) примонтированы к /home/q/victory и для
+# разработки недоступны.
+#
+# Запускать ТОЛЬКО через bin/rb — он подставляет -p (свой compose-проект на
+# каждую сессию), HOST_UID/HOST_GID и guard на прод-checkout.
+#
+#   bin/rb ruby -v
+#   bin/rb bundle install
+#   bin/rb --db bin/rails db:prepare      # --db поднимает postgres+redis
+#   bin/rb --db bundle exec rspec
+#   RUBY_TARGET=3.4.1 bin/rb --build ruby -v
+#
+# Имя проекта НЕ задано здесь намеренно: bin/rb передаёт `-p victory-rb-<session>`,
+# поэтому у victory/chat/seo/upgrade волюмы не пересекаются ни между собой, ни с
+# прод-проектом `victory`.
+
+services:
+  # db и redis поднимаются только по флагу --db — для `bundle install` или
+  # `ruby -v` они не нужны, а 4 лишних постгреса на хосте ни к чему.
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: viktory-postgres-pgvector:pg15-postgis35
+    restart: 'no'
+    # БД одноразовая (снести — `bin/rb --nuke`), durability ей не нужна. Без
+    # этого DatabaseCleaner ловил statement_timeout (30s из database.yml) на
+    # TRUNCATE сотни таблиц в before(:suite) — прогон падал через раз.
+    command: >
+      postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: 'no'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ruby:
+    build:
+      context: .
+      args:
+        RUBY_VERSION: ${RUBY_TARGET:-3.3.6}
+    # Тег включает версию — образы под разные Ruby живут рядом, не перетирая
+    # друг друга, и переиспользуются всеми сессиями (собираем один раз).
+    image: victory-rubybox:${RUBY_TARGET:-3.3.6}
+    restart: 'no'
+    # HOST_UID/HOST_GID, а не UID/GID: в bash UID readonly, обёртка не смогла бы
+    # его экспортировать. Нужно, чтобы Gemfile.lock после bundle update
+    # принадлежал хостовому юзеру, а не root.
+    user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
+    env_file:
+      - .env
+    environment:
+      # .env тянет RAILS_ENV=development (прод-значение). Дефолт для box — test:
+      # миграции и rspec не должны трогать dev-данные. Переопределяется через
+      # RB_RAILS_ENV, а НЕ RAILS_ENV — иначе интерполяция подхватила бы значение
+      # из того же .env.
+      RAILS_ENV: ${RB_RAILS_ENV:-test}
+      DATABASE_HOST: db
+      REDIS_URL: redis://redis
+      # Контейнер бежит под uid хоста, которого нет в /etc/passwd → HOME
+      # разрешается в «/», писать туда нельзя. Bundler и RuboCop на каждый
+      # запуск сыпали «Permission denied @ dir_s_mkdir - /.cache».
+      HOME: /tmp
+      # DatabaseCleaner считает «удалённым» любой DATABASE_URL с хостом не
+      # localhost и отказывается чистить БД. У нас хост — `db`, т.е. соседний
+      # контейнер СВОЕГО же compose-проекта, поднятый на один прогон: снести
+      # там нечего, кроме тестовых данных. Прод-БД живёт в другом проекте и
+      # этому контейнеру не видна.
+      DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+      # DATABASE_URL здесь НЕ снять: он приходит из env_file, а `environment`
+      # с null-значением его не вытесняет (пустая строка тем более — AR падает
+      # с «Database URL cannot be empty»). Снимаем в bin/rb через `unset` перед
+      # командой. Иначе прибитый в .env viktory_realty_development перебивает
+      # database.yml и RAILS_ENV=test уходит в dev-базу.
+    # Обходим /app/bin/docker-entrypoint: он ждёт Postgres и сам гоняет
+    # db:prepare. Для box это лишняя магия — db:prepare зовём руками.
+    entrypoint: ['bash', '-c']
+    working_dir: /app
+    volumes:
+      # Пути относительны каталогу этого файла, т.е. монтируется тот worktree,
+      # из которого вызван bin/rb.
+      - ./:/app
+      - bundle:/usr/local/bundle
+      # tmp/ и log/ намеренно НЕ в именованных волюмах (в отличие от прода):
+      # свежий волюм создаётся под root, а контейнер бежит под uid хоста — Rails
+      # не может писать log/test.log. Берём каталоги из worktree: права верные,
+      # логи видно с хоста, оба в .gitignore.
+    command: ['sleep infinity']
+    # Портов не публикуем: этот сервис одноразовый. Живой web — профиль ниже.
+
+  # Долгоживущий web — для доменов, где проверка идёт руками в браузере и по
+  # вебхукам, а не только спеками (чат сайта, TG-боты). Профиль `web`, поэтому
+  # обычный `up` его не поднимает: платить контейнером за прогон спеков незачем.
+  #
+  #   bin/rb --web up                     # поднять и оставить
+  #   bin/rb --web logs                   # хвост логов
+  #   bin/rb --web bin/rails console      # в ЖИВОЙ процесс, не в новый
+  #   bin/rb --web down
+  #
+  # Sidekiq здесь НЕТ и не будет: в .env боевые ключи Telegram и Topnlab, и
+  # поднятый воркер разошлёт реальные сообщения реальным людям. Джобы копятся в
+  # своём redis и никуда не уходят — это осознанное свойство, а не недоделка.
+  web:
+    profiles: ['web']
+    build:
+      context: .
+      args:
+        RUBY_VERSION: ${RUBY_TARGET:-3.3.6}
+    image: victory-rubybox:${RUBY_TARGET:-3.3.6}
+    restart: 'no'
+    user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
+    env_file:
+      - .env
+    environment:
+      # Всегда development: состояние разговора с ботом живёт в dev-базе и не
+      # должно вычищаться прогоном спеков, который работает в test.
+      RAILS_ENV: development
+      DATABASE_HOST: db
+      REDIS_URL: redis://redis
+      HOME: /tmp
+      # DATABASE_URL из .env здесь оставляем как есть: он указывает на
+      # хост `db` и базу viktory_realty_development — в этом проекте это ровно
+      # наш контейнер и ровно нужная база. Снимать его (как для одноразового
+      # ruby) не требуется.
+      #
+      # db:prepare пропускаем: на чистой базе он доходит до db/seeds.rb, а тот
+      # падает на формате телефона. Схему накатывают явно — см. bin/rb --web up.
+      SKIP_DB_PREPARE: '1'
+    ports:
+      # По умолчанию только loopback: в .env боевые токены, и открывать такой
+      # контейнер в сеть нельзя. Нужен внешний доступ — RB_WEB_BIND=0.0.0.0,
+      # осознанно и ненадолго.
+      - '${RB_WEB_BIND:-127.0.0.1}:${RB_WEB_PORT:-3001}:3000'
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  bundle:

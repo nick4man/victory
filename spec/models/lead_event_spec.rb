@@ -54,9 +54,16 @@ RSpec.describe LeadEvent do
       expect(e.anchor_url).to eq('https://t.me/c/3779115845/42/7')
     end
 
-    it 'nil если нет message_id или thread_id' do
+    it 'nil если нет message_id' do
       expect(build_event(anchor_message_id: nil, anchor_thread_id: 42).anchor_url).to be_nil
-      expect(build_event(anchor_message_id: 1, anchor_thread_id: nil).anchor_url).to be_nil
+    end
+
+    # Раньше спек ждал nil и без thread_id. Поведение изменено намеренно
+    # (см. комментарий в lead_event.rb): для General-топика TG не кладёт
+    # thread_id в URL, и ссылка из двух сегментов — валидная.
+    it 'строит ссылку без сегмента thread для General-топика' do
+      e = build_event(tg_chat_id: -1_003_779_115_845, anchor_message_id: 1, anchor_thread_id: nil)
+      expect(e.anchor_url).to eq('https://t.me/c/3779115845/1')
     end
   end
 

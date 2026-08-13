@@ -15,7 +15,8 @@ RSpec.describe Telegram::WorkBot::WeeklySummaryJob do
     it 'шлёт недельный отчёт director\'ам с dm_chat_id' do
       described_class.new.perform
       expect(tg_client).to have_received(:send_message).with(
-        a_string_matching(/Недельный отчёт/),
+        # Заголовок переименован в «📊 Сводка за неделю · дд.мм–дд.мм.гг».
+        a_string_matching(/Сводка за неделю/),
         hash_including(chat_id: 110_001, parse_mode: 'HTML', reply_markup: a_hash_including(:inline_keyboard))
       )
     end

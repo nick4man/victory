@@ -83,7 +83,9 @@ module Kpi
       lines = ["⏰ <b>SLA-warnings: #{sla_warnings.size}</b>"]
       sla_warnings.first(3).each do |lead|
         name = (lead.metadata || {})['name'] || 'клиент'
-        mins = ((Time.current - lead.assigned_at) / 60).to_i
+        # @now, а не Time.current: остальной дайджест считается от переданного
+        # времени, и смешивать две точки отсчёта в одном тексте нельзя.
+        mins = ((@now - lead.assigned_at) / 60).to_i
         lines << "  • <a href=\"#{lead.anchor_url}\">#{escape(name.to_s.truncate(30))}</a> — #{mins} мин без first_contact"
       end
       lines.join("\n")

@@ -23,10 +23,15 @@ require 'capybara/rspec'
 require 'pundit/rspec'
 require 'webmock/rspec'
 
-# WebMock: allow real net by default (specs которые бьют реальные сервисы не
-# ломаем), но stub_request перехватывает явно застабленные запросы. Specs,
-# требующие полной изоляции (yandex_vision/client), сами вызывают stub_request.
-WebMock.allow_net_connect!
+# WebMock: сеть закрыта. Раньше здесь стоял allow_net_connect! — «specs, которые
+# бьют реальные сервисы, не ломаем». Цена оказалась выше выгоды: прогон зависел
+# от доступности чужих сервисов, Property-спеки падали с OpenSSL::SSL::SSLError
+# через geocoder и after_commit-хуки (IndexNow / Yandex recrawl), и любой спек
+# мог покраснеть по причине, не связанной с кодом.
+#
+# allow_localhost: true — Capybara/Selenium ходят на 127.0.0.1.
+# Спеку, которому нужен внешний ответ, положено объявить его через stub_request.
+WebMock.disable_net_connect!(allow_localhost: true)
 
 # Requires supporting ruby files with custom matchers and macros, etc, in
 # spec/support/ and its subdirectories.

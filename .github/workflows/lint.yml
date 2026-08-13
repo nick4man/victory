@@ -25,7 +25,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          # Honours .ruby-version / Gemfile (ruby '3.2.2')
+          # Honours .ruby-version (3.3.6 после EOL-апгрейда) / Gemfile
           bundler-cache: true
 
       - name: Run RuboCop
@@ -64,3 +64,83 @@ jobs:
         run: |
           bundle exec bundle-audit update
           bundle exec bundle-audit check
+
+  rspec:
+    name: RSpec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Схема требует postgis + vector + pg_trgm + unaccent (db/structure.sql).
+      # Публичного образа с postgis И pgvector одновременно нет, поэтому
+      # `services:` не подходит — собираем свой (тот же Dockerfile.postgres, что
+      # в проде и в bin/rb) и поднимаем вручную.
+      - name: Build PostGIS + pgvector image
+        run: docker build -f Dockerfile.postgres -t victory-ci-postgres .
+
+      - name: Start Postgres
+        # fsync=off — БД живёт минуты и одноразовая; без этого DatabaseCleaner
+        # упирается в statement_timeout на TRUNCATE сотни таблиц.
+        #
+        # trust вместо пароля: контейнер слушает только внутри job'а и умирает
+        # вместе с ним, поэтому пароль тут ничего не защищает — зато
+        # захардкоженный в workflow он неотличим от настоящего и валит
+        # secret-сканер. Нет пароля — нет и вопроса.
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -e POSTGRES_DB=viktory_realty_test \
+            -p 5432:5432 \
+            victory-ci-postgres \
+            postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+          for i in $(seq 1 60); do
+            docker exec ci-postgres pg_isready -U postgres && exit 0
+            sleep 2
+          done
+          echo 'Postgres не поднялся' >&2
+          docker logs ci-postgres
+          exit 1
+
+      - name: Start Redis
+        run: docker run -d --name ci-redis -p 6379:6379 redis:7-alpine
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          # Honours .ruby-version (3.3.6) / Gemfile
+          bundler-cache: true
+
+      # structure.sql грузится через psql — нужен клиент мажорной версии 15.
+      - name: Install postgresql-client
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Prepare test database
+        env: &rspec_env
+          RAILS_ENV: test
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USERNAME: postgres
+          # Пароля нет намеренно — postgres поднят с trust-аутентификацией.
+          # database.yml берёт ENV.fetch('DATABASE_PASSWORD', '').
+          DATABASE_NAME: viktory_realty_test
+          REDIS_URL: redis://localhost:6379/0
+          # DatabaseCleaner считает «удалённым» любой хост кроме localhost;
+          # здесь БД одноразовая и живёт внутри job.
+          DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+          # Не токен и не похоже на токен: сеть в спеках закрыта WebMock'ом
+          # (spec/support/external_services.rb), наружу никто не ходит. Значение
+          # нужно лишь потому, что Telegram::Client отказывается стартовать с
+          # пустым, — поэтому явная заглушка вместо чего-то похожего на секрет.
+          TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          # Llm::OmniClient падает в initialize, если любая из двух пуста —
+          # то есть спеки не могут даже СОЗДАТЬ объект без конфига LLM-шлюза.
+          # Локально значения приходят из .env, в CI его нет. Заглушки, наружу
+          # никто не ходит.
+          OMNIROUTE_BASE_URL: http://llm.invalid/v1
+          OMNIROUTE_API_KEY: not-a-key-webmock-blocks-network
+        run: bin/rails db:test:prepare
+
+      - name: Run RSpec
+        env: *rspec_env
+        run: bundle exec rspec --format progress

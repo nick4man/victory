@@ -30,7 +30,9 @@ RSpec.describe TelegramGroupMessage do
       expect {
         described_class.create!(base_attrs.merge(body: 'duplicate'))
       }.to raise_error(ActiveRecord::RecordInvalid) { |e|
-        expect(e.record.errors.details[:tg_message_id]).to include(error: :taken)
+        # details теперь несут ещё и :value ({error: :taken, value: 1001}),
+        # поэтому точное совпадение хэша больше не проходит — проверяем вхождение.
+        expect(e.record.errors.details[:tg_message_id]).to include(hash_including(error: :taken))
       }
     end
   end

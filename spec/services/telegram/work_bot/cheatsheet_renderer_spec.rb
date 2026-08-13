@@ -27,9 +27,11 @@ RSpec.describe Telegram::WorkBot::CheatsheetRenderer do
       expect(md).to include('📊 <b>Панель управления</b>')
       expect(md).to include('🔍 <b>Поиск')
       expect(md).to include('⚡ <b>Действия')
-      expect(md).to include('📷 <b>Фото в DM</b>')
-      expect(md).to include('🎙 <b>Голос в DM</b>') # director-only (can_voice_distribute)
-      expect(md).to include('📅 <b>Автоматически приходит в DM</b>') # director-only digest
+      # Формулировки переведены с англицизмов на русский («DM» → «личные
+      # сообщения» / «личка»); спек фиксировал прежнюю копирайт-версию.
+      expect(md).to include('📷 <b>Фото в личные сообщения</b>')
+      expect(md).to include('🎙 <b>Голос в личные сообщения</b>') # director-only (can_voice_distribute)
+      expect(md).to include('📅 <b>Приходит автоматически в личку</b>') # director-only digest
     end
 
     it 'инклюдит примеры команд с lead_id для DM' do
@@ -40,8 +42,8 @@ RSpec.describe Telegram::WorkBot::CheatsheetRenderer do
 
     it 'инклюдит free-form search examples' do
       expect(md).to include('Канищево')
-      expect(md).to include('задачи overdue')
-      expect(md).to include('топ-performer')
+      expect(md).to include('какие задачи просрочены')
+      expect(md).to include('кто лучший за месяц')
     end
 
     it 'предлагает закрепить сообщение' do

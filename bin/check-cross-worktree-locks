@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# Показывает claude-локи на файл во ВСЕХ worktree репозитория.
+#
+# После перехода на worktree-per-session tmp/ стал per-worktree — лок,
+# поставленный chat-сессией, из upgrade-worktree напрямую не виден. Обходим
+# через общий .git: `git worktree list` знает про все checkout'ы.
+#
+#   bin/check-cross-worktree-locks app/models/property.rb
+#   bin/check-cross-worktree-locks                        # все локи разом
+#
+# Ключ лока считается той же функцией, что и в хуках (.claude/hooks/lib/locks.sh),
+# то есть по пути, а не по имени файла — иначе `client.rb` из topnlab и yandex
+# выглядели бы одним и тем же локом.
+#
+# Exit code всегда 0: это справка, а не gate. Отказывает в правке
+# pre-edit-lock.sh, здесь только смотрим.
+
+set -euo pipefail
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo 'не git-репозиторий' >&2; exit 1; }
+
+# shellcheck source=../.claude/hooks/lib/locks.sh
+. "$ROOT/.claude/hooks/lib/locks.sh"
+
+# ── Без аргументов: показать всё ────────────────────────────────────────────
+if [ $# -lt 1 ]; then
+  found=0
+  for wt in $(lock_worktrees); do
+    while IFS= read -r lock; do
+      [ -n "$lock" ] || continue
+      found=1
+      printf '🔒 %-45s session=%-8s %s\n' \
+        "$(lock_key_to_path "$(basename "$lock")")" \
+        "$(lock_meta "$lock" session)" \
+        "$(lock_meta "$lock" started)"
+    done < <(lock_files "$wt")
+  done
+  [ "$found" -eq 0 ] && echo '✅ активных локов нет ни в одном worktree'
+  exit 0
+fi
+
+# ── Конкретный файл ─────────────────────────────────────────────────────────
+KEY=$(lock_key "$1" "$ROOT") || { echo "Путь вне репозитория: $1" >&2; exit 1; }
+REL=$(lock_key_to_path "$KEY")
+FOUND=0
+
+for wt in $(lock_worktrees); do
+  LOCK="$wt/tmp/claude-locks/$KEY"
+  [ -f "$LOCK" ] || continue
+  FOUND=1
+  echo "🔒 $REL занят сессией $(lock_meta "$LOCK" session)"
+  echo "   worktree: $wt"
+  echo "   с $(lock_meta "$LOCK" started) ($(lock_age_minutes "$LOCK") мин назад), task=$(lock_meta "$LOCK" task)"
+  lock_is_stale "$LOCK" && echo "   ⏳ протух (>${LOCK_TTL_HOURS}ч) — снимется автоматически при следующей правке"
+done
+
+[ "$FOUND" -eq 0 ] && echo "✅ $REL — локов ни в одном worktree нет"
+
+exit 0
