@@ -72,5 +72,19 @@ Rails.application.configure do
 
   # ActionCable configuration for tests
   config.action_cable.disable_request_forgery_protection = true
+
+  # Tailwind собирается на деплое, `app/assets/builds/*` в git не хранится
+  # (.gitignore:63). Без этого любой request-спек, рендерящий layout, падал
+  # бы 500 на `stylesheet_link_tag "tailwind"` — и локально, и в CI, где
+  # ассеты тоже не собираются. Тестам CSS не нужен: пусть Sprockets отдаёт
+  # путь как есть вместо исключения.
+  #
+  # Цена принята сознательно: fallback-ветка в sprockets-rails 3.5.2
+  # помечена deprecated и однажды будет удалена, а опечатка в имени ассета
+  # больше не уронит request-спек. Альтернатива — собирать ассеты перед
+  # прогоном — добавляет шаг, о котором надо помнить и локально, и в CI;
+  # забытый шаг даёт 500, никак не связанный с правкой. Наличие ассетов —
+  # вопрос деплоя, там и проверяется.
+  config.assets.unknown_asset_fallback = true
 end
 
