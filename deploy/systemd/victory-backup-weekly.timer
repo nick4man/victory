@@ -1,0 +1,12 @@
+[Unit]
+Description=Еженедельный бэкап victory62 (файлы и проверка восстановления)
+
+[Timer]
+# Через час после ежедневного: к этому моменту свежий дамп уже лежит, и
+# проверка восстановления работает именно с ним.
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

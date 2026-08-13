@@ -1,0 +1,16 @@
+[Unit]
+Description=Бэкап victory62 — файлы, проверка восстановления, сводка
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=q
+Group=q
+ExecStartPre=/usr/bin/mkdir -p /var/backups/victory/logs
+ExecStart=/usr/local/bin/victory-backup weekly
+StandardOutput=append:/var/backups/victory/logs/weekly.log
+StandardError=append:/var/backups/victory/logs/weekly.log
+# Снапшот 3.2 ГБ плюс поднятие одноразового PostgreSQL для проверки — часа хватает
+# с запасом, но дефолтных 90 секунд не хватило бы.
+TimeoutStartSec=3600

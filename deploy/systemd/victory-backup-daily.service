@@ -1,0 +1,24 @@
+[Unit]
+Description=Бэкап victory62 — БД и секреты
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=q
+Group=q
+# /usr/local/bin/victory-backup. ПОКА ЭТО КОПИЯ, а не симлинк на
+# /home/q/victory/bin/backup — значит правки в репозитории сами сюда НЕ
+# приезжают: после мержа скрипт нужно переустановить (см. restore.md,
+# раздел «Установка и обновление»). Симлинк поставить можно только после
+# того, как файл появится в main.
+# systemd открывает файл лога ДО запуска скрипта и каталог сам не создаёт —
+# на восстановленной машине юнит упал бы с 208/STDOUT, не напечатав ни строки.
+ExecStartPre=/usr/bin/mkdir -p /var/backups/victory/logs
+ExecStart=/usr/local/bin/victory-backup all
+StandardOutput=append:/var/backups/victory/logs/daily.log
+StandardError=append:/var/backups/victory/logs/daily.log
+# Ежедневный прогон включает offsite, а первая выгрузка storage — 3.2 ГБ.
+# При 1800 systemd слал бы SIGTERM посреди rclone: уведомление о провале не
+# успевало бы уйти, в журнале оставался бы только `Result: timeout`.
+TimeoutStartSec=7200

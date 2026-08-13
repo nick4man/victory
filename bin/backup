@@ -1,0 +1,480 @@
+#!/usr/bin/env bash
+#
+# Резервное копирование прода victory62.
+#
+#   bin/backup db          дамп PostgreSQL → gpg
+#   bin/backup secrets     .env + credentials → gpg
+#   bin/backup files       storage: локальный снапшот (+ offsite, если включён)
+#   bin/backup all         БД и секреты; это вызывает ежедневный таймер
+#   bin/backup weekly      файлы, проверка восстановления, сводка
+#   bin/backup verify      восстановить последний дамп в одноразовую БД и сверить
+#   bin/backup restore     интерактивное восстановление
+#   bin/backup status      что есть, когда сделано, сколько весит
+#
+# Дизайн: docs/superpowers/specs/2026-08-09-backups-design.md
+# План:   docs/superpowers/plans/2026-08-09-backups.md
+set -euo pipefail
+
+# 077 обязателен. Снапшот storage — 21 440 файлов клиентских документов, и
+# лежат они РАСШИФРОВАННЫМИ: оригинал закрыт правами 0700 на /home/q, а копия
+# по умолчанию легла бы 0755 и стала доступна любому локальному пользователю и
+# любому скомпрометированному сервису. Тот же PR обосновывает выбор хранилища
+# паспортами в client_documents и 152-ФЗ — открывать их на чтение здесь было бы
+# прямым противоречием.
+umask 077
+
+CONFIG_FILE="${BACKUP_CONFIG:-/etc/victory-backup/backup.env}"
+
+log()  { printf '%s %s\n' "$(date '+%d.%m.%y %H:%M:%S')" "$*"; }
+die()  { log "ОШИБКА: $*" >&2; exit 1; }
+ts()   { date '+%d.%m.%y-%H%M'; }
+
+load_config() {
+  [ -r "$CONFIG_FILE" ] || die "нет конфига $CONFIG_FILE (образец: config/backup.env.example)"
+  # set -a — чтобы переменные конфига стали экспортируемыми и были видны
+  # вызываемым командам (rclone читает свои настройки из окружения).
+  set -a
+  # shellcheck source=/dev/null
+  . "$CONFIG_FILE"
+  set +a
+  : "${BACKUP_ROOT:?не задан BACKUP_ROOT}"
+  : "${DB_CONTAINER:?не задан DB_CONTAINER}"
+  : "${DB_NAME:?не задан DB_NAME}"
+  : "${APP_ROOT:?не задан APP_ROOT}"
+  : "${PASSPHRASE_FILE:?не задан PASSPHRASE_FILE}"
+}
+
+# Каталоги создаём заранее, чтобы подкоманды не дублировали mkdir.
+ensure_dirs() {
+  mkdir -p "$BACKUP_ROOT"/{db,secrets,files,logs,tmp}
+  # Идемпотентно чиним права, если каталог создавали до появления umask выше.
+  chmod 0700 "$BACKUP_ROOT" 2>/dev/null || true
+}
+
+# Один прогон за раз. Без этого ручной `bin/backup all` поверх ночного таймера
+# даёт два `gpg --output` в один путь (unique_path проверяет существование, но
+# между проверкой и созданием файла имя ничем не удержано) — получается
+# перемешанный дамп, который проходит и порог размера, и лог «готово». Для
+# files это ещё и два `rsync --delete` в один каталог.
+#
+# Дескриптор 9 держится до конца процесса, снимать блокировку вручную не нужно.
+acquire_lock() {
+  exec 9>"$BACKUP_ROOT/.lock"
+  flock -n 9 || die 'другой прогон уже идёт — выхожу'
+}
+
+# Размер файла — по stat, а НЕ по `du`. На ZFS отложенная запись приводит к тому,
+# что сразу после создания файла du показывает выделенные блоки (512 байт) вместо
+# настоящего размера. В логе это выглядит как пустой бэкап — ровно та ложная
+# тревога, которой быть не должно.
+human_size() { numfmt --to=iec --suffix=B < <(stat -c %s "$1"); }
+
+# Пороги «слишком мало, чтобы быть правдой». Нужны потому, что gpg честно
+# зашифрует и пустой поток: при недоступной БД на диск лёг бы 70-байтовый файл,
+# формально непустой. Значения с большим запасом ниже реальных (дамп ~10 МБ,
+# архив секретов ~4.5 КБ) — ловим обрыв, а не колебания объёма.
+MIN_DUMP_BYTES=$((100 * 1024))
+MIN_SECRETS_BYTES=$((1024))
+
+# Метка времени имеет минутную гранулярность, поэтому два запуска внутри одной
+# минуты дали бы одно имя: второй молча затёр бы первый, а для снапшотов ещё и
+# --link-dest указал бы сам на себя. Добавляем -2, -3 и так далее.
+unique_path() {
+  # Объявления раздельные: внутри одного `local` переменная ещё не видна
+  # следующему присваиванию, и под `set -u` это падает.
+  local base="$1"
+  local suffix="${2:-}"
+  local candidate="$base$suffix"
+  local n=2
+  while [ -e "$candidate" ]; do
+    candidate="$base-$n$suffix"
+    n=$((n + 1))
+  done
+  printf '%s' "$candidate"
+}
+
+# Шифруем поток, а не готовый файл: незашифрованный дамп не появляется на диске
+# даже на секунду. gpg симметричный — пар ключей не нужно, пароль один.
+encrypt_to() {
+  local dest="$1"
+  gpg --batch --yes --quiet \
+      --symmetric --cipher-algo AES256 \
+      --passphrase-file "$PASSPHRASE_FILE" \
+      --output "$dest"
+}
+
+# Оставляем N самых свежих файлов, остальные удаляем. Сортировка по времени
+# модификации, а не по имени: имя содержит dd.MM.yy и лексикографически по
+# возрасту не упорядочивается.
+# shellcheck disable=SC2012  # имена генерируем сами, нужна сортировка по mtime
+prune() {
+  local dir="$1" keep="$2" file
+  ls -t "$dir" 2>/dev/null | tail -n "+$((keep + 1))" | while read -r file; do
+    log "  ротация: удаляю $file"
+    rm -f -- "$dir/$file"
+  done
+}
+
+# @param $1 'no-prune' — не ротировать после дампа. Нужно страховочному дампу
+#   перед восстановлением: ротация удалила бы самую старую копию, а это ровно та,
+#   которую восстанавливают, когда свежие признаны негодными. Точка
+#   восстановления исчезала бы в момент попытки ей воспользоваться.
+cmd_db() {
+  load_config; ensure_dirs
+  local mode="${1:-}"
+  local dest; dest=$(unique_path "$BACKUP_ROOT/db/viktory-$(ts)" ".dump.gpg")
+  log "дамп $DB_NAME из $DB_CONTAINER"
+
+  # -Fc: сжатый custom format, позволяет восстанавливать отдельные таблицы.
+  # Идёт по сети внутри контейнера — прод не останавливается.
+  #
+  # Код возврата проверяем ЯВНО, а не полагаемся на set -e: вызывающий
+  # (cmd_all) оборачивает нас в `( ... ) || ...`, а внутри такой конструкции
+  # bash отключает set -e для всех вложенных команд. Без явной проверки
+  # недоступный контейнер давал бы gpg пустой поток, а на диск ложился бы
+  # 70-байтовый «дамп», и скрипт рапортовал бы успех.
+  if ! docker exec "$DB_CONTAINER" \
+        pg_dump -U "$DB_USER" -Fc --no-owner --no-acl "$DB_NAME" \
+      | encrypt_to "$dest"; then
+    rm -f "$dest"
+    die "pg_dump не отработал (контейнер $DB_CONTAINER, база $DB_NAME)"
+  fi
+
+  # Порог, а не просто «непустой». Схема victory62 — 900+ объектов, её дамп не
+  # бывает меньше десятков килобайт. Всё, что мельче, — признак обрыва.
+  local size; size=$(stat -c %s "$dest")
+  if [ "$size" -lt "$MIN_DUMP_BYTES" ]; then
+    rm -f "$dest"
+    die "дамп подозрительно мал: $size Б при пороге $MIN_DUMP_BYTES Б — вероятно, обрыв"
+  fi
+  log "готово: $dest ($(human_size "$dest"))"
+  [ "$mode" = 'no-prune' ] || prune "$BACKUP_ROOT/db" "${KEEP_DAILY:-7}"
+}
+
+cmd_secrets() {
+  load_config; ensure_dirs
+  local dest; dest=$(unique_path "$BACKUP_ROOT/secrets/secrets-$(ts)" ".tar.gpg")
+  log 'архивирую секреты'
+
+  # Относительные пути (-C): при восстановлении не тянем /home/q/victory наружу.
+  # Отсутствующее пропускаем молча — credentials может не быть.
+  local items=()
+  [ -f "$APP_ROOT/.env" ]                 && items+=(.env)
+  [ -d "$APP_ROOT/config/credentials" ]   && items+=(config/credentials)
+  [ -f "$APP_ROOT/config/master.key" ]    && items+=(config/master.key)
+  [ ${#items[@]} -gt 0 ] || die "в $APP_ROOT нечего архивировать"
+
+  # Явная проверка — по той же причине, что в cmd_db: set -e здесь не работает.
+  if ! tar -C "$APP_ROOT" -cf - "${items[@]}" | encrypt_to "$dest"; then
+    rm -f "$dest"
+    die "не удалось заархивировать секреты из $APP_ROOT"
+  fi
+
+  local size; size=$(stat -c %s "$dest")
+  if [ "$size" -lt "$MIN_SECRETS_BYTES" ]; then
+    rm -f "$dest"
+    die "архив секретов подозрительно мал: $size Б при пороге $MIN_SECRETS_BYTES Б"
+  fi
+  log "готово: $dest ($(human_size "$dest")), файлов: ${#items[@]}"
+  prune "$BACKUP_ROOT/secrets" "${KEEP_DAILY:-7}"
+}
+
+cmd_files() {
+  load_config; ensure_dirs
+  local src="$APP_ROOT/storage"
+  [ -d "$src" ] || die "нет каталога $src"
+
+  local dest; dest=$(unique_path "$BACKUP_ROOT/files/storage-$(ts)")
+  local link_arg=()
+  # --link-dest: неизменившиеся файлы становятся жёсткими ссылками на предыдущий
+  # снапшот. Четыре недельных копии по 3.2 ГБ занимают немногим больше одной.
+  [ -d "$BACKUP_ROOT/files/latest" ] && link_arg=(--link-dest="$BACKUP_ROOT/files/latest")
+
+  log "снапшот storage → $(basename "$dest")"
+  # Код возврата проверяем ЯВНО — по той же причине, что в cmd_db: вызывающий
+  # оборачивает нас в `( ... ) || ...`, а внутри такой конструкции bash
+  # отключает set -e. Без проверки заполнившийся на середине диск давал бы
+  # обрезанный снапшот, на который тут же перевешивался бы latest, следующий
+  # --link-dest строился бы от битого, prune удалял бы последний хороший, а в
+  # Telegram уходила зелёная сводка. При включённом offsite порча уезжала бы в
+  # облако тем же прогоном.
+  if ! rsync -a --delete "${link_arg[@]}" "$src/" "$dest/"; then
+    # Недоделанный снапшот удаляем: иначе он остаётся в каталоге и участвует в
+    # ротации наравне с полными, вытесняя хорошие копии.
+    rm -rf -- "$dest"
+    die "rsync не отработал, снапшот $(basename "$dest") неполон — latest не переключаю"
+  fi
+  ln -sfn "$dest" "$BACKUP_ROOT/files/latest"
+
+  # Два числа: сколько данных в снапшоте (apparent) и сколько реально занято
+  # всеми снапшотами вместе. Второе меньше первого ровно настолько, насколько
+  # сработали жёсткие ссылки — это и есть проверка, что --link-dest жив.
+  log "готово: в снапшоте $(du -sh --apparent-size "$dest" | cut -f1), всего на диске $(du -sh "$BACKUP_ROOT/files" | cut -f1)"
+  prune_files_snapshots
+}
+
+# Отдельно от prune(): здесь каталоги, а не файлы, и есть симлинк latest,
+# который трогать нельзя.
+prune_files_snapshots() {
+  local keep="${KEEP_WEEKLY:-4}" dir
+  find "$BACKUP_ROOT/files" -maxdepth 1 -type d -name 'storage-*' -printf '%T@ %p\n' \
+    | sort -rn | tail -n "+$((keep + 1))" | cut -d' ' -f2- | while read -r dir; do
+      log "  ротация: удаляю $(basename "$dir")"
+      rm -rf -- "$dir"
+    done
+}
+
+# Таблицы для сверки: не все 100+, а те, потеря которых видна бизнесу.
+VERIFY_TABLES='properties users inquiries conversations property_valuations'
+
+# @param $1 путь к дампу; по умолчанию самый свежий.
+# Аргумент обязателен по смыслу: runbook велит при неудачной проверке взять
+# копию постарше — а раньше такой запуск молча проверял всё тот же свежий файл
+# и печатал «проверка пройдена» про другой дамп.
+cmd_verify() {
+  load_config; ensure_dirs
+  local dump="${1:-}"
+  if [ -n "$dump" ]; then
+    [ -r "$dump" ] || die "не читается: $dump"
+  else
+    dump=$(ls -t "$BACKUP_ROOT"/db/*.dump.gpg 2>/dev/null | head -1 || true)
+  fi
+  [ -n "$dump" ] || die 'нет ни одного дампа'
+  log "проверяю $(basename "$dump")"
+
+  local cname="victory-verify-$$"
+  # Тот же образ, что и в проде — иначе не проверить расширения.
+  docker run -d --rm --name "$cname" \
+    -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=verify \
+    viktory-postgres-pgvector:pg15-postgis35 >/dev/null
+  # shellcheck disable=SC2064
+  trap "docker rm -f '$cname' >/dev/null 2>&1 || true" EXIT
+
+  # Образ postgres при первом запуске поднимает ВРЕМЕННЫЙ сервер для initdb, а
+  # затем перезапускает его. pg_isready отвечает успехом уже на временный, и
+  # восстановление, начатое в этот момент, обрывается на середине с «terminating
+  # connection due to administrator command». Поэтому сначала ждём в логах
+  # отметку о завершении инициализации, и только потом проверяем готовность.
+  local i
+  for i in $(seq 1 90); do
+    docker logs "$cname" 2>&1 | grep -q 'init process complete' && break
+    [ "$i" = 90 ] && die 'контейнер проверки не инициализировался за 90 с'
+    sleep 1
+  done
+  for i in $(seq 1 30); do
+    docker exec "$cname" pg_isready -U postgres -q 2>/dev/null && break
+    [ "$i" = 30 ] && die 'постоянный сервер не принял соединения за 30 с'
+    sleep 1
+  done
+
+  log '  восстанавливаю дамп'
+  # pg_restore возвращает ненулевой код на безобидных warning'ах (отсутствующие
+  # роли, уже существующие расширения), поэтому судим по фактическому
+  # результату ниже, а не по коду возврата.
+  gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$dump" 2>/dev/null \
+    | docker exec -i "$cname" pg_restore -U postgres -d verify --no-owner --no-acl \
+    >"$BACKUP_ROOT/tmp/verify-restore.log" 2>&1 || true
+
+  # postgis в этом образе присутствует в свежесозданной базе и без дампа, поэтому
+  # сам по себе он ничего не доказывает — реальную нагрузку несут vector, pg_trgm
+  # и unaccent, которые появляются только из восстановленных данных. Проверено на
+  # намеренно битом дампе: postgis нашёлся, остальные три — нет.
+  log '  проверяю расширения'
+  local ext missing=''
+  for ext in postgis vector pg_trgm unaccent; do
+    docker exec "$cname" psql -U postgres -d verify -tAc \
+      "SELECT 1 FROM pg_extension WHERE extname='$ext'" 2>/dev/null | grep -q 1 \
+      || missing="$missing $ext"
+  done
+  [ -z "$missing" ] || die "в восстановленной базе нет расширений:$missing"
+
+  log '  сверяю количество строк'
+  local t live restored bad=''
+  for t in $VERIFY_TABLES; do
+    # Отличаем «в проде ноль строк» от «прод не опрашивается»: во втором
+    # случае live схлопывался в 0, порог не срабатывал ни для одной таблицы, и
+    # печаталось «проверка пройдена» при полностью недоступной базе.
+    if ! live=$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -tAc \
+          "SELECT COUNT(*) FROM $t" 2>/dev/null | tr -d ' '); then
+      die "не удалось опросить боевую базу ($t) — сверять не с чем"
+    fi
+    restored=$(docker exec "$cname" psql -U postgres -d verify -tAc \
+      "SELECT COUNT(*) FROM $t" 2>/dev/null | tr -d ' ' || echo 0)
+    live=${live:-0}; restored=${restored:-0}
+    log "    $t: копия=$restored прод=$live"
+    # Тревога только если в КОПИИ меньше — признак усечённого дампа. Обратное
+    # (в проде стало меньше) законно: soft-delete, архивация, удаление по 152-ФЗ.
+    if [ "$live" -gt 0 ] && [ "$restored" -lt $((live * 90 / 100)) ]; then
+      bad="$bad $t(копия=$restored прод=$live)"
+    fi
+  done
+  [ -z "$bad" ] || die "в копии существенно меньше строк:$bad"
+
+  log 'проверка пройдена'
+}
+
+# Через curl, а не через Rails/Sidekiq: бэкап обязан работать и тогда, когда
+# приложение лежит — именно тогда он и нужен.
+#
+# Переводы строк передаём настоящими символами: --data-urlencode кодирует их сам.
+# Писать «%0A» здесь нельзя — оно уехало бы в сообщение буквально.
+notify() {
+  local text="$1"
+  if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_STAFF_CHAT_ID:-}" ]; then
+    log 'уведомления не настроены, пропускаю'
+    return 0
+  fi
+  # Ответ API проверяем: канал уведомлений — единственный способ узнать о провале,
+  # и его собственная поломка не должна остаться незамеченной. Токен в лог не
+  # попадает: печатаем только код и признак ok.
+  local code
+  code=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_STAFF_CHAT_ID}" \
+    --data-urlencode "text=${text}" 2>/dev/null) || code='нет ответа'
+  if [ "$code" = 200 ]; then
+    log '  уведомление отправлено'
+  else
+    log "  НЕ УДАЛОСЬ отправить уведомление (HTTP $code)"   # но бэкап не валим
+  fi
+}
+
+# Ежедневно: БД и секреты.
+#
+# Шаги вызываются в подоболочке ( ... ). Внутри cmd_db/cmd_secrets ошибка идёт
+# через die(), а die делает `exit 1` — он завершил бы ВЕСЬ скрипт, и ветка
+# `|| failed=...` не отработала бы никогда, то есть уведомление о провале не
+# ушло бы ни разу.
+cmd_all() {
+  load_config; ensure_dirs; acquire_lock
+  local failed=''
+  ( cmd_db )      || failed="$failed БД"
+  ( cmd_secrets ) || failed="$failed секреты"
+  ( offsite_sync ) || failed="$failed offsite"
+  if [ -n "$failed" ]; then
+    notify "$(printf '🔴 Бэкап victory62 провалился\nне сделано:%s\n%s' "$failed" "$(date '+%d.%m.%y %H:%M')")"
+    die "провал:$failed"
+  fi
+  log 'ежедневный бэкап готов'
+}
+
+# Еженедельно: файлы, проверка восстановления, сводка.
+cmd_weekly() {
+  load_config; ensure_dirs; acquire_lock
+  local failed=''
+  ( cmd_files )    || failed="$failed файлы"
+  ( cmd_verify )   || failed="$failed проверка-восстановления"
+  ( offsite_sync ) || failed="$failed offsite"
+  if [ -n "$failed" ]; then
+    notify "$(printf '🔴 Еженедельный бэкап victory62 провалился\nне сделано:%s\n%s' "$failed" "$(date '+%d.%m.%y %H:%M')")"
+    die "провал:$failed"
+  fi
+  # Сводка при УСПЕХЕ обязательна: молчащий бэкап неотличим от сломанного.
+  notify "$(printf '🟢 Бэкап victory62 за неделю\n\n%s' "$(cmd_status)")"
+  log 'еженедельный бэкап готов'
+}
+
+# Синхронизация в российский S3 через rclone crypt.
+#
+# Почему sync, а не заливка архива: crypt шифрует ПОФАЙЛОВО, поэтому синхронизация
+# остаётся инкрементальной — летят только изменившиеся файлы. Один зашифрованный
+# tar был бы новым объектом целиком, то есть 3.2 ГБ в облако каждую неделю.
+#
+# Настройка remote: docs/runbooks/offsite-setup.md
+offsite_sync() {
+  [ "${OFFSITE_ENABLED:-0}" = 1 ] || { log 'offsite выключен, пропускаю'; return 0; }
+  : "${OFFSITE_REMOTE:?не задан OFFSITE_REMOTE}"
+  command -v rclone >/dev/null || die 'rclone не установлен, а offsite включён'
+
+  log "offsite → $OFFSITE_REMOTE"
+  local failed=''
+  # Дампы и секреты уже зашифрованы gpg; crypt поверх — второй слой, он дёшев и
+  # скрывает заодно имена файлов.
+  rclone sync "$BACKUP_ROOT/db"      "$OFFSITE_REMOTE/db"      --transfers 4 --stats-one-line \
+    || failed="$failed db"
+  rclone sync "$BACKUP_ROOT/secrets" "$OFFSITE_REMOTE/secrets" --transfers 4 --stats-one-line \
+    || failed="$failed secrets"
+  # Файлы — только последний снапшот: историю версий держит versioning на bucket,
+  # заливать все четыре локальных снапшота бессмысленно, они почти идентичны.
+  if [ -d "$BACKUP_ROOT/files/latest" ]; then
+    rclone sync "$BACKUP_ROOT/files/latest/" "$OFFSITE_REMOTE/storage" \
+      --transfers 8 --stats-one-line || failed="$failed storage"
+  fi
+
+  [ -z "$failed" ] || die "offsite не выгружен:$failed"
+  log 'offsite готов'
+}
+
+cmd_restore() {
+  load_config; ensure_dirs
+  local target="${1:-}"
+
+  if [ -z "$target" ]; then
+    printf 'Доступные копии БД (свежие сверху):\n\n'
+    local f
+    while read -r f; do
+      [ -n "$f" ] || continue
+      printf '  %s  %8s  %s\n' \
+        "$(date -r "$f" '+%d.%m.%y %H:%M')" "$(human_size "$f")" "$f"
+    done < <(ls -t "$BACKUP_ROOT"/db/*.dump.gpg 2>/dev/null || true)
+    printf '\nЗапуск: bin/backup restore <путь-к-файлу>\n'
+    printf 'Проверить копию, не трогая прод: bin/backup verify\n'
+    return 0
+  fi
+
+  [ -r "$target" ] || die "не читается: $target"
+
+  printf '\n⚠️  ВОССТАНОВЛЕНИЕ В БОЕВУЮ БАЗУ %s (контейнер %s)\n' "$DB_NAME" "$DB_CONTAINER"
+  printf 'Текущие данные будут ЗАМЕЩЕНЫ содержимым %s\n' "$(basename "$target")"
+  printf 'Введите имя базы для подтверждения: '
+  local answer; read -r answer
+  [ "$answer" = "$DB_NAME" ] || die 'не подтверждено, выхожу'
+
+  # Страховочный дамп перед перезаписью: если восстановили не то, откатиться
+  # будет некуда — старые данные к этому моменту уже стёрты.
+  log 'делаю страховочный дамп текущего состояния'
+  # no-prune: ротация выбросила бы самую старую копию — а именно её и
+  # восстанавливают, когда свежие оказались негодными.
+  cmd_db no-prune
+
+  log 'восстанавливаю'
+  if ! gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$target" 2>/dev/null \
+      | docker exec -i "$DB_CONTAINER" \
+          pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists --no-owner --no-acl; then
+    die 'восстановление завершилось с ошибкой — смотрите вывод выше'
+  fi
+  log 'готово; перезапустите приложение'
+}
+
+cmd_status() {
+  load_config
+  printf 'Хранилище: %s\n\n' "$BACKUP_ROOT"
+  local d size last
+  for d in db secrets files; do
+    # --apparent-size по той же причине, что и human_size(): свежие файлы на ZFS
+    # показывают заниженный размер на диске.
+    size=$(du -sh --apparent-size "$BACKUP_ROOT/$d" 2>/dev/null | cut -f1 || true)
+    last=$(ls -t "$BACKUP_ROOT/$d" 2>/dev/null | head -1 || true)
+    printf '%-9s %7s  последний: %s\n' "$d" "${size:---}" "${last:-нет копий}"
+  done
+  printf '\nOffsite: %s\n' \
+    "$([ "${OFFSITE_ENABLED:-0}" = 1 ] && echo "включён → ${OFFSITE_REMOTE:-?}" || echo 'выключен')"
+  printf 'Свободно на %s: %s\n' "$BACKUP_ROOT" \
+    "$(df -h "$BACKUP_ROOT" 2>/dev/null | awk 'NR==2{print $4}')"
+}
+
+cmd_help() { sed -n '3,13p' "$0"; }
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  db)              cmd_db "$@" ;;
+  files)           cmd_files "$@" ;;
+  secrets)         cmd_secrets "$@" ;;
+  all)             cmd_all "$@" ;;
+  weekly)          cmd_weekly "$@" ;;
+  verify)          cmd_verify "$@" ;;
+  restore)         cmd_restore "$@" ;;
+  status)          cmd_status "$@" ;;
+  help|--help|-h)  cmd_help ;;
+  *) die "неизвестная команда '$cmd'. См. bin/backup help" ;;
+esac
