@@ -34,13 +34,18 @@ class MagicLinkToken < ApplicationRecord
     where(consumed_at: nil).where('expires_at > ?', Time.current)
   }
 
-  def self.generate!(identifier:, identifier_type: 'email', scope: 'login', request: nil)
+  # @param ttl [ActiveSupport::Duration] срок жизни; по умолчанию 30 минут.
+  #   Переопределяется только там, где ссылку доставляет не система, а человек:
+  #   агент пересылает её собственнику в мессенджер и ждёт, пока тот откроет.
+  #   Тридцати минут на это не хватает — ссылка успевает протухнуть до первого
+  #   клика, и агент возвращается с «не работает».
+  def self.generate!(identifier:, identifier_type: 'email', scope: 'login', request: nil, ttl: TTL)
     create!(
       token:           SecureRandom.urlsafe_base64(32),
       identifier:      normalize(identifier, identifier_type),
       identifier_type: identifier_type,
       scope:           scope,
-      expires_at:      TTL.from_now,
+      expires_at:      ttl.from_now,
       ip_address:      request&.remote_ip,
       user_agent:      request&.user_agent.to_s.first(255).presence
     )
