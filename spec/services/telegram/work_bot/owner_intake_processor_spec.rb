@@ -24,6 +24,10 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
     tg_user.set_pending_action!(type: 'owner_intake', data: { 'property_id' => property.id })
   end
 
+  def expect_email_pending!
+    tg_user.set_pending_action!(type: 'owner_email', data: { 'property_id' => property.id })
+  end
+
   describe '.applies?' do
     it 'срабатывает только при ожидании контакта' do
       expect(described_class.applies?(msg(text: 'Светлана 9001234567'))).to be false
@@ -215,6 +219,89 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
       expect(property.reload.owner_user_id).to eq(first_owner.id)
       expect(tg_client).to have_received(:send_message).with(
         a_string_matching(/уже указан собственник/), any_args
+      )
+    end
+  end
+
+  # Вторая ветка ожидания. До неё бот просил дослать почту, но состояния не
+  # ставил: ответ агента проваливался в LLM-ассистента, а почта живого человека
+  # уходила внешнему провайдеру. Прогон 14.08.26 поймал это первым же сообщением.
+  describe 'приём почты после неудачного приглашения' do
+    let!(:owner) do
+      User.new(first_name: 'Светлана', last_name: 'Иванова', role: :client,
+               phone: '+79001234567', active: true).tap { |u| u.save!(validate: false) }
+    end
+
+    before do
+      property.update_column(:owner_user_id, owner.id)
+      expect_email_pending!
+    end
+
+    it 'перехватывает ответ агента' do
+      expect(described_class.applies?(msg(text: 'svetlana@example.com'))).to be true
+    end
+
+    it 'сохраняет почту собственнику' do
+      allow(CabinetInvitationDispatcher).to receive(:call).and_return(
+        CabinetInvitationDispatcher::Result.new(channels_attempted: [:email],
+                                                channels_succeeded: [:email], errors: [])
+      )
+
+      described_class.call(msg(text: 'svetlana@example.com'), client: tg_client)
+
+      expect(owner.reload.email).to eq('svetlana@example.com')
+    end
+
+    it 'повторяет отправку приглашения — это и было обещано' do
+      allow(CabinetInvitationDispatcher).to receive(:call).and_return(
+        CabinetInvitationDispatcher::Result.new(channels_attempted: [:email],
+                                                channels_succeeded: [:email], errors: [])
+      )
+
+      described_class.call(msg(text: 'Почта: svetlana@example.com'), client: tg_client)
+
+      expect(CabinetInvitationDispatcher).to have_received(:call)
+        .with(owner, property, channels: %i[email tg])
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Приглашение отправлено/), any_args
+      )
+      expect(tg_user.reload.pending_action).to be_nil
+    end
+
+    # Опечатка не должна отбрасывать агента к началу: он уже согласился
+    # прислать почту, и терять этот шаг дорого.
+    it 'не сбрасывает ожидание, когда почты в сообщении нет' do
+      described_class.call(msg(text: 'не помню'), client: tg_client)
+
+      expect(tg_user.reload.pending_action).to be_present
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Не нашёл почту/), any_args
+      )
+    end
+
+    it 'внятно отвечает, когда почта занята другой учёткой' do
+      create(:user, role: :client, email: 'busy@example.com')
+
+      described_class.call(msg(text: 'busy@example.com'), client: tg_client)
+
+      expect(owner.reload.email).not_to eq('busy@example.com')
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/уже привязана к другой учётке/), any_args
+      )
+    end
+
+    # Сохранить почту и промолчать про неудачу — та же ошибка, что чинили в
+    # самом приглашении: агент счёл бы объект сделанным.
+    it 'не выдаёт сохранение почты за отправку' do
+      allow(CabinetInvitationDispatcher).to receive(:call).and_return(
+        CabinetInvitationDispatcher::Result.new(channels_attempted: [:email],
+                                                channels_succeeded: [], errors: ['email: smtp'])
+      )
+
+      described_class.call(msg(text: 'svetlana@example.com'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Почта сохранена, но приглашение всё равно не ушло/), any_args
       )
     end
   end

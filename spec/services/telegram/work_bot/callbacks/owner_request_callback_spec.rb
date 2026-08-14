@@ -15,7 +15,8 @@ RSpec.describe Telegram::WorkBot::Callbacks::OwnerRequestCallback do
 
   let(:tg_client) do
     instance_double(Telegram::Client, send_message: { 'message_id' => 1 },
-                                      answer_callback_query: { 'ok' => true })
+                                      answer_callback_query: { 'ok' => true },
+                                      edit_message_reply_markup: { 'ok' => true })
   end
 
   def build_cb(data)
@@ -49,6 +50,35 @@ RSpec.describe Telegram::WorkBot::Callbacks::OwnerRequestCallback do
     it 'ставит отсрочку' do
       invoke('snooze')
       expect(property.reload.owner_request_snoozed_until).to be > 6.days.from_now
+    end
+
+    # Прогон 14.08.26: TLS к Telegram оборвался уже после записи в базу.
+    # Отсрочка встала, всплывающая подсказка не показалась, кнопки остались
+    # живыми — агент не мог узнать, засчитано ли нажатие.
+    it 'оставляет след в переписке, а не только всплывающей подсказкой' do
+      invoke('snooze')
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Отложено до \d{2}\.\d{2}\.\d{2}/), any_args
+      )
+    end
+
+    it 'снимает кнопки, чтобы повторное нажатие не сдвинуло срок ещё раз' do
+      invoke('snooze')
+
+      expect(tg_client).to have_received(:edit_message_reply_markup)
+        .with(hash_including(message_id: 7, reply_markup: { inline_keyboard: [] }))
+    end
+
+    # Клавиатура — украшение, подтверждение — суть. Обрыв на первом не должен
+    # уносить второе.
+    it 'подтверждает, даже если убрать кнопки не удалось' do
+      allow(tg_client).to receive(:edit_message_reply_markup).and_raise(StandardError, 'timeout')
+
+      invoke('snooze')
+
+      expect(property.reload.owner_request_snoozed_until).to be_present
+      expect(tg_client).to have_received(:send_message).with(a_string_matching(/Отложено до/), any_args)
     end
   end
 
@@ -147,6 +177,88 @@ RSpec.describe Telegram::WorkBot::Callbacks::OwnerRequestCallback do
 
       expect(tg_client).to have_received(:answer_callback_query)
         .with('cb_1', hash_including(text: a_string_matching(/Не удалось/), show_alert: true))
+    end
+  end
+
+  # Прогон на живом боте 14.08.26 упёрся ровно сюда: бот писал «пришлите почту
+  # ответным сообщением, и я повторю», состояния ожидания не ставил, и ответ
+  # агента уходил в LLM-ассистента вместе с почтой живого человека.
+  describe 'выход из тупика, когда приглашение не ушло' do
+    let!(:owner) do
+      User.new(first_name: 'Светлана', last_name: 'Иванова', role: :client,
+               phone: '+79001234567', active: true).tap { |u| u.save!(validate: false) }
+    end
+
+    before do
+      property.update_column(:owner_user_id, owner.id)
+      allow(CabinetInvitationDispatcher).to receive(:call).and_return(
+        CabinetInvitationDispatcher::Result.new(channels_attempted: [], channels_succeeded: [], errors: [])
+      )
+    end
+
+    it 'предлагает обе рабочие ветки, а не только несбыточное обещание' do
+      invoke('invite')
+
+      expect(tg_client).to have_received(:send_message) do |_text, opts|
+        actions = opts[:reply_markup][:inline_keyboard].flatten.map { |b| b[:callback_data] }
+        expect(actions).to contain_exactly("owner:email:#{property.id}", "owner:link:#{property.id}")
+      end
+    end
+
+    # Собственники чаще женщины. «У него нет почты» про Светлану Иванову —
+    # первое, что заметил живой человек.
+    it 'не приписывает собственнику мужской род' do
+      invoke('invite')
+
+      sent = []
+      expect(tg_client).to have_received(:send_message) { |text, _opts| sent << text }
+      expect(sent.join("\n")).not_to match(/\bу него\b|\bему\b/)
+    end
+
+    describe 'ввести почту' do
+      it 'ставит ожидание, без которого ответ агента уходил ассистенту' do
+        invoke('email')
+
+        pending = tg_user.reload.pending_action
+        expect(pending['type']).to eq('owner_email')
+        expect(pending.dig('data', 'property_id')).to eq(property.id)
+      end
+    end
+
+    describe 'дать ссылку мне' do
+      it 'работает по одному телефону — без почты и телеграма' do
+        expect { invoke('link') }.to change(MagicLinkToken, :count).by(1)
+
+        expect(tg_client).to have_received(:send_message).with(
+          a_string_matching(%r{/cabinet/verify/}), any_args
+        )
+      end
+
+      # Тридцати минут не хватает: доставляет ссылку человек, а не система.
+      it 'живёт дольше обычной ссылки входа' do
+        invoke('link')
+
+        expect(MagicLinkToken.last.expires_at).to be > 2.hours.from_now
+      end
+
+      # Ссылка пускает в кабинет собственника — тот же агент может открыть её
+      # сам и подписать договор за владельца. Запретить нельзя (это
+      # единственный путь по одному телефону), но след обязан остаться.
+      it 'оставляет в логе, кто и по какому объекту её получил' do
+        allow(Rails.logger).to receive(:warn)
+
+        invoke('link')
+
+        expect(Rails.logger).to have_received(:warn).with(
+          a_string_matching(/ссылка выдана на руки.*agent_tg=#{tg_user.tg_user_id}.*property=#{property.id}/)
+        )
+      end
+
+      it 'отказывается, когда собственника ещё нет' do
+        property.update_column(:owner_user_id, nil)
+
+        expect { invoke('link') }.not_to change(MagicLinkToken, :count)
+      end
     end
   end
 
