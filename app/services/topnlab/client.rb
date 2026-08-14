@@ -207,17 +207,29 @@ module Topnlab
     #
     # @param entity_id [Integer] Topnlab card id
     # @param entity_type [Integer] 2=объект, 3=заявка, 4=услуга
-    # @return [Array<Hash>] list of client records; empty array on error/not-found
+    # Пустой список и сбой интеграции — разные вещи, и раньше метод возвращал на
+    # оба одинаковый []. Из-за этого нельзя было отличить «у объекта в CRM нет
+    # привязанного продавца» от «запрос не прошёл»: сводка ежедневного джоба в
+    # обоих случаях показывала skipped, и три месяца никто не знал, что связей
+    # нет вовсе. Теперь пустой ответ отдаётся пустым, а неуспешный — исключением.
+    #
+    # Вызывающий (Topnlab::OwnerSyncService) ловит ошибки по каждому объекту
+    # отдельно и складывает их в errors сводки, поэтому один сбой не роняет
+    # прогон, но и не растворяется молча.
+    #
+    # @return [Array<Hash>] список клиентов; пустой массив — их действительно нет
+    # @raise [Topnlab::Client::Error] если запрос не прошёл или ответ неуспешен
     def get_clients_by_entity(entity_id:, entity_type: 2)
       body = { key: @api_key, entity_id: entity_id.to_i, entity_type: entity_type.to_i }
       response = http_post_json('/clients/get-by-entity', body)
-      return [] unless response.is_a?(Hash) && %w[ok success].include?(response['status'])
 
-      clients = response.dig('data', 'clients')
-      Array(clients).compact
-    rescue Topnlab::Client::Error => e
-      Rails.logger.warn("[Topnlab] get_clients_by_entity entity_id=#{entity_id}: #{e.message}")
-      []
+      unless response.is_a?(Hash) && %w[ok success].include?(response['status'])
+        status = response.is_a?(Hash) ? response['status'].inspect : response.class.name
+        raise Topnlab::Client::Error,
+              "get-by-entity вернул неуспешный ответ (entity_id=#{entity_id}, status=#{status})"
+      end
+
+      Array(response.dig('data', 'clients')).compact
     end
 
     # POST /public/get-entities  with patch[] body — update fc_* custom fields on an entity.

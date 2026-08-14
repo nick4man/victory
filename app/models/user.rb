@@ -86,6 +86,21 @@ class User < ApplicationRecord
   # consumed/expired для UX вычислений активных токенов.
   has_many :tg_link_tokens, dependent: :destroy
 
+  # Рабочий Telegram сотрудника. Заполняется явным подтверждением директора
+  # (Callbacks::LinkStaffCallback), а не совпадением email: на проде один и тот
+  # же человек заведён в TG и в CRM с разными почтовыми ящиками, из-за чего
+  # уведомления по его объектам не доходили.
+  belongs_to :telegram_user, optional: true
+
+  # Кому бот физически может написать в личку. `dm_chat_id` появляется только
+  # после того, как человек сам открыл диалог с ботом — Telegram не позволяет
+  # писать первым. Без этого рассылка по агенту молча уходит в пустоту.
+  scope :reachable_in_tg, lambda {
+    joins(:telegram_user)
+      .where(telegram_users: { status: 'active' })
+      .where.not(telegram_users: { dm_chat_id: nil })
+  }
+
   # Saved Searches
   has_many :saved_searches, dependent: :destroy
   has_many :active_saved_searches, -> { active }, class_name: 'SavedSearch'
@@ -112,7 +127,8 @@ class User < ApplicationRecord
 
   # Properties the user is selling THROUGH AN (vs `properties` which is
   # «assigned agent» — same column, different role).
-  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id', dependent: :nullify
+  has_many :owned_properties, class_name: 'Property', foreign_key: 'owner_user_id',
+                              dependent: :nullify, inverse_of: :owner_user
 
   # Viewing Schedules
   has_many :viewing_schedules, dependent: :destroy

@@ -132,3 +132,9 @@ anomaly_detection:
   class: "Telegram::WorkBot::AnomalyDetectorJob"
   queue: scheduled
   description: "Phase 16.7 — pro-active анализ отклонений: overdue_rate / first_contact_miss / completion_rate_drop у отдельных сотрудников. Modified Z-Score (median + MAD). DM director'у только при отклонении, throttle 24h."
+
+owner_request:
+  cron: "0 11 * * 1-5"     # weekdays 11:00 Moscow — рабочее время, не утренний поток
+  class: "OwnerRequestJob"
+  queue: scheduled
+  description: "Спрашивает у агента, кто собственник объекта, застрявшего до витрины (owner_user_id пуст). ПО ОДНОМУ объекту на агента за прогон: у топ-агента их 44, и рассылка пачкой привела бы к муту бота вместе со всеми заявками. Повторный вопрос по объекту — не раньше чем через 3 дня."
