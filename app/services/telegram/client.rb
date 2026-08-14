@@ -56,10 +56,12 @@ module Telegram
     # inline-кнопки в старой DM-карточке assignee (текст не трогаем — он
     # уже multiline + содержит history задачи).
     def edit_message_reply_markup(chat_id:, message_id:, reply_markup:)
+      # Explicit Hash обязателен — см. комментарий в #delete_message: без скобок
+      # Ruby 3 разбирает пары как kwargs, и api_call падает с ArgumentError на
+      # каждом вызове. Метод не работал ни разу с момента появления: снаружи
+      # это выглядело как «кнопки просто не снимаются».
       api_call('editMessageReplyMarkup',
-               chat_id: chat_id,
-               message_id: message_id,
-               reply_markup: reply_markup)
+               { chat_id: chat_id, message_id: message_id, reply_markup: reply_markup })
     end
 
     # Удаление сообщения. Бот может удалить любое сообщение в группе с can_delete_messages,
@@ -84,10 +86,10 @@ module Telegram
 
     # Закрепление сообщения в чате/топике. Нужен can_pin_messages.
     def pin_chat_message(chat_id:, message_id:, disable_notification: true)
+      # Тот же ArgumentError, что был в editMessageReplyMarkup — закрепление
+      # сообщений не работало по той же причине.
       api_call('pinChatMessage',
-               chat_id: chat_id,
-               message_id: message_id,
-               disable_notification: disable_notification)
+               { chat_id: chat_id, message_id: message_id, disable_notification: disable_notification })
     end
 
     # Открепить конкретное сообщение (или последнее закрепленное, если message_id nil).

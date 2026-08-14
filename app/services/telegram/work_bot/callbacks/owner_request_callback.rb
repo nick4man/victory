@@ -235,6 +235,21 @@ module Telegram
           owner = property.owner_user_id && User.find_by(id: property.owner_user_id)
           return ack('У объекта ещё нет собственника', alert: true) if owner.nil?
 
+          # Crm::OwnerLinker::LINKABLE_ROLES включает agent: присланный телефон
+          # мог сматчиться на учётку коллеги. Тогда ссылка пускала бы уже не в
+          # кабинет клиента, а в чужой сотрудничий — это захват учётки, а не
+          # «подписать за владельца», и принятым риском не покрывается.
+          if owner.role_agent? || owner.role_admin?
+            return ack('Собственник — сотрудник, ссылку выдаёт директор', alert: true)
+          end
+
+          # Тот же гейт, что у CabinetInvitationDispatcher: человек мог отозвать
+          # согласие целиком. Ссылка руками агента — такой же outbound, только
+          # мимо проверки.
+          if owner.phone.present? && PhoneStopList.blocked?(owner.phone)
+            return ack('Телефон в стоп-листе — связываться нельзя', alert: true)
+          end
+
           identifier = owner.email.presence || owner.phone.presence
           return ack('У собственника нет ни почты, ни телефона', alert: true) if identifier.blank?
 
