@@ -151,8 +151,14 @@ module Crm
 
     private
 
+    # Совпадение ищем только среди клиентов и агентов: админская учётка не
+    # должна стать «собственником» объекта. Раньше фильтр стоял лишь на ветке
+    # телефона — приславший почту директора делал директора собственником и
+    # слал ему приглашение подписать договор.
+    LINKABLE_ROLES = %i[client agent].freeze
+
     def find_existing
-      scope = User.where(deleted_at: nil, active: true)
+      scope = User.where(deleted_at: nil, active: true).where(role: LINKABLE_ROLES)
 
       if @email.present?
         found = scope.find_by('LOWER(email) = ?', @email)
@@ -164,9 +170,7 @@ module Crm
       digits = @phone.gsub(/\D/, '').last(10)
       return nil if digits.length < 10
 
-      # Совпадение по телефону ищем только среди клиентов и агентов: админская
-      # учётка с тем же номером не должна стать «собственником» объекта.
-      scope.where(role: %i[client agent]).where('phone LIKE ?', "%#{digits}").first
+      scope.where('phone LIKE ?', "%#{digits}").first
     end
 
     def build_attrs

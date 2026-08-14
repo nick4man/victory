@@ -84,40 +84,68 @@ module Telegram
 
         return reply("У объекта #{label(property)} уже указан собственник — контакт сохранён, но связь не менялась.") unless attached
 
-        notify_directors_on_self_link(property, user) if self_link?(user)
+        flag = staff_owner_flag(user)
+        notify_directors_on_staff_owner(property, user, flag) if flag
 
         reply(success_text(property, user, created), keyboard: invite_keyboard(property))
       end
 
-      # Агент прислал собственный контакт: приглашение уйдёт ему самому, и
-      # договор в кабинете он подпишет за «собственника» без участия хозяина
-      # объекта — то есть выведет карточку на витрину в обход всего смысла
-      # этого гейта.
+      # Собственником оказался сотрудник: приглашение уйдёт ему, и договор в
+      # кабинете он подпишет за «собственника» — то есть выведет карточку на
+      # витрину в обход всего смысла этого гейта.
       #
-      # Запрещать нельзя: агент может продавать собственную квартиру, и это
-      # законный сценарий, неотличимый от подлога по одному лишь контакту.
+      # Запрещать нельзя: агент может продавать собственную квартиру, и по
+      # одному присланному контакту законный случай неотличим от подлога.
       # Поэтому связь остаётся, но перестаёт быть тихой — как и в
       # OwnerRequestCallback#decline, спорный случай уходит директору.
-      def self_link?(user)
+      #
+      # Проверять только «прислал сам себя» мало: это ловит ровно честный
+      # случай. Достаточно второй симки или свежей почты, чтобы завести нового
+      # client'а и пройти молча. Поэтому сюда же попадает и чужая сотрудничья
+      # учётка — сговор двух агентов. Полностью на входе это не закрывается:
+      # окончательная проверка живёт на подписании договора (отдельная задача),
+      # где сверяется, что подписант не является ответственным агентом объекта.
+      #
+      # @return [Symbol, nil] :self | :staff | nil
+      def staff_owner_flag(user)
         linked_id = @tg_user&.user&.id
-        linked_id.present? && linked_id == user.id
+        return :self if linked_id.present? && linked_id == user.id
+        return :staff if user.role_agent? || user.role_admin?
+
+        nil
       end
 
-      def notify_directors_on_self_link(property, user)
+      def notify_directors_on_staff_owner(property, user, flag)
         Rails.logger.warn(
-          "[OwnerIntake] агент указал себя собственником property=#{property.id} user=#{user.id}"
+          "[OwnerIntake] собственником указан сотрудник (#{flag}) " \
+          "property=#{property.id} user=#{user.id} by_tg=#{@tg_user.tg_user_id}"
         )
-        text = "⚠️ #{ERB::Util.html_escape(@tg_user.display_name)} указал собственником объекта " \
-               "#{ERB::Util.html_escape(label(property))} самого себя.\n" \
-               'Если он и правда владелец — ничего делать не нужно. Иначе подписание договора ' \
-               'пройдёт мимо настоящего собственника.'
 
         ::TelegramUser.where(status: 'active', role: %w[director admin])
                       .where.not(dm_chat_id: nil)
-                      .find_each { |d| @client.send_message(text, chat_id: d.dm_chat_id, parse_mode: 'HTML') }
-      rescue StandardError => e
-        # Оповещение не должно ронять сам приём контакта — связь уже сохранена.
-        Rails.logger.warn("[OwnerIntake] не удалось предупредить директоров: #{e.class}: #{e.message}")
+                      .find_each do |d|
+          # rescue на каждого получателя, а не на весь обход: один директор с
+          # заблокированным ботом (Telegram отдаёт 403) иначе глушил бы
+          # оповещение всем следующим по порядку id — а это единственный
+          # контроль над сознательно разрешённой связью.
+          @client.send_message(staff_owner_text(user, property, flag), chat_id: d.dm_chat_id, parse_mode: 'HTML')
+        rescue StandardError => e
+          Rails.logger.warn("[OwnerIntake] не предупредил директора #{d.id}: #{e.class}: #{e.message}")
+        end
+      end
+
+      def staff_owner_text(user, property, flag)
+        who = flag == :self ? 'самого себя' : "сотрудника #{ERB::Util.html_escape(owner_name(user))}"
+
+        "⚠️ #{ERB::Util.html_escape(@tg_user.display_name)} указал собственником объекта " \
+          "#{ERB::Util.html_escape(label(property))} #{who}.\n" \
+          'Если это и правда владелец — ничего делать не нужно. Иначе подписание договора ' \
+          'пройдёт мимо настоящего собственника.'
+      end
+
+      def owner_name(user)
+        [user.first_name, user.last_name].compact_blank.join(' ').presence ||
+          user.email.presence || user.phone.to_s
       end
 
       def success_text(property, user, created)

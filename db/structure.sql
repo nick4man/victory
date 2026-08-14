@@ -6509,7 +6509,7 @@ CREATE INDEX index_users_on_department_id ON public.users USING btree (departmen
 -- Name: index_users_on_email; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email);
+CREATE UNIQUE INDEX index_users_on_email ON public.users USING btree (email) WHERE ((email)::text <> ''::text);
 
 
 --
@@ -7230,9 +7230,10 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public, topology, tiger;
+SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260814022000'),
 ('20260810064000'),
 ('20260809191100'),
 ('20260809191000'),

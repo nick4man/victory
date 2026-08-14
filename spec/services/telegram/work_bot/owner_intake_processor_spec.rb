@@ -166,11 +166,40 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
       )
     end
 
-    it 'молчит, когда собственник — не сам агент' do
+    # Сговор двух агентов: контакт чужой, но всё равно сотруднический. Проверка
+    # «прислал сам себя» этот случай пропускала, поэтому предупреждение шире.
+    it 'предупреждает и когда собственником указан другой сотрудник' do
+      create(:user, role: :agent, phone: '+79007778899', first_name: 'Пётр', last_name: 'Смирнов')
+
+      described_class.call(msg(text: 'Пётр 9007778899'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/собственником объекта .* сотрудника Пётр Смирнов/), hash_including(chat_id: 900_777)
+      )
+    end
+
+    # Один директор с заблокированным ботом не должен глушить остальных: DM —
+    # единственный контроль над сознательно разрешённой связью.
+    it 'не теряет остальных получателей, если одному отправить не вышло' do
+      TelegramUser.create!(tg_user_id: 900_888, first_name: 'Второй', role: 'admin',
+                           status: 'active', dm_chat_id: 900_888)
+      allow(tg_client).to receive(:send_message).with(anything, hash_including(chat_id: 900_777))
+                                                .and_raise(StandardError, 'Forbidden: bot was blocked')
+
+      described_class.call(msg(text: 'Надежда 9001234567'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(anything, hash_including(chat_id: 900_888))
+    end
+
+    # Граница честности: обход остаётся. Вторая симка даёт нового client'а, и
+    # тишина здесь — не недосмотр, а зафиксированный предел контроля на входе.
+    # Закрывается проверкой на подписании договора, а не тут.
+    it 'молчит на постороннем контакте — обход второй симкой остаётся открытым' do
       described_class.call(msg(text: 'Светлана 9005554433'), client: tg_client)
 
+      expect(property.reload.owner_user.role).to eq('client')
       expect(tg_client).not_to have_received(:send_message).with(
-        a_string_matching(/самого себя/), any_args
+        a_string_matching(/собственником объекта/), hash_including(chat_id: 900_777)
       )
     end
   end

@@ -87,6 +87,37 @@ RSpec.describe Crm::OwnerLinker do
       expect(created).to be true
     end
 
+    # Регресс на уникальный индекс по users.email. Колонка `NOT NULL DEFAULT ''`,
+    # и до частичного индекса пустых значений допускалось ровно одно: первый
+    # собственник только с телефоном заводился, второй падал на RecordNotUnique
+    # и возвращался как nil. Это основной сценарий приёма контакта от агента,
+    # и обычный однократный спек его не ловит.
+    it 'заводит нескольких собственников, у которых известен только телефон' do
+      first, = described_class.from_contact(phone: '+79001112233', first_name: 'Первый')
+      second, created = described_class.from_contact(phone: '+79004445566', first_name: 'Второй')
+
+      expect(first).to be_present
+      expect(second).to be_present
+      expect(created).to be true
+      expect(second.id).not_to eq(first.id)
+      expect(second.phone).to eq('+79004445566')
+    end
+
+    # Фильтр ролей стоял только на ветке телефона. Приславший почту директора
+    # делал его собственником объекта и слал ему приглашение подписать договор.
+    # Теперь такая учётка не находится, а завести дубль не даёт unique-индекс по
+    # email — то есть связь не устанавливается вовсе, и агент получает отказ.
+    # Это верный исход: админ собственником быть не должен ни при каком раскладе.
+    it 'не делает собственником админскую учётку, найденную по email' do
+      admin = create(:user, role: :admin, email: 'boss@victory62.org')
+
+      user, created = described_class.from_contact(email: 'boss@victory62.org', phone: '+79002223344')
+
+      expect(user).to be_nil
+      expect(created).to be false
+      expect(admin.reload.role).to eq('admin')
+    end
+
     # Мягко удалённая учётка не считается существующей, но продолжает занимать
     # email в unique-индексе. Создать нового с тем же адресом нельзя, поэтому
     # возвращаем nil, а не воскрешаем запись: удаление могло быть по 152-ФЗ, и
