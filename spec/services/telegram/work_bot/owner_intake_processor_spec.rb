@@ -290,6 +290,33 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
       )
     end
 
+    # Находка ревью: диспетчер коротит на `already invited`, а это ровно один
+    # из двух случаев, когда кнопка «Ввести почту» и показывается — агент
+    # ошибся в адресе, письмо ушло в никуда, отметка осталась. Без сброса
+    # исправленная почта сохранялась бы, а приглашение снова не уходило.
+    it 'не упирается в отметку о прежнем приглашении, которое не дошло' do
+      owner.update_columns(invited_at: 2.days.ago)
+
+      described_class.call(msg(text: 'svetlana@example.com'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Приглашение отправлено/), any_args
+      )
+    end
+
+    # Вход в кабинет матчит почту регистронезависимо, а индекс — по сырому
+    # значению. Точная проверка пропустила бы дубль, и magic-link логинил бы
+    # в произвольную из двух учёток.
+    it 'ловит занятую почту независимо от регистра' do
+      create(:user, role: :client, email: 'Busy@example.com')
+
+      described_class.call(msg(text: 'busy@example.com'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/уже привязана к другой учётке/), any_args
+      )
+    end
+
     # Сохранить почту и промолчать про неудачу — та же ошибка, что чинили в
     # самом приглашении: агент счёл бы объект сделанным.
     it 'не выдаёт сохранение почты за отправку' do

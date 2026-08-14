@@ -102,7 +102,11 @@ module Telegram
         # следом, падает уже на отравленном соединении — включая сброс
         # ожидания. unscoped обязателен: удалённые учётки продолжают занимать
         # почту в индексе.
-        if User.unscoped.where.not(id: owner.id).exists?(email: email)
+        # LOWER(email), а не точное сравнение: вход в кабинет матчит почту
+        # регистронезависимо (Cabinet::AuthController#lookup_user), а индекс —
+        # по сырому значению. Точная проверка пропустила бы Sveta@… рядом с
+        # sveta@…, и magic-link логинил бы в произвольную из двух учёток.
+        if User.unscoped.where.not(id: owner.id).exists?(['LOWER(email) = ?', email])
           return reply('Эта почта уже привязана к другой учётке. Пришлите другую или передайте ссылку собственнику сами.')
         end
 
@@ -118,20 +122,34 @@ module Telegram
       # Уникальность при этом не теряется: её стережёт частичный индекс по
       # users.email, и нарушение прилетит сюда как RecordNotUnique.
       def save_email_and_invite(property, owner, email)
-        owner.update_columns(email: email, updated_at: Time.current) # rubocop:disable Rails/SkipsModelValidations
+        # invited_at сбрасываем вместе с почтой. Диспетчер коротит на
+        # `already invited`, а это ровно один из двух случаев, когда кнопка
+        # «Ввести почту» и показывается: агент ошибся в адресе, письмо ушло в
+        # никуда, отметка осталась. Без сброса исправленная почта сохранялась
+        # бы, а приглашение снова не уходило — тот же тупик, только глубже.
+        # Прежнее приглашение по определению не дошло: канал не отработал.
+        owner.update_columns(email: email, invited_at: nil, updated_at: Time.current) # rubocop:disable Rails/SkipsModelValidations
         @tg_user.clear_pending_action!
 
         result = CabinetInvitationDispatcher.call(owner, property, channels: %i[email tg])
         if Array(result&.channels_succeeded).empty?
           errors = Array(result&.errors).join('; ').presence || 'причина не указана'
-          return reply("Почта сохранена, но приглашение всё равно не ушло: #{ERB::Util.html_escape(errors)}")
+          # С клавиатурой, а не голым текстом: без неё агент оставался без
+          # выхода — кнопки лежали в сообщении выше по переписке.
+          return reply(
+            "Почта сохранена, но приглашение всё равно не ушло: #{ERB::Util.html_escape(errors)}",
+            keyboard: rescue_keyboard(property)
+          )
         end
 
         reply("✅ Приглашение отправлено на #{ERB::Util.html_escape(email)} — объект #{label(property)}.")
       rescue ActiveRecord::RecordNotUnique => e
         # Страховка от гонки: между проверкой и записью почту мог занять
         # параллельный синк из Topnlab.
-        Rails.logger.warn("[OwnerIntake] почта не сохранена owner=#{owner.id}: #{e.class}: #{e.message.first(120)}")
+        # Маскируем явно, а не полагаемся на обрезку по 120 символов: сейчас она
+        # случайно отсекает `Key (email)=(...)` из текста констрейнта, но это
+        # зависит от длины его имени, а не от нашего решения.
+        Rails.logger.warn("[OwnerIntake] почта не сохранена owner=#{owner.id} #{Crm::OwnerLinker.mask_email(email)}: #{e.class}")
         reply('Эта почта уже привязана к другой учётке. Пришлите другую или передайте ссылку собственнику сами.')
       end
 
@@ -221,6 +239,15 @@ module Telegram
           "#{contacts.present? ? " (#{ERB::Util.html_escape(contacts)})" : ''}\n" \
           "Объект #{label(property)}.\n\n" \
           'Отправить собственнику ссылку на подписание договора? После подписания объект попадёт на витрину.'
+      end
+
+      # Те же две ветки, что предлагает OwnerRequestCallback при неудаче: пока
+      # приглашение не ушло, у агента должен оставаться выход в один тап.
+      def rescue_keyboard(property)
+        { inline_keyboard: [
+          [{ text: '✉️ Ввести почту', callback_data: "owner:email:#{property.id}" }],
+          [{ text: '🔗 Дать ссылку мне', callback_data: "owner:link:#{property.id}" }]
+        ] }
       end
 
       def invite_keyboard(property)

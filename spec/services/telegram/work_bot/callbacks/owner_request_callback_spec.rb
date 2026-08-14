@@ -259,6 +259,37 @@ RSpec.describe Telegram::WorkBot::Callbacks::OwnerRequestCallback do
 
         expect { invoke('link') }.not_to change(MagicLinkToken, :count)
       end
+
+      # Самое дорогое действие из всех — проверка владения на нём обязана
+      # работать так же, как на decline.
+      it 'не выдаёт ссылку по чужому объекту' do
+        property.update_column(:user_id, create(:user, role: :agent).id)
+
+        expect { invoke('link') }.not_to change(MagicLinkToken, :count)
+        expect(tg_client).to have_received(:answer_callback_query)
+          .with('cb_1', hash_including(text: a_string_matching(/не ваш объект/)))
+      end
+
+      # Crm::OwnerLinker::LINKABLE_ROLES включает agent: присланный телефон мог
+      # сматчиться на учётку коллеги. Ссылка пустила бы в чужой сотрудничий
+      # кабинет — это захват учётки, а не «подписать за владельца».
+      it 'не выдаёт ссылку в кабинет сотрудника' do
+        property.update_column(:owner_user_id, create(:user, role: :agent).id)
+
+        expect { invoke('link') }.not_to change(MagicLinkToken, :count)
+        expect(tg_client).to have_received(:answer_callback_query)
+          .with('cb_1', hash_including(text: a_string_matching(/сотрудник/)))
+      end
+
+      # Человек мог отозвать согласие целиком. Ссылка руками агента — такой же
+      # outbound, только мимо проверки, которую делает диспетчер.
+      it 'уважает стоп-лист 152-ФЗ' do
+        allow(PhoneStopList).to receive(:blocked?).with(owner.phone).and_return(true)
+
+        expect { invoke('link') }.not_to change(MagicLinkToken, :count)
+        expect(tg_client).to have_received(:answer_callback_query)
+          .with('cb_1', hash_including(text: a_string_matching(/стоп-лист/)))
+      end
     end
   end
 
