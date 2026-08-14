@@ -80,6 +80,25 @@ module Crm
       digits.start_with?('7', '8') ? "+7#{digits[-10..]}" : "+#{digits}"
     end
 
+    # DLP для логов. Те же правила, что в CabinetInvitationSmsService#mask и
+    # CabinetInvitationDispatcher#mask_email — лог должен давать опознать
+    # запись при разборе инцидента, но не читаться как выгрузка контактов.
+    def self.mask_email(email)
+      local, domain = email.to_s.split('@')
+      return 'nil' if email.blank?
+      return '***' if domain.blank?
+
+      "#{local[0..1]}***@#{domain}"
+    end
+
+    def self.mask_phone(phone)
+      digits = phone.to_s.gsub(/\D/, '')
+      return 'nil' if phone.blank?
+      return '****' if digits.length < 4
+
+      "***#{digits.last(4)}"
+    end
+
     def initialize(first_name: nil, last_name: nil, middle_name: nil,
                    email: nil, phone: nil, crm_user_id: nil)
       @first_name  = first_name.to_s.strip.presence
@@ -116,11 +135,15 @@ module Crm
       # возвращаем nil, а не воскрешаем запись: удаление могло быть по 152-ФЗ, и
       # молча вернуть человека в систему нельзя. Логируем так, чтобы причина
       # читалась — иначе в проде это выглядит как необъяснимый отказ.
+      #
+      # Контакты — в маскированном виде: ветка срабатывает ровно на человеке,
+      # который потребовал удаления своих данных, и писать его почту с телефоном
+      # открытым текстом в лог — воспроизводить то, что он просил стереть.
       found = find_existing
       if found.nil?
         Rails.logger.warn(
           '[OwnerLinker] контакт занят удалённой учёткой, клиент не создан: ' \
-          "email=#{@email.inspect} phone=#{@phone.inspect}"
+          "email=#{self.class.mask_email(@email)} phone=#{self.class.mask_phone(@phone)}"
         )
       end
       [found, false]

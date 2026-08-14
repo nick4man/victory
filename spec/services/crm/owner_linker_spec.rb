@@ -99,6 +99,24 @@ RSpec.describe Crm::OwnerLinker do
       expect(user).to be_nil
       expect(created).to be false
     end
+
+    # Ветка срабатывает ровно на человеке, который потребовал удаления своих
+    # данных. Писать его контакты в лог открытым текстом — воспроизводить то,
+    # что он просил стереть.
+    it 'не пишет контакты удалённого клиента в лог открытым текстом' do
+      create(:user, role: :client, email: 'gone@example.ru',
+                    phone: '+79001234567', deleted_at: Time.current)
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.from_contact(email: 'gone@example.ru', phone: '+7 900 123-45-67')
+
+      expect(Rails.logger).to have_received(:warn) do |line|
+        expect(line).to include('занят удалённой учёткой')
+        expect(line).not_to include('gone@example.ru')
+        expect(line).not_to include('9001234')
+        expect(line).to include('go***@example.ru', '***4567')
+      end
+    end
   end
 
   describe '.from_topnlab' do

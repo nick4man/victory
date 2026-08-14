@@ -84,7 +84,40 @@ module Telegram
 
         return reply("У объекта #{label(property)} уже указан собственник — контакт сохранён, но связь не менялась.") unless attached
 
+        notify_directors_on_self_link(property, user) if self_link?(user)
+
         reply(success_text(property, user, created), keyboard: invite_keyboard(property))
+      end
+
+      # Агент прислал собственный контакт: приглашение уйдёт ему самому, и
+      # договор в кабинете он подпишет за «собственника» без участия хозяина
+      # объекта — то есть выведет карточку на витрину в обход всего смысла
+      # этого гейта.
+      #
+      # Запрещать нельзя: агент может продавать собственную квартиру, и это
+      # законный сценарий, неотличимый от подлога по одному лишь контакту.
+      # Поэтому связь остаётся, но перестаёт быть тихой — как и в
+      # OwnerRequestCallback#decline, спорный случай уходит директору.
+      def self_link?(user)
+        linked_id = @tg_user&.user&.id
+        linked_id.present? && linked_id == user.id
+      end
+
+      def notify_directors_on_self_link(property, user)
+        Rails.logger.warn(
+          "[OwnerIntake] агент указал себя собственником property=#{property.id} user=#{user.id}"
+        )
+        text = "⚠️ #{ERB::Util.html_escape(@tg_user.display_name)} указал собственником объекта " \
+               "#{ERB::Util.html_escape(label(property))} самого себя.\n" \
+               'Если он и правда владелец — ничего делать не нужно. Иначе подписание договора ' \
+               'пройдёт мимо настоящего собственника.'
+
+        ::TelegramUser.where(status: 'active', role: %w[director admin])
+                      .where.not(dm_chat_id: nil)
+                      .find_each { |d| @client.send_message(text, chat_id: d.dm_chat_id, parse_mode: 'HTML') }
+      rescue StandardError => e
+        # Оповещение не должно ронять сам приём контакта — связь уже сохранена.
+        Rails.logger.warn("[OwnerIntake] не удалось предупредить директоров: #{e.class}: #{e.message}")
       end
 
       def success_text(property, user, created)

@@ -138,6 +138,43 @@ RSpec.describe Telegram::WorkBot::OwnerIntakeProcessor do
     end
   end
 
+  # Агент присылает собственный контакт — приглашение уйдёт ему самому, и
+  # договор он подпишет за «собственника». Запретить нельзя (агент может
+  # продавать свою квартиру), поэтому связь остаётся, но перестаёт быть тихой.
+  describe 'когда агент указал собственником себя' do
+    let!(:director) do
+      TelegramUser.create!(tg_user_id: 900_777, first_name: 'Оксана', role: 'director',
+                           status: 'active', dm_chat_id: 900_777)
+    end
+
+    before do
+      agent.update_column(:phone, '+79001234567')
+      expect_pending!
+    end
+
+    it 'всё равно привязывает — законный случай неотличим от подлога' do
+      described_class.call(msg(text: 'Надежда 9001234567'), client: tg_client)
+
+      expect(property.reload.owner_user_id).to eq(agent.id)
+    end
+
+    it 'предупреждает директора' do
+      described_class.call(msg(text: 'Надежда 9001234567'), client: tg_client)
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/указал собственником объекта .* самого себя/), hash_including(chat_id: 900_777)
+      )
+    end
+
+    it 'молчит, когда собственник — не сам агент' do
+      described_class.call(msg(text: 'Светлана 9005554433'), client: tg_client)
+
+      expect(tg_client).not_to have_received(:send_message).with(
+        a_string_matching(/самого себя/), any_args
+      )
+    end
+  end
+
   describe 'когда собственник уже указан' do
     it 'не перетирает связь' do
       first_owner = create(:user, role: :client)
