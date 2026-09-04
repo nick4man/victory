@@ -41,7 +41,8 @@ namespace :commercial_types do
   task :reclassify, %i[id] => :environment do |_, args|
     id = args[:id].to_i
     p = Property.unscoped.find_by(id: id)
-    return puts "[commercial_types:reclassify] property id=#{id} не найден" unless p
+    # `next`, не `return`: тело таски — proc, return даёт LocalJumpError.
+    next puts "[commercial_types:reclassify] property id=#{id} не найден" unless p
 
     result = Property::CommercialTypeClassifier.call(p)
     p.update_columns(commercial_type: result, updated_at: Time.current)
