@@ -129,11 +129,20 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 
 - **`main`** — production. Деплоится автоматически (или через webhook) на https://victory62.org. **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
-- **PR → main** — единственный путь в прод. CI gate — `.github/workflows/lint.yml`, единственный workflow: rubocop + brakeman + bundler-audit. **RSpec в CI нет.** 90 спеков гоняются только вручную: `bundle exec rspec`. Зелёный CI ≠ тесты прошли.
+- **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
+
+  | Проверка | Откуда |
+  |---|---|
+  | RuboCop, Brakeman, bundler-audit | `.github/workflows/lint.yml` — единственный workflow в репозитории |
+  | CodeQL + `Analyze (ruby / python / javascript-typescript / actions)` | code scanning **default setup**, включён через UI GitHub — файла в репозитории нет, `ls .github/workflows/` его не покажет |
+  | GitGuardian Security Checks | GitHub App, вне репозитория |
+
+  **RSpec в CI нет.** 90 спеков гоняются только вручную: `bundle exec rspec`. Зелёный CI ≠ тесты прошли — он значит «линтеры и сканеры молчат».
 - 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
-  Вызов: `pr-review-toolkit:code-reviewer`. Файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
+  Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
   Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` в `main` нет — он существует только в ветке `origin/dev/upgrade` и не вмёржен; пока запуск через `bundle exec`. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
+- ⚠️ `git push` по HTTPS в этом окружении виснет и отваливается по таймауту через 300 с (чтение при этом работает — `ls-remote` мгновенный). Лечится принудительным HTTP/1.1: `git -c http.version=HTTP/1.1 push …`. В конфиг не прописано — добавляй флагом или `git config http.version HTTP/1.1` локально.
 
 См. `.claude/memory/strategicVector.md` секция «Infrastructure decision 04.06.26» для trigger metrics когда вернуться к разговору о микросервисах/K8s (сейчас 0/7 triggered).
 
