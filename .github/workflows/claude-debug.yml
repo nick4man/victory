@@ -1,11 +1,12 @@
 name: Claude debug probe
 
-# Стенд для диагностики. push-триггер работает с любой ветки (в отличие от
-# workflow_dispatch, который GitHub берёт только с дефолтной), поэтому
-# варианты прогоняются без единой правки в main. Удалить после починки.
+# Стенд для диагностики. pull_request берёт workflow с head-ветки PR, поэтому
+# варианты прогоняются без правок в main (push экшен не поддерживает:
+# "Unsupported event type: push"; workflow_dispatch GitHub читает только с
+# дефолтной ветки). Удалить вместе с веткой после починки.
 on:
-  push:
-    branches: [ci/claude-action-debug]
+  pull_request:
+    branches: [main]
 
 jobs:
   probe:
