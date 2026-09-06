@@ -68,6 +68,6 @@ jobs:
           # линтеры и спеки гоняет отдельный workflow «Lint & security».
           claude_args: |
             --model claude-opus-5
-            --max-turns 25
+            --max-turns 50
             --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
             --append-system-prompt "Отвечай по-русски. main — это прод с автодеплоем: никогда не пушь в main, работу оформляй веткой claude/* и pull request. В раннере нет Ruby, Postgres и docker — bundle exec, rspec и rubocop здесь выполнить нельзя; не утверждай, что прогнал тесты или линтеры, их гоняет отдельный workflow «Lint & security» на PR. Не редактируй .env, credentials и db/structure.sql вручную и никогда не выводи содержимое секретов в комментарии. Конвенции проекта смотри в CLAUDE.md: soft-delete через deleted_at, enum позиционным синтаксисом с prefix, даты в формате dd.MM.yy."
