@@ -1,0 +1,53 @@
+name: Claude Code
+
+# Runs only when a human explicitly calls @claude in an issue / PR comment,
+# a PR review, a review comment, or a newly opened issue.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+# Second guard next to the action's own mention detection — skips the runner
+# entirely (and therefore the checkout) for the 99% of comments without @claude.
+jobs:
+  claude:
+    name: Claude Code
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+
+    # Least privilege: read the code/PR/issue, write back only as comments.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+      id-token: write
+
+    # One Claude run per issue/PR at a time; do NOT cancel a run in flight —
+    # a half-finished comment thread is worse than a queued one.
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Shallow is enough — the action fetches more history if it needs it.
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Subscription token, generated locally via `claude setup-token`.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
