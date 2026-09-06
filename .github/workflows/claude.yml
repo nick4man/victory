@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
 
     # Least privilege: read the code/PR/issue, write back only as comments.
+    # actions:read — так бот видит логи красного CI (mcp__github_ci__*),
+    # а не гадает о причине падения по названию джобы.
     permissions:
       contents: read
       pull-requests: write
@@ -51,3 +53,21 @@ jobs:
         with:
           # Subscription token, generated locally via `claude setup-token`.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Доступ к статусам/логам workflow-прогонов. Требует actions:read выше.
+          additional_permissions: |
+            actions: read
+
+          # Один комментарий на прогон вместо цепочки — тред остаётся читаемым.
+          use_sticky_comment: true
+
+          # Лимиты. --max-turns — потолок на runaway-прогон: подписочный токен
+          # тратится реальными деньгами, а зациклившийся бот уходит в них молча.
+          # Bash по умолчанию запрещён; открыты только read-only разведочные
+          # команды. Ruby/Postgres в раннере НЕТ — bundle exec тут не выполнится,
+          # линтеры и спеки гоняет отдельный workflow «Lint & security».
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 25
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
+            --append-system-prompt "Отвечай по-русски. main — это прод с автодеплоем: никогда не пушь в main, работу оформляй веткой claude/* и pull request. В раннере нет Ruby, Postgres и docker — bundle exec, rspec и rubocop здесь выполнить нельзя; не утверждай, что прогнал тесты или линтеры, их гоняет отдельный workflow «Lint & security» на PR. Не редактируй .env, credentials и db/structure.sql вручную и никогда не выводи содержимое секретов в комментарии. Конвенции проекта смотри в CLAUDE.md: soft-delete через deleted_at, enum позиционным синтаксисом с prefix, даты в формате dd.MM.yy."
