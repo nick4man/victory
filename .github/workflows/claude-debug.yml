@@ -1,0 +1,55 @@
+name: Claude debug probe
+
+# Стенд для диагностики. workflow_dispatch читает workflow с выбранного ref,
+# поэтому итерации не требуют правок в main. Удалить после починки.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'as-is | no-append | no-model | bare'
+        required: true
+        default: 'bare'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Probe (bare)
+        if: inputs.variant == 'bare'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: 'Ответь ровно одним словом: работает'
+          # Публичный лог. На этом прогоне инструменты не вызываются,
+          # в вывод попадает только ответ модели либо текст ошибки.
+          show_full_output: true
+
+      - name: Probe (no-append)
+        if: inputs.variant == 'no-append'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: 'Ответь ровно одним словом: работает'
+          show_full_output: true
+          claude_args: |
+            --model claude-opus-5
+            --max-turns 50
+
+      - name: Probe (no-model)
+        if: inputs.variant == 'no-model'
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: 'Ответь ровно одним словом: работает'
+          show_full_output: true
+          claude_args: |
+            --max-turns 50
