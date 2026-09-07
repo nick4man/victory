@@ -43,6 +43,12 @@ class ResidentialComplex < ApplicationRecord
   # `property.residential_complex` отдаёт nil.
   has_many :properties
 
+  # Журналы службы сбора. `dependent:` не ставим по той же причине, что и у
+  # properties: мягкое удаление идёт через update!, а dependent висит на
+  # destroy — он был бы мёртвым кодом.
+  has_many :zhk_facts
+  has_many :zhk_price_points
+
   # _prefix per CLAUDE.md convention → complex.housing_class_comfort?
   enum :housing_class, { econom: 0, comfort: 1, business: 2, elite: 3 },
        prefix: true                                    # эконом / комфорт / бизнес / элит
