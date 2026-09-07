@@ -321,6 +321,20 @@ RSpec.describe ResidentialComplex do
       expect(complex.name).to eq('Легенда Плюс')
       expect(complex.developer).to eq('Другой')
     end
+
+    # Очистка — тоже правка. Админка сознательно даёт стереть паттерны
+    # пустой textarea; сид на `blank?` восстанавливал бы их обратно, и
+    # редактор не смог бы избавиться от неверного паттерна в принципе.
+    it 'не восстанавливает то, что редактор осознанно стёр' do
+      run_seed
+      described_class.find_by(slug: 'legenda').update!(address_patterns: [], wall_material: '')
+
+      run_seed
+
+      complex = described_class.find_by(slug: 'legenda')
+      expect(complex.address_patterns).to eq([])
+      expect(complex.wall_material).to eq('')
+    end
   end
 
   describe 'публичное представление' do
