@@ -684,6 +684,10 @@ Rails.application.routes.draw do
       end
     end
 
+    # Где источники спорят между собой — очередь на проверку редактором.
+    # Только показывает: решение «кто прав» человеческое, а не автоматическое.
+    get 'zhk_discrepancies', to: 'zhk_discrepancies#index', as: :zhk_discrepancies
+
     # Property publication dashboard — shows the result of the
     # ready_for_site? gate for every CRM-synced Property, plus the
     # force_publish override toggle. Lets admins fix "missing from
