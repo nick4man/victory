@@ -69,7 +69,7 @@ jobs:
     name: RSpec
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Схема требует postgis + vector + pg_trgm + unaccent (db/structure.sql).
       # Публичного образа с postgis И pgvector одновременно нет, поэтому

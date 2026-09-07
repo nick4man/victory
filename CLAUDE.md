@@ -58,7 +58,14 @@ Rails-монолит. Четыре входа, и только первый — 
 
 ## Команды
 
-🚨 **На этом хосте Ruby-тулинга нет.** Ни `ruby`, ни `bundle` в PATH, ни контейнеров victory (`docker ps` пуст на этот счёт), ни rails-образа. `bundle exec rspec`, `rubocop`, `rake`, `bin/rails` здесь **не запустятся** — не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть. По этой же причине хук `post-edit-rubocop.sh` — молчаливый no-op: автоформатирования `.rb` не будет.
+🚨 **Ruby есть не на каждой машине — сначала пойми, где ты.** Репозиторий работает с двух хостов, и они не похожи:
+
+| Хост | Ruby | Как гонять |
+|---|---|---|
+| worktree в `/home/q/victory-*` | в контейнере, менеджера версий на хосте нет | **только через `bin/rb`**: `bin/rb bundle exec rubocop`, `bin/rb --db bundle exec rspec` |
+| worktree в `/opt/.openclaw/` | нет вообще: ни `ruby`, ни `bundle` в PATH, ни контейнеров, ни rails-образа | никак — Ruby-команды не запускать, `post-edit-rubocop.sh` там молчаливый no-op |
+
+Не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть.
 
 Работает прямо здесь — только Python-сервис:
 
@@ -73,7 +80,7 @@ bundle exec rubocop --parallel        # + -a safe / -A unsafe autocorrect
 bundle exec brakeman --exit-on-warn --quiet --format text
 bundle exec bundle-audit update && bundle exec bundle-audit check
 
-bundle exec rspec                                  # 90 спеков, в CI НЕ входят
+bundle exec rspec                                  # 1102 примера, гоняются и в CI
 bundle exec rspec spec/models/property_spec.rb     # один файл
 bundle exec rspec spec/models/property_spec.rb:42  # один пример
 
@@ -123,7 +130,7 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 
 🚨 **`/opt/.openclaw/victory` = main checkout, НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт.
 
-⚠️ Схема «4 сессии victory/chat/seo/upgrade» из `.claude/sessions/README.md` — историческая, её worktree в `/home/q/` **не существуют**. Тот же мёртвый путь прописан в `.mcp.json` и `.claude/hooks/session-start.sh`: из-за него MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность. `bin/claude-inbox` жёстко валидирует старый список имён, поэтому в новых worktree inbox не работает.
+⚠️ **Таблица выше — про openclaw-машину.** На хосте `/home/q` живут пять своих worktree (`victory`, `-victory`, `-chat`, `-seo`, `-upgrade`) — схема «4 сессии» из `.claude/sessions/README.md` там не историческая, а рабочая. Пути в `.mcp.json` и `.claude/hooks/session-start.sh` ведут именно туда: на openclaw они мёртвые (MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность), на `/home/q` — живые. Проверяй `git worktree list`, а не память.
 
 ### Локи — автоматические и блокирующие (с 08.08.26)
 
@@ -163,10 +170,10 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
   | CodeQL + `Analyze (ruby / python / javascript-typescript / actions)` | code scanning **default setup**, включён через UI GitHub — файла в репозитории нет, `ls .github/workflows/` его не покажет |
   | GitGuardian Security Checks | GitHub App, вне репозитория |
 
-  **RSpec в CI нет.** 90 спеков гоняются только вручную: `bundle exec rspec`. Зелёный CI ≠ тесты прошли — он значит «линтеры и сканеры молчат».
+  **RSpec — тоже джоб в `lint.yml`** (поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон). Сеть в спеках закрыта WebMock, ActiveJob на `:test`.
 - 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
   Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
-  Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` в `main` нет — он существует только в ветке `origin/dev/upgrade` и не вмёржен; пока запуск через `bundle exec`. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
+  Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` работает только на хосте `/home/q` (см. «Команды»); на openclaw-машине гонять код нечем — ревью там читает diff, но не запускает. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
 - ⚠️ `git push` по HTTPS в этом окружении виснет и отваливается по таймауту через 300 с (чтение при этом работает — `ls-remote` мгновенный). Лечится принудительным HTTP/1.1: `git -c http.version=HTTP/1.1 push …`. В конфиг не прописано — добавляй флагом или `git config http.version HTTP/1.1` локально.
 
