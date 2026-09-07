@@ -26,5 +26,56 @@ RSpec.describe Zhk::Matcher do
 
   it 'отдаёт nil, когда совпадения нет — это сигнал завести черновик' do
     expect(described_class.call(name: 'Небывалый', city: 'Рязань')).to be_nil
+    expect(described_class.call(name: 'Небывалый', city: 'Рязань')).not_to eq(legenda)
+  end
+
+  it 'находит по трём равнозначным формам имени' do
+    aggregate_failures do
+      expect(described_class.call(name: 'ЖК «Легенда»', city: 'Рязань')).to eq(legenda)
+      expect(described_class.call(name: 'ЖК Легенда', city: 'Рязань')).to eq(legenda)
+      expect(described_class.call(name: 'Легенда', city: 'Рязань')).to eq(legenda)
+    end
+  end
+
+  it 'находит при лишних пробелах по краям и внутри имени' do
+    expect(described_class.call(name: "  ЖК   Легенда  \n", city: 'Рязань')).to eq(legenda)
+  end
+
+  it 'ё и е считаются одной буквой' do
+    leto = create(:residential_complex, name: 'Лето', city: 'Рязань')
+
+    expect(described_class.call(name: 'Лёто', city: 'Рязань')).to eq(leto)
+  end
+
+  it 'не находит мягко удалённый ЖК' do
+    create(:residential_complex, :soft_deleted, name: 'Скрытый', city: 'Рязань')
+
+    expect(described_class.call(name: 'Скрытый', city: 'Рязань')).to be_nil
+  end
+
+  # Регресс: «Голландия. Парковый квартал» и «Голландия. Верхний сад» — два
+  # РАЗНЫХ проекта Мармакса на Касимовском шоссе в засеянном справочнике.
+  # Их разделяет строгое равенство полной нормализованной строки — тест
+  # обязан упасть, если следующая правка normalize начнёт обрезать имя
+  # по точке/скобке/первому слову и молча склеит два дома в один.
+  it 'не путает разные проекты одного застройщика с похожими именами' do
+    parkoviy = create(:residential_complex, name: 'Голландия. Парковый квартал', city: 'Рязань')
+    verhniy_sad = create(:residential_complex, name: 'Голландия. Верхний сад', city: 'Рязань')
+
+    aggregate_failures do
+      expect(described_class.call(name: 'Голландия (Парковый квартал)', city: 'Рязань')).to eq(parkoviy)
+      expect(described_class.call(name: 'Голландия, Верхний сад', city: 'Рязань')).to eq(verhniy_sad)
+      expect(described_class.call(name: 'Голландия', city: 'Рязань')).to be_nil
+    end
+  end
+
+  # Регресс на пункт 2 код-ревью: мусорное имя, которое после нормализации
+  # схлопывается в пустую строку, не должно находить карточку, у которой
+  # имя тоже схлопывается в пустую строку (валидация `presence: true`
+  # это не ловит — она проверяет исходную строку, а не нормализованную).
+  it 'не сопоставляет мусорное имя, нормализация которого — пустая строка' do
+    create(:residential_complex, name: '...', city: 'Рязань')
+
+    expect(described_class.call(name: 'ЖК .', city: 'Рязань')).to be_nil
   end
 end
