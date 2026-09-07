@@ -1023,6 +1023,8 @@ git commit -m "feat(zhk): вебхук приёма наблюдений от с
 require 'rails_helper'
 
 RSpec.describe 'GET /admin/zhk_discrepancies', type: :request do
+  include_context 'с админ-токеном'
+
   let!(:complex) { create(:residential_complex, name: 'Скобелев') }
 
   before do
@@ -1039,7 +1041,7 @@ RSpec.describe 'GET /admin/zhk_discrepancies', type: :request do
   end
 
   it 'показывает обе версии и их источники' do
-    get '/admin/zhk_discrepancies', params: { token: admin_token }
+    admin_get '/admin/zhk_discrepancies'
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include('Скобелев').and include('Единство').and include('Северная компания')
@@ -1047,7 +1049,7 @@ RSpec.describe 'GET /admin/zhk_discrepancies', type: :request do
 end
 ```
 
-Хелпер `admin_token` уже есть в `spec/support/admin_auth_helpers.rb` (заведён в Фазе 2 A2) — использовать его, а не изобретать новый.
+Аутентификация в спеке — через существующий shared context `'с админ-токеном'` из `spec/support/admin_auth_helpers.rb` (Фаза 2 A2): он подменяет `ENV['ADMIN_TOKEN']` на время примера и даёт `admin_get`/`admin_post`/`admin_patch`, которые сами дописывают токен в параметры. Голого хелпера `admin_token` в проекте нет — контекст раздаётся целиком именно чтобы спек не получил молча редирект вместо 200.
 
 - [ ] **Step 2: Убедиться, что спек падает**
 
