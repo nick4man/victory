@@ -48,12 +48,12 @@ claude --resume chat
 |---|---|---|
 | `.git/` | shared | Single repo, single config, single refs |
 | `tmp/` (cache, locks, sessions) | **per-worktree** | Lock files изолированы |
-| `.claude/sessions/inbox/` | **per-worktree** (gitignored) | Cross-worktree messages — use git, not inbox |
+| `.claude/sessions/inbox/` | **shared** — очередь в main checkout (gitignored) | С 07.09.26 `bin/claude-inbox` и hook резолвят очередь через `git --git-common-dir`, поэтому сообщения пересекают worktree |
 | `Gemfile.lock` | shared (committed) | **Только victory делает `bundle install`** — иначе race |
 | `node_modules/` | per-worktree (gitignored) | Каждый worktree может install отдельно |
 | Disk usage | 4× checkouts | ~1-2 GB each — OK |
 
-## Inbox protocol (same-worktree only)
+## Inbox protocol (cross-worktree)
 
 ### Структура
 
@@ -74,7 +74,18 @@ Inbox files gitignored, structure через `.gitkeep`.
 
 ### Cross-worktree?
 
-Inbox **не пересекает** worktrees — каждый worktree имеет свой `inbox/` dir. Для cross-worktree hand-off **используй git** (commit → push → merge), не inbox.
+**Работает** (с 07.09.26). Очередь одна на репозиторий и физически лежит в main
+checkout: `bin/claude-inbox` и `session-start.sh` берут её как родителя
+`git rev-parse --git-common-dir`, а не как `.claude/` текущего worktree.
+
+Почему именно так: у каждого worktree своя копия `.claude/` на диске, а
+`.gitignore` исключает `inbox/**/*.md` — worktree-локальный путь не доставлял
+ни через файловую систему, ни через git. Сообщения молча оседали в тупике.
+
+Переопределить расположение очереди — `CLAUDE_INBOX_ROOT`.
+
+Имя новой сессии не обязано быть в `valid_sessions`: worktree саморегистрируется,
+создав свой каталог — `mkdir -p <main-checkout>/.claude/sessions/inbox/<имя>`.
 
 ### Message format
 
