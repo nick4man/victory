@@ -115,20 +115,14 @@ module Zhk
       # обычный дубль.
       duplicate_result(existing_observation)
     rescue ActiveRecord::RecordInvalid => e
-      # Модельные валидации (`district_slug` вне реестра города, `built_to`
-      # вне диапазона, `built_from` позже `built_to`, слишком длинное имя
-      # и т. п.) — штатный повод отказать наблюдению, а не 500: `district_
-      # slug` и `name` входят в `FactApplier::FILLABLE`, то есть это
-      # обычная поверхность контракта наблюдения, не экзотика. Транзакция
-      # уже откатилась (исключение поднято внутри `ActiveRecord::Base.
-      # transaction`), база чистая.
+      # Страховка на то, что `model_invalid_reasons` не покрывает: она
+      # смотрит только на значения ИЗ ЭТОГО наблюдения по отдельности, а
+      # не на их сочетание с уже сохранёнными данными карточки (например
+      # `built_from` реальной карточки против `built_to` из наблюдения).
+      # Транзакция уже откатилась (исключение поднято внутри
+      # `ActiveRecord::Base.transaction`), база чистая.
       Result.new(status: :invalid, error: e.message, reasons: e.record.errors.full_messages,
                  filled: [], discrepancies: [])
-    rescue ArgumentError => e
-      # Битый `fetched_at` (не парсится `Time.zone.parse`) или недопустимое
-      # значение enum-поля (`housing_class`/`build_status` не из словаря) —
-      # тоже штатный `:invalid`, а не необработанное исключение.
-      Result.new(status: :invalid, error: e.message, reasons: [e.message], filled: [], discrepancies: [])
     end
 
     private
@@ -155,17 +149,31 @@ module Zhk
 
     REQUIRED = %w[source external_id name city].freeze
 
-    # @return [Array<String>] структурные причины отвергнуть наблюдение до
-    # какой-либо записи в базу: отсутствующие поля, город вне реестра,
-    # заведомо битая цена. Модельные валидации (диапазон года, длина имени,
-    # неизвестный район) сюда намеренно не дублируются — их проверяет сама
-    # модель на `save!`, а `rescue ActiveRecord::RecordInvalid` в `call`
-    # превращает их в тот же `:invalid`, не расходясь с источником правды
-    # о том, что для карточки валидно.
+    # @return [Array<String>] причины отвергнуть наблюдение целиком, ДО
+    # какой-либо записи в базу — включая ДО `record_facts`. Модельные
+    # правила (диапазон года, длина имени, неизвестный район) сюда
+    # включены сознательно, а не оставлены только `rescue
+    # ActiveRecord::RecordInvalid` на `save!`: тот срабатывает лишь когда
+    # значение реально доходит до `save!`, а `FactApplier` на СОХРАНЁННОЙ
+    # карточке применяет поле только если оно сейчас `nil`. У зрелой
+    # карточки почти всё уже заполнено — значит `save!` с мусорным
+    # значением просто не случится, мусор тихо осядет в `ZhkFact` как
+    # «расхождение», а выйти из этой очереди нечем: экрана разрешения нет,
+    # только ручное удаление строк в консоли. `model_invalid_reasons` не
+    # зависит от состояния карточки в принципе — она проверяет значения
+    # ИЗ ЭТОГО наблюдения сами по себе, на чистом пробнике.
     def structural_invalid_reasons
       reasons = REQUIRED.select { |key| @payload[key].blank? }.map { |key| "нет поля #{key}" }
       reasons << 'город вне реестра' if @payload['city'].present? && !known_city?
       reasons << 'битая цена' if price_broken?
+      reasons << 'нечитаемый fetched_at' if fetched_at_broken?
+
+      if fields_broken?
+        reasons << 'fields не объект'
+      else
+        reasons.concat(model_invalid_reasons)
+      end
+
       reasons
     end
 
@@ -173,10 +181,77 @@ module Zhk
       ResidentialComplex::CITY_NAMES.include?(@payload['city'])
     end
 
-    # @return [Boolean] цена присутствует, но её нельзя записать: нет
-    # `price_per_sqm`, оно не целое положительное число, либо `kind` — не
-    # одно из значений enum. Отсутствие блока `price` целиком — НЕ битая
-    # цена, это источник, у которого её просто нет.
+    # @return [Boolean] `payload['fields']` присутствует, но это не хеш
+    # (например массив). `fields` ниже слайсит его белым списком —
+    # `Array#slice(*13 строк)` не про то же самое, что `Hash#slice`, а про
+    # диапазон индексов, и падает `ArgumentError: wrong number of
+    # arguments`. Это не внутренняя ошибка нашего кода — источник прислал
+    # структурно другое, отвергаем явно, до попытки что-либо с этим сделать.
+    def fields_broken?
+      raw = @payload['fields']
+      raw.present? && !raw.is_a?(Hash)
+    end
+
+    # @return [Boolean] `fetched_at` не парсится. Единственное известное
+    # узкое место для `ArgumentError` здесь — `Time.zone.parse` реально
+    # бросает его на невозможных датах («2026-13-45» → `argument out of
+    # range»), а не только возвращает `nil`, как на бессмысленном мусоре
+    # («not-a-date» → `nil`, штатно уходит в фолбэк `Time.current`).
+    def fetched_at_broken?
+      Time.zone.parse(@payload['fetched_at'].to_s)
+      false
+    rescue ArgumentError
+      true
+    end
+
+    # @return [Array<String>] нарушения доменных правил модели значениями
+    # ИЗ ЭТОГО наблюдения — независимо от того, что уже сохранено на
+    # карточке (см. комментарий у `structural_invalid_reasons`). Пробник —
+    # чистый `ResidentialComplex.new`, ему нечего терять кроме валидности
+    # самих значений: ошибка на `name`/`city` в счёт не идёт, если их не
+    # прислало ИМЕННО это наблюдение (`fields`), а не заготовка контекста.
+    #
+    # `assign_attributes` — второе (и последнее) узкое место для
+    # `ArgumentError`: присвоение enum-полю (`housing_class`/`build_status`)
+    # значения вне словаря бросает исключение прямо на сеттере, раньше
+    # валидации.
+    def model_invalid_reasons
+      return [] if fields.empty?
+
+      probe = ResidentialComplex.new(name: effective_name, city: @payload['city'])
+
+      begin
+        probe.assign_attributes(fields.symbolize_keys)
+      rescue ArgumentError => e
+        return [e.message]
+      end
+
+      probe.valid?
+      probe.errors.messages.each_with_object([]) do |(attr, messages), acc|
+        next unless fields.key?(attr.to_s)
+
+        messages.each { |message| acc << "#{attr} #{message}" }
+      end
+    end
+
+    # @return [String] значение `kind` для точки цены: явный `null` и
+    # отсутствие ключа — одно и то же («источник не уточнил вид цены»),
+    # а не два разных случая. `price['kind'] || 'from'` и
+    # `price.fetch('kind', 'from')` РАСХОДЯТСЯ ровно на явный `null`:
+    # `fetch` смотрит только на наличие ключа и возвращает `nil`, если
+    # ключ есть, а `kind` не может быть `nil` — колонка `NOT NULL`. Метод
+    # общий для проверки (`price_broken?`) и записи (`record_price`), как
+    # и `price_per_sqm_value` — иначе одно место сочтёт значение валидным,
+    # а другое упадёт `NotNullViolation` на ровно том же payload.
+    def price_kind(price)
+      (price['kind'] || 'from').to_s
+    end
+
+    # @return [Boolean] цена присутствует, но её нельзя записать: сам блок
+    # `price` — не хеш, нет `price_per_sqm`, оно не целое положительное
+    # число, либо `kind` — не одно из значений enum. Отсутствие блока
+    # `price` целиком — НЕ битая цена, это источник, у которого её просто
+    # нет.
     #
     # Проверяем ТО ЖЕ значение, что `record_price` в итоге запишет
     # (`price_per_sqm_value`), а не грубо усечённое через truncating
@@ -188,11 +263,11 @@ module Zhk
     def price_broken?
       price = @payload['price']
       return false if price.blank?
+      return true unless price.is_a?(Hash)
 
       return true if price_per_sqm_value.nil?
 
-      kind = (price['kind'] || 'from').to_s
-      !ZhkPricePoint.kinds.key?(kind)
+      !ZhkPricePoint.kinds.key?(price_kind(price))
     end
 
     # @return [Integer, nil] `price_per_sqm` как целое положительное число,
@@ -246,7 +321,7 @@ module Zhk
 
     def duplicate_result(observation)
       Result.new(status: :duplicate, complex_id: observation&.residential_complex_id,
-                 filled: [], discrepancies: [])
+                 filled: [], discrepancies: [], reasons: [])
     end
 
     def matched
@@ -285,7 +360,7 @@ module Zhk
 
       ZhkPricePoint.create!(residential_complex: complex, source: @payload['source'],
                             observed_at: observed_at, price_per_sqm: price_per_sqm_value,
-                            kind: price.fetch('kind', 'from'), rooms: rooms_value(price),
+                            kind: price_kind(price), rooms: rooms_value(price),
                             url: @payload['url'])
     end
   end

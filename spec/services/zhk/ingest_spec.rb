@@ -199,6 +199,77 @@ RSpec.describe Zhk::Ingest do
     expect(result.filled).to include(:developer, :built_to, :buildings_count, :address)
   end
 
+  it 'явный null у kind — то же самое, что отсутствие ключа, а не поломка записи' do
+    # `price['kind'] || 'from'` и `price.fetch('kind', 'from')` расходятся
+    # ровно на явный `null`: fetch увидит ключ и вернёт nil, а kind — NOT
+    # NULL колонка. Коллектор шлёт настоящие null (см. fixture: rooms).
+    with_null_kind = payload.merge('price' => payload['price'].merge('kind' => nil))
+
+    result = described_class.call(with_null_kind)
+
+    expect(result.status).to eq(:created)
+    expect(ZhkPricePoint.last.kind_from?).to be true
+  end
+
+  it 'reasons у :duplicate — всегда массив, а не nil' do
+    described_class.call(payload)
+
+    second = described_class.call(payload)
+
+    expect(second.reasons).to eq([])
+  end
+
+  it 'не глотает ArgumentError, который не про одно из двух известных мест' do
+    # Единственные два законных источника ArgumentError — Time.zone.parse
+    # для fetched_at и присвоение enum вне словаря, оба закрыты своими
+    # узкими rescue ДО транзакции. Любой другой ArgumentError (здесь —
+    # сымитирован в Matcher) обязан долететь наружу как есть, а не
+    # превратиться в лживый :invalid, маскируя реальный баг.
+    allow(Zhk::Matcher).to receive(:call).and_raise(ArgumentError, 'непредвиденный баг где-то ещё')
+
+    expect { described_class.call(payload) }.to raise_error(ArgumentError, 'непредвиденный баг где-то ещё')
+  end
+
+  it 'отвергает недопустимое значение enum-поля вместо необработанного исключения' do
+    bad_enum = payload.merge('fields' => payload['fields'].merge('housing_class' => 'ультра-элит'))
+
+    result = described_class.call(bad_enum)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает нехеш price вместо необработанного исключения' do
+    broken = payload.merge('price' => 'дёшево')
+
+    result = described_class.call(broken)
+
+    expect(result.status).to eq(:invalid)
+    expect(ZhkPricePoint.count).to eq(0)
+  end
+
+  it 'отвергает нехеш fields вместо необработанного исключения' do
+    broken = payload.merge('fields' => %w[developer Единство])
+
+    result = described_class.call(broken)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает мусорное значение независимо от того, что уже заполнено на карточке' do
+    # Ровно сценарий из ревью: built_to уже занят на зрелой карточке,
+    # FactApplier его не тронет — без пред-валидации мусор тихо ушёл бы в
+    # ZhkFact как расхождение, без выхода из очереди.
+    create(:residential_complex, name: 'Скобелев', city: 'Рязань', built_to: 2022)
+
+    broken_year = payload.merge('fields' => payload['fields'].merge('built_to' => 3000))
+    result = described_class.call(broken_year)
+
+    expect(result.status).to eq(:invalid)
+    expect(ZhkFact.where(field: 'built_to').count).to eq(0)
+  end
+
   it 'строит и матчит черновик по одному и тому же имени, даже если fields несёт другое имя' do
     # payload['name'] и fields['name'] могут расходиться — если завести
     # черновик по одному, а матчить по другому, `FactApplier` (name — в
