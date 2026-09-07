@@ -1,0 +1,12 @@
+[Unit]
+Description=Ежедневный бэкап victory62 (БД и секреты)
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+# Пропущенный из-за простоя запуск выполняется при следующем старте — иначе
+# после перезагрузки в неудачное время сутки остались бы без копии.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

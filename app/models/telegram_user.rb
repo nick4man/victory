@@ -27,6 +27,21 @@ class TelegramUser < ApplicationRecord
            dependent: :nullify,
            inverse_of: :assigned_to
 
+  # Обратная сторона User#telegram_user. has_one, а не has_many: unique-индекс
+  # на users.telegram_user_id не даёт связать один телеграм с двумя учётками —
+  # иначе рассылка по объектам агента стала бы двусмысленной.
+  #
+  # dependent не указан намеренно: FK стоит on_delete: :nullify, удаление
+  # TG-аккаунта не должно затрагивать учётку сотрудника в CRM.
+  has_one :user, inverse_of: :telegram_user
+
+  # Бот может написать в личку только после того, как человек сам открыл с ним
+  # диалог: Telegram не даёт ботам писать первыми. Пока dm_chat_id пуст, любая
+  # персональная рассылка этому сотруднику невозможна физически.
+  def can_dm?
+    dm_chat_id.present? && status == 'active'
+  end
+
   validates :tg_user_id, presence: true, uniqueness: true
   validates :status, inclusion: { in: STATUSES }
 

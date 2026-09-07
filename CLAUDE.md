@@ -2,6 +2,8 @@
 
 Rails 8.1.3.1 / Ruby 3.3.6 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language real estate platform. **PRODUCTION** at https://victory62.org.
 
+⚠️ Ruby: рантайм **3.3.6** (`Gemfile`, `.ruby-version`). `mise.toml` устарел (заявляет 3.2.2) — не верь ему. `.rubocop.yml` намеренно таргетирует 3.2 как нижнюю границу.
+
 ## Где брать контекст (memory-bank)
 
 Этот файл — тонкий хаб. Содержательное — рядом, читай по теме:
@@ -9,10 +11,12 @@ Rails 8.1.3.1 / Ruby 3.3.6 / PostgreSQL 15+ + PostGIS + pgvector. Russian-langua
 - `.claude/memory/activeContext.md` — текущая ветка, фаза, что в фокусе сейчас (обновляется неделями).
 - `.claude/memory/systemPatterns.md` — конвенции (enums `_prefix`, soft-delete `deleted_at`, frozen literals, single quotes, dd.MM.yy даты, service-object pattern).
 - `.claude/memory/techContext.md` — стек, ENV vars, команды (`rspec`, `rubocop`, миграции, Sidekiq, cron).
-- `.claude/memory/progress.md` — что в проде, что отключено (Devise off!), что заглушка, аспирационные роуты, известный tech-debt.
+- `.claude/memory/progress.md` — что в проде, что отключено (Devise off!), что заглушка, аспирационные роуты, известный tech-debt. ⚠️ Секция tech-debt устарела: спеков **90**, а не 5; rubocop/brakeman/bundler-audit в `Gemfile` уже есть.
 - `.claude/repo-index.md` — компактный индекс «файл → классы» (~5k токенов, читай первым).
 - `.claude/repo-map.md` — полный сигнатурный дамп (~190k токенов, on-demand для глубокого ныряния).
 - Обновить оба: `bundle exec rake repo:map`.
+
+⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`, шесть `DEPLOYMENT*.md`, …) — исторический шум, местами полугодовой давности. Источник правды — `.claude/memory/`.
 
 ## 3 жёстких правила (не нарушай, не спрашивая)
 
@@ -24,24 +28,102 @@ Rails 8.1.3.1 / Ruby 3.3.6 / PostgreSQL 15+ + PostGIS + pgvector. Russian-langua
 
 **Devise отключен**. `current_user` → `nil`, `user_signed_in?` → `false`. Admin-доступ — query-param `?token=$ADMIN_TOKEN`. Не предполагай, что юзер залогинен.
 
+## Архитектура — большая картина
+
+Rails-монолит. Четыре входа, и только первый — «сайт»:
+
+| Вход | Где | Аутентификация |
+|---|---|---|
+| Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, ~891 строка `config/routes.rb` | нет (Devise off) |
+| JSON API | `namespace :api { namespace :v1 }` | JWT |
+| Админка | `namespace :admin` | `?token=$ADMIN_TOKEN` |
+| Вебхуки | `app/controllers/webhooks/` — `topnlab`, `telegram`, `news_ingest`, `yookassa`, `amocrm` | у каждого свой секрет из ENV; при пустом ENV контроллер отказывает, а не пропускает |
+
+Что нужно знать до первой правки:
+
+- **Каталог объектов не наш.** Источник правды — внешняя CRM Topnlab; `Property` — проекция, которую наполняют `TopnlabSyncJob` (каждые 30 мин) и соседние sync-джобы. Инвариант: при неполном обходе архивация пропускается, иначе каталог схлопывается.
+- **Доменная логика — в `app/services/` (~260 файлов), не в моделях и не в контроллерах.** Plain-Ruby класс с `call`, см. `systemPatterns.md`. Не путать с верхнеуровневым `services/`.
+- **Два Telegram-бота из одного Rails**: `telegram/work_bot/` (сотрудники — фактический CRM-канал: команды, задачи, дайджесты, эскалации) и `telegram/client_bot/` (клиенты). Общий вход — `Telegram::InboundProcessor`.
+- **LLM — free-first цепочка**, `Llm::OmniClient` (`DEFAULT_CHAINS[:chat]` / `[:analysis]`, платный Sonnet последний). Tool-calling — `app/services/chat_tools/` + `Llm::ToolRunner`. Перестановка модели вверх по цепочке = деньги, молча.
+- **Эмбеддинги** — pgvector + gem `neighbor`, таблицы `*_embedding`, наполняются `EmbedXxxJob`.
+
+### Два планировщика, и это не опечатка
+
+| | Что |
+|---|---|
+| `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, SLA, cleanup). Время в MSK, зависит от `TZ` контейнера |
+| `config/schedule.rb` | whenever → системный crontab, ~17 записей |
+
+Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd /home/q/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+
+## Команды
+
+🚨 **На этом хосте Ruby-тулинга нет.** Ни `ruby`, ни `bundle` в PATH, ни контейнеров victory (`docker ps` пуст на этот счёт), ни rails-образа. `bundle exec rspec`, `rubocop`, `rake`, `bin/rails` здесь **не запустятся** — не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть. По этой же причине хук `post-edit-rubocop.sh` — молчаливый no-op: автоформатирования `.rb` не будет.
+
+Работает прямо здесь — только Python-сервис:
+
+```bash
+cd services/urgent-news-collector && python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сети и БД
+```
+
+Остальное — там, где есть Ruby (CI гоняет только первый блок):
+
+```bash
+bundle exec rubocop --parallel        # + -a safe / -A unsafe autocorrect
+bundle exec brakeman --exit-on-warn --quiet --format text
+bundle exec bundle-audit update && bundle exec bundle-audit check
+
+bundle exec rspec                                  # 90 спеков, в CI НЕ входят
+bundle exec rspec spec/models/property_spec.rb     # один файл
+bundle exec rspec spec/models/property_spec.rb:42  # один пример
+
+bin/rails db:migrate                  # db:create / db:seed / db:reset
+bundle exec sidekiq -C config/sidekiq.yml
+bundle exec rake repo:map             # регенерация repo-index.md + repo-map.md
+```
+
+Полный список ENV и rake-задач — `.claude/memory/techContext.md` и `lib/tasks/*.rake` (31 файл).
+
+## `services/` — подсистемы вне Rails
+
+Не путать с `app/services/` (Ruby service objects, ~260 файлов). Верхний уровень:
+
+| Каталог | Язык |
+|---|---|
+| `audit-engine/` | Python (FastAPI), вендорится извне — см. `VENDOR.md` |
+| `chat-host-cron/` | bash |
+| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md`. Владелец кода — victory, но `pipeline_utils.py` + `content_db_utils.py` вендорятся из openclaw: `VENDOR.md` + `sync-check.sh` |
+| `web-comparables/` | не код, один `SKILL.md` |
+
+🚨 Rails-конвенции сюда НЕ переносятся: skill `victory-rails-conventions` и правила 1–2 выше — только для Ruby. Из трёх жёстких правил в Python-сервисы едет одно: даты `dd.MM.yy`.
+
+## Хуки (`.claude/settings.json`)
+
+`PostToolUse` на Edit|Write запускает `rubocop -a` **в фоне** на каждый `*.rb`: там, где Ruby установлен, файл меняется уже после твоей правки — не ищи «второго редактора». В окружении без bundler хук молча ничего не делает (см. «Команды»). `PreToolUse` предупреждает о локах в `tmp/claude-locks/`. `SessionStart` печатает routing и inbox.
+
 ## Стратегический вектор (24 мес)
 
 `.claude/memory/strategicVector.md` (короткое propagating-резюме) + `.claude/plans/_shared/splendid-imagining-lerdorf.md` (мастер-документ). Все решения прогоняй через 3 пиллара: **frictionless concierge / deep expertise / AI×human**. Усиливает 2+ — делаем; ослабляет хотя бы один — переформулируем.
 
 ## Параллельные сессии Claude Code
 
-Над этим репо работают **4 сессии** (см. `.claude/sessions/README.md`):
+Worktree сейчас **два**. Источник правды — `git worktree list`, не эта таблица:
 
-| Session | Назначение | Worktree |
+| Worktree | Ветка | Назначение |
 |---|---|---|
-| **victory** | Rails-сервер :3000, Edit/RSpec/runner | `/home/q/victory-victory` |
-| **chat** | Site-chatbot dev + planning | `/home/q/victory-chat` |
-| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` |
-| **upgrade** | Rails/Ruby EOL upgrades (Rails 8.1.3.1 в проде c 08.08.26) | `/home/q/victory-upgrade` |
+| `/opt/.openclaw/victory` | `main` | ТОЛЬКО deploy/merge |
+| `/opt/.openclaw/victory-urgent-collector` | `feat/urgent-news-collector` | Python-конвейер новостей |
 
-Все 4 сессии — Ruby **3.3.6**. Идентичность — из marker-файла `.claude-session` в корне worktree (auto; override через `export CLAUDE_SESSION`).
+🚨 **В `victory-urgent-collector` включён sparse-checkout** (06.09.26): на диске только
+`services/urgent-news-collector/`, `app/controllers/webhooks/` (контракт вебхука) и `.claude/`
+плюс корневые файлы — 175 файлов вместо 1490. Rails-дерева здесь нет **намеренно**: это не
+битый клон и не пропажа, Ruby на этой машине всё равно не запускается. Нужен другой каталог —
+`git sparse-checkout add app/services`, вернуть всё — `git sparse-checkout disable`. Настройка
+per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 
-🚨 **`/home/q/victory` = main checkout, ТОЛЬКО deploy/merge — НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт. См. `.claude/sessions/README.md` + skill `session-coordination`.
+🚨 **`/opt/.openclaw/victory` = main checkout, НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт.
+
+⚠️ Схема «4 сессии victory/chat/seo/upgrade» из `.claude/sessions/README.md` — историческая, её worktree в `/home/q/` **не существуют**. Тот же мёртвый путь прописан в `.mcp.json` и `.claude/hooks/session-start.sh`: из-за него MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность. `bin/claude-inbox` жёстко валидирует старый список имён, поэтому в новых worktree inbox не работает.
 
 ### Локи — автоматические и блокирующие (с 08.08.26)
 
@@ -73,8 +155,20 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 - **`main`** — production. Деплоится автоматически (или через webhook) на https://victory62.org. **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
-- **PR → main** — единственный путь в прод. CI gate: rubocop + brakeman + bundler-audit + (скоро) rspec all green. Code-reviewer agent на diff — обязательно для non-trivial.
+- **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
+
+  | Проверка | Откуда |
+  |---|---|
+  | RuboCop, Brakeman, bundler-audit | `.github/workflows/lint.yml` — единственный workflow в репозитории |
+  | CodeQL + `Analyze (ruby / python / javascript-typescript / actions)` | code scanning **default setup**, включён через UI GitHub — файла в репозитории нет, `ls .github/workflows/` его не покажет |
+  | GitGuardian Security Checks | GitHub App, вне репозитория |
+
+  **RSpec в CI нет.** 90 спеков гоняются только вручную: `bundle exec rspec`. Зелёный CI ≠ тесты прошли — он значит «линтеры и сканеры молчат».
+- 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
+  Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
+  Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` в `main` нет — он существует только в ветке `origin/dev/upgrade` и не вмёржен; пока запуск через `bundle exec`. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
+- ⚠️ `git push` по HTTPS в этом окружении виснет и отваливается по таймауту через 300 с (чтение при этом работает — `ls-remote` мгновенный). Лечится принудительным HTTP/1.1: `git -c http.version=HTTP/1.1 push …`. В конфиг не прописано — добавляй флагом или `git config http.version HTTP/1.1` локально.
 
 См. `.claude/memory/strategicVector.md` секция «Infrastructure decision 04.06.26» для trigger metrics когда вернуться к разговору о микросервисах/K8s (сейчас 0/7 triggered).
 
@@ -84,6 +178,8 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 Команда `/mcp` в Claude Code показывает статус. Установка: см. `.claude/memory/techContext.md`.
 
 ## Routing & delegation — авто-выбор агента/скилла
+
+⚠️ Имена ниже — это файлы `.claude/agents/*.md`, а **не** значения `subagent_type`. Ни одно из 17 не зарегистрировано: `subagent_type: 'topnlab-api-expert'` падает с `Agent type not found`. Читай нужный файл как инструкцию и выполняй сам либо передавай текстом общему субагенту.
 
 Полная routing-таблица: `.claude/docs/delegation-map.md`. **Quick reference:**
 

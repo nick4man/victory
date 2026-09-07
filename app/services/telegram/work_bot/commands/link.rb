@@ -21,6 +21,14 @@ module Telegram
           email    = parts[1]
           role     = parts[2]&.downcase
 
+          # Без аргументов показываем кнопочный экран вместо подсказки формата.
+          # Текстовыми командами в этом боте не пользуются — из 24 команд за всё
+          # время вызывались 9, и ни одна из них не набиралась руками. Экран
+          # LinkStaffCallback связывает telegram-аккаунт с учёткой CRM
+          # (users.telegram_user_id), от которой зависит вся адресная рассылка;
+          # без точки входа он был бы недостижим.
+          return show_link_screen if username.blank? && email.blank?
+
           if username.blank? || email.blank?
             return reply('Формат: <code>/link @username email@victory.ru [manager]</code>')
           end
@@ -79,6 +87,22 @@ module Telegram
         end
 
         private
+
+        # Кнопочный вход в связывание сотрудник ↔ телеграм. Сами кнопки
+        # обрабатывает Callbacks::LinkStaffCallback.
+        def show_link_screen
+          client.send_message(
+            "<b>Связка сотрудников с Telegram</b>\n\n" \
+            'От этой связи зависит, дойдут ли до сотрудника уведомления по его объектам.',
+            chat_id: message.dig('chat', 'id'),
+            message_thread_id: message['message_thread_id'],
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [
+              [{ text: '🔗 Связать аккаунт с учёткой', callback_data: 'link_staff:list' }],
+              [{ text: '🔎 Кому бот не сможет написать', callback_data: 'link_staff:report' }]
+            ] }
+          )
+        end
 
         def escape(text)
           text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
