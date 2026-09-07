@@ -1,0 +1,114 @@
+<% content_for :title, @meta_title %>
+<% content_for :seo_description, @meta_description %>
+<%# canonical: НЕ override — layout default (`request.original_url.split('?').first`)
+    достаточен, страница без параметров запроса. %>
+
+<% content_for :head do %>
+  <meta name="description" content="<%= @meta_description %>">
+
+  <%# Гейт хаба (см. HUB_MIN_COMPLEXES в контроллере) — страница существует
+      и полезна прямым заходам даже с 1-2 готовыми ЖК, но отдельной точкой
+      входа в выдачу становится только начиная с трёх. То же правило,
+      что soft-404 guard district-лендингов (noindex,follow, не 404). %>
+  <% unless @hub_ready %>
+    <meta name="robots" content="noindex,follow">
+  <% end %>
+
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@graph' => [
+      {
+        '@type' => 'CollectionPage',
+        'name' => @meta_title,
+        'description' => @meta_description,
+        'url' => zhk_index_url,
+        'mainEntity' => {
+          '@type' => 'ItemList',
+          'numberOfItems' => @complexes.size,
+          'itemListElement' => @complexes.each_with_index.map { |c, i|
+            { '@type' => 'ListItem', 'position' => i + 1, 'url' => zhk_url(c), 'name' => c.display_name }
+          }
+        }
+      },
+      JSON.parse(breadcrumb_jsonld([
+        ['Каталог', properties_url],
+        ['Жилые комплексы', nil]
+      ])).except('@context')
+    ]
+  }.to_json) %>
+  </script>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Каталог', properties_path],
+  ['Жилые комплексы', nil]
+] %>
+
+<!-- Hero / H1 -->
+<section class="px-6 lg:px-12 pt-12 pb-12 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">НОВОСТРОЙКИ И ЖК</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6 uppercase">Жилые комплексы Рязани</h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      <% if @complexes.any? %>
+        В каталоге АН «Виктори» — <%= @complexes.size %> жилых комплексов с описанием, фактурой
+        и актуальными предложениями.
+      <% else %>
+        Мы наполняем справочник жилых комплексов Рязани. Оставьте заявку — подберём варианты
+        по вашим параметрам среди новостроек и вторички.
+      <% end %>
+    </p>
+  </div>
+</section>
+
+<!-- Complexes grid -->
+<% if @complexes.any? %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @complexes.each do |complex| %>
+          <%= link_to zhk_path(complex), class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+            <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2 uppercase">
+              <%= [complex.district_name, complex.city].compact.join(', ') %>
+            </p>
+            <p class="text-xl tracking-wider text-foreground group-hover:underline mb-2"><%= complex.display_name %></p>
+            <p class="text-sm text-muted-foreground">
+              <% if complex.developer.present? %>Застройщик: <%= complex.developer %><br><% end %>
+              <% count = complex.on_site_listings_count %>
+              <%= count.positive? ? "В продаже: #{count}" : 'Сейчас нет активных предложений' %>
+            </p>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% else %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-4xl mx-auto text-center">
+      <%= link_to 'Весь каталог →', properties_path,
+                  class: 'inline-block px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors' %>
+    </div>
+  </section>
+<% end %>
+
+<!-- Internal-link CTA block — та же тройка, что на district-лендингах. -->
+<section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-8 uppercase">Полезные сервисы</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <%= link_to services_mortgage_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Рассчитать платёж и подобрать программу →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Наша команда риелторов в Рязани →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АНАЛИТИКА РЫНКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и market reports →</p>
+      <% end %>
+    </div>
+  </div>
+</section>

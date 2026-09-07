@@ -1,0 +1,235 @@
+<% content_for :title, @meta_title %>
+<% content_for :seo_description, @meta_description %>
+<%# canonical: НЕ override — layout default (`request.original_url.split('?').first`)
+    достаточен; редирект на канонический слаг уже сделан в контроллере. %>
+
+<%# geo.* meta dispatch по городу ЖК — как на district-лендингах
+    (landings/show.html.erb:8-18). Сегодня все сиды в Рязани, но модель
+    валидирует город против Cities::REGISTRY (Москва/СПб тоже возможны). %>
+<% if (city_cfg = zhk_city_config(@complex)) %>
+  <% content_for :geo_region, city_cfg[:iso_region] %>
+  <% content_for :geo_placename, city_cfg[:name] %>
+  <% content_for :geo_position, "#{city_cfg[:lat]};#{city_cfg[:lng]}" %>
+  <% content_for :icbm, "#{city_cfg[:lat]}, #{city_cfg[:lng]}" %>
+<% end %>
+
+<%# Фото ЖК — district-конвенция: public/images/zhk/<slug>/ (hero.jpg,
+    *.jpg, og.jpg исключён из слайдера — только для meta). Пока в проде
+    фото нет ни у одного ЖК — блоки ниже деградируют до layout default. %>
+<% zhk_photo_dir   = Rails.public_path.join("images/zhk/#{@complex.slug}") %>
+<% zhk_photo_paths = zhk_photo_dir.exist? ? zhk_photo_dir.glob('*.jpg').reject { |p| p.basename.to_s == 'og.jpg' }.sort : [] %>
+<% has_zhk_hero = zhk_photo_paths.any? %>
+<% has_zhk_og   = zhk_photo_dir.exist? && zhk_photo_dir.join('og.jpg').exist? %>
+
+<%# OG image precedence: ЖК branded og.jpg > первый листинг > layout default. %>
+<% if has_zhk_og %>
+  <% content_for :og_image, "#{request.protocol}#{request.host_with_port}/images/zhk/#{@complex.slug}/og.jpg" %>
+  <% content_for :og_image_width, 1200 %>
+  <% content_for :og_image_height, 630 %>
+<% elsif (og_lead = @listings.first) && og_lead.images.attached? %>
+  <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+<% end %>
+
+<% faq_pairs = @complex.body_html.present? ? faq_pairs_from_html(@complex.body_html) : [] %>
+
+<% content_for :head do %>
+  <meta name="description" content="<%= @meta_description %>">
+
+  <%# ImageObject Schema.org для фото ЖК — та же роль, что у district hero
+      (landings/show.html.erb:57-66): сигнал Я.Картинкам/Google Images. %>
+  <% if has_zhk_hero %>
+    <%= render 'shared/jsonld_image_object', images: zhk_photo_paths.map { |p|
+      { url: "/images/zhk/#{@complex.slug}/#{p.basename}",
+        caption: alt_for_zhk_photo(@complex.slug, p.basename.to_s, fallback: @complex.display_name) }
+    } %>
+  <% end %>
+
+  <%# Soft-404 guard — сознательно ДРУГОЕ условие, чем у district-лендингов.
+      У ЖК noindex только когда И текста нет, И объектов нет: нулевой остаток
+      инвентаря штатен (продались), а страница с фактурой обязана
+      ранжироваться именно тогда. Условие инкапсулировано в модели —
+      `indexable?` — не дублируется здесь (см. sitemap Фазы 4). %>
+  <% unless @complex.indexable? %>
+    <meta name="robots" content="noindex,follow">
+  <% end %>
+
+  <%# Единый @graph: ApartmentComplex (подтип Residence) + CollectionPage/
+      ItemList листингов ЖК + BreadcrumbList. `breadcrumb_jsonld` отдаёт raw
+      JSON-строку (без <script>) — разбираем обратно в Hash и убираем
+      дублирующий @context, он уже задан на уровне графа. %>
+  <script type="application/ld+json">
+  <%= raw({
+    '@context' => 'https://schema.org',
+    '@graph' => [
+      apartment_complex_jsonld(@complex, stats: @stats, url: zhk_url(@complex)),
+      {
+        '@type' => 'CollectionPage',
+        'name' => @meta_title,
+        'description' => @meta_description,
+        'url' => zhk_url(@complex),
+        'about' => { '@type' => 'ApartmentComplex', 'name' => @complex.display_name },
+        'mainEntity' => {
+          '@type' => 'ItemList',
+          'numberOfItems' => @stats.count,
+          'itemListElement' => @listings.each_with_index.map { |p, i|
+            { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
+          }
+        }
+      },
+      JSON.parse(breadcrumb_jsonld([
+        ['Каталог', properties_url],
+        ['Жилые комплексы', zhk_index_url],
+        [@complex.display_name, nil]
+      ])).except('@context')
+    ]
+  }.to_json) %>
+  </script>
+
+  <%# FAQPage JSON-LD — только если редактор добавил FAQ-блок в body_blocks
+      (рендерится как <details><summary>, см. RendersLandingBlocks). %>
+  <% if faq_pairs.any? %>
+    <%= faq_jsonld(faq_pairs) %>
+  <% end %>
+<% end %>
+
+<%= render 'shared/breadcrumb', items: [
+  ['Каталог', properties_path],
+  ['Жилые комплексы', zhk_index_path],
+  [@complex.display_name, nil]
+] %>
+
+<!-- Hero / H1 / статистика -->
+<section class="px-6 lg:px-12 pt-12 pb-8 bg-background">
+  <div class="max-w-6xl mx-auto">
+    <p class="text-sm tracking-[0.4em] text-muted-foreground mb-4">ЖИЛОЙ КОМПЛЕКС</p>
+    <h1 class="text-4xl lg:text-5xl font-light tracking-wider text-foreground mb-6 uppercase"><%= @complex.display_name %></h1>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl mb-2">
+      <%= [@complex.district_name, @complex.city].compact.join(', ') %>
+      <% if @complex.developer.present? %>· застройщик <%= @complex.developer %><% end %>
+    </p>
+    <p class="text-base text-muted-foreground leading-relaxed max-w-3xl">
+      <% if @stats.count.positive? %>
+        В продаже <%= @stats.count %> предложений
+        <% if (min_formatted = zhk_format_min_price(@stats.min_price)) %>— от <%= min_formatted %> ₽<% end %>.
+      <% else %>
+        Сейчас в продаже нет активных объектов этого ЖК в нашем каталоге. Оставьте заявку —
+        сообщим, как только появится подходящий вариант.
+      <% end %>
+    </p>
+  </div>
+</section>
+
+<%# Слайдер фото ЖК — рендерится перед фактурой, если есть
+    public/images/zhk/<slug>/hero.jpg. Eager+fetchpriority=high на первом
+    кадре обеспечивает shared/_photo_slider (:55-56). %>
+<% if has_zhk_hero %>
+  <section class="px-6 lg:px-12 pb-8 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <%= render 'shared/photo_slider',
+            id: "zhk-#{@complex.slug}-slider",
+            interval: 5000,
+            slides: zhk_photo_paths.map { |p|
+              { src: "/images/zhk/#{@complex.slug}/#{p.basename}",
+                alt: alt_for_zhk_photo(@complex.slug, p.basename.to_s, fallback: @complex.display_name) }
+            } %>
+    </div>
+  </section>
+<% end %>
+
+<%# Фактурная карточка — только заполненные поля (см. риск 8 плана:
+    сид оставляет фактуру пустой, редактор дозаполняет по официальным
+    источникам). %>
+<% fact_rows = [
+     ['Застройщик', @complex.developer],
+     ['Сдача', [@complex.built_from, @complex.built_to].compact.uniq.join('–').presence],
+     ['Класс жилья', ZhkHelper::HOUSING_CLASS_LABELS[@complex.housing_class]],
+     ['Статус стройки', ZhkHelper::BUILD_STATUS_LABELS[@complex.build_status]],
+     ['Материал стен', @complex.wall_material],
+     ['Этажность', [@complex.floors_min, @complex.floors_max].compact.uniq.join('–').presence],
+     ['Корпусов', @complex.buildings_count]
+   ].select { |_label, value| value.present? } %>
+<% if fact_rows.any? %>
+  <section class="px-6 lg:px-12 pb-8 bg-background">
+    <div class="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 border-t border-border pt-8">
+      <% fact_rows.each do |label, value| %>
+        <div>
+          <p class="text-xs tracking-[0.25em] text-muted-foreground mb-1 uppercase"><%= label %></p>
+          <p class="text-base text-foreground"><%= value %></p>
+        </div>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<%# Инфраструктура — только присутствующие признаки. %>
+<% infra_labels = {
+     'Парковка' => @complex.has_parking,
+     'Закрытый двор' => @complex.has_closed_yard,
+     'Детская площадка' => @complex.has_playground,
+     'Детский сад' => @complex.has_kindergarten,
+     'Школа' => @complex.has_school
+   }.select { |_label, present| present }.keys %>
+<% if infra_labels.any? %>
+  <section class="px-6 lg:px-12 pb-12 bg-background">
+    <div class="max-w-4xl mx-auto flex flex-wrap gap-3">
+      <% infra_labels.each do |label| %>
+        <span class="px-4 py-2 text-xs tracking-wider border border-border text-foreground"><%= label %></span>
+      <% end %>
+    </div>
+  </section>
+<% end %>
+
+<!-- Редакционный текст (body_html) -->
+<% if @complex.body_html.present? %>
+  <section class="px-6 lg:px-12 pb-12 bg-background">
+    <div class="max-w-4xl mx-auto prose prose-lg text-foreground">
+      <%= @complex.body_html.html_safe %>
+    </div>
+  </section>
+<% end %>
+
+<!-- Listings -->
+<% if @listings.any? %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <% @listings.each_with_index do |property, i| %>
+          <%= render 'properties/property_card', property: property,
+                priority_image: (has_zhk_hero ? false : i.zero?) %>
+        <% end %>
+      </div>
+    </div>
+  </section>
+<% else %>
+  <section class="px-6 lg:px-12 py-12 bg-background">
+    <div class="max-w-4xl mx-auto text-center">
+      <p class="text-sm text-muted-foreground mb-6">Похожие подборки:</p>
+      <div class="flex flex-wrap gap-3 justify-center">
+        <%= link_to 'Весь каталог →', properties_path,
+                    class: 'px-4 py-2 text-xs tracking-wider border border-border hover:border-foreground transition-colors' %>
+      </div>
+    </div>
+  </section>
+<% end %>
+
+<%# Internal-link CTA block — та же тройка, что на district-лендингах и
+    хабе /zhk (landings/show.html.erb:198-222). %>
+<section class="px-6 lg:px-12 py-16 bg-background border-t border-border">
+  <div class="max-w-4xl mx-auto">
+    <p class="text-xs tracking-[0.3em] text-muted-foreground mb-8 uppercase">Полезные сервисы</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <%= link_to services_mortgage_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">ИПОТЕКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Рассчитать платёж и подобрать программу →</p>
+      <% end %>
+      <%= link_to team_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АГЕНТЫ</p>
+        <p class="text-sm text-foreground group-hover:underline">Наша команда риелторов в Рязани →</p>
+      <% end %>
+      <%= link_to blog_path, class: 'group block p-6 border border-border hover:border-foreground transition-colors' do %>
+        <p class="text-xs tracking-[0.25em] text-muted-foreground mb-2">АНАЛИТИКА РЫНКА</p>
+        <p class="text-sm text-foreground group-hover:underline">Свежие обзоры и market reports →</p>
+      <% end %>
+    </div>
+  </div>
+</section>

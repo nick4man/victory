@@ -185,6 +185,15 @@ Rails.application.routes.draw do
   end
 
   # ============================================
+  # ЖК (A2 Фаза 3 — entity-страницы под бренд-запросы жилых комплексов)
+  # ============================================
+  # Отдельный namespace, не вложенный в /kupit/kvartira/zhk/:slug — страница
+  # ЖК это сущность, а не фасет intent×type (см. план A2, «Ключевые решения»).
+  get '/zhk',     to: 'residential_complexes#index', as: :zhk_index
+  get '/zhk/:id', to: 'residential_complexes#show',  as: :zhk,
+                  constraints: { id: %r{[a-z0-9-]+} }
+
+  # ============================================
   # PROPERTIES (Каталог недвижимости)
   # ============================================
   resources :properties do
