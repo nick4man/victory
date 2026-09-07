@@ -78,4 +78,41 @@ RSpec.describe Zhk::Matcher do
 
     expect(described_class.call(name: 'ЖК .', city: 'Рязань')).to be_nil
   end
+
+  # Круг правок 2: адресный канал сравнивал нормализованные строки через
+  # голый `include?`, то есть поиском подстроки без границы токена.
+  # Нормализация стирает запятую между улицей и номером дома — а она
+  # случайно служила единственной границей: паттерн «есенина 1» становился
+  # подстрокой «есенина 12» и дом №12 приклеивался к паттерну дома №1.
+  context 'граница токена в адресном паттерне' do
+    let!(:esenina_1) do
+      create(:residential_complex, name: 'Есенин Двор', city: 'Рязань',
+                                   address_patterns: ['Есенина, 1'])
+    end
+
+    it 'не путает дом 1 с домом 12 на той же улице' do
+      found = described_class.call(name: 'Незнакомое имя', city: 'Рязань',
+                                   address: 'ЖК Скобелев, ул. Есенина 12')
+
+      expect(found).to be_nil
+    end
+
+    it 'находит дом 1, записанный в разных форматах — с «д.», без него, с иной пунктуацией' do
+      aggregate_failures do
+        expect(described_class.call(name: 'Другое имя', city: 'Рязань',
+                                    address: 'Рязань, ул. Есенина, д. 1, кв. 5')).to eq(esenina_1)
+        expect(described_class.call(name: 'Другое имя', city: 'Рязань',
+                                    address: 'Рязань, ул. Есенина 1')).to eq(esenina_1)
+        expect(described_class.call(name: 'Другое имя', city: 'Рязань',
+                                    address: 'Рязань,ул.Есенина,1')).to eq(esenina_1)
+      end
+    end
+
+    it 'не совпадает, когда паттерн — суффикс более длинного слова в адресе' do
+      found = described_class.call(name: 'Ещё имя', city: 'Рязань',
+                                   address: 'Рязань, ул. Малоесенина, 1')
+
+      expect(found).to be_nil
+    end
+  end
 end
