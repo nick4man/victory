@@ -119,6 +119,36 @@ def check_for_duplicates(cur, embedding, current_event_id: int = None, hours: in
     return cur.fetchone()
 
 
+# Срочная новость, пролежавшая в очереди дольше этого срока, срочной уже не
+# является: публиковать её как ⚡СРОЧНО поздно. Порог заодно ограничивает
+# retry — «отравленное» событие, которое стабильно не публикуется, через
+# URGENT_MAX_AGE_HOURS уходит в DIGEST и перестаёт держать очередь.
+URGENT_MAX_AGE_HOURS = int(os.environ.get("URGENT_MAX_AGE_HOURS", "6"))
+
+
+def _release_event(event_id: int) -> None:
+    """Снять claim с события, чтобы следующий прогон взял его заново.
+
+    is_processed выставляется в TRUE при выборе события и работает как claim.
+    Если публикация не доехала, claim обязан сняться — иначе событие потеряно
+    навсегда, следующий прогон его уже не увидит (SELECT идёт по
+    is_processed = FALSE).
+    """
+    try:
+        from content_db_utils import _connect_news
+        conn = _connect_news()
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE urgent_events SET is_processed = FALSE WHERE id = %s",
+                (event_id,),
+            )
+            conn.commit()
+        conn.close()
+        logger.info("Released event #%s back to the queue for the next run", event_id)
+    except Exception as e:
+        logger.warning("Failed to release event #%s (it stays claimed): %s", event_id, e)
+
+
 def check_urgent_events():
     conn = psycopg2.connect(
         host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
@@ -133,6 +163,28 @@ def check_urgent_events():
     # gate_urgent — страховка от ошибок классификатора и от строк, попавших в
     # очередь до ужесточения фильтра. Непрошедшие понижаются до DIGEST прямо
     # здесь, иначе один зарезанный кандидат съедал бы весь 15-минутный цикл.
+    # Протухшие кандидаты уходят в DIGEST до выборки. NOW() считается на
+    # стороне сервера — не зависим от таймзоны хоста.
+    cur.execute(
+        "UPDATE urgent_events SET relevance_tier = 'DIGEST', is_processed = TRUE "
+        "WHERE is_processed = FALSE AND relevance_tier = 'URGENT' "
+        "  AND created_at < NOW() - make_interval(hours => %s) "
+        "RETURNING id, headline;",
+        (URGENT_MAX_AGE_HOURS,),
+    )
+    for stale in cur.fetchall():
+        logger.warning(
+            "Stale URGENT demoted to DIGEST (older than %sh): %s",
+            URGENT_MAX_AGE_HOURS, stale["headline"][:80],
+        )
+        _log_pipeline_event({
+            "action": "demoted",
+            "event_id": stale["id"],
+            "headline_preview": stale["headline"][:80],
+            "reason": f"stale_over_{URGENT_MAX_AGE_HOURS}h",
+        })
+    conn.commit()
+
     cur.execute(
         "SELECT * FROM urgent_events "
         "WHERE is_processed = FALSE AND relevance_tier = 'URGENT' "
@@ -175,6 +227,10 @@ def check_urgent_events():
             conn.commit()
 
         duplicate = check_for_duplicates(cur, embedding, current_event_id=event["id"])
+        # Claim. От наложения прогонов защищает flock в кроне, это второй
+        # рубеж — и он же метка «взято в работу». Если публикация не
+        # доедет, run_urgent_pipeline снимет claim через _release_event:
+        # иначе событие потеряется навсегда.
         cur.execute(
             "UPDATE urgent_events SET is_processed = TRUE WHERE id = %s", (event["id"],)
         )
@@ -316,7 +372,19 @@ def _parse_post_json(raw: str) -> dict:
 
 def generate_post(event):
     logger.info("Generating text via LLM fallback chain...")
-    prior_items = get_party_line(event["headline"] + " " + event["details"], limit=4)
+    # get_party_line ходит в прод-БД (postgres-local). Она бывает недоступна —
+    # ровно этот случай обработан в run_urgent_pipeline и на enqueue. Без
+    # защиты здесь падение БД давало неперехваченный traceback каждые 15 минут.
+    # «Прежние позиции» — обогащение промпта, а не обязательная часть: без них
+    # пост генерится, просто не ссылается на предыдущие высказывания.
+    try:
+        prior_items = get_party_line(event["headline"] + " " + event["details"], limit=4)
+    except Exception as e:
+        logger.warning(
+            "get_party_line failed (post will be generated without prior positions): %s",
+            str(e).split("\n")[0],
+        )
+        prior_items = []
     prior_block = _format_prior_positions(prior_items)
     prompt = URGENT_PROMPT_TEMPLATE.format(
         event_type=event["event_type"],
@@ -376,122 +444,135 @@ def run_urgent_pipeline():
         return
 
     logger.info(f"🚨 Found urgent event: {event['headline']}")
-
-    body_html, topic_hashtags, short_summary, consistency, prior_items, model_used = generate_post(event)
-    if not body_html:
-        logger.error("Text generation failed. Aborting.")
-        _log_pipeline_event({
-            "action": "generation_failed",
-            "event_id": event["id"],
-            "headline_preview": event["headline"][:80],
-        })
-        return
-
-    auto_tags = filter_topic_hashtags(topic_hashtags)
-    hashtags = BRAND_TAGS + auto_tags
-    # base_text — то, что пишется в meta+log и уходит на сайт (без footer'а:
-    # на сайте нет смысла линковать статью саму на себя). Footer добавляется
-    # к финальному TG-тексту ниже.
-    base_text = body_html.rstrip() + "\n\n" + " ".join(hashtags)
-
-    date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_dir = os.path.join(WORKSPACE, "CREATIVE/published")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, f"urgent_{date_str}.txt")
-    meta_file = os.path.join(log_dir, f"urgent_{date_str}.meta.json")
-    with open(log_file, "w", encoding="utf-8") as f:
-        f.write(base_text)
-    with open(meta_file, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "event_id": event["id"],
-                "event_type": event["event_type"],
-                "headline": event["headline"],
-                "source_url": event.get("source_url"),
-                "hashtags": hashtags,
-                "short_summary": short_summary,
-                "model": model_used,
-                "consistency_check": consistency,
-                "prior_msg_ids": [it["tg_message_id"] for it in prior_items if it.get("tg_message_id")],
-                "prior_count": len(prior_items),
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
-
-    # === victory62.org web-mirror (ДО enqueue) ===
-    # Зеркалим в /webhooks/news_ingest и забираем канонический URL статьи,
-    # чтобы вставить его в TG-пост. Если сайт недоступен — fallback на
-    # детерминированный URL по event_id (mirror всё равно будет ретрайнут
-    # при следующем прогоне, посколько idempotency идёт по external_id).
-    site_url = mirror_to_victory(meta_file, log_file)
-    mirror_ok = bool(site_url)
-    if not site_url:
-        site_url = fallback_site_url(event["id"])
-    final_text = base_text + build_site_footer(site_url)
-
-    request_text = f"[urgent] {event['event_type']}: {short_summary}"
+    # is_processed уже выставлен в TRUE при выборе события — это claim. Если
+    # публикация не доедет (LLM исчерпал цепочку, прод-БД лежит, enqueue вернул
+    # None), claim обязан сняться, иначе событие теряется навсегда. published
+    # переводится в True только после реальной постановки в очередь.
+    published = False
     try:
-        queue_id = enqueue_urgent_post(
-            text=final_text,
-            request_text=request_text,
-            content_type="urgent_news",
-            tg_channel="@rznvictory",
-            hashtags=hashtags,
-            auto_publish=True,
-        )
-    except psycopg2.OperationalError as e:
-        logger.warning(
-            "Production DB unreachable mid-run — cannot enqueue event #%s; meta/log files saved at %s. Error: %s",
-            event["id"], log_file, str(e).split("\n")[0],
-        )
-        sys.exit(0)
-    if queue_id:
-        # Маркируем urgent_event как реально ушедший в TG — это якорь для будущих
-        # dedup-проверок (см. check_for_duplicates). Без этого новые URGENT
-        # сравнивались бы со зарезанными неопубликованными — что и привело к
-        # 4-дневной тишине 2026-05-18→22.
-        try:
-            from content_db_utils import _connect_news
-            _news_conn = _connect_news()
-            with _news_conn.cursor() as _cur:
-                _cur.execute(
-                    "UPDATE urgent_events SET published_to_tg = TRUE WHERE id = %s",
-                    (event["id"],),
-                )
-                _news_conn.commit()
-            _news_conn.close()
-        except Exception as e:
-            logger.warning(
-                "Failed to set published_to_tg on event #%s (non-fatal, post already enqueued): %s",
-                event["id"], e,
+        body_html, topic_hashtags, short_summary, consistency, prior_items, model_used = generate_post(event)
+        if not body_html:
+            logger.error("Text generation failed. Aborting.")
+            _log_pipeline_event({
+                "action": "generation_failed",
+                "event_id": event["id"],
+                "headline_preview": event["headline"][:80],
+            })
+            return
+
+        auto_tags = filter_topic_hashtags(topic_hashtags)
+        hashtags = BRAND_TAGS + auto_tags
+        # base_text — то, что пишется в meta+log и уходит на сайт (без footer'а:
+        # на сайте нет смысла линковать статью саму на себя). Footer добавляется
+        # к финальному TG-тексту ниже.
+        base_text = body_html.rstrip() + "\n\n" + " ".join(hashtags)
+
+        date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_dir = os.path.join(WORKSPACE, "CREATIVE/published")
+        os.makedirs(log_dir, exist_ok=True)
+        log_file = os.path.join(log_dir, f"urgent_{date_str}.txt")
+        meta_file = os.path.join(log_dir, f"urgent_{date_str}.meta.json")
+        with open(log_file, "w", encoding="utf-8") as f:
+            f.write(base_text)
+        with open(meta_file, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "event_id": event["id"],
+                    "event_type": event["event_type"],
+                    "headline": event["headline"],
+                    "source_url": event.get("source_url"),
+                    "hashtags": hashtags,
+                    "short_summary": short_summary,
+                    "model": model_used,
+                    "consistency_check": consistency,
+                    "prior_msg_ids": [it["tg_message_id"] for it in prior_items if it.get("tg_message_id")],
+                    "prior_count": len(prior_items),
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
             )
-        logger.info(
-            f"✅ Enqueued for content-publisher: posts_queue.id={queue_id} "
-            f"site_url={site_url} (mirror_ok={mirror_ok})"
-        )
-        _log_pipeline_event({
-            "action": "enqueued",
-            "event_id": event["id"],
-            "queue_id": queue_id,
-            "headline_preview": event["headline"][:80],
-            "hashtags": hashtags,
-            "body_chars": len(body_html),
-            "consistency_check": consistency,
-            "prior_count": len(prior_items),
-            "site_url": site_url,
-            "mirror_ok": mirror_ok,
-        })
-    else:
-        logger.error("Failed to enqueue urgent post.")
-        _log_pipeline_event({
-            "action": "enqueue_failed",
-            "event_id": event["id"],
-            "headline_preview": event["headline"][:80],
-            "site_url": site_url,
-            "mirror_ok": mirror_ok,
-        })
+
+        # === victory62.org web-mirror (ДО enqueue) ===
+        # Зеркалим в /webhooks/news_ingest и забираем канонический URL статьи,
+        # чтобы вставить его в TG-пост. Если сайт недоступен — fallback на
+        # индекс /news: угадать слаг статьи мы не можем, он строится из
+        # заголовка на стороне Rails.
+        #
+        # Ретрая зеркала нет: если enqueue прошёл, событие помечается
+        # обработанным и следующий прогон его не увидит. Недоступность сайта в
+        # этот момент означает пост со ссылкой на раздел, а не на статью.
+        site_url = mirror_to_victory(meta_file, log_file)
+        mirror_ok = bool(site_url)
+        if not site_url:
+            site_url = fallback_site_url(event["id"])
+        final_text = base_text + build_site_footer(site_url)
+
+        request_text = f"[urgent] {event['event_type']}: {short_summary}"
+        try:
+            queue_id = enqueue_urgent_post(
+                text=final_text,
+                request_text=request_text,
+                content_type="urgent_news",
+                tg_channel="@rznvictory",
+                hashtags=hashtags,
+                auto_publish=True,
+            )
+        except psycopg2.OperationalError as e:
+            logger.warning(
+                "Production DB unreachable mid-run — cannot enqueue event #%s; meta/log files saved at %s. Error: %s",
+                event["id"], log_file, str(e).split("\n")[0],
+            )
+            sys.exit(0)
+        if queue_id:
+            published = True
+            # Маркируем urgent_event как реально ушедший в TG — это якорь для будущих
+            # dedup-проверок (см. check_for_duplicates). Без этого новые URGENT
+            # сравнивались бы со зарезанными неопубликованными — что и привело к
+            # 4-дневной тишине 2026-05-18→22.
+            try:
+                from content_db_utils import _connect_news
+                _news_conn = _connect_news()
+                with _news_conn.cursor() as _cur:
+                    _cur.execute(
+                        "UPDATE urgent_events SET published_to_tg = TRUE WHERE id = %s",
+                        (event["id"],),
+                    )
+                    _news_conn.commit()
+                _news_conn.close()
+            except Exception as e:
+                logger.warning(
+                    "Failed to set published_to_tg on event #%s (non-fatal, post already enqueued): %s",
+                    event["id"], e,
+                )
+            logger.info(
+                f"✅ Enqueued for content-publisher: posts_queue.id={queue_id} "
+                f"site_url={site_url} (mirror_ok={mirror_ok})"
+            )
+            _log_pipeline_event({
+                "action": "enqueued",
+                "event_id": event["id"],
+                "queue_id": queue_id,
+                "headline_preview": event["headline"][:80],
+                "hashtags": hashtags,
+                "body_chars": len(body_html),
+                "consistency_check": consistency,
+                "prior_count": len(prior_items),
+                "site_url": site_url,
+                "mirror_ok": mirror_ok,
+            })
+        else:
+            logger.error("Failed to enqueue urgent post.")
+            _log_pipeline_event({
+                "action": "enqueue_failed",
+                "event_id": event["id"],
+                "headline_preview": event["headline"][:80],
+                "site_url": site_url,
+                "mirror_ok": mirror_ok,
+            })
+    finally:
+        if not published:
+            _release_event(event["id"])
 
 
 if __name__ == "__main__":

@@ -103,15 +103,19 @@ cp .env.example .env      # заполнить; .env в git не попадае�
 ## Проверка
 
 ```bash
-.venv/bin/python -m unittest test_urgent_relevance -v     # 26 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance -v     # 26 тестов, без сети и БД
 ```
+
+Тесты гейта релевантности зависимостей не требуют — системного `python3`
+достаточно. Виртуалка нужна для самого конвейера и для бэктеста.
 
 `backtest_urgent_relevance.py` прогоняет текущий классификатор по уже
 собранным событиям и считает обе ошибки — и лишние публикации, и пропущенные.
-Нужен доступ к базе новостей.
+Нужен доступ к базе новостей. `--json` принимает путь к файлу, без него
+результат только в stdout.
 
 ```bash
-.venv/bin/python backtest_urgent_relevance.py --days 30 --json
+.venv/bin/python backtest_urgent_relevance.py --days 30 --json /tmp/backtest.json
 ```
 
 Важно: в поле `details` осевших событий записан вердикт **прежнего**

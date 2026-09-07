@@ -42,7 +42,10 @@ from psycopg2.extras import RealDictCursor  # noqa: E402
 from urgent_collector import RSS_SOURCES, analyze_news_item  # noqa: E402
 from urgent_relevance import gate_urgent  # noqa: E402
 
-SUMMARY_RE = re.compile(r"Summary:\s*(.*?)(?:\n\nAI Analysis|\Z)", re.DOTALL)
+# \s* съедало бы \n\n перед «AI Analysis», и для пустого Summary группа
+# захватывала вердикт прежнего классификатора — харнесс мерил сам себя.
+# [ \t]* останавливается на переводе строки и оставляет разделитель на месте.
+SUMMARY_RE = re.compile(r"Summary:[ \t]*(.*?)(?:\n\nAI Analysis|\Z)", re.DOTALL)
 SOURCE_RE = re.compile(r"Source:\s*(.+)")
 
 SOURCE_WEIGHTS = {s["name"]: s.get("weight", "medium") for s in RSS_SOURCES}

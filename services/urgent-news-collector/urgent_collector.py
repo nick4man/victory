@@ -107,7 +107,14 @@ def url_already_seen(conn, url: str) -> bool:
             cur.execute("SELECT 1 FROM urgent_events WHERE source_url = %s LIMIT 1", (url,))
             return cur.fetchone() is not None
     except Exception as e:
+        # Без rollback транзакция остаётся в aborted-состоянии и следующий
+        # INSERT падает с InFailedSqlTransaction — одна битая проверка
+        # обваливала всю оставшуюся ленту.
         logger.error(f"url_already_seen check failed: {e}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return False
 
 
@@ -318,7 +325,11 @@ def process_feed(source: dict, conn):
         for entry in feed.entries[:ENTRY_LIMIT_PER_SOURCE]:
             headline = getattr(entry, 'title', '')
             summary = getattr(entry, 'summary', '')
-            link = getattr(entry, 'link', '')
+            # NULL, а не '': ON CONFLICT (source_url) WHERE source_url IS NOT NULL
+            # игнорирует NULL, но '' для него — обычное значение. С пустой
+            # строкой вторая же запись без <link> считалась дублем первой и
+            # молча терялась — причём уже после оплаченного LLM-вызова.
+            link = getattr(entry, 'link', '') or None
 
             if not headline:
                 continue
@@ -353,7 +364,7 @@ def process_feed(source: dict, conn):
 
             # URGENT/DIGEST/ARCHIVE — всё храним + эмбеддим.
             details = (
-                f"Source: {source['name']}\nLink: {link}\nSummary: {summary}\n\n"
+                f"Source: {source['name']}\nLink: {link or '—'}\nSummary: {summary}\n\n"
                 f"AI Analysis ({analysis.relevance_tier}/{analysis.audience_fit}): "
                 f"{analysis.reasoning}"
             )
