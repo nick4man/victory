@@ -107,7 +107,10 @@ def sanitize_body_html(html: str) -> str:
 
     # 4. Markdown italic *x* / _x_ → <i>x</i> (защита от смешения с маркерами).
     text = re.sub(r"(?<!\*)\*(\S[^*\n]*?\S?)\*(?!\*)", r"<i>\1</i>", text)
-    text = re.sub(r"(?<!_)_(\S[^_\n]*?\S?)_(?!_)", r"<i>\1</i>", text)
+    # Границы по \w, а не по _: иначе «ставку_ЦБ_2026» превращалось в
+    # «ставку<i>ЦБ</i>2026». Подчёркивание само входит в \w, так что старая
+    # защита от __bold__ сохраняется.
+    text = re.sub(r"(?<!\w)_(\S[^_\n]*?\S?)_(?!\w)", r"<i>\1</i>", text)
 
     # 5. Markdown headers: строки с #/##/### → <b>…</b>
     text = re.sub(r"(?m)^\s*#{1,6}\s+(.+?)\s*$", r"<b>\1</b>", text)
@@ -120,10 +123,18 @@ def sanitize_body_html(html: str) -> str:
     text = re.sub(r"(?m)(?:^>.*(?:\n|$))+", _blockquote, text)
 
     # 7. Хэштеги в body_html не нужны — уходят в отдельный список.
-    text = re.sub(r"(?:^|\s)#[\wА-Яа-яЁё_]+", "", text)
+    # Требование пробела перед # не работало: к этому моменту HTML-теги уже
+    # заменены плейсхолдерами, поэтому «<b>#ипотека2026</b>» уходил в пост как
+    # есть. Смотрим назад на \w и / — так остаются целыми якоря в URL
+    # (…/page#anchor) и решётки внутри слов.
+    text = re.sub(r"[ \t]*(?<![\w/])#[\wА-Яа-яЁё_]+", "", text)
 
     # 8. Восстанавливаем оригинальные HTML-теги.
     text = _unshield_html_tags(text, placeholders)
+
+    # 8a. Тег, внутри которого был только хэштег, остаётся пустым — вычищаем,
+    # чтобы не слать в Telegram <b></b>.
+    text = re.sub(r"<(b|i|u|s|code)>\s*</\1>", "", text)
 
     # 9. Тримминг повторных пустых строк.
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
@@ -267,7 +278,14 @@ def fallback_site_url(external_id) -> str:
     для weekly). Если паттерн на стороне сайта изменится, ссылки в TG могут
     стать битыми — основной путь идёт через mirror_to_victory().
     """
-    slug = str(external_id) if external_id is not None else "latest"
+    slug = str(external_id) if external_id is not None else ""
+    # Числовой id — это urgent_events.id, а не слаг статьи: /news/:id на стороне
+    # Rails резолвится через Article.friendly.find, где слаг строится из
+    # заголовка, а числовой fallback уходит в ПЕРВИЧНЫЙ КЛЮЧ articles. Ссылка
+    # вела на посторонний материал или в 404. Угадать слаг мы не можем —
+    # отдаём раздел новостей.
+    if not slug or slug.isdigit():
+        return f"{SITE_BASE_URL}/news"
     return f"{SITE_BASE_URL}/news/{slug}"
 
 
