@@ -25,7 +25,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          # Honours .ruby-version (3.3.6 после EOL-апгрейда) / Gemfile
+          # Honours .ruby-version (3.4.10 после EOL-апгрейда) / Gemfile
           bundler-cache: true
 
       - name: Run RuboCop
@@ -108,7 +108,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          # Honours .ruby-version (3.3.6) / Gemfile
+          # Honours .ruby-version (3.4.10) / Gemfile
           bundler-cache: true
 
       # structure.sql грузится через psql — нужен клиент мажорной версии 15.

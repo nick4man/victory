@@ -1,7 +1,7 @@
-# Прод фиксирован на 3.3.6 (значение по умолчанию — сборка без --build-arg
+# Прод фиксирован на 3.4.10 (значение по умолчанию — сборка без --build-arg
 # остаётся байт-в-байт прежней). upgrade-сессия подменяет версию через
 # docker-compose.upgrade.yml (RUBY_TARGET), чтобы щупать 3.4/3.5 не трогая прод.
-ARG RUBY_VERSION=3.3.6
+ARG RUBY_VERSION=3.4.10
 FROM ruby:${RUBY_VERSION}-slim-bookworm
 
 ENV LANG=C.UTF-8 \

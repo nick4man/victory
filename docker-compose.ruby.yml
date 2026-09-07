@@ -60,10 +60,10 @@ services:
     build:
       context: .
       args:
-        RUBY_VERSION: ${RUBY_TARGET:-3.3.6}
+        RUBY_VERSION: ${RUBY_TARGET:-3.4.10}
     # Тег включает версию — образы под разные Ruby живут рядом, не перетирая
     # друг друга, и переиспользуются всеми сессиями (собираем один раз).
-    image: victory-rubybox:${RUBY_TARGET:-3.3.6}
+    image: victory-rubybox:${RUBY_TARGET:-3.4.10}
     restart: 'no'
     # HOST_UID/HOST_GID, а не UID/GID: в bash UID readonly, обёртка не смогла бы
     # его экспортировать. Нужно, чтобы Gemfile.lock после bundle update
@@ -127,8 +127,8 @@ services:
     build:
       context: .
       args:
-        RUBY_VERSION: ${RUBY_TARGET:-3.3.6}
-    image: victory-rubybox:${RUBY_TARGET:-3.3.6}
+        RUBY_VERSION: ${RUBY_TARGET:-3.4.10}
+    image: victory-rubybox:${RUBY_TARGET:-3.4.10}
     restart: 'no'
     user: '${HOST_UID:-1000}:${HOST_GID:-1000}'
     env_file:

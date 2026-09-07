@@ -5,7 +5,7 @@
 | Слой | Технология |
 |------|-----------|
 | Web framework | Rails **8.1.3.1** (в проде с 08.08.26; `load_defaults` пока 7.1) |
-| Language | Ruby **3.3.6** — только в контейнере, через `bin/rb`. На хосте менеджера версий нет (ни chruby, ни rbenv, ни mise), системный ruby 3.3.8 не совпадает с пином Gemfile, поэтому `bundle`/`rspec`/`bin/rails` напрямую в worktree не работают |
+| Language | Ruby **3.4.10** — только в контейнере, через `bin/rb`. На хосте менеджера версий нет (ни chruby, ни rbenv, ни mise), системный ruby 3.3.8 не совпадает с пином Gemfile, поэтому `bundle`/`rspec`/`bin/rails` напрямую в worktree не работают |
 | Database | PostgreSQL 15+ (с PostGIS + pgvector) |
 | Server | Puma 6.x, порт **3000** в Docker (reverse-proxy → 443 в проде) |
 | CSS | Tailwind CSS (`tailwindcss-rails`) |
@@ -112,6 +112,41 @@ bundle exec whenever --clear-crontab
 - ежечасно: `SendViewingRemindersJob`
 - 03:00: `UpdatePropertyStatisticsJob`
 - 10:00: `PropertyValuationFollowUpJob`
+
+### Деплой смены Ruby/Rails — пересборка прод-образов
+
+Прод (`/home/q/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
+code-reload, поэтому merge в main обновляет код сразу, а **гемы и рантайм — нет**:
+они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
+`victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
+образ: без пересоздания новый Ruby не увидит ни одного гема и `bundle exec`
+упадёт на старте. Отработано 08.08.26 (Rails 8) и применяется для 3.3.6 → 3.4.10.
+
+```bash
+cd /home/q/victory
+# 1. откат-теги
+/usr/bin/docker tag victory-web victory-web:pre-ruby34
+/usr/bin/docker tag victory-sidekiq victory-sidekiq:pre-ruby34
+# 2. свежий main + сборка (старые контейнеры пока служат)
+git pull --ff-only origin main
+/usr/bin/docker compose build web sidekiq
+# 3. свап (даунтайм ~30-60с)
+/usr/bin/docker compose stop web sidekiq
+/usr/bin/docker compose rm -f web sidekiq
+/usr/bin/docker volume rm victory_bundle
+/usr/bin/docker compose up -d web sidekiq
+# 4. verify
+/usr/bin/docker compose exec web ruby -v            # 3.4.10
+/usr/bin/docker compose logs web | grep 'Booted'    # Rails 8.1.3.1
+curl -sI https://victory62.org | head -1            # 200
+/usr/bin/docker compose logs --tail=50 sidekiq      # cron-джобы идут
+```
+
+Откат: checkout прежнего main + `docker tag victory-web:pre-ruby34 victory-web`
+(и sidekiq) → тот же свап с `volume rm`. Миграций при смене Ruby нет — БД не
+трогается.
+
+Последний шаг: обновить строку про прод в `progress.md` (таблица «что в проде»).
 
 ## Replit-специфика
 
