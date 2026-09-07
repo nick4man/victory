@@ -48,18 +48,18 @@ claude --resume chat
 |---|---|---|
 | `.git/` | shared | Single repo, single config, single refs |
 | `tmp/` (cache, locks, sessions) | **per-worktree** | Lock files изолированы |
-| inbox | **общий**, `~/.claude-shared/inbox/` вне репо | Живым сессиям — `SendMessage`, оффлайну — inbox |
-| `Gemfile.lock` | shared (committed) | `bundle install` — одна сессия за раз (через `bin/rb`), иначе race |
+| `.claude/sessions/inbox/` | **shared** — очередь в main checkout (gitignored) | С 07.09.26 `bin/claude-inbox` и hook резолвят очередь через `git --git-common-dir`, поэтому сообщения пересекают worktree. Живой сессии inbox не нужен: `ListAgents` → `SendMessage` |
+| `Gemfile.lock` | shared (committed) | `bundle install` — одна сессия за раз (через `bin/rb`), иначе race. По умолчанию upgrade — см. `.claude/docs/session-authority.md` |
 | `node_modules/` | per-worktree (gitignored) | Каждый worktree может install отдельно |
 | Disk usage | 4× checkouts | ~1-2 GB each — OK |
 
-## Inbox protocol (для оффлайн-адресата)
+## Inbox protocol (cross-worktree)
 
 ### Структура
 
 ```
-~/.claude-shared/inbox/
-├── victory/      # messages FOR victory session (в любом worktree)
+<main-checkout>/.claude/sessions/inbox/
+├── victory/      # messages FOR victory session (из любого worktree)
 │   ├── 2026-05-14T08-30_from-chat_new-tool.md
 │   └── archive/
 ├── chat/
@@ -70,16 +70,26 @@ claude --resume chat
     └── archive/
 ```
 
-Каталог вне репо, под git не попадает вовсе.
+Очередь одна на репозиторий; сами сообщения `.gitignore` исключает, трекаются только `.keep`.
 
 ### Cross-worktree?
 
-Пересекает — с 09.08.26 каталог общий (`~/.claude-shared/inbox/`, вне репо). Прежде он лежал
-внутри worktree и требовал, чтобы отправитель и получатель сидели в одном checkout'е, поэтому
-между сессиями не работал ни дня.
+**Работает** (с 07.09.26). Очередь одна на репозиторий и физически лежит в main
+checkout: `bin/claude-inbox` и `session-start.sh` берут её как родителя
+`git rev-parse --git-common-dir`, а не как `.claude/` текущего worktree.
 
-Для **живой** сессии inbox не нужен вовсе: `ListAgents` → `SendMessage` доставляет мгновенно.
-Для существенной работы (>10 мин, много файлов) — по-прежнему git: commit → push → PR.
+Почему именно так: у каждого worktree своя копия `.claude/` на диске, а
+`.gitignore` исключает `inbox/**/*.md` — worktree-локальный путь не доставлял
+ни через файловую систему, ни через git. Сообщения молча оседали в тупике.
+
+Переопределить расположение очереди — `CLAUDE_INBOX_ROOT`.
+
+Имя новой сессии не обязано быть в `valid_sessions`: worktree саморегистрируется,
+создав свой каталог — `mkdir -p <main-checkout>/.claude/sessions/inbox/<имя>`.
+
+Чем пользоваться: **живой** сессии inbox не нужен вовсе — `ListAgents` →
+`SendMessage` доставляет мгновенно. Inbox — для того, кого сейчас нет. Для
+существенной работы (>10 мин, много файлов) — git: commit → push → PR.
 
 ### Message format
 
