@@ -27,7 +27,7 @@
                 <%= link_to row[:complex].display_name,
                       edit_admin_residential_complex_path(row[:complex]),
                       class: 'text-foreground underline hover:no-underline' %>
-                <span class="text-muted-foreground">· поле «<%= row[:field] %>»</span>
+                <span class="text-muted-foreground">· поле «<%= field_label(row[:field]) %>»</span>
               </h2>
             </div>
 
@@ -46,9 +46,16 @@
                     <td class="p-3 text-foreground"><%= value[:value] %></td>
                     <td class="p-3 text-muted-foreground"><%= value[:source] %></td>
                     <td class="p-3">
-                      <% if value[:url].present? %>
-                        <%= link_to 'источник', value[:url], target: '_blank', rel: 'noopener',
+                      <% if (safe_url = safe_source_url(value[:url])) %>
+                        <%= link_to 'источник', safe_url, target: '_blank', rel: 'noopener',
                               class: 'text-muted-foreground underline hover:text-foreground' %>
+                      <% elsif value[:url].present? %>
+                        <%# Схема не в белом списке (напр. javascript:) — источник прислал
+                            мусор. Показываем текстом: редактору полезно это видеть, а не
+                            гадать, почему ссылка молча пропала. Ни в коем случае не href. %>
+                        <span class="text-muted-foreground" title="Ссылка отклонена: недопустимая схема">
+                          <%= value[:url] %>
+                        </span>
                       <% else %>
                         <span class="text-muted-foreground">—</span>
                       <% end %>

@@ -40,7 +40,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('Скобелев')
-      expect(response.body).to include('developer')
+      expect(response.body).to include('Застройщик')
       expect(response.body).to include('Единство')
       expect(response.body).to include('Северная компания')
       expect(response.body).to include('erz')
@@ -71,6 +71,49 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
 
       expect(response.body).not_to include('<script>alert(1)</script>')
       expect(response.body).to include(CGI.escapeHTML('<script>alert(1)</script>'))
+    end
+  end
+
+  describe 'ссылка на источник с недопустимой схемой' do
+    let!(:complex) { create(:residential_complex, name: 'Скобелев') }
+
+    before do
+      ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Единство',
+                       source: 'erz', url: 'javascript:alert(document.cookie)', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Северная компания',
+                       source: 'developer_site', url: 'https://severnaya.ru', observed_at: Time.current)
+    end
+
+    it 'не превращает javascript: в рабочий href, но показывает значение текстом' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).not_to include('href="javascript:alert(document.cookie)"')
+      expect(response.body).to include('javascript:alert(document.cookie)')
+    end
+
+    it 'сохраняет рабочую ссылку для http(s)-источника рядом' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response.body).to include('href="https://severnaya.ru"')
+    end
+  end
+
+  describe 'подпись поля' do
+    let!(:complex) { create(:residential_complex, name: 'Скобелев') }
+
+    before do
+      ZhkFact.create!(residential_complex: complex, field: 'wall_material', value: 'монолит',
+                       source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: complex, field: 'wall_material', value: 'кирпич',
+                       source: 'developer_site', observed_at: Time.current)
+    end
+
+    it 'показывает русскую подпись поля, а не служебное имя колонки' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response.body).to include('Материал стен')
+      expect(response.body).not_to include('поле «wall_material»')
     end
   end
 end
