@@ -89,6 +89,15 @@ RSpec.describe Zhk::FactApplier do
       expect(new_complex.developer).to be_nil
       expect(new_complex.address_patterns).to eq([])
     end
+
+    it 'не применяет строку из одних пробелов' do
+      new_complex = ResidentialComplex.new(city: 'Рязань')
+
+      filled = described_class.apply(new_complex, developer: '   ')
+
+      expect(filled).to be_empty
+      expect(new_complex.developer).to be_nil
+    end
   end
 
   describe '.empty_value?' do
@@ -104,6 +113,13 @@ RSpec.describe Zhk::FactApplier do
 
     it 'считает отсутствием данных nil, пустую строку и пустой массив' do
       expect([nil, '', []].map { |value| described_class.empty_value?(value) }).to all(be true)
+    end
+
+    it 'считает отсутствием данных строку из одних пробелов' do
+      # Прежний `present?` считал её пустотой, голый `empty?` — уже нет:
+      # без `strip` «   » доезжало бы в публичную колонку, а `name: "   "`
+      # роняло бы наблюдение целиком.
+      expect(["\t\n", '   '].map { |value| described_class.empty_value?(value) }).to all(be true)
     end
 
     it 'не считает отсутствием данных ноль — 0 комнат это студия, а не пропуск' do

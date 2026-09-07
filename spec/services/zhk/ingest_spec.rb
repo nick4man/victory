@@ -181,6 +181,32 @@ RSpec.describe Zhk::Ingest do
     expect(ZhkObservation.count).to eq(0)
   end
 
+  it 'отвергает fetched_at, который парсер молча не понял, вместо подмены нашим временем' do
+    # «2026-13-45» парсер отвергает исключением, а «позавчера» — молча
+    # возвращает nil, и наблюдение уезжало с fetched_at = Time.current.
+    # Наше время попадало и в observed_at каждого факта, и в РЯД ЦЕН:
+    # источник высказался, мы подменили его слова правдоподобными.
+    unreadable = payload.merge('fetched_at' => 'позавчера')
+
+    result = described_class.call(unreadable)
+
+    expect(result.status).to eq(:invalid)
+    expect(ZhkObservation.count).to eq(0)
+    expect(ZhkPricePoint.count).to eq(0)
+  end
+
+  it 'фолбэчит на текущее время, когда даты нет вовсе — это по-прежнему штатный вход' do
+    # Фолбэк задумывался для ОТСУТСТВУЮЩЕЙ даты и таким остаётся;
+    # ужесточение выше не должно было его задеть.
+    freeze_point = Time.zone.parse('2026-09-07T10:00:00Z')
+
+    result = travel_to(freeze_point) { described_class.call(payload.except('fetched_at')) }
+
+    expect(result.status).to eq(:created)
+    expect(ZhkObservation.last.fetched_at).to eq(freeze_point)
+    expect(ZhkPricePoint.last.observed_at).to eq(freeze_point)
+  end
+
   it 'не кастует мусор в rooms к 0 — студия должна быть настоящим нулём, а не по умолчанию' do
     # Раньше мусор в `rooms` молча превращался в `nil`, и точка цены
     # всё равно записывалась: источник заявил значение, мы его выбросили
@@ -488,6 +514,26 @@ RSpec.describe Zhk::Ingest do
 
       expect(result.status).to eq(:created)
       expect(ResidentialComplex.unscoped.find(result.complex_id).name).to eq('Скобелев')
+    end
+
+    it 'обходится со строкой из одних пробелов так же, как с пустой строкой' do
+      # Асимметрия появилась бы ровно здесь: `name: ""` → :created, а
+      # `name: "   "` роняло бы наблюдение целиком.
+      with_blank_name = payload.merge('fields' => payload['fields'].merge('name' => '   '))
+
+      result = described_class.call(with_blank_name)
+
+      expect(result.status).to eq(:created)
+      expect(ResidentialComplex.unscoped.find(result.complex_id).name).to eq('Скобелев')
+    end
+
+    it 'не пускает строку из одних пробелов в публичную колонку' do
+      with_blank_developer = payload.merge('fields' => payload['fields'].merge('developer' => '   '))
+
+      result = described_class.call(with_blank_developer)
+
+      expect(result.status).to eq(:created)
+      expect(ResidentialComplex.unscoped.find(result.complex_id).developer).to be_nil
     end
   end
 

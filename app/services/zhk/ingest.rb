@@ -88,7 +88,9 @@ module Zhk
     # список, и новая колонка журнала попадает в перебор сама.
     def self.sourced_columns
       {
-        ResidentialComplex => FactApplier::FILLABLE.map(&:to_s) + %w[name city],
+        # `.uniq`: `name` есть и в белом списке, и в заготовке черновика —
+        # без него колонка перебиралась бы сторожем дважды.
+        ResidentialComplex => (FactApplier::FILLABLE.map(&:to_s) + %w[name city]).uniq,
         ZhkObservation => ZhkObservation.column_names - COMPUTED_COLUMNS,
         ZhkFact => ZhkFact.column_names - COMPUTED_COLUMNS,
         ZhkPricePoint => ZhkPricePoint.column_names - COMPUTED_COLUMNS
@@ -402,14 +404,25 @@ module Zhk
       !raw.nil? && !raw.is_a?(Hash)
     end
 
-    # @return [Boolean] `fetched_at` не парсится. Единственное известное
-    # узкое место для `ArgumentError` здесь — `Time.zone.parse` реально
-    # бросает его на невозможных датах («2026-13-45» → `argument out of
-    # range»), а не только возвращает `nil`, как на бессмысленном мусоре
-    # («not-a-date» → `nil`, штатно уходит в фолбэк `Time.current`).
+    # @return [Boolean] `fetched_at` прислан, но не читается. Не
+    # прочитаться он может ДВУМЯ способами, а ловился только первый:
+    # `Time.zone.parse` БРОСАЕТ `ArgumentError` на невозможной дате
+    # («2026-13-45» → «argument out of range»), но ВОЗВРАЩАЕТ `nil` на
+    # бессмысленном мусоре («позавчера»). Второй случай уходил в фолбэк
+    # `Time.current`, и наше время уезжало в `zhk_observations.fetched_at`,
+    # в `observed_at` каждого факта и в РЯД ЦЕН. Зеркало того же дефекта,
+    # что чинили в `record_facts`: источник высказался, а мы подменили
+    # его слова правдоподобными. Фолбэк задумывался для ОТСУТСТВУЮЩЕЙ
+    # даты — таким и остаётся.
+    #
+    # Нестроку судим не здесь, а в `scalar_string_reasons`: обе причины
+    # собираются в одном проходе, `payload_shape_reasons` между ними не
+    # возвращается.
     def fetched_at_broken?
-      Time.zone.parse(@payload['fetched_at'].to_s)
-      false
+      raw = @payload['fetched_at']
+      return false unless raw.is_a?(String) && raw.present?
+
+      Time.zone.parse(raw).nil?
     rescue ArgumentError
       true
     end
