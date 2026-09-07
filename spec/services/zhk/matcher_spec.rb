@@ -114,5 +114,20 @@ RSpec.describe Zhk::Matcher do
 
       expect(found).to be_nil
     end
+
+    # Круг правок 3: стрип «д»/«дом» без привязки к позиции выбрасывал токен
+    # где угодно, а не только перед номером дома. «Красный Дом» (название
+    # улицы) и «Красный» + отдельно стоящее «дом» перед номером — после
+    # такого стрипа схлопывались в одну строку, хотя это разные адреса.
+    it 'не путает улицу «Красный Дом» с улицей «Красный», у которой номер дома совпал' do
+      krasny_dom = create(:residential_complex, name: 'На Красном Дому', city: 'Рязань',
+                                                address_patterns: ['Красный Дом, 5'])
+
+      found = described_class.call(name: 'Совсем другое имя', city: 'Рязань',
+                                   address: 'ул. Красный, 5')
+
+      expect(found).not_to eq(krasny_dom)
+      expect(found).to be_nil
+    end
   end
 end
