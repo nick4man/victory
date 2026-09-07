@@ -39,7 +39,7 @@ You are usually running without a TTY. That silently changes what these commands
 | Command | Without a TTY |
 |---|---|
 | `gh stack submit` | Acts as `--auto`: skips the editor and **creates PRs as drafts**. Pass `--open` for ready-for-review, or `gh pr ready <N>` afterwards. |
-| `gh stack merge` | Merges the **whole stack** without confirmation, same as `--yes`. Always pass an explicit PR or stack number to limit it. |
+| `gh stack merge` | Merges the **whole stack** without confirmation, same as `--yes`. Only a **PR number** limits it — and a bare number is resolved as a *stack* number first, so `merge 7` may merge everything. See the merge section. |
 | `gh stack sync` | Aborts instead of prompting if local and remote stacks diverged. Nothing is pushed. |
 | `gh stack modify` / `switch` / `checkout` with no args | Interactive TUI only — you cannot drive these. Use explicit arguments, or `gh stack up [n]` / `down [n]` / `top` / `bottom` / `trunk` to navigate. |
 
@@ -68,16 +68,22 @@ gh stack sync            # fast-forwards trunk, rebases the rest, retargets PRs
 
 ⚠️ **Verified quirk:** if the current stack branch has **no commits yet**, `add` does not create a new layer — it drops the commit into that same branch and warns `Branch X has no prior commits`. Not an error: call `add` again for the next layer. Fill layer one with a commit first, then grow the stack.
 
-`sync` replaces the entire `rebase --onto` + `push --force-with-lease` + `gh pr edit --base` sequence, including the squash-merge case. It does **not** open PRs — only `submit` does. On a rebase conflict it restores every branch and tells you to run `gh stack rebase` (fix → `git add` → `gh stack rebase --continue`, or `--abort`). `--downstack` / `--upstack` limit it to part of the stack; `--no-trunk` leaves trunk alone, useful while `main` moves under you. `sync --prune` drops local branches of merged PRs and moves the checkout to the first live layer, keeping stack metadata intact.
+`sync` replaces the entire `rebase --onto` + `push --force-with-lease` + `gh pr edit --base` sequence, including the squash-merge case. It does **not** open PRs — only `submit` does. On a rebase conflict it restores every branch and tells you to run `gh stack rebase` (fix → `git add` → `gh stack rebase --continue`, or `--abort`). `sync` itself takes only `--prune` and `--remote`: `--prune` drops local branches of merged PRs and moves the checkout to the first live layer, keeping stack metadata intact.
+
+The partial-rebase flags live on **`rebase`, not `sync`** (verified: `gh stack sync --no-trunk` → `unknown flag`). `gh stack rebase --downstack` / `--upstack` limit it to part of the stack; `--no-trunk` leaves trunk alone, useful while `main` moves under you.
 
 **The working tree must be clean.** Verified: with a dirty tree the rebase fails on the first checkout and leaves the stack half-applied.
 
 Merge atomically — all or nothing, everything below your choice included:
 
 ```bash
-gh stack merge 4242 --squash --yes   # up to PR 4242
+gh stack merge 4242 --squash --yes   # up to PR 4242 — IF 4242 is not also a stack number
 gh stack merge --squash --yes        # the ENTIRE stack — only when you mean it
 ```
+
+🚨 **A bare number is tried as a *stack* number first, and only then as a PR number** (`gh stack merge --help`). A stack number does not limit anything — it selects a whole stack to merge. So `gh stack merge 7` can squash unreviewed layers into `main` while you believe you capped it at layer 7. Before merging, confirm from `gh stack view --json` which PR number is your intended ceiling, and check that the number is not also a live stack number.
+
+One guard is built in: `merge` refuses PRs that are drafts. Since `submit` without a TTY creates drafts, a stack submitted by an agent cannot be merged until `gh pr ready <N>` — the accident above needs a stack that was deliberately opened first.
 
 In `view`, statuses read: `✓` merged, `◎` queued, `○` open, `⚠` needs rebase. On `⚠`, run `sync` before anything else.
 
@@ -118,7 +124,7 @@ Next to it live `.git/**/gh-stack.lock` (advisory lock — `another gh-stack pro
 
 - **Assuming `--base` chaining gives the reviewer a stack.** It gives three separate PRs. Run `submit` or `link`.
 - **`gh stack submit` in a script, then wondering why every PR is a draft.** Add `--open`.
-- **Omitting the PR number from `merge`.** Without a TTY that merges the whole stack, unreviewed layers included.
+- **Trusting a number in `merge` to cap it.** Without a TTY it merges the whole stack, unreviewed layers included — and a bare number is read as a stack number before a PR number.
 - **Reaching for `git rebase --onto` after a merge.** That is what `sync` is for.
 - **Deleting the parent branch before rebasing children.** `sync` handles the retarget; do not pre-clean.
 - **`gh stack modify` without a following `submit`.** The local stack is restructured, GitHub still has the old base chain.
@@ -131,7 +137,7 @@ Next to it live `.git/**/gh-stack.lock` (advisory lock — `another gh-stack pro
 | `another gh-stack process may be running` | stale `.git/**/gh-stack.lock` from an interrupted command; confirm no process, then delete the lock |
 | `gh stack view` in another worktree shows a different stack | state is per-worktree — normal. `gh stack checkout <branch>` |
 | `Local main has diverged from origin/main` | the rebase targets `origin/main`, local `main` is untouched. Usually what you want |
-| rebase failed at `checking out <branch>` | dirty working tree. Commit, then `gh stack rebase --continue` / `--abort` |
+| rebase failed at `checking out <branch>` | dirty working tree — this happens *before* any rebase starts, so `--continue` answers `no rebase in progress`. Commit or park the changes, then re-run `gh stack sync` (or `gh stack rebase`) from the top. `--continue`/`--abort` are for the *conflict* path only |
 | "Stack synced" vs "Branches synced" | first — the stack object on GitHub was updated; second — branches pushed but no stack exists (fewer than 2 PRs) |
 | PR created and nobody reviews it | `submit --auto` made a draft. `--open`, or `gh pr ready <N>` |
 | `merge` refused by branch protection | GitHub evaluates the rules at merge time; bypassing merge requirements for stacks is unsupported — fix the PR |
