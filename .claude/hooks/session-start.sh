@@ -117,6 +117,53 @@ ${KPI_BODY}"
   fi
 fi
 
+# Состояние прода.
+#
+# Мерж в main и выкатка — независимые события: деплой ручной. Поэтому «в main»
+# и «на сайте» расходятся молча, и 07.09.26 расхождение дошло до 33 коммитов
+# незамеченным. Источник правды — ветка `prod`, её двигает bin/prod-mark после
+# деплоя. Обновляем refs здесь же: .git у всех worktree общий, так что одного
+# fetch хватает на все сессии, а чаще раза в 5 минут в сеть не ходим.
+PROD_BLOCK=""
+if [ -r .claude/hooks/lib/prod-state.sh ]; then
+  . .claude/hooks/lib/prod-state.sh
+  prod_fetch_if_stale
+
+  P_SHA=$(prod_sha)
+  if [ -z "$P_SHA" ]; then
+    PROD_BLOCK="
+=== ПРОД ===
+  Отметки о деплое нет (ветки origin/prod не существует).
+  Пока её нет, отличить «лежит в main» от «работает на сайте» неоткуда.
+  Поставить — bin/prod-mark на прод-хосте, последним шагом деплоя."
+  else
+    P_AHEAD=$(prod_commits_ahead "$P_SHA")
+    P_LOCAL=$(prod_local_sha)
+    PROD_BLOCK="
+=== ПРОД ===
+  Выкачено:     $(prod_describe "$P_SHA")"
+
+    if [ -n "$P_AHEAD" ] && [ "$P_AHEAD" -gt 0 ] 2>/dev/null; then
+      PROD_BLOCK="${PROD_BLOCK}
+  Ждёт деплоя:  $P_AHEAD коммит(ов) в main"
+    fi
+
+    B_BEHIND=$(prod_branch_behind_main)
+    if [ -n "$B_BEHIND" ] && [ "$B_BEHIND" -gt 0 ] 2>/dev/null; then
+      PROD_BLOCK="${PROD_BLOCK}
+  Твоя ветка:   отстаёт от main на $B_BEHIND"
+    fi
+
+    # Отметка ставится руками, поэтому её можно забыть. На прод-хосте это
+    # видно сразу — сверяем с реальным чекаутом.
+    if [ -n "$P_LOCAL" ] && [ "$P_LOCAL" != "$P_SHA" ]; then
+      PROD_BLOCK="${PROD_BLOCK}
+  ⚠️  Отметка врёт: в прод-чекауте ${P_LOCAL:0:7}, а origin/prod указывает на ${P_SHA:0:7}.
+      Похоже, выкатили и не запустили bin/prod-mark."
+    fi
+  fi
+fi
+
 cat <<EOF
 === VICTORY62 SESSION ===
   Session:       $SESSION_ID
@@ -128,6 +175,8 @@ cat <<EOF
 Active context (.claude/memory/activeContext.md head):
 $ACTIVE_CTX
 EOF
+
+[ -n "$PROD_BLOCK" ] && printf '%s\n' "$PROD_BLOCK"
 
 # Session identity / worktree guards
 if [ "$SESSION_ID" = "main" ]; then

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# bin/prod-mark — записать в GitHub, что именно сейчас выкачено на прод.
+#
+# Проблема, которую он закрывает: деплой у нас ручной, поэтому мерж в `main` и
+# выкатка — разные события. GitHub о выкатке не знает вовсе, и отличить «лежит
+# в main» от «работает на сайте» неоткуда. 07.09.26 прод отставал от main на 33
+# коммита, и обнаружилось это случайно, посреди другой задачи.
+#
+# Отметка — два ref'а:
+#   • ветка `prod`            — движущийся указатель на выкаченный коммит;
+#                               её тянет обычный `git fetch`, поэтому все
+#                               worktree (общий .git) видят состояние сразу;
+#   • тег `deploy/<дата>`     — неподвижная запись в историю, с метаданными
+#                               в аннотации (Ruby, образы, кто выкатывал).
+#
+# Запускать НА ПРОД-ХОСТЕ последним шагом деплоя, после проверок из
+# `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails».
+#
+# Использование:
+#   bin/prod-mark            # проверить и записать
+#   bin/prod-mark --check    # только показать, что записалось бы
+#   bin/prod-mark --force    # записать, несмотря на предупреждения
+
+set -euo pipefail
+
+PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
+MODE="write"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check|--dry-run) MODE="check"; shift ;;
+    --force)           MODE="force"; shift ;;
+    -h|--help)         sed -n '2,25p' "$0"; exit 0 ;;
+    *) echo "Неизвестный флаг: $1 (см. --help)" >&2; exit 2 ;;
+  esac
+done
+
+die()  { echo "✗ $*" >&2; exit 1; }
+warn() { echo "⚠️  $*" >&2; WARNED=1; }
+WARNED=0
+
+# --- 1. Прод-чекаут -----------------------------------------------------------
+
+[ -e "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR
+   Скрипт запускают на хосте, где живёт прод. Переопределить — VICTORY_PROD_DIR."
+
+SHA=$(git -C "$PROD_DIR" rev-parse HEAD 2>/dev/null) || die "Не читается HEAD в $PROD_DIR"
+SUBJECT=$(git -C "$PROD_DIR" log -1 --format='%s' "$SHA" 2>/dev/null)
+
+# Незакоммиченное в проде значит, что выкачено не то, что мы собираемся
+# записать. Отметка станет враньём — а врущая отметка хуже отсутствующей.
+# --untracked-files=no вместо `| grep -v '^?? '`: при pipefail grep без
+# совпадений возвращает 1 и молча роняет весь скрипт под set -e.
+DIRTY=$(git -C "$PROD_DIR" status --porcelain --untracked-files=no 2>/dev/null | wc -l)
+[ "$DIRTY" -gt 0 ] && warn "В прод-чекауте $DIRTY изменённых файлов — на сайте работает не ровно $SHA"
+
+# --- 2. Коммит должен быть на origin/main ------------------------------------
+# Иначе отметка укажет на то, чего в main нет: так было 07.09.26, когда на
+# локальной main прода висел коммит из открытого PR.
+
+git -C "$PROD_DIR" fetch --quiet origin main >/dev/null 2>&1 || \
+  warn "Не удалось обновить origin/main — проверка ниже идёт по устаревшим данным"
+
+if ! git -C "$PROD_DIR" merge-base --is-ancestor "$SHA" origin/main 2>/dev/null; then
+  warn "Выкаченный коммит НЕ входит в origin/main — на проде что-то помимо main"
+fi
+
+# --- 3. Метаданные для аннотации ---------------------------------------------
+
+RUBY=$("$DOCKER" exec victory-web-1 ruby -v 2>/dev/null | awk '{print $2}' || echo '?')
+WEB_IMG=$("$DOCKER" inspect victory-web-1 --format '{{.Image}}' 2>/dev/null | cut -c8-19 || echo '?')
+UP=$("$DOCKER" ps --filter name=victory-web-1 --format '{{.Status}}' 2>/dev/null || echo '?')
+[ -n "$UP" ] || warn "Контейнер victory-web-1 не найден — прод точно работает?"
+
+STAMP=$(date '+%d.%m.%y-%H%M')
+TAG="deploy/$STAMP"
+
+# --- 4. Что записываем -------------------------------------------------------
+
+cat <<EOF
+
+Коммит:      ${SHA:0:7} $SUBJECT
+Ruby:        $RUBY
+Образ web:   $WEB_IMG
+Контейнер:   $UP
+Ветка:       prod  →  ${SHA:0:7}
+Тег:         $TAG
+EOF
+
+if [ "$MODE" = "check" ]; then
+  echo
+  echo "(--check: ничего не записано)"
+  exit 0
+fi
+
+if [ "$WARNED" -eq 1 ] && [ "$MODE" != "force" ]; then
+  echo
+  die "Есть предупреждения — записывать отказываюсь. Разберись или запусти с --force."
+fi
+
+# --- 5. Запись ---------------------------------------------------------------
+# http.version=HTTP/1.1 — без него push по HTTPS в этом окружении виснет и
+# отваливается по таймауту через 300с (чтение при этом работает).
+
+GITC=(git -c http.version=HTTP/1.1 -C "$PROD_DIR")
+
+"${GITC[@]}" tag -f -a "$TAG" "$SHA" -m "Выкачено $STAMP
+Ruby: $RUBY
+Образ web: $WEB_IMG
+Хост: $(hostname)" >/dev/null
+
+"${GITC[@]}" push --force origin "$SHA:refs/heads/prod" >/dev/null 2>&1 \
+  || die "Не удалось запушить ветку prod"
+"${GITC[@]}" push --force origin "refs/tags/$TAG" >/dev/null 2>&1 \
+  || warn "Ветка prod записана, а тег $TAG — нет"
+
+echo
+echo "✓ Записано. Сессии увидят состояние на ближайшем старте (или после git fetch)."
