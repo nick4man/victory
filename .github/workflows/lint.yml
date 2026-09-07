@@ -65,6 +65,18 @@ jobs:
           bundle exec bundle-audit update
           bundle exec bundle-audit check
 
+  services:
+    name: Учёт и границы служб
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Ruby намеренно не ставим: проверка обязана работать и там, где его
+      # нет — часть worktree и машин живут без него. Хватает python3,
+      # который на раннере уже есть.
+      - name: Run services-check
+        run: python3 bin/services-check
+
   rspec:
     name: RSpec
     runs-on: ubuntu-latest
