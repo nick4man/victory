@@ -45,7 +45,7 @@ You are usually running without a TTY. That silently changes what these commands
 
 `gh stack modify` has no non-interactive equivalent at all: restructure by hand with git, or leave it to the user.
 
-Read state with `gh stack view --json` → `{trunk, currentBranch, branches[{name, base, isCurrent, isMerged, isQueued, needsRebase}]}`. Parse that rather than reading the ASCII tree. Outside a stack it exits **2** — check the exit code directly, not through a pipe (`cmd | head` gives you head's status, and the guard always passes).
+Read state with `gh stack view --json` → `{trunk, currentBranch, branches[{name, base, isCurrent, isMerged, isQueued, needsRebase}]}`. Parse that rather than reading the ASCII tree. `base` is a **commit SHA**, not a branch name — do not string-compare it against the parent layer's name. Outside a stack it exits **2** — check the exit code directly, not through a pipe (`cmd | head` gives you head's status, and the guard always passes).
 
 ## The three workflows
 
@@ -64,9 +64,21 @@ gh stack sync            # fast-forwards trunk, rebases the rest, retargets PRs
 
 `init` accepts several names at once and **adopts existing branches** — that is the supported way to turn work you already wrote into a stack. `--base develop` if trunk is not the default branch.
 
-`add` variants: `add <branch>` new empty layer; `add -Am "msg" <branch>` stage everything (untracked included), commit, then create the layer; `-u` instead of `-A` for tracked files only; `add -m "msg"` with no name generates one from the message (`09-07-fix_login_bug`) — prefer an explicit `claude/<task>` or `fix/<smth>` name here.
+⚠️ Trunk is read from the **local** branch, not the remote. Verified: with local `main` 10 commits behind `origin/main`, a layer cut from `origin/main` was still recorded with the stale local `main` SHA as its base. Nothing breaks — `sync` rebases onto `origin/main` — but `view --json` will show a base that is not the commit you branched from. `git fetch && git checkout main && git merge --ff-only` before `init` if you want the two to agree.
 
-⚠️ **Verified quirk:** if the current stack branch has **no commits yet**, `add` does not create a new layer — it drops the commit into that same branch and warns `Branch X has no prior commits`. Not an error: call `add` again for the next layer. Fill layer one with a commit first, then grow the stack.
+`add` variants: `add <branch>` new empty layer; `add -Am "msg" <branch>` stage everything (untracked included), commit, then create the layer; `-u` instead of `-A` for tracked files only; `add -m "msg"` with no name generates one from the message (`MM-DD-fix_login_bug`) — prefer an explicit `claude/<task>` or `fix/<smth>` name here.
+
+⚠️ `-A` means *everything in the tree*, not "the files I just touched". Verified: an `add -Am` run with two unrelated modifications sitting in the working tree swallowed both into the layer's commit. Stage deliberately and use `add <branch>` + your own `git commit`, or check `git status` first.
+
+⚠️ **Verified quirk, and it is narrower than it looks:** the *committing* forms (`-Am` / `-m` / `-A` / `-u`) refuse to open a layer on top of a branch that has **no commits yet**. They put the commit into that same branch instead and warn:
+
+```
+✓ Created commit 1d6e933 on tmp/probe-3
+⚠ Branch tmp/probe-3 has no prior commits — adding your commit here instead of creating a new branch
+  When you're ready for the next layer, run `gh stack add` again
+```
+
+Not an error: call `add` again for the next layer. **Plain `add <branch>` is unaffected** — verified, it creates and checks out the empty layer normally even on a commitless parent. So the rule is: fill a layer with a commit before growing the stack *with a committing `add`*.
 
 `sync` replaces the entire `rebase --onto` + `push --force-with-lease` + `gh pr edit --base` sequence, including the squash-merge case. It does **not** open PRs — only `submit` does. On a rebase conflict it restores every branch and tells you to run `gh stack rebase` (fix → `git add` → `gh stack rebase --continue`, or `--abort`). `sync` itself takes only `--prune` and `--remote`: `--prune` drops local branches of merged PRs and moves the checkout to the first live layer, keeping stack metadata intact.
 
