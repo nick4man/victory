@@ -20,6 +20,11 @@ class SitemapController < ApplicationController
   # Slow-change bucket (monthly/yearly priority). Я. может crawl-ить раз в
   # неделю — содержимое RyazanDistricts constant + page copy.
   def pages
+    # Только ЖК с собственным редакционным текстом: `sitemap_ready` строго
+    # уже, чем `indexable?` (см. комментарий класса ResidentialComplex).
+    # Предлагать краулеру обойти карточку, на которой нечего читать, —
+    # тратить crawl-квоту на страницу, которая всё равно не ранжируется.
+    @complexes = ResidentialComplex.sitemap_ready.order(:name)
     respond_to(&:xml)
   end
 

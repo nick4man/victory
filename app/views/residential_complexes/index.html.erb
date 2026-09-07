@@ -3,9 +3,9 @@
 <%# canonical: НЕ override — layout default (`request.original_url.split('?').first`)
     достаточен, страница без параметров запроса. %>
 
+<%# description выводит layout из content_for :seo_description — второй
+    тег здесь давал бы два <meta name="description"> на страницу. %>
 <% content_for :head do %>
-  <meta name="description" content="<%= @meta_description %>">
-
   <%# Гейт хаба (см. HUB_MIN_COMPLEXES в контроллере) — страница существует
       и полезна прямым заходам даже с 1-2 готовыми ЖК, но отдельной точкой
       входа в выдачу становится только начиная с трёх. То же правило,
@@ -33,7 +33,7 @@
       },
       JSON.parse(breadcrumb_jsonld([
         ['Каталог', properties_url],
-        ['Жилые комплексы', nil]
+        ['Жилые комплексы', zhk_index_url]
       ])).except('@context')
     ]
   }.to_json) %>
@@ -75,7 +75,7 @@
             <p class="text-xl tracking-wider text-foreground group-hover:underline mb-2"><%= complex.display_name %></p>
             <p class="text-sm text-muted-foreground">
               <% if complex.developer.present? %>Застройщик: <%= complex.developer %><br><% end %>
-              <% count = complex.on_site_listings_count %>
+              <% count = @listing_counts.fetch(complex.id, 0) %>
               <%= count.positive? ? "В продаже: #{count}" : 'Сейчас нет активных предложений' %>
             </p>
           <% end %>

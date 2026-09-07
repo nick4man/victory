@@ -11,8 +11,11 @@ RSpec.describe ListingStats do
   describe '.for' do
     context 'непустая подборка' do
       before do
-        create(:property, :on_site, price: 5_000_000, area: 50, price_per_sqm: 100_000)
-        create(:property, :on_site, price: 7_000_000, area: 70, price_per_sqm: 100_000)
+        # price_per_sqm не передаём: Property#calculate_price_per_sqm
+        # (before_save) считает его сам из price/area. Цифры подобраны так,
+        # что обе записи дают ровно 100 000 ₽/м².
+        create(:property, :on_site, price: 5_000_000, area: 50)
+        create(:property, :on_site, price: 7_000_000, area: 70)
       end
 
       it 'считает все шесть агрегатов одним вызовом' do
@@ -40,13 +43,21 @@ RSpec.describe ListingStats do
       end
     end
 
-    it 'возвращает Result со всеми шестью полями (а не схлопнутый скаляр)' do
+    # Именно этот пример сторожит регресс из шапки файла. Проверять
+    # `result.to_h.keys` бесполезно: ключи берутся из определения Struct,
+    # а не из SQL, и остались бы на месте, даже если бы `pick` вернул один
+    # скаляр. Единственное доказательство, что колонок действительно шесть, —
+    # шесть РАЗНЫХ непустых значений, пришедших из базы.
+    it 'достаёт шесть отдельных колонок, а не первую из схлопнутой строки' do
+      create(:property, :on_site, price: 5_000_000, area: 50)
+      create(:property, :on_site, price: 7_000_000, area: 70)
+
       result = described_class.for(Property.on_site)
 
       expect(result).to be_a(described_class::Result)
-      expect(result.to_h.keys).to match_array(
-        %i[count min_price max_price avg_price_per_sqm min_area max_area]
-      )
+      expect(result.to_h.values).to all(be_present)
+      expect(result.max_price).to be > result.min_price
+      expect(result.max_area).to be > result.min_area
     end
   end
 end

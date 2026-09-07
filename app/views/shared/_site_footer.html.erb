@@ -12,6 +12,10 @@
         <h4 class="text-xs tracking-[0.3em] text-muted-foreground mb-6">НАВИГАЦИЯ</h4>
         <nav class="flex flex-col gap-3">
           <%= link_to "Каталог",    properties_path,    class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
+          <%# Единственная входящая ссылка на entity-слой ЖК. Без неё
+              /zhk и /zhk/:slug — орфаны: краулер до них не дойдёт, а
+              внутренний вес на них не перетечёт. %>
+          <%= link_to "Жилые комплексы", zhk_index_path, class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "О компании", about_path,         class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Новости",    news_path,          class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>
           <%= link_to "Кейсы",      cases_path,         class: "text-sm tracking-wider text-foreground hover:text-muted-foreground transition-colors w-fit" %>

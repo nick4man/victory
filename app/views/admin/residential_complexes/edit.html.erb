@@ -8,10 +8,17 @@
 
     <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА · РЕДАКТИРОВАНИЕ</p>
     <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-2"><%= @complex.display_name %></h1>
-    <%# Не ссылка: роут /zhk/:slug появится только в Фазе 3, битая ссылка
-        в админке месяцами — хуже, чем текст. %>
+    <%# Ссылка живая с Фазы 3. У черновика она отдаст 404 — публичные
+        страницы смотрят только на опубликованные ЖК, — поэтому подпись
+        про это предупреждает, а не оставляет редактора гадать. %>
     <p class="text-xs text-muted-foreground mb-8">
-      <code><%= @complex.public_path %></code> — страница появится в Фазе 3
+      <%= link_to @complex.public_path, zhk_path(@complex), class: 'underline hover:no-underline',
+                  target: '_blank', rel: 'noopener' %>
+      <% if @complex.published? %>
+        — открыть на сайте
+      <% else %>
+        — черновик, по ссылке пока 404: страница появится после публикации
+      <% end %>
     </p>
 
     <%= render 'form', complex: @complex %>

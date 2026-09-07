@@ -195,4 +195,20 @@
       </url>
     <% end %>
   <% end %>
+  <%# Жилые комплексы (A2 Фаза 3) — entity-слой под бренд-запросы. Хаб
+      попадает сюда всегда, карточки — только с редакционным текстом. %>
+  <url>
+    <loc><%= zhk_index_url %></loc>
+    <lastmod><%= (@complexes.maximum(:updated_at) || Time.current).to_date.iso8601 %></lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <% @complexes.each do |complex| %>
+    <url>
+      <loc><%= zhk_url(complex) %></loc>
+      <lastmod><%= complex.updated_at.to_date.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
 </urlset>
