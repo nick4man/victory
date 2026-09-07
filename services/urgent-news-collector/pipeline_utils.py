@@ -401,13 +401,19 @@ def _call_google_direct(model: str, messages: list[dict], temperature: float, ma
             parts.append({"text": content})
     if not parts:
         raise RuntimeError("empty messages for google direct")
+    generation_config = {
+        "temperature": temperature,
+        "maxOutputTokens": max_tokens,
+    }
+    # thinkingBudget: 0 гасит «размышления» и экономит токены, но отключение
+    # поддерживают не все модели: gemini-2.5-pro на ноль отвечает 400. Шаг
+    # цепочки становился мёртвым, и каждый деградировавший прогон доезжал до
+    # платного хвоста. Для pro-моделей параметр не отправляем.
+    if "pro" not in model_id:
+        generation_config["thinkingConfig"] = {"thinkingBudget": 0}
     payload = {
         "contents": [{"parts": parts}],
-        "generationConfig": {
-            "temperature": temperature,
-            "maxOutputTokens": max_tokens,
-            "thinkingConfig": {"thinkingBudget": 0},
-        },
+        "generationConfig": generation_config,
     }
     resp = requests.post(url, params={"key": creds["api_key"]}, json=payload, timeout=timeout)
     if resp.status_code != 200:
