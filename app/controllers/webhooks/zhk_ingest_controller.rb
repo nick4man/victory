@@ -3,10 +3,19 @@
 module Webhooks
   # Приём батча наблюдений от services/zhk-registry (питоновский сборщик
   # открытых источников о новостройках Рязани). Аутентификация bearer-
-  # токеном по образцу NewsIngestController: пустой ENV['ZHK_INGEST_TOKEN']
-  # отказывает всем запросам (403), а не пропускает их — молчаливое
-  # «проверка отключена» на пустом секрете при неверном деплое было бы
-  # дырой.
+  # токеном: пустой ENV['ZHK_INGEST_TOKEN'] отказывает всем запросам, а не
+  # пропускает их — молчаливое «проверка отключена» на пустом секрете при
+  # неверном деплое было бы дырой.
+  #
+  # Пустой секрет отвечает 503, а не 403 (как у NewsIngestController) —
+  # расхождение с соседом здесь НАМЕРЕННОЕ, а не недосмотр. Пустой ENV —
+  # ошибка конфигурации СЕРВЕРА (забыли положить секрет при деплое), а не
+  # вина клиента: 403 говорит сборщику «не пущу никогда, брось повторять»,
+  # хотя настоящий смысл обратный — «сейчас чиним, попробуй ещё раз».
+  # `TopnlabController` в этой же кодовой базе уже отвечает 503 на пустой
+  # секрет, и здесь тот же случай. Унификацию news_ingest/topnlab на 5xx
+  # эта задача не делает — записано долгом отдельно. Неверный (но
+  # непустой) токен — по-прежнему 401: это действительно вина клиента.
   #
   # Решение о том, что применить к карточке ЖК, принимает исключительно
   # `Zhk::Ingest.call` — этот контроллер не содержит доменной логики,
@@ -47,6 +56,13 @@ module Webhooks
         return render json: { error: 'batch_too_large', max: MAX_BATCH }, status: :unprocessable_entity
       end
 
+      # `observations: []` — законный, а не мусорный вход: сборщику
+      # нечего слать в этот цикл обхода (например, все источники уже
+      # проверены и ничего не изменилось). Это не отличается от «часть
+      # батча невалидна» по духу правила «отдаём 422 только когда
+      # обрабатывать нечего вообще» — обрабатывать здесь как раз ЕСТЬ
+      # что: пустой список, для которого пустой отчёт — корректный ответ,
+      # а не 422.
       render json: { results: observations.map { |raw| apply(raw) } }
     end
 
@@ -73,12 +89,22 @@ module Webhooks
     def authenticate_bearer!
       configured = ENV['ZHK_INGEST_TOKEN'].to_s
       if configured.empty?
-        Rails.logger.warn('[ZhkIngest] ZHK_INGEST_TOKEN не задан — отклоняем всё')
-        head :forbidden and return
+        Rails.logger.warn('[ZhkIngest] ZHK_INGEST_TOKEN не задан — отклоняем всё (503, это наша поломка)')
+        head :service_unavailable and return
       end
 
+      # Схема обязательна явно: значение без префикса `Bearer `, даже
+      # побайтово совпадающее с секретом, не аутентифицирует.
+      # NewsIngestController в этой же кодовой базе принимает и голое
+      # значение (наследие, которое мы туда не тащим) — здесь сборщик
+      # наш собственный, и слабина, которую нечем оправдать, не нужна.
       header = request.headers['Authorization'].to_s
-      provided = header.start_with?('Bearer ') ? header.split(' ', 2).last.to_s : header
+      unless header.start_with?('Bearer ')
+        head :unauthorized
+        return
+      end
+
+      provided = header.split(' ', 2).last.to_s
       head :unauthorized unless ActiveSupport::SecurityUtils.secure_compare(provided, configured)
     end
   end
