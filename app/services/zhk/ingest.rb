@@ -45,6 +45,25 @@ module Zhk
     # служба сбора не ретраит то, что на самом деле не применилось.
     class DuplicateRace < StandardError; end
 
+    # Симметрично `DuplicateRace`: `rescue ActiveRecord::RecordInvalid`
+    # раньше стоял вокруг всей транзакции — под ним было ПЯТЬ пишущих
+    # вызовов (`complex.save!` дважды, `record_observation`, `record_facts`,
+    # `record_price`), а целится он ровно в один. Сегодня недостижимо
+    # (`ZhkObservation`/`ZhkFact`/`ZhkPricePoint` не могут получить
+    # невалидные данные — все их поля либо считаны из уже провалидированного
+    # `payload`, либо вычислены нами), но форма та же, что была у широкого
+    # `rescue ArgumentError`: если однажды в `record_facts` или
+    # `record_price` появится своя валидация и она провалится, это должно
+    # упасть громко, а не притвориться, что наблюдение было `:invalid`.
+    class InvalidComplex < StandardError
+      attr_reader :record
+
+      def initialize(record)
+        @record = record
+        super(record.errors.full_messages.join(', '))
+      end
+    end
+
     def self.call(payload)
       new(payload).call
     end
@@ -86,7 +105,7 @@ module Zhk
         # но раз id уже известен, писать вместо него `nil` незачем.
         if was_new
           filled = FactApplier.apply(complex, fields.symbolize_keys)
-          complex.save!
+          save_complex!(complex)
         end
 
         begin
@@ -100,7 +119,7 @@ module Zhk
 
         unless was_new
           filled = FactApplier.apply(complex, fields.except(*contested).symbolize_keys)
-          complex.save!
+          save_complex!(complex)
         end
 
         record_price(complex)
@@ -114,7 +133,7 @@ module Zhk
       # перечитываем её, чтобы отдать тот же `complex_id`, что получил бы
       # обычный дубль.
       duplicate_result(existing_observation)
-    rescue ActiveRecord::RecordInvalid => e
+    rescue InvalidComplex => e
       # Страховка на то, что `model_invalid_reasons` не покрывает: она
       # смотрит только на значения ИЗ ЭТОГО наблюдения по отдельности, а
       # не на их сочетание с уже сохранёнными данными карточки (например
@@ -129,8 +148,17 @@ module Zhk
 
     # Служба сбора может прислать что угодно; в справочник (и в провенанс)
     # попадает только то, что разрешено белым списком `FactApplier::FILLABLE`.
+    #
+    # `@payload['fields'] || {}`, а НЕ `@payload.fetch('fields', {})`:
+    # `fetch` подставляет дефолт только когда ключа нет вовсе, а
+    # `"fields": null` — самая естественная запись «источник ничего не
+    # нашёл», и ключ при этом присутствует со значением `nil`. `fetch`
+    # в этом случае вернул бы `nil`, а не `{}`, и `.slice` на `nil` падает
+    # `NoMethodError`. `fields_broken?` ниже проверяет РОВНО то же
+    # значение тем же способом — иначе тут ровно тот дефект, что уже
+    # чинили для `kind` (проверяем одно, читаем другое).
     def fields
-      @fields ||= @payload.fetch('fields', {}).slice(*FactApplier::FILLABLE.map(&:to_s))
+      @fields ||= (@payload['fields'] || {}).slice(*FactApplier::FILLABLE.map(&:to_s))
     end
 
     # Имя, под которым карточка заводится и по которому ищется в справочнике.
@@ -167,13 +195,16 @@ module Zhk
       reasons << 'город вне реестра' if @payload['city'].present? && !known_city?
       reasons << 'битая цена' if price_broken?
       reasons << 'нечитаемый fetched_at' if fetched_at_broken?
+      reasons << 'fields не объект' if fields_broken?
 
-      if fields_broken?
-        reasons << 'fields не объект'
-      else
-        reasons.concat(model_invalid_reasons)
-      end
+      # `model_invalid_reasons` ниже — не бесплатная проверка в памяти:
+      # `probe.valid?` реально ходит в базу (см. комментарий там). Если
+      # наблюдение уже отвергнуто более дешёвой структурной причиной,
+      # гонять пробник незачем — раньше платили эти запросы и за payload,
+      # отвергнутый по «город вне реестра».
+      return reasons if reasons.any?
 
+      reasons.concat(model_invalid_reasons)
       reasons
     end
 
@@ -181,15 +212,21 @@ module Zhk
       ResidentialComplex::CITY_NAMES.include?(@payload['city'])
     end
 
-    # @return [Boolean] `payload['fields']` присутствует, но это не хеш
-    # (например массив). `fields` ниже слайсит его белым списком —
-    # `Array#slice(*13 строк)` не про то же самое, что `Hash#slice`, а про
-    # диапазон индексов, и падает `ArgumentError: wrong number of
-    # arguments`. Это не внутренняя ошибка нашего кода — источник прислал
-    # структурно другое, отвергаем явно, до попытки что-либо с этим сделать.
+    # @return [Boolean] `payload['fields']` — не `nil` и не хеш (массив,
+    # строка, число). `fields` трактует ключ так: отсутствует ИЛИ `nil` —
+    # «источник ничего не нашёл», иначе — обязан быть хешем. Проверяем
+    # ЭТО ЖЕ условие, а не `.present?`: `.present?` у `[]` и `""` — `false`,
+    # то есть эти два случая эта проверка раньше пропускала как «не
+    # сломано», а `fields` на них падал (`Array#slice`/`String#slice` с
+    # 13 строковыми аргументами — `ArgumentError: wrong number of
+    # arguments`, не `Hash#slice`). Порядок замеров ревью:
+    #
+    #   `["developer","Единство"]` → раньше и сейчас `:invalid` (не хеш)
+    #   `[]`, `""`                 → раньше падали наружу, сейчас `:invalid`
+    #   `null`                     → `fields` трактует как «нет полей», не битое
     def fields_broken?
       raw = @payload['fields']
-      raw.present? && !raw.is_a?(Hash)
+      !raw.nil? && !raw.is_a?(Hash)
     end
 
     # @return [Boolean] `fetched_at` не парсится. Единственное известное
@@ -204,6 +241,14 @@ module Zhk
       true
     end
 
+    # Единственное array-типизированное поле в `FactApplier::FILLABLE` —
+    # `address_patterns` (`character varying[]` в Postgres). Аудит:
+    # остальные 12 полей белого списка — `string`/`integer`/enum, для них
+    # тип-каст Ruby не подменяет данные молча (строка остаётся строкой,
+    # `Integer()`-подобной магии на них нет — числовые поля идут через
+    # `type_for_attribute(...).serialize` ниже, а не через угадывание типа).
+    ARRAY_FIELDS = %w[address_patterns].freeze
+
     # @return [Array<String>] нарушения доменных правил модели значениями
     # ИЗ ЭТОГО наблюдения — независимо от того, что уже сохранено на
     # карточке (см. комментарий у `structural_invalid_reasons`). Пробник —
@@ -211,12 +256,42 @@ module Zhk
     # самих значений: ошибка на `name`/`city` в счёт не идёт, если их не
     # прислало ИМЕННО это наблюдение (`fields`), а не заготовка контекста.
     #
-    # `assign_attributes` — второе (и последнее) узкое место для
-    # `ArgumentError`: присвоение enum-полю (`housing_class`/`build_status`)
-    # значения вне словаря бросает исключение прямо на сеттере, раньше
-    # валидации.
+    # ЭТО НЕ бесплатная проверка «в памяти, без похода в базу» — так было
+    # написано в отчёте прошлого круга, и это было неверно. `probe.valid?`
+    # реально шлёт SQL: `friendly_id` с `:history` вешает `before_validation
+    # :set_slug`, а генератор кандидата слага проверяет уникальность двумя
+    # запросами — по `residential_complexes` и по `friendly_id_slugs`.
+    # Цена терпима (на наблюдение, не на HTTP-запрос сайта), но не нулевая
+    # — поэтому `structural_invalid_reasons` не гоняет этот метод, если
+    # наблюдение уже отвергнуто более дешёвой причиной.
+    #
+    # Три проверки, от дешёвой к дорогой:
+    #   1. Массивные поля (`ARRAY_FIELDS`) — сырое значение обязано быть
+    #      `Array` САМО ПО СЕБЕ, до какого-либо каста. Постгресовый
+    #      array-тип не отвергает не-массив на присвоении — он молча
+    #      пытается прочитать строку КАК ЛИТЕРАЛ Postgres («ул. Мира, 5»
+    #      режется по запятым побайтово и ломает многобайтовый UTF-8;
+    #      `12345` остаётся строкой «12345», не массивом ЦИФР), и
+    #      настоящая ошибка (`PG::CharacterNotInRepertoire` / «malformed
+    #      array literal») вылезает только на `INSERT`, когда каст уже
+    #      исказил данные и транзакция частично выполнена. `.valid?`
+    #      здесь бессилен — после каста значение ВСЕГДА `Array`, просто
+    #      иногда мусорный.
+    #   2. `assign_attributes` — присвоение enum-полю (`housing_class`/
+    #      `build_status`) значения вне словаря бросает `ArgumentError`
+    #      прямо на сеттере, раньше валидации.
+    #   3. `type_overflow_reasons` — число, которое `numericality` считает
+    #      нормальным (целое, `> 0`), но которое не влезает в колонку
+    #      (`buildings_count: 99999999999` при `int4`): не бросает
+    #      исключение ни на присвоении, ни на `.valid?` — только при
+    #      попытке ЗАПИСАТЬ значение (`ActiveModel::RangeError`).
+    #      `type_for_attribute(...).serialize` вызывает эту же проверку
+    #      без обращения к БД (подтверждено экспериментально).
     def model_invalid_reasons
       return [] if fields.empty?
+
+      array_reasons = array_field_reasons
+      return array_reasons if array_reasons.any?
 
       probe = ResidentialComplex.new(name: effective_name, city: @payload['city'])
 
@@ -226,11 +301,31 @@ module Zhk
         return [e.message]
       end
 
+      overflow_reasons = type_overflow_reasons(probe)
+      return overflow_reasons if overflow_reasons.any?
+
       probe.valid?
       probe.errors.messages.each_with_object([]) do |(attr, messages), acc|
         next unless fields.key?(attr.to_s)
 
         messages.each { |message| acc << "#{attr} #{message}" }
+      end
+    end
+
+    def array_field_reasons
+      ARRAY_FIELDS.each_with_object([]) do |field, acc|
+        next unless fields.key?(field)
+        next if fields[field].is_a?(Array)
+
+        acc << "#{field} должен быть массивом"
+      end
+    end
+
+    def type_overflow_reasons(probe)
+      fields.keys.each_with_object([]) do |field, acc|
+        ResidentialComplex.type_for_attribute(field).serialize(probe.public_send(field))
+      rescue ActiveModel::RangeError, TypeError => e
+        acc << "#{field} #{e.message}"
       end
     end
 
@@ -322,6 +417,15 @@ module Zhk
     def duplicate_result(observation)
       Result.new(status: :duplicate, complex_id: observation&.residential_complex_id,
                  filled: [], discrepancies: [], reasons: [])
+    end
+
+    # Узкая обёртка вокруг ЕДИНСТВЕННОГО места, куда реально целится
+    # `rescue InvalidComplex` в `call` — см. комментарий у самого класса
+    # `InvalidComplex`.
+    def save_complex!(complex)
+      complex.save!
+    rescue ActiveRecord::RecordInvalid
+      raise InvalidComplex, complex
     end
 
     def matched

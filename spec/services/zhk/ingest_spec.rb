@@ -270,6 +270,105 @@ RSpec.describe Zhk::Ingest do
     expect(ZhkFact.where(field: 'built_to').count).to eq(0)
   end
 
+  it 'отвергает fields пустым массивом вместо необработанного исключения' do
+    # Array#slice(*13 строк) — не Hash#slice: ArgumentError: wrong number
+    # of arguments. .present? у [] — false, старая проверка это пропускала.
+    broken = payload.merge('fields' => [])
+
+    result = described_class.call(broken)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает fields пустой строкой вместо необработанного исключения' do
+    broken = payload.merge('fields' => '')
+
+    result = described_class.call(broken)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'принимает fields: null как «источник не нашёл полей», а не как поломку' do
+    # "fields": null — самая естественная запись «полей нет». Ключ при
+    # этом присутствует со значением nil: fetch('fields', {}) вернул бы
+    # именно nil (не дефолт {}), и .slice упал бы NoMethodError.
+    with_null_fields = payload.merge('fields' => nil)
+
+    result = described_class.call(with_null_fields)
+
+    expect(result.status).to eq(:created)
+    complex = ResidentialComplex.unscoped.find(result.complex_id)
+    expect(complex.developer).to be_nil
+  end
+
+  it 'отвергает нечисловой мусор в buildings_count вместо тихого приведения к 0' do
+    garbage = payload.merge('fields' => payload['fields'].merge('buildings_count' => 'две'))
+
+    result = described_class.call(garbage)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает отрицательный floors_min вместо тихого приведения к -5' do
+    garbage = payload.merge('fields' => payload['fields'].merge('floors_min' => '-5'))
+
+    result = described_class.call(garbage)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает buildings_count вне диапазона колонки вместо необработанного RangeError' do
+    # numericality не знает о размере колонки в байтах (int4) — 99999999999
+    # целое и положительное, но не влезает. Ошибка раньше вылезала бы
+    # только на попытке записать значение (ActiveModel::RangeError).
+    overflow = payload.merge('fields' => payload['fields'].merge('buildings_count' => 99_999_999_999))
+
+    result = described_class.call(overflow)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'отвергает address_patterns строкой вместо повреждения массива при записи' do
+    # Постгресовый array-тип не отвергает строку на присвоении — он молча
+    # парсит её как литерал Postgres (кириллица режется побайтово и ломает
+    # UTF-8, обычная строка остаётся строкой цифр). Настоящая ошибка
+    # (PG::CharacterNotInRepertoire / malformed array literal) вылезает
+    # только на INSERT.
+    broken = payload.merge('fields' => payload['fields'].merge('address_patterns' => 'ул. Мира, 5'))
+
+    result = described_class.call(broken)
+
+    expect(result.status).to eq(:invalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
+  it 'не гоняет пробный ResidentialComplex, если наблюдение уже отвергнуто более дешёвой причиной' do
+    # probe.valid? реально ходит в базу (friendly_id-уникальность слага) —
+    # платить эту цену за payload, отвергнутый структурной причиной
+    # (город вне реестра), незачем.
+    expect(ResidentialComplex).not_to receive(:new)
+
+    described_class.call(payload.merge('city' => 'Атлантида'))
+  end
+
+  it 'не глотает RecordInvalid, который не про complex.save!' do
+    # rescue InvalidComplex целится узко в save_complex! (обёртку вокруг
+    # complex.save!), а не в любую запись внутри транзакции. RecordInvalid
+    # из другого места (здесь — сымитирован в ZhkFact#update!) обязан
+    # долететь наружу как есть.
+    fake_record = ZhkFact.new
+    allow_any_instance_of(ZhkFact).to receive(:update!) # rubocop:disable RSpec/AnyInstance
+      .and_raise(ActiveRecord::RecordInvalid.new(fake_record))
+
+    expect { described_class.call(payload) }.to raise_error(ActiveRecord::RecordInvalid)
+    expect(ResidentialComplex.count).to eq(0)
+  end
+
   it 'строит и матчит черновик по одному и тому же имени, даже если fields несёт другое имя' do
     # payload['name'] и fields['name'] могут расходиться — если завести
     # черновик по одному, а матчить по другому, `FactApplier` (name — в
