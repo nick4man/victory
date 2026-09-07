@@ -38,6 +38,13 @@ module Zhk
         next if value.nil? # источник промолчал, а не сообщил пустоту
 
         if complex.new_record?
+          # `present?`, а не `!nil?`: пустая строка/массив из attrs на новой
+          # записи — то же «данных нет», что и nil, заполнять нечем. Ловушка
+          # на будущее: `present?` отбрасывает и `false`, так что если в
+          # FILLABLE когда-нибудь попадут булевы поля удобств (has_parking,
+          # has_closed_yard, has_playground, has_kindergarten, has_school),
+          # наблюдение «парковки нет» перестанет применяться молча — сейчас
+          # это не срабатывает, потому что таких полей в списке нет.
           next unless value.present?
         else
           next unless complex.public_send(field).nil?

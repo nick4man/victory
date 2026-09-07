@@ -75,5 +75,19 @@ RSpec.describe Zhk::FactApplier do
       expect(new_complex.developer).to eq('Единство')
       expect(new_complex.address_patterns).to eq(['ул. Льговская, д. 10'])
     end
+
+    # Гейт — `value.present?`, а не `!value.nil?`: пустая строка/массив из
+    # attrs на новой записи — тоже «данных нет». Проверяем прогоном, а не
+    # чтением кода: на `!value.nil?` этот пример упал бы (developer и
+    # address_patterns попали бы в filled).
+    it 'не применяет пустую строку и пустой массив из attrs' do
+      new_complex = ResidentialComplex.new(city: 'Рязань')
+
+      filled = described_class.apply(new_complex, developer: '', address_patterns: [])
+
+      expect(filled).to be_empty
+      expect(new_complex.developer).to be_nil
+      expect(new_complex.address_patterns).to eq([])
+    end
   end
 end
