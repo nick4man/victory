@@ -3,7 +3,7 @@
 source 'https://rubygems.org'
 git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 
-ruby '3.3.6'
+ruby '3.4.10'
 
 # Core Rails — EOL Phase 2: 7.2.3.2 → 8.1 (7.2.x EOL 2026-08-09). Ruby 3.3.6 (YJIT
 # on) уже совместим. 8.1.3.1 также нативно закрывает CVE-2026-66066 (Active Storage).

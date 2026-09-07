@@ -12,10 +12,10 @@ You are the session coordinator. **4 Claude Code сессии** работают
 
 | Session | Worktree | Branch | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` | `dev/victory` / `claude/<task>` | **3.3.6** | bin/rails, bundle, rspec |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, gem-less |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, schema validators |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.3.6** | bundle, ruby (target) |
+| **victory** | `/home/q/victory-victory` | `dev/victory` / `claude/<task>` | **3.4.10** | bin/rails, bundle, rspec |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.4.10** | curl, python3, gem-less |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, schema validators |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.4.10** | bundle, ruby (target) |
 
 🚨 `/home/q/victory` — main checkout, **ТОЛЬКО merge/deploy** (live-prod bind-mount: `victory-web-1`→`/app`, dev-mode code-reload → правка мгновенно на живом сайте). **Не для активной работы сессий.** Идентичность сессий — marker-файл `.claude-session` (auto; `CLAUDE_SESSION` — override).
 
