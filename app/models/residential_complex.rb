@@ -48,6 +48,7 @@ class ResidentialComplex < ApplicationRecord
   # destroy — он был бы мёртвым кодом.
   has_many :zhk_facts
   has_many :zhk_price_points
+  has_many :zhk_observations
 
   # _prefix per CLAUDE.md convention → complex.housing_class_comfort?
   enum :housing_class, { econom: 0, comfort: 1, business: 2, elite: 3 },

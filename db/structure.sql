@@ -3024,6 +3024,7 @@ CREATE TABLE public.zhk_observations (
     fetched_at timestamp(6) without time zone NOT NULL,
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     digest character varying NOT NULL,
+    residential_complex_id bigint,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -6842,6 +6843,13 @@ CREATE INDEX index_viewing_schedules_on_viewing_type ON public.viewing_schedules
 
 
 --
+-- Name: index_zhk_observations_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_zhk_observations_on_residential_complex_id ON public.zhk_observations USING btree (residential_complex_id);
+
+
+--
 -- Name: index_zhk_observations_on_source_and_fetched_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7406,6 +7414,14 @@ ALTER TABLE ONLY public.articles
 
 ALTER TABLE ONLY public.case_studies
     ADD CONSTRAINT fk_rails_ee72776bd0 FOREIGN KEY (author_id) REFERENCES public.users(id);
+
+
+--
+-- Name: zhk_observations fk_rails_f036dfdc48; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_observations
+    ADD CONSTRAINT fk_rails_f036dfdc48 FOREIGN KEY (residential_complex_id) REFERENCES public.residential_complexes(id);
 
 
 --
