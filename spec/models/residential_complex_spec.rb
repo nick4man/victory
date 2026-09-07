@@ -274,7 +274,7 @@ RSpec.describe ResidentialComplex do
     it 'идемпотентен: повторные прогоны не плодят записи' do
       run_seed
       first_count = described_class.unscoped.count
-      expect(first_count).to eq(7)
+      expect(first_count).to eq(12)
 
       run_seed
       run_seed
@@ -286,8 +286,29 @@ RSpec.describe ResidentialComplex do
       run_seed
 
       expect(described_class.unscoped.pluck(:slug)).to match_array(
-        %w[priokskiy-park legenda vidnyy metropark skobelev otkrytie staroe-selo-2]
+        %w[priokskiy-park legenda vidnyy metropark skobelev otkrytie staroe-selo
+           pozharskiy severnyy margelov gollandiya-parkovyy-kvartal leto]
       )
+    end
+
+    # Регресс на реальный отказ: заполнение шло через `||=`, а у
+    # address_patterns дефолт `[]` — истинное значение, поэтому паттерны
+    # молча не проставлялись, и подсказка объектов в админке была пустой
+    # у всех ЖК разом.
+    it 'проставляет address_patterns, а не оставляет пустой массив' do
+      run_seed
+
+      expect(described_class.find_by(slug: 'otkrytie').address_patterns)
+        .to include('ул. Льговская, д. 10')
+    end
+
+    # Источники по этим полям расходятся, и сид обязан оставить их пустыми:
+    # неверная фактура на entity-странице хуже отсутствующей.
+    it 'не выдумывает фактуру там, где источники разошлись' do
+      run_seed
+
+      expect(described_class.find_by(slug: 'metropark').developer).to be_nil
+      expect(described_class.find_by(slug: 'skobelev').housing_class).to be_nil
     end
 
     it 'не откатывает правки редактора' do
@@ -299,6 +320,20 @@ RSpec.describe ResidentialComplex do
       complex = described_class.find_by(slug: 'legenda')
       expect(complex.name).to eq('Легенда Плюс')
       expect(complex.developer).to eq('Другой')
+    end
+
+    # Очистка — тоже правка. Админка сознательно даёт стереть паттерны
+    # пустой textarea; сид на `blank?` восстанавливал бы их обратно, и
+    # редактор не смог бы избавиться от неверного паттерна в принципе.
+    it 'не восстанавливает то, что редактор осознанно стёр' do
+      run_seed
+      described_class.find_by(slug: 'legenda').update!(address_patterns: [], wall_material: '')
+
+      run_seed
+
+      complex = described_class.find_by(slug: 'legenda')
+      expect(complex.address_patterns).to eq([])
+      expect(complex.wall_material).to eq('')
     end
   end
 
