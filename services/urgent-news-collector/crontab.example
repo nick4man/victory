@@ -1,10 +1,17 @@
 # Боевое расписание срочных новостей.
-# REPO — каталог этого репозитория, PY — интерпретер venv с requirements.txt.
+# REPO — каталог этого репозитория, PY — интерпретер venv с requirements.txt,
+# LOGS — каталог для логов.
 # flock -n защищает от наложения прогонов: коллектор при холодном старте
 # может идти несколько минут.
+#
+# ⚠️ LOGS обязан существовать ДО первой записи в crontab: cron не создаёт
+# каталог под редирект и падает на нём молча, ещё не запустив python. Симптом
+# неотличим от «скрипт не стартовал»: пустой лог и ничего в почте.
+#
+#   mkdir -p LOGS
 
 # Сбор и классификация RSS каждые 30 минут.
-*/30 * * * * /usr/bin/flock -n /tmp/urgent_collector.lock -c "PY REPO/urgent_collector.py >> REPO/logs/urgent_collector.log 2>&1"
+*/30 * * * * /usr/bin/flock -n /tmp/urgent_collector.lock -c "PY REPO/urgent_collector.py >> LOGS/urgent_collector.log 2>&1"
 
 # Публикация отобранного — со сдвигом на 2 минуты, чтобы не пересекаться со сбором.
-2,17,32,47 * * * * /usr/bin/flock -n /tmp/urgent_trigger.lock -c "PY REPO/urgent_trigger.py >> REPO/logs/urgent_trigger.log 2>&1"
+2,17,32,47 * * * * /usr/bin/flock -n /tmp/urgent_trigger.lock -c "PY REPO/urgent_trigger.py >> LOGS/urgent_trigger.log 2>&1"
