@@ -162,7 +162,7 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 ## Branch discipline (main = prod)
 
-- **`main`** — production. Деплоится автоматически (или через webhook) на https://victory62.org. **Никаких direct push to main.**
+- **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут `/home/q/victory` обновляют руками, и 07.09.26 он отставал на 33 коммита. Процедура — `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
 - **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
 
