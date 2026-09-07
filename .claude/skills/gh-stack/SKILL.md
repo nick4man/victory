@@ -31,7 +31,8 @@ You are usually running without a TTY. That silently changes what these commands
 | `gh stack submit` | Acts as `--auto`: skips the editor and **creates PRs as drafts**. Pass `--open` for ready-for-review. |
 | `gh stack merge` | Merges the **whole stack** without confirmation, same as `--yes`. Always pass an explicit PR or stack number to limit it. |
 | `gh stack sync` | Aborts instead of prompting if local and remote stacks diverged. Nothing is pushed. |
-| `gh stack modify` / `switch` / `checkout` with no args | Interactive TUI only — you cannot drive these. Use explicit arguments. |
+| `gh stack switch` / `checkout` with no args | Interactive TUI only. Pass an explicit argument instead. |
+| `gh stack modify` | TUI with **no argument form** at all (only `--abort` / `--continue`). You cannot restructure headlessly — rebuild with `unstack --local` + `init` in the new order, or hand this step to a human. |
 
 Read state with `gh stack view --json`. Outside a stack it exits **2** — check the exit code directly, not through a pipe (`cmd | head` gives you head's status, and the guard always passes).
 
@@ -41,7 +42,8 @@ Read state with `gh stack view --json`. Outside a stack it exits **2** — check
 # 1. Build the stack
 gh stack init feat/migration feat/service feat/tg-buttons   # bottom to top
 gh stack add -Am "Add owner intake service" feat/service    # add a layer later
-gh stack submit --open                                      # push + create PRs + create the stack
+gh stack submit                                             # push + create PRs (drafts) + create the stack
+gh pr ready <bottom-pr>                                     # open ONE layer for review at a time
 
 # 2. Parent branch changed (review fixes)
 gh stack sync            # fetch, cascade-rebase, atomic force-with-lease push, relink
@@ -49,6 +51,8 @@ gh stack sync            # fetch, cascade-rebase, atomic force-with-lease push, 
 # 3. Parent PR merged
 gh stack sync            # fast-forwards trunk, rebases the rest, retargets PRs
 ```
+
+Without a TTY `submit` also leaves every PR with an auto-generated title and an **empty body** — it has no title/body flags. Follow up with `gh pr edit <n> --body` if your repo mandates a PR template or footer.
 
 `sync` replaces the entire `rebase --onto` + `push --force-with-lease` + `gh pr edit --base` sequence, including the squash-merge case. On a rebase conflict it restores every branch and tells you to run `gh stack rebase` (then `--continue` or `--abort`).
 
@@ -64,10 +68,11 @@ gh stack merge --squash --yes        # the ENTIRE stack — only when you mean i
 | Need | Command |
 |---|---|
 | See the stack + PR status | `gh stack view` / `--short` / `--json` |
-| Adopt existing branches | `gh stack init branch1 branch2 branch3` |
+| Adopt existing branches (no PRs yet) | `gh stack init branch1 branch2 branch3` |
+| Existing branches that **already have reviewed PRs** | `gh stack link ...` — `init` + `sync` force-pushes rewritten history and invalidates reviews already given |
 | Push branches only, no PRs | `gh stack push` (per-branch, not atomic) |
 | Stack PRs made by other tools | `gh stack link <pr-or-branch>...` |
-| Restructure (drop/fold/reorder) | `gh stack modify` (TUI), then `gh stack submit` |
+| Restructure (drop/fold/reorder) | `gh stack modify` (TUI, human only) — headless: `unstack --local` + `init` anew |
 | Dismantle | `gh stack unstack` (`--local` to keep GitHub untouched) |
 
 ## Common mistakes
