@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -102,10 +102,14 @@ def check_for_duplicates(cur, embedding, current_event_id: int = None, hours: in
     #   числа, даты). Истинные дубли всё ещё ≥0.93.
     # • Фикс: published_to_tg=true (анкорим только реально опубликованные) +
     #   порог 0.85→0.92 (отсечь baseline-шум).
+    # Окно считается сервером. datetime.now() здесь был наивным временем хоста:
+    # при MSK-хосте и UTC-базе 48 часов молча превращались в 45, а демоушен
+    # протухших кандидатов ниже уже использует серверный NOW() — две разные
+    # шкалы времени в одном файле.
     query = """
         SELECT id, headline, 1 - (embedding <=> %s::vector) as similarity
         FROM urgent_events
-        WHERE created_at > %s
+        WHERE created_at > NOW() - make_interval(hours => %s)
           AND embedding IS NOT NULL
           AND relevance_tier = 'URGENT'
           AND published_to_tg = TRUE
@@ -114,8 +118,7 @@ def check_for_duplicates(cur, embedding, current_event_id: int = None, hours: in
         ORDER BY similarity DESC
         LIMIT 1;
     """
-    time_threshold = datetime.now() - timedelta(hours=hours)
-    cur.execute(query, (embedding, time_threshold, current_event_id, embedding))
+    cur.execute(query, (embedding, hours, current_event_id, embedding))
     return cur.fetchone()
 
 

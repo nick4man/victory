@@ -98,24 +98,48 @@ def get_db_connection():
         logger.error(f"Error connecting to database: {e}")
         return None
 
-def url_already_seen(conn, url: str) -> bool:
-    """Cheap pre-LLM dedup: skip if we've already ingested this exact RSS URL."""
-    if not url:
-        return False
+# Окно, в котором запись без <link> считается уже виденной. По URL такие
+# записи не ловятся вовсе (source_url IS NULL), поэтому ключ — заголовок.
+SEEN_HEADLINE_WINDOW_DAYS = int(os.environ.get("SEEN_HEADLINE_WINDOW_DAYS", "14"))
+
+
+def already_seen(conn, url: str | None, headline: str) -> bool:
+    """Cheap pre-LLM dedup: не платить за классификацию того, что уже видели.
+
+    По URL — точное совпадение. Записи без <link> проходят мимо и URL-проверки,
+    и частичного ON CONFLICT (он игнорирует NULL), поэтому для них ключом
+    становится заголовок в окне SEEN_HEADLINE_WINDOW_DAYS. Без этого такая
+    новость переклассифицируется каждый прогон и уходит в канал повторно, как
+    только истечёт 48-часовой якорь дедупа.
+    """
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM urgent_events WHERE source_url = %s LIMIT 1", (url,))
+            if url:
+                cur.execute("SELECT 1 FROM urgent_events WHERE source_url = %s LIMIT 1", (url,))
+            elif headline:
+                cur.execute(
+                    "SELECT 1 FROM urgent_events "
+                    "WHERE source_url IS NULL AND headline = %s "
+                    "  AND created_at > NOW() - make_interval(days => %s) LIMIT 1",
+                    (headline, SEEN_HEADLINE_WINDOW_DAYS),
+                )
+            else:
+                return False
             return cur.fetchone() is not None
     except Exception as e:
         # Без rollback транзакция остаётся в aborted-состоянии и следующий
         # INSERT падает с InFailedSqlTransaction — одна битая проверка
         # обваливала всю оставшуюся ленту.
-        logger.error(f"url_already_seen check failed: {e}")
+        logger.error(f"already_seen check failed: {e}")
+        return False
+    finally:
+        # SELECT открыл транзакцию — её надо закрыть. Иначе соединение висит
+        # idle-in-transaction всё время LLM-вызовов (минуты) и держит xmin
+        # horizon, мешая autovacuum.
         try:
             conn.rollback()
         except Exception:
             pass
-        return False
 
 
 def _safe_embed(text: str) -> list[float] | None:
@@ -138,7 +162,8 @@ def insert_urgent_event(conn, event_type: str, headline: str, details: str,
                         embedding: list[float] | None = None):
     """Insert news event into urgent_events. ON CONFLICT silently skips duplicates by source_url.
 
-    relevance_tier — URGENT/DIGEST/ARCHIVE (NOISE сюда не должен попадать).
+    relevance_tier — URGENT/DIGEST/ARCHIVE/NOISE. NOISE пишется без эмбеддинга
+    и служит только отметкой «уже классифицировано» для already_seen.
     embedding — list[float] длины 3072 (gemini-embedding-001) или None.
     """
     try:
@@ -336,8 +361,8 @@ def process_feed(source: dict, conn):
 
             # URL-dedup до LLM-вызова — экономит токены на повторных RSS-записях
             # (раньше «ставка 14,5%» уходила к Gemini 3+ раза за полчаса).
-            if url_already_seen(conn, link):
-                logger.debug(f"Skip (URL seen): {headline}")
+            if already_seen(conn, link, headline):
+                logger.debug(f"Skip (already seen): {headline}")
                 continue
 
             logger.debug(f"Analyzing: {headline}")
@@ -347,9 +372,29 @@ def process_feed(source: dict, conn):
                 source_weight=source.get("weight", "medium"),
             )
 
-            # NOISE — выбрасываем без записи и без эмбеддинга.
+            details = (
+                f"Source: {source['name']}\nLink: {link or '—'}\nSummary: {summary}\n\n"
+                f"AI Analysis ({analysis.relevance_tier}/{analysis.audience_fit}): "
+                f"{analysis.reasoning}"
+            )
+
+            # NOISE пишем без эмбеддинга — строка нужна только как отметка
+            # «уже классифицировано». Без неё запись, провисевшая в ленте трое
+            # суток, стоила ~144 вызовов классификатора, а цепочка кончается
+            # платной моделью. Дайджест эти строки не видит: он фильтрует
+            # relevance_tier IN ('URGENT', 'DIGEST').
             if analysis.relevance_tier == "NOISE":
-                logger.debug(f"Skip NOISE [{analysis.event_type}]: {headline[:80]}")
+                logger.debug(f"NOISE [{analysis.event_type}]: {headline[:80]}")
+                insert_urgent_event(
+                    conn,
+                    event_type=analysis.event_type,
+                    headline=headline,
+                    details=details,
+                    source_url=link,
+                    relevance_tier="NOISE",
+                    audience_fit=analysis.audience_fit,
+                    embedding=None,
+                )
                 continue
 
             # Детерминированная страховка поверх суждения модели: гейт режет
@@ -362,7 +407,8 @@ def process_feed(source: dict, conn):
                     logger.info(f"Gate demoted URGENT→DIGEST [{gate_reason}]: {headline[:80]}")
                     analysis.relevance_tier = "DIGEST"
 
-            # URGENT/DIGEST/ARCHIVE — всё храним + эмбеддим.
+            # URGENT/DIGEST/ARCHIVE — эмбеддим. details собран выше, но тир мог
+            # смениться гейтом — пересобираем, чтобы в тексте стоял финальный.
             details = (
                 f"Source: {source['name']}\nLink: {link or '—'}\nSummary: {summary}\n\n"
                 f"AI Analysis ({analysis.relevance_tier}/{analysis.audience_fit}): "

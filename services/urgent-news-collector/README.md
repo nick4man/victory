@@ -95,6 +95,7 @@ Cloudflare и omniroute, затем Gemini Pro и последним — пла�
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cp .env.example .env      # заполнить; .env в git не попадает
+mkdir -p logs             # cron не создаёт каталог под редирект и молча падает на нём
 ```
 
 Расписание — в `crontab.example`. `flock -n` обязателен: холодный старт
