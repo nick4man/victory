@@ -135,6 +135,12 @@ class ResidentialComplex < ApplicationRecord
     @on_site_listings_count ||= on_site_listings.count
   end
 
+  # Позволяет отдать уже посчитанное значение: страница ЖК считает тот же
+  # COUNT в агрегатах (ListingStats), и без этого `indexable?` шёл бы в
+  # базу второй раз за тем же числом. Правило индексации при этом
+  # остаётся здесь, в модели, а не переезжает во вьюху.
+  attr_writer :on_site_listings_count
+
   # Счётчик мемоизирован — сбрасываем, иначе после привязки объектов
   # в админке тот же объект отдаёт залипшее значение.
   def reload(*)

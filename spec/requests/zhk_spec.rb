@@ -52,10 +52,16 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
       expect(canonical).to end_with("/zhk/#{complex.slug}")
     end
 
-    it 'выставляет публичный Cache-Control' do
+    # Кэш приватный, а не public: карточка объекта рендерит favorite-toggle
+    # для залогиненного клиента кабинета, а layout отдаёт per-session
+    # CSRF-токен. Общий кэш вправе был бы отдать страницу одного
+    # посетителя другому. Сегодня в тракте нет кэширующего прокси, но
+    # закладываться на это — значит поставить дыру на таймер.
+    it 'кэшируется приватно, а не в общем кэше' do
       get "/zhk/#{complex.slug}"
 
-      expect(response.headers['Cache-Control']).to include('max-age=900', 'public')
+      expect(response.headers['Cache-Control']).to include('max-age=900')
+      expect(response.headers['Cache-Control']).not_to include('public')
     end
 
     it 'содержит ApartmentComplex и BreadcrumbList в @graph' do
@@ -99,6 +105,20 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
     end
   end
 
+  describe 'GET /zhk/:slug — мягко удалённый ЖК' do
+    # Правило #1 CLAUDE.md. `visible` не дублирует `not_deleted` и целиком
+    # полагается на default_scope — если его когда-нибудь снимут, удалённый
+    # ЖК начнёт отдавать 200, и заметить это будет некому.
+    it 'отдаёт 404, а не страницу удалённого ЖК' do
+      complex = create(:residential_complex, :with_body)
+      complex.soft_delete!
+
+      get "/zhk/#{complex.slug}"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe 'GET /zhk/:slug — исторический слаг' do
     it 'резолвится через friendly_id history и 301-редиректит на канонический' do
       complex = create(:residential_complex, :with_body)
@@ -109,6 +129,18 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
 
       expect(response).to have_http_status(:moved_permanently)
       expect(response.headers['Location']).to end_with('/zhk/novoe-imya')
+    end
+
+    # 301 и 404 кэшировать нельзя: редактор публикует ЖК и ещё четверть
+    # часа получал бы по своей же ссылке «страница не найдена».
+    it 'не кэширует редирект' do
+      complex = create(:residential_complex, :with_body)
+      old_slug = complex.slug
+      complex.update!(slug: 'drugoe-imya')
+
+      get "/zhk/#{old_slug}"
+
+      expect(response.headers['Cache-Control']).not_to include('max-age=900')
     end
   end
 end

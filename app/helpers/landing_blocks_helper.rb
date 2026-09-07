@@ -65,7 +65,13 @@ module LandingBlocksHelper
   def render_quote_block(b)
     content_tag(:blockquote, class: 'border-l-2 border-border pl-4 italic') do
       pieces = [content_tag(:p, b[:text].to_s)]
-      pieces << content_tag(:cite, "— #{b[:author]}".html_safe, class: 'text-sm opacity-70') if b[:author].present?
+      # Без `.html_safe`: интерполяция редакторского поля в строку с
+      # последующей пометкой «безопасно» отменяла экранирование всей
+      # строки — единственная дыра в этом файле, остальные блоки идут
+      # через content_tag, который экранирует сам. Шапка файла требует
+      # ровно этого: доверяем только структуре тегов, не содержимому.
+      # Em-dash — литерал в коде, экранировать его не от кого.
+      pieces << content_tag(:cite, "— #{b[:author]}", class: 'text-sm opacity-70') if b[:author].present?
       safe_join(pieces)
     end
   end

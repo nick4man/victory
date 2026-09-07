@@ -17,7 +17,7 @@
     *.jpg, og.jpg исключён из слайдера — только для meta). Пока в проде
     фото нет ни у одного ЖК — блоки ниже деградируют до layout default. %>
 <% zhk_photo_dir   = Rails.public_path.join("images/zhk/#{@complex.slug}") %>
-<% zhk_photo_paths = zhk_photo_dir.exist? ? zhk_photo_dir.glob('*.jpg').reject { |p| p.basename.to_s == 'og.jpg' }.sort : [] %>
+<% zhk_photo_paths = zhk_photo_dir.exist? ? zhk_photo_dir.glob(Zhk::Coverage::PHOTO_GLOB).reject { |p| p.basename.to_s == 'og.jpg' }.sort : [] %>
 <% has_zhk_hero = zhk_photo_paths.any? %>
 <% has_zhk_og   = zhk_photo_dir.exist? && zhk_photo_dir.join('og.jpg').exist? %>
 
@@ -32,9 +32,9 @@
 
 <% faq_pairs = @complex.body_html.present? ? faq_pairs_from_html(@complex.body_html) : [] %>
 
+<%# description выводит layout из content_for :seo_description — второй
+    тег здесь давал бы два <meta name="description"> на страницу. %>
 <% content_for :head do %>
-  <meta name="description" content="<%= @meta_description %>">
-
   <%# ImageObject Schema.org для фото ЖК — та же роль, что у district hero
       (landings/show.html.erb:57-66): сигнал Я.Картинкам/Google Images. %>
   <% if has_zhk_hero %>
@@ -70,7 +70,7 @@
         'about' => { '@type' => 'ApartmentComplex', 'name' => @complex.display_name },
         'mainEntity' => {
           '@type' => 'ItemList',
-          'numberOfItems' => @stats.count,
+          'numberOfItems' => @listings.size,
           'itemListElement' => @listings.each_with_index.map { |p, i|
             { '@type' => 'ListItem', 'position' => i + 1, 'url' => property_url(p), 'name' => p.title }
           }
@@ -79,7 +79,7 @@
       JSON.parse(breadcrumb_jsonld([
         ['Каталог', properties_url],
         ['Жилые комплексы', zhk_index_url],
-        [@complex.display_name, nil]
+        [@complex.display_name, zhk_url(@complex)]
       ])).except('@context')
     ]
   }.to_json) %>
@@ -116,6 +116,27 @@
         сообщим, как только появится подходящий вариант.
       <% end %>
     </p>
+
+    <%# Разброс по предложениям — то, за чем на страницу ЖК и приходят:
+        «сколько стоит здесь вообще». Считается тем же одним запросом,
+        что и счётчик выше (ListingStats), лишних обращений к базе нет. %>
+    <% if @stats.count.positive? %>
+      <p class="text-sm text-muted-foreground leading-relaxed max-w-3xl mt-2">
+        <% range = [] %>
+        <% if @stats.min_area.present? && @stats.max_area.present? %>
+          <% range << "площади #{number_with_precision(@stats.min_area, precision: 0)}–" \
+                      "#{number_with_precision(@stats.max_area, precision: 0)} м²" %>
+        <% end %>
+        <% if (avg_formatted = zhk_format_avg_price_per_sqm(@stats.avg_price_per_sqm)) %>
+          <% range << "в среднем #{avg_formatted} ₽ за м²" %>
+        <% end %>
+        <% if @stats.max_price.present? && @stats.max_price != @stats.min_price %>
+          <% range << "верхняя граница #{number_to_currency(@stats.max_price, unit: '₽', precision: 0,
+                                                            format: '%n %u', delimiter: ' ')}" %>
+        <% end %>
+        <%= range.join(' · ') %>
+      </p>
+    <% end %>
   </div>
 </section>
 

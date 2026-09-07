@@ -42,6 +42,33 @@ RSpec.describe 'ResidentialComplexes (хаб /zhk)', type: :request do
     end
   end
 
+  describe 'GET /zhk — чужой город' do
+    # Заголовок, description и H1 хаба говорят «Рязани». Модель валидирует
+    # город против Cities::REGISTRY, то есть московский ЖК завести можно —
+    # и без фильтра он попал бы в список под рязанским H1.
+    it 'не показывает ЖК другого города' do
+      create(:residential_complex, :with_body, name: 'Легенда')
+      create(:residential_complex, :with_body, name: 'Столичный', city: 'Москва', district_slug: nil)
+
+      get '/zhk'
+
+      expect(response.body).to include('Легенда')
+      expect(response.body).not_to include('Столичный')
+    end
+  end
+
+  describe 'GET /zhk — разметка' do
+    # Layout выводит description из content_for :seo_description; вьюха
+    # какое-то время выводила второй тег внутри content_for :head.
+    it 'ровно один meta description' do
+      create(:residential_complex, :with_body)
+
+      get '/zhk'
+
+      expect(response.parsed_body.css('meta[name="description"]').size).to eq(1)
+    end
+  end
+
   describe 'GET /zhk — гейт пройден (≥3 готовых ЖК)' do
     it 'без noindex' do
       create_list(:residential_complex, 3, :with_body)
