@@ -76,7 +76,13 @@ bin/claude-inbox send victory "нужна migration для news_embeddings — �
 bin/claude-inbox send victory --edit
 ```
 
-Файл создаётся в `.claude/sessions/inbox/<to>/<timestamp>_from-<sender>_<slug>.md`. Slug — kebab-case первые 60 символов сообщения.
+Файл создаётся в `<main-checkout>/.claude/sessions/inbox/<to>/<timestamp>_from-<sender>_<slug>.md`.
+Slug — kebab-case первые 60 символов сообщения.
+
+⚠️ Очередь — **одна на репозиторий**, в main checkout, а не в `.claude/` твоего
+worktree: у каждого worktree своя копия `.claude/`, и `inbox/**/*.md` в
+`.gitignore`, так что worktree-локальный файл не увидит никто. `bin/claude-inbox`
+резолвит это сам. Не клади сообщения в инбокс руками — попадёшь в тупик.
 
 ## Receiving
 

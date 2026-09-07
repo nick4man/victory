@@ -123,7 +123,7 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 
 🚨 **`/opt/.openclaw/victory` = main checkout, НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт.
 
-⚠️ Схема «4 сессии victory/chat/seo/upgrade» из `.claude/sessions/README.md` — историческая, её worktree в `/home/q/` **не существуют**. Тот же мёртвый путь прописан в `.mcp.json` и `.claude/hooks/session-start.sh`: из-за него MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность. `bin/claude-inbox` жёстко валидирует старый список имён, поэтому в новых worktree inbox не работает.
+⚠️ Схема «4 сессии victory/chat/seo/upgrade» из `.claude/sessions/README.md` — историческая, её worktree в `/home/q/` **не существуют**. Тот же мёртвый путь прописан в `.mcp.json` и `.claude/hooks/session-start.sh`: из-за него MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность. Inbox же **работает**: с 07.09.26 `bin/claude-inbox` и `session-start.sh` держат единую очередь в main checkout (резолв через `git --git-common-dir`), а новые worktree саморегистрируются созданием своего каталога в ней — старый жёсткий список имён больше не блокирует.
 
 ## Branch discipline (main = prod)
 
