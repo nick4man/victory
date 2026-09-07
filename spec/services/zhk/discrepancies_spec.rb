@@ -58,11 +58,29 @@ RSpec.describe Zhk::Discrepancies do
       expect(described_class.fields_for(complex)).to be_empty
     end
 
-    it 'не считает расхождением застройщика с/без организационно-правовой формы' do
+    it 'не считает расхождением застройщика с/без «ГК» — маркетинговой приставки' do
       fact('developer', 'Единство', 'erz')
       fact('developer', 'ГК Единство', 'developer_site')
 
       expect(described_class.fields_for(complex)).to be_empty
+    end
+
+    it 'не считает расхождением застройщика с/без «СЗ» — обязательной по 214-ФЗ приставки' do
+      fact('developer', 'Единство', 'erz')
+      fact('developer', 'СЗ Единство', 'developer_site')
+
+      expect(described_class.fields_for(complex)).to be_empty
+    end
+
+    it 'считает расхождением разные организационно-правовые формы застройщика' do
+      # «ООО»/«АО» — не маркетинг, а юридическая форма. У компании она
+      # одна; разные формы при похожем имени — обычно два разных юрлица
+      # (под очередь/объект в долевом строительстве заводят отдельное
+      # ООО), и этот конфликт обязан дойти до редактора, а не схлопнуться.
+      fact('developer', 'ООО Единство', 'erz')
+      fact('developer', 'АО Единство', 'developer_site')
+
+      expect(described_class.fields_for(complex)).to eq(['developer'])
     end
 
     it 'не считает расхождением год с/без суффикса «г.»' do
@@ -70,6 +88,25 @@ RSpec.describe Zhk::Discrepancies do
       fact('built_to', '2026 г.', 'developer_site')
 
       expect(described_class.fields_for(complex)).to be_empty
+    end
+
+    it 'не считает расхождением один год в разной нотации квартала' do
+      # Римский квартал цифр не содержит вовсе — единственная 4-значная
+      # группа в обеих строках это год, и она совпадает.
+      fact('built_to', '4 кв. 2026', 'erz')
+      fact('built_to', 'IV кв. 2026', 'developer_site')
+
+      expect(described_class.fields_for(complex)).to be_empty
+    end
+
+    it 'находит расхождение в годе, даже когда впереди стоит номер квартала' do
+      # Баг круга правок 1: `v[/\d+/]` брал ПЕРВУЮ группу цифр — квартал
+      # «4», а не год — и «4 кв. 2026» против «4 кв. 2027» тонуло в
+      # молчании. Год должен браться по 4-значной группе.
+      fact('built_to', '4 кв. 2026', 'erz')
+      fact('built_to', '4 кв. 2027', 'developer_site')
+
+      expect(described_class.fields_for(complex)).to eq(['built_to'])
     end
 
     it 'возвращает несколько спорных полей отсортированными для детерминизма' do
@@ -87,13 +124,16 @@ RSpec.describe Zhk::Discrepancies do
   end
 
   describe '.all' do
-    it 'отдаёт для экрана обе версии со ссылками' do
+    it 'отдаёт для экрана обе версии со ссылками в порядке появления факта' do
+      # `match_array` здесь не годится: он не ловит нестабильный порядок —
+      # порядок должен воспроизводиться от прогона к прогону (`.order(:id)`
+      # в реализации), это и проверяем через `eq` с конкретным порядком.
       fact('built_to', '2022', 'erz')
       fact('built_to', '2023', 'developer_site')
 
       row = described_class.all.first
       expect(row[:field]).to eq('built_to')
-      expect(row[:values].map { |v| v[:value] }).to match_array(%w[2022 2023])
+      expect(row[:values].map { |v| v[:value] }).to eq(%w[2022 2023])
     end
 
     it 'не включает поля без реального расхождения' do
@@ -110,6 +150,32 @@ RSpec.describe Zhk::Discrepancies do
       fact('built_to', '2023', 'developer_site')
 
       expect(described_class.all.first[:complex]).to eq(complex)
+    end
+
+    it 'сортирует несколько спорных полей нескольких ЖК по (complex_id, field)' do
+      # `complex.id` вычисляем ДО создания `other` — `complex` это ленивый
+      # `let`, и если его не форсировать явно, `other` может получить id
+      # МЕНЬШЕ, чем `complex` (создан раньше), что перевернёт ожидаемый
+      # порядок теста, а не проверяемого кода.
+      complex_id = complex.id
+      other = create(:residential_complex)
+
+      # Вставляем намеренно в обратном порядке — и по ЖК (other раньше
+      # complex), и по полю (wall_material раньше developer) внутри
+      # каждого, — чтобы естественный порядок вставки противоречил
+      # ожидаемой сортировке и не совпадал с ней «по счастью».
+      ZhkFact.create!(residential_complex: other, field: 'wall_material', value: 'монолит',
+                       source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: other, field: 'wall_material', value: 'кирпич',
+                       source: 'developer_site', observed_at: Time.current)
+      fact('wall_material', 'монолит', 'erz')
+      fact('wall_material', 'кирпич', 'developer_site')
+      fact('developer', 'Единство', 'erz')
+      fact('developer', 'Северная компания', 'developer_site')
+
+      rows = described_class.all
+      expect(rows.map { |r| [r[:complex].id, r[:field]] })
+        .to eq([[complex_id, 'developer'], [complex_id, 'wall_material'], [other.id, 'wall_material']])
     end
   end
 end
