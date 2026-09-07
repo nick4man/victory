@@ -6842,31 +6842,10 @@ CREATE INDEX index_viewing_schedules_on_viewing_type ON public.viewing_schedules
 
 
 --
--- Name: index_zhk_facts_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_zhk_facts_on_residential_complex_id ON public.zhk_facts USING btree (residential_complex_id);
-
-
---
--- Name: index_zhk_facts_on_residential_complex_id_and_field; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_zhk_facts_on_residential_complex_id_and_field ON public.zhk_facts USING btree (residential_complex_id, field);
-
-
---
 -- Name: index_zhk_observations_on_source_and_fetched_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_zhk_observations_on_source_and_fetched_at ON public.zhk_observations USING btree (source, fetched_at);
-
-
---
--- Name: index_zhk_price_points_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_zhk_price_points_on_residential_complex_id ON public.zhk_price_points USING btree (residential_complex_id);
 
 
 --

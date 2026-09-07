@@ -4,8 +4,11 @@
 # отдельная спека, когда наберётся хотя бы пара месяцев замеров.
 class CreateZhkPricePoints < ActiveRecord::Migration[8.1]
   def change
+    # index: false — одиночный (residential_complex_id) был бы левым
+    # префиксом составного индекса ниже, второй b-tree на каждую вставку
+    # не нужен.
     create_table :zhk_price_points do |t|
-      t.references :residential_complex, null: false, foreign_key: true
+      t.references :residential_complex, null: false, foreign_key: true, index: false
       t.string     :source,        null: false
       t.datetime   :observed_at,   null: false
       t.integer    :price_per_sqm, null: false

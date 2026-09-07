@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 # Точка ряда цены за м². Журнал — soft-delete не применяется.
+#
+# FK на residential_complex без `on_delete:` (NO ACTION), в отличие от
+# `properties.residential_complex_id` (`ON DELETE SET NULL`). Осознанно:
+# `residential_complex_id` здесь `null: false`, SET NULL невозможен.
+# Жёсткое удаление ЖК с непустым ценовым рядом должно упасть по FK, а не
+# молча осиротить строки.
 class ZhkPricePoint < ApplicationRecord
   belongs_to :residential_complex
 

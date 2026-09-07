@@ -5,8 +5,11 @@
 # типизация это забота потребителя.
 class CreateZhkFacts < ActiveRecord::Migration[8.1]
   def change
+    # index: false — одиночный (residential_complex_id) был бы левым
+    # префиксом idx_zhk_facts_identity ниже, Postgres читает составной
+    # индекс по префиксу, второй b-tree на каждую вставку не нужен.
     create_table :zhk_facts do |t|
-      t.references :residential_complex, null: false, foreign_key: true
+      t.references :residential_complex, null: false, foreign_key: true, index: false
       t.string     :field,       null: false
       t.string     :value
       t.string     :source,      null: false
@@ -15,7 +18,6 @@ class CreateZhkFacts < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    add_index :zhk_facts, %i[residential_complex_id field]
     add_index :zhk_facts, %i[residential_complex_id field source], unique: true,
               name: 'idx_zhk_facts_identity'
   end
