@@ -76,7 +76,7 @@ RSpec.describe Zhk::FactApplier do
       expect(new_complex.address_patterns).to eq(['ул. Льговская, д. 10'])
     end
 
-    # Гейт — `value.present?`, а не `!value.nil?`: пустая строка/массив из
+    # Гейт — `empty_value?`, а не `!value.nil?`: пустая строка/массив из
     # attrs на новой записи — тоже «данных нет». Проверяем прогоном, а не
     # чтением кода: на `!value.nil?` этот пример упал бы (developer и
     # address_patterns попали бы в filled).
@@ -88,6 +88,26 @@ RSpec.describe Zhk::FactApplier do
       expect(filled).to be_empty
       expect(new_complex.developer).to be_nil
       expect(new_complex.address_patterns).to eq([])
+    end
+  end
+
+  describe '.empty_value?' do
+    # Гейт стоял на `value.present?`, и это была заряженная ловушка,
+    # описанная в самом файле: в день, когда в FILLABLE попадут булевы
+    # поля удобств, наблюдение «парковки нет» перестало бы применяться
+    # МОЛЧА. Через `apply` ловушка сегодня ненаблюдаема (булевой
+    # FILLABLE-колонки нет), через предикат — наблюдаема, и мутация
+    # «вернуть present?» роняет ровно этот пример.
+    it 'не считает false отсутствием данных' do
+      expect(described_class.empty_value?(false)).to be false
+    end
+
+    it 'считает отсутствием данных nil, пустую строку и пустой массив' do
+      expect([nil, '', []].map { |value| described_class.empty_value?(value) }).to all(be true)
+    end
+
+    it 'не считает отсутствием данных ноль — 0 комнат это студия, а не пропуск' do
+      expect(described_class.empty_value?(0)).to be false
     end
   end
 end

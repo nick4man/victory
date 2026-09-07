@@ -30,6 +30,25 @@ module Zhk
 
     module_function
 
+    # @return [Boolean] «данных нет»: `nil` (источник промолчал) либо
+    # пустая строка/массив.
+    #
+    # Здесь стоял `value.present?`, и это была заряженная ловушка,
+    # описанная прямо в этом файле: `present?` отбрасывает ещё и `false`,
+    # так что в день, когда в `FILLABLE` попадут булевы поля удобств
+    # (`has_parking`, `has_closed_yard`, `has_playground`,
+    # `has_kindergarten`, `has_school`), наблюдение «парковки нет»
+    # перестало бы применяться МОЛЧА. У `false` нет метода `empty?` —
+    # значит для этого предиката он полноценное значение, и ловушка
+    # снята, а не описана.
+    #
+    # Предикат общий с `Zhk::Ingest`: пробник обязан валидировать ровно
+    # то, что сюда доедет, иначе выходит пара «проверяем одно, применяем
+    # другое».
+    def empty_value?(value)
+      value.nil? || (value.respond_to?(:empty?) && value.empty?)
+    end
+
     # @return [Array<Symbol>] поля, которые были заполнены
     def apply(complex, attrs)
       attrs.filter_map do |field, value|
@@ -38,14 +57,9 @@ module Zhk
         next if value.nil? # источник промолчал, а не сообщил пустоту
 
         if complex.new_record?
-          # `present?`, а не `!nil?`: пустая строка/массив из attrs на новой
-          # записи — то же «данных нет», что и nil, заполнять нечем. Ловушка
-          # на будущее: `present?` отбрасывает и `false`, так что если в
-          # FILLABLE когда-нибудь попадут булевы поля удобств (has_parking,
-          # has_closed_yard, has_playground, has_kindergarten, has_school),
-          # наблюдение «парковки нет» перестанет применяться молча — сейчас
-          # это не срабатывает, потому что таких полей в списке нет.
-          next unless value.present?
+          # Пустая строка/массив из attrs на новой записи — то же «данных
+          # нет», что и nil, заполнять нечем.
+          next if empty_value?(value)
         else
           next unless complex.public_send(field).nil?
         end

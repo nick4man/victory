@@ -182,10 +182,27 @@ RSpec.describe Zhk::Ingest do
   end
 
   it 'не кастует мусор в rooms к 0 — студия должна быть настоящим нулём, а не по умолчанию' do
+    # Раньше мусор в `rooms` молча превращался в `nil`, и точка цены
+    # всё равно записывалась: источник заявил значение, мы его выбросили
+    # и не сказали об этом никому. Тихое приведение к `0` было бы хуже
+    # (мусор стал бы неотличим от настоящей студии), но «молча забыли» —
+    # тоже не ответ: наблюдение отвергается целиком, сборщик узнаёт причину.
     with_rooms = payload.merge('price' => payload['price'].merge('rooms' => 'студия'))
 
-    described_class.call(with_rooms)
+    result = described_class.call(with_rooms)
 
+    expect(result.status).to eq(:invalid)
+    expect(result.reasons).to include('rooms не целое неотрицательное число')
+    expect(ZhkPricePoint.count).to eq(0)
+  end
+
+  it 'принимает rooms: null как «источник не уточнил», а не как мусор' do
+    # Фикстура шлёт именно null — явное «источник не уточнил» обязано
+    # остаться штатным входом, иначе проверка выше отвергала бы добрую
+    # половину реальных наблюдений.
+    result = described_class.call(payload)
+
+    expect(result.status).to eq(:created)
     expect(ZhkPricePoint.last.rooms).to be_nil
   end
 
@@ -385,5 +402,179 @@ RSpec.describe Zhk::Ingest do
 
     expect(second.complex_id).to eq(first.complex_id)
     expect(ResidentialComplex.count).to eq(1)
+  end
+
+  describe 'переполнение int4 в точке цены' do
+    # `price_per_sqm`/`rooms` — такой же int4, как buildings_count, но в
+    # СОСЕДНЕЙ таблице: аудит прошлого круга шёл по FactApplier::FILLABLE,
+    # а этих колонок там нет. Наружу летел ActiveModel::RangeError, вебхук
+    # отдал бы 500, сборщик ретраил бы вечно.
+    it 'отвергает price_per_sqm вне диапазона колонки вместо RangeError наружу' do
+      overflow = payload.merge('price' => payload['price'].merge('price_per_sqm' => 99_999_999_999))
+
+      result = described_class.call(overflow)
+
+      expect(result.status).to eq(:invalid)
+      expect(ZhkPricePoint.count).to eq(0)
+    end
+
+    it 'отвергает price_per_sqm вне диапазона и когда он пришёл строкой' do
+      overflow = payload.merge('price' => payload['price'].merge('price_per_sqm' => '99999999999'))
+
+      expect(described_class.call(overflow).status).to eq(:invalid)
+    end
+
+    it 'отвергает rooms вне диапазона колонки' do
+      overflow = payload.merge('price' => payload['price'].merge('rooms' => 99_999_999_999))
+
+      expect(described_class.call(overflow).status).to eq(:invalid)
+    end
+
+    it 'пропускает ровно граничное значение int4 — проверка про размер колонки, а не про «большие числа»' do
+      edge = payload.merge('price' => payload['price'].merge('price_per_sqm' => 2_147_483_647))
+
+      result = described_class.call(edge)
+
+      expect(result.status).to eq(:created)
+      expect(ZhkPricePoint.last.price_per_sqm).to eq(2_147_483_647)
+    end
+  end
+
+  describe 'молчание источника против заявленной пустоты' do
+    it 'пишет null в факт, когда источник прислал null, а не пустую строку' do
+      described_class.call(payload)
+
+      silent = payload.merge('source' => 'dom_rf', 'external_id' => 'dom_rf:1',
+                             'fields' => { 'developer' => nil })
+      described_class.call(silent)
+
+      expect(ZhkFact.find_by(field: 'developer', source: 'dom_rf').value).to be_nil
+    end
+
+    it 'не превращает молчание второго источника в расхождение' do
+      # `value.to_s` записывал nil как '' — а '' по контракту Discrepancies
+      # это «источник осмотрел поле и заявил пустоту», полноценное мнение.
+      # Поле навсегда уходило в contested, FactApplier его больше не
+      # трогает, экрана разрешения расхождений не существует.
+      described_class.call(payload)
+
+      silent = payload.merge('source' => 'dom_rf', 'external_id' => 'dom_rf:1',
+                             'fields' => { 'developer' => nil })
+      result = described_class.call(silent)
+
+      expect(result.discrepancies).to eq([])
+    end
+  end
+
+  describe 'значения, которые применятор всё равно не запишет' do
+    it 'не роняет наблюдение из-за fields: {"name": null}' do
+      # effective_name корректно фолбэчит на payload['name'], а FactApplier
+      # пропускает и nil, и пустую строку — значит это значение НИКОГДА не
+      # будет записано. Пробник валидировал то, что не применится, и ронял
+      # наблюдение целиком, вместе с ценой и всеми остальными полями.
+      with_null_name = payload.merge('fields' => payload['fields'].merge('name' => nil))
+
+      result = described_class.call(with_null_name)
+
+      expect(result.status).to eq(:created)
+      expect(ResidentialComplex.unscoped.find(result.complex_id).name).to eq('Скобелев')
+      expect(ZhkPricePoint.count).to eq(1)
+    end
+
+    it 'не роняет наблюдение из-за fields: {"name": ""}' do
+      with_empty_name = payload.merge('fields' => payload['fields'].merge('name' => ''))
+
+      result = described_class.call(with_empty_name)
+
+      expect(result.status).to eq(:created)
+      expect(ResidentialComplex.unscoped.find(result.complex_id).name).to eq('Скобелев')
+    end
+  end
+
+  describe 'строковые колонки не принимают что попало' do
+    # ActiveModel::Type::String#cast_value делает to_s для всего: карточка
+    # заводилась с ruby-инспектом вместо имени и с публичным слагом от него.
+    it 'отвергает Hash в строковом поле' do
+      broken = payload.merge('fields' => payload['fields'].merge('developer' => { 'name' => 'Единство' }))
+
+      result = described_class.call(broken)
+
+      expect(result.status).to eq(:invalid)
+      expect(ResidentialComplex.count).to eq(0)
+    end
+
+    it 'отвергает Array в строковом поле' do
+      broken = payload.merge('fields' => payload['fields'].merge('developer' => %w[Единство Атом]))
+
+      expect(described_class.call(broken).status).to eq(:invalid)
+    end
+
+    it 'отвергает Hash в name, а не заводит карточку со слагом от ruby-инспекта' do
+      broken = payload.merge('name' => { 'ru' => 'Скобелев' })
+
+      result = described_class.call(broken)
+
+      expect(result.status).to eq(:invalid)
+      expect(ResidentialComplex.count).to eq(0)
+    end
+
+    it 'отвергает число в строковом поле' do
+      broken = payload.merge('fields' => payload['fields'].merge('wall_material' => 12_345))
+
+      expect(described_class.call(broken).status).to eq(:invalid)
+    end
+
+    it 'отвергает нестроковый source вместо TypeError наружу' do
+      expect(described_class.call(payload.merge('source' => { 'a' => 'b' })).status).to eq(:invalid)
+    end
+
+    it 'отвергает нестроковый url вместо тихой записи ruby-инспекта в колонку' do
+      result = described_class.call(payload.merge('url' => %w[a b]))
+
+      expect(result.status).to eq(:invalid)
+      expect(ZhkObservation.count).to eq(0)
+    end
+
+    it 'отвергает нестроковый external_id' do
+      expect(described_class.call(payload.merge('external_id' => 42)).status).to eq(:invalid)
+    end
+
+    it 'отвергает нестроковый fetched_at вместо тихого фолбэка на «сейчас»' do
+      expect(described_class.call(payload.merge('fetched_at' => { 'a' => 'b' })).status).to eq(:invalid)
+    end
+  end
+
+  describe 'элементы address_patterns' do
+    it 'отвергает нестроковые элементы — эти строки потом кормят Matcher' do
+      broken = payload.merge('fields' => payload['fields'].merge('address_patterns' => [1, 2]))
+
+      result = described_class.call(broken)
+
+      expect(result.status).to eq(:invalid)
+      expect(ResidentialComplex.count).to eq(0)
+    end
+
+    it 'принимает массив строк' do
+      ok = payload.merge('fields' => payload['fields'].merge('address_patterns' => ['ул. Мира, 5']))
+
+      result = described_class.call(ok)
+
+      expect(result.status).to eq(:created)
+      expect(ResidentialComplex.unscoped.find(result.complex_id).address_patterns).to eq(['ул. Мира, 5'])
+    end
+  end
+
+  describe 'наблюдение не объект' do
+    # Единственный вход, где мусор давал исключение (NoMethodError на
+    # deep_stringify_keys / []), а не :invalid.
+    [[], nil, 'строка вместо объекта'].each do |garbage|
+      it "отвергает #{garbage.inspect} вместо необработанного исключения" do
+        result = described_class.call(garbage)
+
+        expect(result.status).to eq(:invalid)
+        expect(result.reasons).to eq(['payload не объект'])
+        expect(result.filled).to eq([])
+      end
+    end
   end
 end
