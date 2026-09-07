@@ -142,6 +142,11 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
   Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
   Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` в `main` нет — он существует только в ветке `origin/dev/upgrade` и не вмёржен; пока запуск через `bundle exec`. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
+- 🚨 **Зависимые части едут стеком PR, а не одним большим PR.** Обязательно, если верно любое из двух: (а) работа делится на слои, где следующий не собирается без предыдущего — миграция → сервис → UI; (б) diff перевалил ~500 строк или ~10 файлов. PR #16 (2532 строки, 29 файлов) — ровно этот случай.
+  Инструмент — `gh stack`, правила в skill `gh-stack`: `gh stack init <ветки снизу вверх>` → `gh stack submit --open` → `gh stack sync` после каждой правки и после каждого мержа. Ручная цепочка `gh pr create --base` **стек на GitHub не создаёт** — выходят несвязанные PR, а `sync` заменяет весь ручной `rebase --onto` + `pr edit --base`.
+  Ревью остаётся обязательным — отдельно на каждый PR стека, снизу вверх.
+  ⚠️ Без TTY `submit` создаёт **черновики** (нужен `--open`), а `merge` без номера PR сливает **весь** стек, включая неотревьюенные слои.
+  ⚠️ **Предусловие:** `submit`/`sync`/`push` пушат внутри себя и флаг `-c http.version=HTTP/1.1` принять не могут, поэтому попадут под тот же HTTPS-таймаут (см. ниже). Один раз на репозиторий: `git config http.version HTTP/1.1`. Ожидание по механике таймаута, живым `submit` не проверялось.
 - ⚠️ `git push` по HTTPS в этом окружении виснет и отваливается по таймауту через 300 с (чтение при этом работает — `ls-remote` мгновенный). Лечится принудительным HTTP/1.1: `git -c http.version=HTTP/1.1 push …`. В конфиг не прописано — добавляй флагом или `git config http.version HTTP/1.1` локально.
 
 См. `.claude/memory/strategicVector.md` секция «Infrastructure decision 04.06.26» для trigger metrics когда вернуться к разговору о микросервисах/K8s (сейчас 0/7 triggered).
@@ -176,6 +181,7 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 | **VDS Traefik/CrowdSec** — роутеры, middlewares, bouncer, cscli (`ssh vds`) | `traefik-vds-ops` + skills `traefik-config-authoring` / `crowdsec-policy-management` |
 | **Nextcloud / rclone (`nxt:`)** — дозсье в облако, share-link, шаблоны, банковские программы из Офис/НЕДВИЖИМОСТЬ | `nextcloud-rclone-ops` + skill `rclone-nextcloud-patterns` |
 | **Yandex.Webmaster** — SEO digest, ИКС/SQI, opportunity detection (low CTR / mid pos), recrawl, диагностика | `yandex-webmaster-seo-ops` + skill `yandex-webmaster-api-patterns` |
+| **стек PR**, зависимые PR, цепочка PR, `gh pr create --base`, `rebase --onto` | skill `gh-stack` |
 | Новый Ruby-код | skill `victory-rails-conventions` |
 | Figma frame → ERB+Tailwind | skill `figma-to-erb-handoff` |
 | Любой user-facing русский копирайт (landing/meta/TG/email/PDF) | skill `russian-real-estate-copywriting` |
