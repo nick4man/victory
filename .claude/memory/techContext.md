@@ -120,31 +120,68 @@ code-reload, поэтому merge в main обновляет код сразу, 
 они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
 `victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
 образ: без пересоздания новый Ruby не увидит ни одного гема и `bundle exec`
-упадёт на старте. Отработано 08.08.26 (Rails 8) и применяется для 3.3.6 → 3.4.10.
+упадёт на старте. Отработано дважды: 08.08.26 (Rails 8.1.3.1) и 07.09.26 (Ruby 3.3.6 → 3.4.10).
+Правки ниже — из второго прогона.
 
 ```bash
 cd /home/q/victory
 # 1. откат-теги
 /usr/bin/docker tag victory-web victory-web:pre-ruby34
 /usr/bin/docker tag victory-sidekiq victory-sidekiq:pre-ruby34
-# 2. свежий main + сборка (старые контейнеры пока служат)
-git pull --ff-only origin main
+# 2. ПРЕДПОЛЁТ: ff-only пройдёт только если локальная main — предок origin/main.
+#    07.09.26 не прошёл бы: на проде висел коммит из ОТКРЫТОГО PR (SECURITY.md),
+#    ветка разошлась. Проверить и, если разошлась, выровнять reset'ом —
+#    но сперва убедиться, что коммит цел на удалённой ветке своего PR.
+git fetch origin
+git merge-base --is-ancestor HEAD origin/main && echo ff-ok || git branch -r --contains HEAD
+# 3. свежий main + сборка (старые контейнеры пока служат)
+git pull --ff-only origin main    # либо: git reset --hard origin/main
 /usr/bin/docker compose build web sidekiq
-# 3. свап (даунтайм ~30-60с)
+# 4. свап (даунтайм ~30-60с) — БЕЗ ПАУЗЫ после шага 3, см. предупреждение ниже
 /usr/bin/docker compose stop web sidekiq
 /usr/bin/docker compose rm -f web sidekiq
 /usr/bin/docker volume rm victory_bundle
 /usr/bin/docker compose up -d web sidekiq
-# 4. verify
+# 5. verify
 /usr/bin/docker compose exec web ruby -v            # 3.4.10
 /usr/bin/docker compose logs web | grep 'Booted'    # Rails 8.1.3.1
 curl -sI https://victory62.org | head -1            # 200
 /usr/bin/docker compose logs --tail=50 sidekiq      # cron-джобы идут
 ```
 
-Откат: checkout прежнего main + `docker tag victory-web:pre-ruby34 victory-web`
-(и sidekiq) → тот же свап с `volume rm`. Миграций при смене Ruby нет — БД не
-трогается.
+🚨 **Окно уязвимости между шагами 3 и 4.** Как только новый `Gemfile` ляжет в
+bind-mount, рантайм контейнера перестанет ему соответствовать. Работающий Rails
+это переживёт — bundler своё уже отработал, — но у `web` и `sidekiq` политика
+`restart=unless-stopped`, и любой рестарт в этом окне (ребут хоста, OOM,
+падение) вернёт контейнер, который не загрузится. Проверено 07.09.26 в
+контейнере 3.3.6 против Gemfile 3.4.10:
+
+```
+Bundler::RubyVersionMismatch: Your Ruby version is 3.3.6, but your Gemfile specified 3.4.10
+```
+
+Сжать окно сборкой образа заранее (`--build-arg RUBY_VERSION=…`) получится не
+всегда: `ARG RUBY_VERSION` в `Dockerfile` появился только в PR #14, на более
+старом чекауте флаг молча проигнорируется. Поэтому шаги 3 и 4 идут подряд.
+
+🚨 **Откат — это дерево И образы, одних тегов мало.** Образы `pre-*` несут
+прежний Ruby, а дерево после шага 3 требует нового: вернуть только образы —
+получить тот же `RubyVersionMismatch`, но уже с обеих сторон.
+
+```bash
+git -C /home/q/victory reset --hard <коммит перед апгрейдом>   # для 3.4.10 это 5831765
+/usr/bin/docker tag victory-web:pre-ruby34 victory-web
+/usr/bin/docker tag victory-sidekiq:pre-ruby34 victory-sidekiq
+# далее тот же свап с volume rm
+```
+
+Миграций смена Ruby не несёт, но накопившиеся коммиты могут: перед деплоем
+сверить `git diff --name-only <прод> origin/main -- db/migrate/`. 07.09.26 там
+было пусто (113 файлов с обеих сторон), поэтому шага с `db:migrate` в процедуре
+нет — он не универсален.
+
+⚠️ `victory-rubybox` (образ для `bin/rb`) имеет энтрипойнт, ждущий Postgres:
+любой `docker run` по нему без `--entrypoint` виснет молча.
 
 Последний шаг: обновить строку про прод в `progress.md` (таблица «что в проде»).
 
