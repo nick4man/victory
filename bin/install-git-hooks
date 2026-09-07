@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# Ставит git-хуки из отслеживаемого .githooks/ в .git/hooks/.
+#
+# .git/hooks под git не попадает, поэтому хуки надо доставлять отдельно.
+# Каталог общий (common dir) для всех 5 worktree — установка нужна один раз
+# на репозиторий, но вызов идемпотентный, так что session-start.sh дёргает
+# его на каждом старте и это ничего не стоит.
+#
+# Ставим symlink, а не копию: правки в .githooks/ подхватываются сразу.
+#
+#   bin/install-git-hooks          # тихо, только при изменениях
+#   bin/install-git-hooks --verbose
+
+set -euo pipefail
+
+VERBOSE=0
+[ "${1:-}" = '--verbose' ] && VERBOSE=1
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || { echo 'не git-репозиторий' >&2; exit 1; }
+COMMON=$(git rev-parse --git-common-dir)
+DEST="$COMMON/hooks"
+
+# .git/hooks — общий для всех 5 worktree, поэтому symlink должен вести в
+# checkout, который никуда не денется. Это main checkout (родитель common dir):
+# он постоянный, и лежит там версия с ветки main, то есть уже прошедшая review.
+# Пока .githooks не смержен в main — падаем на текущий worktree и предупреждаем.
+MAIN_ROOT=$(dirname "$COMMON")
+if [ -d "$MAIN_ROOT/.githooks" ]; then
+  SRC="$MAIN_ROOT/.githooks"
+else
+  SRC="$ROOT/.githooks"
+  echo "⚠️  В main checkout ($MAIN_ROOT) ещё нет .githooks — ставлю ссылку на $ROOT." >&2
+  echo "    После мержа в main перезапусти bin/install-git-hooks, чтобы отвязаться от worktree." >&2
+fi
+
+[ -d "$SRC" ] || { echo "нет $SRC" >&2; exit 1; }
+mkdir -p "$DEST"
+
+for hook in "$SRC"/*; do
+  [ -f "$hook" ] || continue
+  name=$(basename "$hook")
+  target="$DEST/$name"
+
+  # Уже наш symlink и указывает куда надо — пропускаем.
+  if [ -L "$target" ] && [ "$(readlink "$target")" = "$hook" ]; then
+    [ "$VERBOSE" -eq 1 ] && echo "= $name (уже стоит)"
+    continue
+  fi
+
+  # Чужой хук не перетираем молча — это может быть чья-то ручная настройка.
+  if [ -e "$target" ] && [ ! -L "$target" ]; then
+    echo "⚠️  $DEST/$name существует и не является symlink — пропущен." >&2
+    echo "    Убери его вручную, если нужен наш .githooks/$name." >&2
+    continue
+  fi
+
+  chmod +x "$hook"
+  ln -sfn "$hook" "$target"
+  echo "✓ git-хук установлен: $name"
+done

@@ -18,7 +18,18 @@ module DocumentIntake
   class InnParser
     # Capture standalone 10 or 12-digit sequences
     INN_RE    = /\b(\d{12})\b|\b(\d{10})\b/.freeze
-    FIO_RE    = /[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?/.freeze
+    # ФИО ищем построчно: строка целиком из 2-3 слов, каждое с заглавной и
+    # длиной от двух букв.
+    #
+    # Прежний вариант требовал Title Case ([А-ЯЁ][а-яё]+) и потому НИКОГДА не
+    # срабатывал на реальных документах: ОСR свидетельства ФНС отдаёт «ИВАНОВ
+    # ИВАН ИВАНОВИЧ» капсом — ровно так, как показано в примере в шапке этого
+    # класса. full_name молча возвращался nil.
+    #
+    # Якоря \A..\z по строке отсекают боилерплейт: «СВИДЕТЕЛЬСТВО О ПОСТАНОВКЕ
+    # НА УЧЁТ» — пять слов, «ИНН 500100732259» — цифры, односимвольные предлоги
+    # не проходят порог в две буквы.
+    FIO_RE    = /\A[А-ЯЁ][А-ЯЁа-яё-]+(?:\s+[А-ЯЁ][А-ЯЁа-яё-]+){1,2}\z/.freeze
 
     # Weights for 12-digit INN check digits (ФНС algorithm)
     WEIGHTS_11 = [7, 2, 4, 10, 3, 5, 9, 4, 6, 8].freeze
@@ -103,8 +114,11 @@ module DocumentIntake
     end
 
     def extract_full_name
-      m = FIO_RE.match(@text)
-      m ? m[0].strip : nil
+      @text.to_s.each_line do |line|
+        candidate = line.strip
+        return candidate if FIO_RE.match?(candidate)
+      end
+      nil
     end
   end
 end

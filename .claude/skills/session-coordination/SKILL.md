@@ -11,10 +11,10 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 
 | Session | Worktree path | Branch convention | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.3.6** | bin/rails, bundle, rspec, gem |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, gem-less |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, schema validators |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.3.6** | bundle, ruby (target) |
+| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.3.6** | `bin/rb` (rails/rspec/bundle) |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, `bin/rb` |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, `bin/rb` |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.3.6** | `bin/rb` + `RUBY_TARGET=` для проб |
 
 > 🚨 `/home/q/victory` — **main checkout, ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.3.6** (после Rails-8.1 EOL-апгрейда 08.08.26).
 
@@ -24,7 +24,7 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 |---|---|---|
 | `git checkout` in session A | breaks session B (working tree changed under their feet) | isolated — only A's tree changes |
 | Concurrent edits on different files | OK | OK |
-| Concurrent edits on **same** file | needs lock-file | needs lock-file (cross-worktree via shared `.git`) |
+| Concurrent edits on **same** file | needs lock-file | авто-лок + блокировка (cross-worktree via shared `.git`) |
 | Disk usage | 1× | 4× checkouts (~1-2 GB each — manageable) |
 | `tmp/` (cache, locks, sessions) | shared | **per-worktree** ← gotcha |
 | `.git/` | shared | **shared** (single repo, single config, single refs) |
@@ -56,70 +56,94 @@ claude --resume chat           # session restart inside worktree
 
 ### `tmp/claude-locks/` — per-worktree (был shared)
 
-Lock files теперь в worktree-local `tmp/claude-locks/`. Между worktree не виден прямо. Cross-worktree warning требует helper:
+Lock files лежат в worktree-local `tmp/claude-locks/`. Напрямую между worktree не видны — все скрипты обходят их через общий `.git` (`git worktree list`). Готовый обходчик: `bin/check-cross-worktree-locks`.
 
-```bash
-# in pre-edit-lock.sh — check all worktrees via shared .git
-COMMON=$(git rev-parse --git-common-dir)
-for wt in $(git worktree list --porcelain | awk '/^worktree/ {print $2}'); do
-  [ -f "$wt/tmp/claude-locks/$BASENAME.lock" ] && echo "Locked by $wt"
-done
+Общая логика (ключи, TTL, чтение метаданных) вынесена в `.claude/hooks/lib/locks.sh` — четыре потребителя (`pre-edit-lock.sh`, `post-edit-lock.sh`, `session-start.sh`, `bin/lock-clean`) считают ключ одинаково.
+
+### `.claude/plans/` — per-session (был общий глобальный)
+
+Claude Code пишет план сессии в `~/.claude/plans/` — один плоский каталог на все сессии и все проекты хоста. Четыре сессии писали туда одновременно и затирали друг друга.
+
+Путь буфера мы не контролируем, поэтому `plan-sync.sh` (PostToolUse) зеркалит его в репо:
+
+```
+.claude/plans/
+  _shared/    ← мастер-документы, меняются ТОЛЬКО через PR
+  victory/ chat/ seo/ upgrade/   ← планы своей сессии, под git
 ```
 
-См. `.claude/hooks/pre-edit-lock.sh` — обновлён 04.06.26 для cross-worktree visibility.
+В чужой per-session каталог не пишем. `_shared/` — общий ресурс, правки туда идут PR-ом, как в код.
 
-### `.claude/sessions/inbox/` — per-worktree (был effectively shared via single dir)
+### Связь между сессиями — решено 09.08.26
 
-Inbox файлы — gitignored. Каждый worktree имеет свой пустой `inbox/`. Cross-worktree messaging:
-- **Option A** (current): отправитель и получатель должны быть в одном worktree (например, обоим cd в `/home/q/victory-chat`). Сейчас единственный реальный способ.
-- **Option B** (future): переехать inbox в `/home/q/.claude-shared/inbox/<session>/` (outside repo). Документировать в `bin/claude-inbox`.
+Канал для **живой** сессии уже есть на уровне харнесса: `ListAgents` показывает victory/chat/seo/
+upgrade, `SendMessage` адресует по имени. Никакой инфраструктуры не требуется.
 
-Кратко-сейчас: **prefer git for hand-offs** (commit + branch + PR) — inbox только для quick «пнул сессию» сообщений в той же worktree.
+Для **оффлайновой** — `bin/claude-inbox`, чьё хранилище переехало в `~/.claude-shared/inbox/`
+(бывший Option B). Прежний путь был per-worktree и требовал, чтобы отправитель и получатель
+сидели в одном checkout'е, — между сессиями такого не бывает, и почта не работала ни дня.
+
+| Адресат | Канал |
+|---|---|
+| жива | `SendMessage` |
+| оффлайн | `bin/claude-inbox send` |
+| существенная работа | git: commit + push + PR |
 
 ### `bundle install` — race на shared Gemfile.lock
 
-Если два worktree одновременно `bundle install` — последний победит, первый получит stale Gemfile.lock. Coordinate: **только victory session делает bundle install**. Остальные `bundle check` (read-only).
+Gemfile.lock один на репо, поэтому два одновременных `bundle install` из разных worktree затрут друг друга. Coordinate: **bundle install делает одна сессия за раз**; остальные — `bin/rb bundle check` (read-only).
+
+Запускать через `bin/rb`: на хосте нет менеджера версий Ruby (ни chruby, ни rbenv, ни mise), системный ruby не совпадает с пином Gemfile. `bin/rb` поднимает контейнер с целевым Ruby и своим compose-проектом на каждую сессию (`victory-rb-<session>`), так что БД и bundle-волюмы у сессий не пересекаются.
 
 ## Conflict points
 
 | Что | Риск | Митигация |
 |---|---|---|
-| Одновременная правка одного файла в разных worktree | Merge conflict на merge | Lock-file pattern (cross-worktree через shared `.git`) |
+| Одновременная правка одного файла в разных worktree | Merge conflict на merge | Авто-локи + блокирующий `pre-edit-lock.sh` |
 | Stale read of just-edited file | Работа с outdated state | `git diff origin/main..HEAD` перед edit |
 | Накопление uncommitted | Сложно понять кто что менял | Commit'ить часто; one branch per session |
-| `bundle install` race | Конкурентный Gemfile.lock write | Только victory делает bundle install |
+| `bundle install` race | Конкурентный Gemfile.lock write | Одна сессия за раз; остальные `bin/rb bundle check` |
 | Branch checkout collision | Solved by worktree | — |
 
-## Lock-file pattern (per-worktree, cross-worktree warning)
+## Lock-file pattern (автоматический, блокирующий)
+
+Ключ лока — **repo-relative путь**, где `/` заменён на `%`:
 
 ```
-<worktree>/tmp/claude-locks/<filename>.lock
+<worktree>/tmp/claude-locks/app%services%chat_tools%chat_responder.rb.lock
 ```
 
-**Создать перед крупной правкой** (>50 LOC или > 5 мин):
+Путь, а не basename: в репо 35 совпадающих имён (`base.rb`, `client.rb`, `_form.html.erb`…). Пока хук только предупреждал, ложное совпадение было шумом; с блокирующим хуком оно запрещало бы правку невиновного файла.
+
+**Ставить ничего не нужно.** `post-edit-lock.sh` (PostToolUse) ставит лок на каждый отредактированный файл сам, повторная правка продлевает TTL. Ручная схема прожила два месяца и дала 0 локов — именно поэтому её заменили.
+
+**Чужой лок блокирует.** `pre-edit-lock.sh` возвращает exit 2 — Claude Code отменяет Edit/Write и показывает, кто держит файл:
+
+```
+⛔ app/models/property.rb занят сессией chat
+   worktree: /home/q/victory-chat
+   с 08.08.26 21:14 (12 мин назад), task=extract concerns
+   Снять: bin/lock-clean --release app/models/property.rb
+   Обойти разово: CLAUDE_LOCK_BYPASS=1
+```
+
+**Снятие — три пути** (в порядке предпочтения):
 
 ```bash
-mkdir -p tmp/claude-locks
-echo "session=$CLAUDE_SESSION,worktree=$(pwd),started=$(date -Iseconds),task=tool-add" \
-  > tmp/claude-locks/chat_responder.rb.lock
+git commit ...                                   # post-commit снимает локи файлов коммита
+# TTL 2ч — протухший лок удаляется автоматически при первой же попытке правки
+bin/lock-clean --release app/models/property.rb  # точечно, невзирая на возраст
+bin/lock-clean --all --force                     # прибрать протухшие везде
 ```
 
-**Проверить перед edit'ом** (видит все worktree через shared `.git`):
+**Посмотреть занятое:**
 
 ```bash
-bin/check-cross-worktree-locks chat_responder.rb
-# или вручную:
-for wt in $(git worktree list --porcelain | awk '/^worktree/ {print $2}'); do
-  LOCK="$wt/tmp/claude-locks/chat_responder.rb.lock"
-  [ -f "$LOCK" ] && { echo "Locked in $wt:"; cat "$LOCK"; }
-done
+bin/check-cross-worktree-locks                       # все локи во всех worktree
+bin/check-cross-worktree-locks app/models/property.rb
 ```
 
-**Снять после коммита**:
-
-```bash
-rm tmp/claude-locks/chat_responder.rb.lock
-```
+Аварийный обход одной правки — `CLAUDE_LOCK_BYPASS=1`. Пользуйся, только если уверен, что держащая сессия не работает: смысл блокировки в том, чтобы два агента не разъезжались в одном файле.
 
 ## Hand-off patterns
 
@@ -167,11 +191,14 @@ bin/claude-inbox done <id>
 Stale locks (empty или > 2h old) накапливаются в каждом worktree. Раз в неделю или при подсветке в hook:
 
 ```bash
-bin/lock-clean              # dry-run, показывает кандидатов в current worktree
-bin/lock-clean --force      # actually rm
+bin/lock-clean              # dry-run по текущему worktree
+bin/lock-clean --force      # удалить протухшие здесь
+bin/lock-clean --all        # dry-run по всем worktree
+bin/lock-clean --all --force
+bin/lock-clean --release app/models/property.rb   # точечно, невзирая на возраст
 ```
 
-`schedule.rb` запускает `bin/lock-clean --force` Sundays 00:00 — но это в main checkout. Per-worktree cron не настроен (TODO).
+Плановая уборка почти не нужна: локи снимаются на коммите (`post-commit`), а протухшие удаляются автоматически при первой же попытке правки. `schedule.rb` с воскресным `bin/lock-clean --force` остаётся страховкой в main checkout.
 
 ## Routine commands
 
@@ -196,7 +223,7 @@ head -50 .claude/memory/activeContext.md
 
 ## Rules of thumb
 
-- **`bin/rails / bundle / rspec`** — только в **victory worktree** (chruby 3.2.2 active)
+- **`bin/rails / bundle / rspec`** — через `bin/rb` из любого worktree (свой контейнер с целевым Ruby на сессию)
 - **`curl`-based отправки в TG** — можно из любого worktree (gem-less)
 - **Markdown / docs / planning** — chat worktree default
 - **Migrations / model / view changes** — victory worktree (тесты прогнать сразу)
@@ -209,12 +236,14 @@ head -50 .claude/memory/activeContext.md
 
 - ❌ Запуск `claude` без `export CLAUDE_SESSION=*` — теряется session identity, inbox + hook не работают
 - ❌ Активная работа в `/home/q/victory` после worktree setup — это main checkout, reserved для merges/deploys
-- ❌ **Write-операции за пределами своего worktree** — создание/правка/удаление файлов (включая gitignored: `.env`, симлинки, `mkdir`) и git-команды в чужом `/home/q/victory-<other>` или в main checkout. Даже «заодно, это же мелочь». Read-only диагностика (`git worktree list`, cross-worktree lock check, сравнение состояния) — можно. Нужно что-то в соседней сессии → отдать пользователю командой или через hand-off (commit + branch + PR)
+- ❌ **Write-операции за пределами своего worktree** — развёрнутая формулировка в `.claude/docs/session-authority.md` («Свой worktree — своя территория»). Коротко: правки, git-команды и запуск — только внутри `/home/q/victory-<session>`; чужой worktree и main checkout — read-only диагностика
 - ❌ Параллельно править один файл в двух worktree без cross-worktree lock check
 - ❌ `bundle install` в двух worktree одновременно — Gemfile.lock race
+- ❌ `bundle`/`rspec` напрямую на хосте — там нет нужного Ruby, только через `bin/rb`
+- ❌ `CLAUDE_LOCK_BYPASS=1` «чтобы не мешало» — обход нужен для мёртвой сессии, а не для живой
 - ❌ Direct push to `main` — CI gate должен gate'ить (PR + review + green)
 - ❌ Stash без `git stash save 'meaningful name'` — потом не найдёшь
-- ❌ Lock-file без metadata (пустой) — нарушает stale-detection логику
+- ❌ Ручное создание lock-файлов — их ставит `post-edit-lock.sh`; ручной без metadata ломает stale-detection
 
 ## Когда вспомнить про эту skill
 

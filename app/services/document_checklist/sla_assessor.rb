@@ -62,7 +62,9 @@ module DocumentChecklist
         return Assessment.new(reason: 'weekend skip')
       end
 
-      factor = @dr.overdue_factor || 0.0
+      # Именно @now, а не Time.current: иначе weekend-проверка и rewindow идут
+      # по переданному времени, а фактор просрочки — по настоящему.
+      factor = @dr.overdue_factor(now: @now) || 0.0
 
       # Determine highest applicable tier (3 → 2 → 1).
       tier = applicable_tier(factor)

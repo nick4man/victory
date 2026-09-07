@@ -23,14 +23,17 @@ RSpec.describe DocumentChecklist::Builder do
   end
 
   describe 'template resolution' do
-    context 'when lead.lead_ref is nil' do
+    # Раньше здесь обнулялись lead_ref_type/lead_ref_id, чтобы «lead_ref = nil».
+    # С появлением NOT NULL на lead_events.lead_ref_type такое состояние стало
+    # недостижимым, и спек падал на NotNullViolation. Обнуление и не требовалось:
+    # BuyerOrder не Property и не Inquiry, поэтому property_from_lead и
+    # inquiry_from_lead возвращают nil сами — ровно тот путь к default_sale.
+    context 'when lead_ref is neither Property nor Inquiry' do
       let(:buyer_order) do
         BuyerOrder.create!(crm_id: 900_903, client_name: 'Test', deal_type: 'sale',
                            deal_state: 'lead', synced_at: Time.current)
       end
       let(:lead) { build_lead(lead_ref: buyer_order) }
-
-      before { lead.update_columns(lead_ref_type: nil, lead_ref_id: nil) }
 
       it 'falls back to default_sale' do
         result = described_class.new(lead_event: lead, actor: tg_user).call
@@ -151,7 +154,8 @@ RSpec.describe DocumentChecklist::Builder do
 
   describe 'Result struct' do
     it 'returns Result with all fields populated on success' do
-      inquiry = Inquiry.create!(inquiry_type: 'quick_inquiry', name: 'R',
+      # name был 'R' — валидация length: { minimum: 2 } появилась позже фикстуры.
+      inquiry = Inquiry.create!(inquiry_type: 'quick_inquiry', name: 'Рита',
                                 phone: '+79991234567', message: 'r',
                                 source: 'site_form', status: 'new')
       lead = build_lead(lead_ref: inquiry)

@@ -58,9 +58,13 @@ RSpec.describe Kpi::MorningDigest do
 
   describe '#build_text — with overdue tasks' do
     before do
+      # Фикстуры привязаны к weekday_morning, а не к реальному «сейчас»:
+      # дайджест фильтрует по переданному now, поэтому due_at: 1.day.ago
+      # (реальное время) переставал попадать в выборку по мере того, как
+      # настоящая дата уходила от зафиксированной в спеке.
       Task.create!(
         assignee_id: staff.id, title: 'Просроченная задача',
-        status: 'open', due_at: 1.day.ago, kind: 'call', priority: 'normal'
+        status: 'open', due_at: weekday_morning - 1.day, kind: 'call', priority: 'normal'
       )
     end
 
@@ -102,7 +106,7 @@ RSpec.describe Kpi::MorningDigest do
       LeadEvent.create!(
         lead_ref: buyer_order, source: 'site_form',
         tg_chat_id: -1_003_779_115_845, anchor_topic_key: 'apartments',
-        current_stage: 'new', assigned_to: staff, assigned_at: 31.minutes.ago,
+        current_stage: 'new', assigned_to: staff, assigned_at: weekday_morning - 31.minutes,
         metadata: { 'name' => 'SLA Client' }
       )
     end
@@ -121,7 +125,7 @@ RSpec.describe Kpi::MorningDigest do
     end
 
     it 'includes done/assigned counts when StaffMetric exists' do
-      StaffMetric.create!(staff: staff, date: 1.day.ago.to_date,
+      StaffMetric.create!(staff: staff, date: (weekday_morning - 1.day).to_date,
                           tasks_assigned: 5, tasks_completed: 4, tasks_on_time: 3)
       result = described_class.new(staff: staff, now: weekday_morning).yesterday_recap
       expect(result).to include('4/5')

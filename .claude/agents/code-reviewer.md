@@ -215,7 +215,7 @@ User-facing strings (UI labels, flash messages, email subjects, TG copy, PDF tex
 ## Session-split note
 
 - **Read-only** работа, runs in any session (victory/chat/seo).
-- Если review требует `bundle exec rspec` или `bin/rubocop` — **victory only** (Ruby 3.2.2 chruby active там).
+- Если review требует `rspec`/`rubocop` — запускай через `bin/rb` (`bin/rb bundle exec rubocop`, `bin/rb --db bundle exec rspec`) из любого worktree.
 - Never auto-commit fixes; вернись к user с findings list, they apply.
 
 ## When you finish

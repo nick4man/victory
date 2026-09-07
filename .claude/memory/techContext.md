@@ -5,7 +5,7 @@
 | Слой | Технология |
 |------|-----------|
 | Web framework | Rails **8.1.3.1** (в проде с 08.08.26; `load_defaults` пока 7.1) |
-| Language | Ruby **3.3.6** — во всех 4 сессиях одинаково |
+| Language | Ruby **3.3.6** — только в контейнере, через `bin/rb`. На хосте менеджера версий нет (ни chruby, ни rbenv, ни mise), системный ruby 3.3.8 не совпадает с пином Gemfile, поэтому `bundle`/`rspec`/`bin/rails` напрямую в worktree не работают |
 | Database | PostgreSQL 15+ (с PostGIS + pgvector) |
 | Server | Puma 6.x, порт **3000** в Docker (reverse-proxy → 443 в проде) |
 | CSS | Tailwind CSS (`tailwindcss-rails`) |

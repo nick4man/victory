@@ -109,7 +109,15 @@ cmd_send() {
   local ts
   ts=$(date +'%Y-%m-%dT%H-%M-%S')
   local slug
-  slug=$(printf '%s' "$msg" | head -c 60 | tr -c '[:alnum:][:cntrl:]' '-' | tr -s '-' | sed 's/^-//;s/-$//' | tr '[:upper:]' '[:lower:]')
+  # Кириллицу сохраняем: `tr -c '[:alnum:]'` в C-локали не считает её буквами,
+  # и у всех русских сообщений имя файла выходило одинаковым — «msg».
+  # Убираем только то, что мешает файловой системе, пробелы → дефисы.
+  # `head -c` режет по байтам, поэтому последний двухбайтовый символ разрубается
+  # пополам и имя файла выходит невалидным UTF-8; `iconv -c` срезает обломок.
+  # Он стоит не последним в конвейере, а pipefail здесь не включён — ненулевой
+  # код iconv на обрубке статус не портит.
+  slug=$(printf '%s' "$msg" | head -c 60 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null \
+         | tr -d '\n\r/\\:*?"<>|' | tr -s '[:space:]' '-' | sed 's/^-//;s/-$//')
   [ -z "$slug" ] && slug="msg"
   local fname="${ts}_from-${MY_SESSION}_${slug}.md"
   local fpath="$INBOX_DIR/$to/$fname"

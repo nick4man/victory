@@ -3,6 +3,12 @@
 require 'rails_helper'
 
 RSpec.describe ChatTools::Staff::SearchGroupMessages do
+  # period=today режет по Time.current.beginning_of_day в зоне Moscow, а
+  # фикстуры расставлены относительно (2.hours.ago). Между 00:00 и 02:00 MSK
+  # «два часа назад» уезжает во вчера — спеки падали по времени суток, а не по
+  # коду. Фиксируем полдень: окно «сегодня» гарантированно накрывает фикстуры.
+  before { travel_to(Time.zone.local(2026, 6, 10, 12, 0)) }
+
   let!(:director) do
     TelegramUser.create!(tg_user_id: 60_001, tg_username: 'oks', first_name: 'Оксана',
                          role: 'director', is_manager: true, status: 'active')

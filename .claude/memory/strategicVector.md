@@ -1,6 +1,6 @@
 # strategicVector.md — 24-month compass
 
-> Резюме стратегического плана `.claude/plans/splendid-imagining-lerdorf.md`. Этот файл — то, что **должно быть в контексте каждой сессии** для согласования решений. Полный мастер-документ — там.
+> Резюме стратегического плана `.claude/plans/_shared/splendid-imagining-lerdorf.md`. Этот файл — то, что **должно быть в контексте каждой сессии** для согласования решений. Полный мастер-документ — там.
 
 ## North star (12 месяцев, май 2026 → май 2027)
 
@@ -175,7 +175,7 @@ pdf-report-designer → pdf-telegram-dispatcher
 
 ## Subplans (создаются по факту входа в спринт)
 
-Когда начинается каждая фаза/спринт — создаём отдельный subplan в `.claude/plans/`:
+Когда начинается каждая фаза/спринт — создаём отдельный subplan в `.claude/plans/<session>/` (свой каталог сессии; общие мастер-доки — в `_shared/`):
 
 - **Phase A Sprint 1** (Q2 2026): premium UI + первые 5 SEO landings
 - **Phase B Sprint 1** (Q2 2026): i18n EN + foreign chatbot
@@ -185,4 +185,4 @@ pdf-report-designer → pdf-telegram-dispatcher
 
 ## Полный документ
 
-`.claude/plans/splendid-imagining-lerdorf.md` — 24-month compass с детальным разбором фаз, бюджетов, headcount, vendors, метрик.
+`.claude/plans/_shared/splendid-imagining-lerdorf.md` — 24-month compass с детальным разбором фаз, бюджетов, headcount, vendors, метрик.

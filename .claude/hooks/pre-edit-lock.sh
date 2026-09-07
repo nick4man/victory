@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
-# PreToolUse hook for Edit/Write — warn (but never block) when ANY
-# Claude Code session has claimed the target file via tmp/claude-locks/.
+# PreToolUse hook для Edit/Write — БЛОКИРУЕТ правку файла, занятого другой
+# Claude-сессией.
 #
-# 04.06.26: cross-worktree aware. Checks tmp/claude-locks/ в **каждом**
-# git worktree (через shared .git), не только в current. Это нужно после
-# git worktree setup — каждая session работает в своём worktree, lock files
-# теперь per-worktree.
+# 08.08.26: раньше хук только предупреждал (всегда exit 0) и полагался на
+# ручную постановку локов — за два месяца не создано ни одного лока, то есть
+# защиты не было вообще. Теперь локи ставятся автоматически
+# (post-edit-lock.sh), а этот хук на них реально опирается.
 #
-# Reads JSON from stdin (Claude Code's standard hook payload).
-# Exits 0 always; failures here must not interfere with editing.
+# Exit 2 = Claude Code отменяет вызов инструмента и отдаёт stderr модели.
+# Любой сбой самого хука — exit 0: сломанная координация не должна
+# останавливать работу.
+#
+# Аварийный обход: CLAUDE_LOCK_BYPASS=1
 
 set +e
 
-cd "${CLAUDE_PROJECT_DIR:-$(pwd)}" 2>/dev/null || exit 0
+ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+cd "$ROOT" 2>/dev/null || exit 0
+
+# shellcheck source=lib/locks.sh
+. "$ROOT/.claude/hooks/lib/locks.sh" 2>/dev/null || exit 0
+
+[ -n "${CLAUDE_LOCK_BYPASS:-}" ] && exit 0
 
 INPUT=$(cat)
 
-# Parse file_path from the tool input — try jq, fall back to grep.
 FILE=""
 if command -v jq >/dev/null 2>&1; then
   FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty' 2>/dev/null)
@@ -26,36 +34,52 @@ fi
 
 [ -z "$FILE" ] && exit 0
 
-BASENAME=$(basename "$FILE")
+ROOT=$(lock_root)
+KEY=$(lock_key "$FILE" "$ROOT") || exit 0   # вне репо — не наше дело
+ME=$(lock_session "$ROOT")
 
-# Check ALL worktrees через git worktree list. If git unavailable или command
-# fails — fallback to legacy single-worktree check.
-WORKTREES=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree/ {print $2}')
-if [ -z "$WORKTREES" ]; then
-  # Legacy path — single worktree
-  LOCK_FILE="tmp/claude-locks/${BASENAME}.lock"
-  if [ -f "$LOCK_FILE" ]; then
-    echo "⚠️  $BASENAME is locked:" >&2
-    sed 's/^/    /' "$LOCK_FILE" >&2
-    echo "    (see .claude/skills/session-coordination/SKILL.md)" >&2
-  fi
-  exit 0
-fi
+for wt in $(lock_worktrees); do
+  LOCK="$wt/tmp/claude-locks/$KEY"
+  [ -f "$LOCK" ] || continue
 
-# Cross-worktree scan
-FOUND=0
-for wt in $WORKTREES; do
-  LOCK="$wt/tmp/claude-locks/${BASENAME}.lock"
-  if [ -f "$LOCK" ]; then
-    if [ "$FOUND" -eq 0 ]; then
-      echo "⚠️  $BASENAME is locked across worktrees:" >&2
-      FOUND=1
-    fi
-    echo "    [worktree: $wt]" >&2
-    sed 's/^/      /' "$LOCK" >&2
+  OWNER=$(lock_meta "$LOCK" session)
+  [ "$OWNER" = "$ME" ] && continue          # свой лок не мешает
+
+  # Протухший лок снимаем сами: сессия могла упасть, не сняв его. Без этого
+  # блокирующий хук превращается в дедлок.
+  if lock_is_stale "$LOCK"; then
+    rm -f "$LOCK" 2>/dev/null
+    echo "ℹ️  Снят протухший лок $(lock_key_to_path "$KEY") (сессия $OWNER, старше ${LOCK_TTL_HOURS}ч)." >&2
+    continue
   fi
+
+  AGE=$(lock_age_minutes "$LOCK")
+  TASK=$(lock_meta "$LOCK" task)
+  STARTED=$(lock_meta "$LOCK" started)
+
+  REL=$(lock_key_to_path "$KEY")
+
+  # След для наблюдателя: повторяющиеся отказы по одному пути означают, что
+  # границы доменов размыты и нужен арбитраж, а не очередной обход. Хук агентов
+  # не зовёт — он только оставляет запись, которую session-observer читает.
+  EVENTS_DIR="${CLAUDE_SHARED_DIR:-$HOME/.claude-shared}/events"
+  if mkdir -p "$EVENTS_DIR" 2>/dev/null; then
+    printf '{"at":"%s","path":"%s","blocked":"%s","holder":"%s","task":"%s"}\n' \
+      "$(date -Iseconds)" "$REL" "$ME" "${OWNER:-?}" "${TASK:-?}" \
+      >> "$EVENTS_DIR/conflicts.jsonl" 2>/dev/null
+  fi
+
+  {
+    echo "⛔ $REL занят сессией ${OWNER:-?}"
+    echo "   worktree: $wt"
+    echo "   с ${STARTED:-?} (${AGE:-?} мин назад)${TASK:+, task=$TASK}"
+    echo "   Снять: bin/lock-clean --release $REL"
+    echo "   Обойти разово: CLAUDE_LOCK_BYPASS=1"
+    echo "   Согласуй с той сессией: живой — SendMessage, оффлайн — bin/claude-inbox send."
+    echo "   Повторяется по одному пути — это спор о границах: эскалируй наблюдателю в victory."
+  } >&2
+
+  exit 2
 done
-
-[ "$FOUND" -eq 1 ] && echo "    (see .claude/skills/session-coordination/SKILL.md)" >&2
 
 exit 0

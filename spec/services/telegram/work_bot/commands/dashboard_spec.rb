@@ -75,11 +75,18 @@ RSpec.describe Telegram::WorkBot::Commands::Dashboard do
 
     context 'agent (denied)' do
       it '🚫 manager-only reply, без dashboard' do
-        msg = dm_message.merge('from' => { 'id' => agent.tg_user_id })
+        # Подменяем и 'chat': раньше переопределялся только 'from', и получалось
+        # сообщение «от агента, но в чате директора» — в личке так не бывает.
+        # Бот отвечает в чат, откуда пришла команда, поэтому спек ждал 500002,
+        # а получал 500001 из-за самой фикстуры.
+        msg = dm_message.merge(
+          'from' => { 'id' => agent.tg_user_id },
+          'chat' => { 'id' => agent.tg_user_id, 'type' => 'private' }
+        )
         described_class.new(message: msg, args: '', tg_user: agent, client: tg_client).call
 
         expect(tg_client).to have_received(:send_message).with(
-          a_string_matching(/Только для руководителей/),
+          a_string_matching(/только руководител/),
           hash_including(chat_id: agent.tg_user_id)
         )
         expect(tg_client).not_to have_received(:send_message).with(
