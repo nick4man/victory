@@ -799,6 +799,10 @@ Rails.application.routes.draw do
     # Bearer-auth via ENV[NEWS_INGEST_TOKEN]. See services/chat-host-cron/.
     post 'news_ingest', to: 'news_ingest#create', as: :news_ingest
 
+    # Служба сбора данных о ЖК (services/zhk-registry) шлёт сюда батчи
+    # наблюдений. Решение, что применить, принимает Rails — см. Zhk::Ingest.
+    post 'zhk_ingest', to: 'zhk_ingest#create', as: :zhk_ingest
+
     # Telegram
     post 'telegram', to: 'telegram#create'
 
