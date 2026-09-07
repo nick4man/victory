@@ -2,22 +2,72 @@
 # bin/claude-inbox — inter-session message inbox
 #
 # Sessions identified by CLAUDE_SESSION env, else per-worktree .claude-session
-# marker file (victory|chat|seo|upgrade).
-# Messages stored as markdown in .claude/sessions/inbox/<session>/
+# marker file.
+#
+# The QUEUE itself lives in the MAIN checkout (parent of `git --git-common-dir`),
+# not in the current worktree. Each worktree carries its own copy of .claude/ on
+# disk, and .gitignore excludes inbox/**/*.md — so a worktree-local path would
+# put the message somewhere the receiver never looks, and git would not carry it
+# either. One shared queue is the only path that actually delivers.
+#
+# Messages stored as markdown in <main-checkout>/.claude/sessions/inbox/<session>/
 
 set -e
 
-ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
-INBOX_DIR="$ROOT/.claude/sessions/inbox"
-MY_SESSION="${CLAUDE_SESSION:-$(cat "$ROOT/.claude-session" 2>/dev/null || echo unknown)}"
+# Where THIS session runs — the identity marker is per-worktree.
+WORKTREE_ROOT="${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
-valid_sessions=("victory" "chat" "seo" "upgrade")
+# Where the shared queue lives. CLAUDE_INBOX_ROOT overrides (tests, odd layouts).
+resolve_inbox_root() {
+  if [ -n "$CLAUDE_INBOX_ROOT" ]; then
+    printf '%s' "$CLAUDE_INBOX_ROOT"
+    return
+  fi
+  local common
+  common=$(cd "$WORKTREE_ROOT" 2>/dev/null && git rev-parse --git-common-dir 2>/dev/null) || common=''
+  if [ -z "$common" ]; then
+    printf '%s' "$WORKTREE_ROOT"
+    return
+  fi
+  # Relative form (`.git`) is relative to WORKTREE_ROOT; absolute form is used as-is.
+  case "$common" in
+    /*) ;;
+    *) common="$WORKTREE_ROOT/$common" ;;
+  esac
+  (cd "$common/.." 2>/dev/null && pwd) || printf '%s' "$WORKTREE_ROOT"
+}
+
+INBOX_ROOT="$(resolve_inbox_root)"
+INBOX_DIR="$INBOX_ROOT/.claude/sessions/inbox"
+MY_SESSION="${CLAUDE_SESSION:-$(cat "$WORKTREE_ROOT/.claude-session" 2>/dev/null || echo unknown)}"
+
+# Known session names. A worktree not listed here self-registers by creating its
+# own inbox directory — is_valid_session accepts any existing one.
+valid_sessions=("victory" "chat" "seo" "upgrade" "urgent-collector")
+
+known_receivers() {
+  local all=("${valid_sessions[@]}")
+  local d
+  shopt -s nullglob
+  for d in "$INBOX_DIR"/*/; do
+    d=$(basename "$d")
+    [ "$d" = "archive" ] && continue
+    case " ${all[*]} " in *" $d "*) ;; *) all+=("$d") ;; esac
+  done
+  shopt -u nullglob
+  printf '%s' "$(IFS='|'; echo "${all[*]}")"
+}
 
 is_valid_session() {
   local s="$1"
+  [ -z "$s" ] && return 1
+  # Reject path traversal / separators — $s is interpolated into a filesystem path.
+  case "$s" in */*|*'\'*|.|..) return 1 ;; esac
   for v in "${valid_sessions[@]}"; do
     [ "$s" = "$v" ] && return 0
   done
+  # New worktrees self-register via an existing inbox directory.
+  [ -d "$INBOX_DIR/$s" ] && return 0
   return 1
 }
 
@@ -26,7 +76,7 @@ usage() {
 Usage: bin/claude-inbox <command> [args...]
 
 Commands:
-  send <to> "<message>"     Create message FROM me TO <to> (victory|chat|seo|upgrade)
+  send <to> "<message>"     Create message FROM me TO <to> ($(known_receivers))
   list                       List pending messages for my session
   read <id>                  Display message by id prefix (timestamp)
   done <id>                  Move message to archive/
@@ -34,6 +84,9 @@ Commands:
 Environment:
   CLAUDE_SESSION   identifies your current session — must be set for list/done.
                    Current value: $MY_SESSION
+  CLAUDE_INBOX_ROOT  override the shared queue location.
+
+Queue (shared by all worktrees): $INBOX_DIR
 USAGE
 }
 
@@ -45,7 +98,8 @@ cmd_send() {
     exit 1
   fi
   if ! is_valid_session "$to"; then
-    echo "Unknown receiver: $to (expected victory|chat|seo)" >&2
+    echo "Unknown receiver: $to (expected $(known_receivers))" >&2
+    echo "  A new worktree self-registers with: mkdir -p $INBOX_DIR/$to" >&2
     exit 1
   fi
   if [ "$MY_SESSION" = "unknown" ]; then
@@ -79,7 +133,7 @@ EOF
 
 cmd_list() {
   if [ "$MY_SESSION" = "unknown" ]; then
-    echo "⚠️  CLAUDE_SESSION not set. Export CLAUDE_SESSION=victory|chat|seo first." >&2
+    echo "⚠️  CLAUDE_SESSION not set. Export CLAUDE_SESSION=$(known_receivers), or write the name to $WORKTREE_ROOT/.claude-session" >&2
     exit 1
   fi
   local my_dir="$INBOX_DIR/$MY_SESSION"

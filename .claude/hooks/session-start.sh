@@ -51,9 +51,18 @@ if [ -d tmp/claude-locks ]; then
 fi
 
 # Inbox scan — only if CLAUDE_SESSION is set and valid.
+# The queue lives in the MAIN checkout (parent of --git-common-dir), not in this
+# worktree: each worktree has its own .claude/ on disk and inbox/**/*.md is
+# gitignored, so a relative path would read an inbox no sender can write to.
 INBOX_TOTAL=0
 INBOX_HEADLINES=""
-INBOX_DIR=".claude/sessions/inbox/$SESSION_ID"
+INBOX_COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
+case "$INBOX_COMMON" in
+  '') INBOX_ROOT="$WORKTREE_PATH" ;;
+  *)  INBOX_ROOT=$(cd "$INBOX_COMMON/.." 2>/dev/null && pwd) ;;
+esac
+[ -z "$INBOX_ROOT" ] && INBOX_ROOT="$WORKTREE_PATH"
+INBOX_DIR="$INBOX_ROOT/.claude/sessions/inbox/$SESSION_ID"
 if [ "$SESSION_ID" != "unknown" ] && [ -d "$INBOX_DIR" ]; then
   # Total count (top-level *.md only, not archive/).
   INBOX_TOTAL=$(find "$INBOX_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)
