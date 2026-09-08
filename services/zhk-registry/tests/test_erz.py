@@ -14,6 +14,8 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from sources.erz import ErzSource
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -35,6 +37,21 @@ def _fake_session(html: str) -> MagicMock:
     response = MagicMock()
     response.text = html
     response.raise_for_status.return_value = None
+    session.get.return_value = response
+    return session
+
+
+def _error_session(status_code: int) -> MagicMock:
+    """Мок сессии, у которой карточка отвечает HTTP-ошибкой — 404 на
+    протухшую ссылку, 5xx на стороне ЕРЗ и т.п. `raise_for_status()`
+    ведёт себя как у настоящего `requests.Response`.
+    """
+    session = MagicMock()
+    response = MagicMock()
+    response.status_code = status_code
+    response.raise_for_status.side_effect = requests.HTTPError(
+        f"{status_code} error", response=response
+    )
     session.get.return_value = response
     return session
 
@@ -159,9 +176,54 @@ class TestErzCard(unittest.TestCase):
             obs = ErzSource(session=session, contact="test@example.com").enrich(ref)
 
         self.assertIsNotNone(obs)
+        self.assertEqual(obs.external_id, "erz:21004202001")
         self.assertEqual(obs.fields["floors"], "11 - 20")
         self.assertEqual(obs.fields["commissioning"], "от IV кв. 2026")
         self.assertEqual(obs.fields["developer"], "ООО СЗ Возрождение")
+
+    def test_enrich_prefers_ref_external_id_over_recomputed_one(self):
+        # `discover()` берёт external_id из gkId в href, `parse_card()` —
+        # регэкспом по хвосту url. В реальности они совпадают (слаг ЕРЗ
+        # оканчивается тем же id), но здесь намеренно разведены, чтобы
+        # доказать: итоговое наблюдение берёт значение из ref, а не
+        # пересчитывает его заново по url. По этому полю сервер отличает
+        # повторную доставку от новой — молчаливое расхождение здесь
+        # было бы дефектом дедупликации, а не мелочью.
+        session = _fake_session(fixture("erz_card.html"))
+        ref = {"url": CARD_URL, "external_id": "erz:OVERRIDE", "name": "ЖК Манхэттен"}
+
+        with patch("sources.base.time.sleep"):
+            obs = ErzSource(session=session, contact="test@example.com").enrich(ref)
+
+        self.assertEqual(obs.external_id, "erz:OVERRIDE")
+
+    def test_enrich_returns_none_on_http_error_not_raising(self):
+        # Протухшая ссылка (404) или временный сбой ЕРЗ (5xx) на одном ЖК
+        # не должны прерывать обход остальных — это тот же штатный `None`,
+        # что и неразборчивая вёрстка, только причина сетевая, а не
+        # парсинговая.
+        session = _error_session(404)
+
+        with patch("sources.base.time.sleep"):
+            obs = ErzSource(session=session, contact="test@example.com").enrich(
+                {"url": "https://erzrf.ru/novostroyki/zhk-protuhshij-000", "external_id": "erz:000"}
+            )
+
+        self.assertIsNone(obs)
+
+    def test_enrich_returns_none_on_connection_error_not_raising(self):
+        # Тот же контракт для сбоя ниже уровня HTTP-статуса — таймаут или
+        # обрыв соединения. `session.get` сам бросает исключение, до
+        # `raise_for_status()` дело не доходит.
+        session = MagicMock()
+        session.get.side_effect = requests.ConnectionError("обрыв соединения")
+
+        with patch("sources.base.time.sleep"):
+            obs = ErzSource(session=session, contact="test@example.com").enrich(
+                {"url": "https://erzrf.ru/novostroyki/zhk-protuhshij-000", "external_id": "erz:000"}
+            )
+
+        self.assertIsNone(obs)
 
     def test_enrich_does_not_invent_floors_when_ref_lacks_them(self):
         # Симметрично предыдущему: если в ref не было этажности (как у

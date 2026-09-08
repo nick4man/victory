@@ -22,9 +22,11 @@
 трогают): подтверждено curl'ом с представленным User-Agent.
 """
 
+import logging
 import re
 from datetime import datetime, timezone
 
+import requests
 from bs4 import BeautifulSoup
 
 from observation import Observation
@@ -35,6 +37,8 @@ REGION_URL = (
     "?region=ryazanskaya-oblast&regionKey=144706001&viewModeDev=list"
 )
 CITY = "Рязань"
+
+log = logging.getLogger(__name__)
 
 # Значения-заглушки, которыми сайт помечает пустую ячейку. Такое значение
 # для нас равносильно отсутствию факта, а не факту "пустая строка".
@@ -97,15 +101,37 @@ class ErzSource:
     def enrich(self, ref: dict) -> Observation | None:
         """Наблюдение по одному ЖК: карточка + то, что уже нашли в discover.
 
-        `None` — штатный исход, не ошибка: карточка бывает неразборчива
-        (редизайн, A/B-вариант вёрстки), и в этом случае лучше пропустить
-        ЖК в этом обходе, чем выдумать наблюдение из половины фактов.
+        `None` — штатный исход, не ошибка, и это касается двух разных
+        причин, обе — не повод уронить весь обход остальных ЖК:
+
+        - карточка недоступна (404 на протухшую ссылку, таймаут, 5xx) —
+          сетевая ошибка `requests`;
+        - карточка отдалась, но неразборчива (редизайн, A/B-вариант
+          вёрстки) — `parse_card()` не нашёл даже заголовка.
+
+        Обе логируются и превращаются в `None`, а не пробрасываются
+        наружу: одна дохлая ссылка не должна прерывать обход остальных.
         """
-        html = polite_get(self.session, ref["url"], self.contact)
+        try:
+            html = polite_get(self.session, ref["url"], self.contact)
+        except requests.RequestException as exc:
+            log.warning("карточка ЖК недоступна %s: %s", ref.get("url"), exc)
+            return None
+
         try:
             obs = self.parse_card(html, url=ref["url"])
-        except ValueError:
+        except ValueError as exc:
+            log.warning("карточка ЖК неразборчива %s: %s", ref.get("url"), exc)
             return None
+
+        # `external_id` у discover() и parse_card() — два независимых
+        # способа получить один и тот же факт (gkId из href списка против
+        # регэкспа по хвосту url карточки). На практике они совпадают, но
+        # авторитетный источник — ref из discover(): под этим id сервер
+        # будет матчить повторную доставку, а gkId из href надёжнее
+        # регэкспа по произвольному URL карточки.
+        if ref.get("external_id"):
+            obs.external_id = ref["external_id"]
 
         for key in ("floors", "commissioning"):
             if ref.get(key):
