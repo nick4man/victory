@@ -148,7 +148,7 @@ def send_with_retry(client: IngestClient, observations: list[Observation], sourc
     return call_with_retry(lambda: client.send(observations), f"{source_name}: отправка")
 
 
-def run_source(source, client: IngestClient) -> int:
+def run_source(source, client: IngestClient, dry_run: bool = False) -> int:
     """Обходит один источник целиком, возвращает число ПРИМЕНЁННЫХ
     наблюдений — то есть тех, кого сервер НЕ отверг как `invalid`.
 
@@ -160,6 +160,14 @@ def run_source(source, client: IngestClient) -> int:
     `run_source` считал такой батч полным успехом — count == len(sent) —
     и сводка рапортовала бы «отправлено 50» при нуле реально применённых
     (круг правок 1, находка ревью).
+
+    `dry_run=True` (см. `DRY_RUN` в `main()`) — первая проверка селекторов
+    адаптера на ЖИВОЙ вёрстке источника, вне тестовых фикстур: находим и
+    разбираем наблюдения как обычно, но вместо реальной отправки просто
+    логируем их и возвращаем `len(observations)` как «нашли», а не
+    «применили» (сервер вообще не участвует в этом прогоне) — число носит
+    информационный характер, сравнивать его со сводкой боевого прогона
+    нельзя.
 
     Любое исключение из `call_with_retry(source.discover, ...)` или из
     `send_with_retry` (после исчерпания ретраев) НЕ ловится здесь —
@@ -190,6 +198,11 @@ def run_source(source, client: IngestClient) -> int:
         # (пустой отчёт), но лишний HTTP-запрос ради этого не нужен.
         return 0
 
+    if dry_run:
+        for obs in observations:
+            log.info("DRY_RUN %s — %s", obs.external_id, obs.to_payload()["fields"])
+        return len(observations)
+
     results = send_with_retry(client, observations, source.name)
     applied = sum(1 for row in results if row.get("status") != "invalid")
     if applied != len(observations):
@@ -200,16 +213,23 @@ def run_source(source, client: IngestClient) -> int:
     return applied
 
 
-def crawl(sources: list, client: IngestClient) -> dict[str, int]:
+def crawl(sources: list, client: IngestClient, dry_run: bool = False) -> dict[str, int]:
     """Обходит все источники по очереди, изолируя падение каждого от
     остальных. Возвращает `{имя источника: число применённых наблюдений}`
-    — этот словарь и есть `counts` для `POST /webhooks/zhk_ingest/summary`.
+    — этот словарь и есть `counts` для `POST /webhooks/zhk_ingest/summary`
+    (при `dry_run=True` этот словарь никуда не отправляется, см. `main()`
+    — числа в нём означают «нашли», а не «применили»).
     """
     counts: dict[str, int] = {}
     for source in sources:
         try:
-            counts[source.name] = run_source(source, client)
-            log.info("%s: применено %d", source.name, counts[source.name])
+            counts[source.name] = run_source(source, client, dry_run=dry_run)
+            log.info(
+                "%s: %s %d",
+                source.name,
+                "нашли (DRY_RUN)" if dry_run else "применено",
+                counts[source.name],
+            )
         except Exception:
             log.exception("источник упал целиком: %s", source.name)
             counts[source.name] = 0
@@ -255,15 +275,35 @@ def post_summary(base_url: str, token: str, counts: dict[str, int]) -> bool:
 
 
 def main() -> int:
-    base_url = os.environ["VICTORY_BASE_URL"]
-    token = os.environ["ZHK_INGEST_TOKEN"]
+    """`DRY_RUN=1` в окружении — прогон источников без единого похода на
+    вебхук: ни батчи наблюдений, ни сводка не отправляются (см.
+    `run_source`/`crawl`). Единственное назначение режима — проверить
+    сами селекторы адаптеров на живой вёрстке источника ДО того, как
+    результат уйдёт в Rails; поэтому `VICTORY_BASE_URL`/`ZHK_INGEST_TOKEN`
+    в этом режиме необязательны (клиент создаётся, но ни разу не
+    используется) — иначе прогон-проверку нельзя было бы запустить без
+    боевых секретов, которых у проверяющего может и не быть под рукой.
+    """
+    dry_run = os.environ.get("DRY_RUN") == "1"
     contact = os.environ.get("CRAWLER_CONTACT", "info@victory62.org")
+
+    if dry_run:
+        base_url = os.environ.get("VICTORY_BASE_URL", "http://127.0.0.1:3001")
+        token = os.environ.get("ZHK_INGEST_TOKEN", "dry-run")
+    else:
+        base_url = os.environ["VICTORY_BASE_URL"]
+        token = os.environ["ZHK_INGEST_TOKEN"]
 
     session = requests.Session()
     sources = [ErzSource(session, contact), EdinstvoSource(session, contact)]
     client = IngestClient(base_url, token)
 
-    counts = crawl(sources, client)
+    counts = crawl(sources, client, dry_run=dry_run)
+
+    if dry_run:
+        log.info("DRY_RUN: сводка прогона не отправляется, итог по источникам: %s", counts)
+        return 0
+
     delivered = post_summary(base_url, token, counts)
 
     return 0 if delivered else 1
