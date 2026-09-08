@@ -116,4 +116,28 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       expect(response.body).not_to include('поле «wall_material»')
     end
   end
+
+  describe 'поле вне FIELD_LABELS' do
+    # Не гипотетика: `FIELD_LABELS` и `Zhk::FactApplier::FILLABLE` — два
+    # независимо поддерживаемых списка. Поле могут убрать из `FILLABLE`
+    # при переименовании/деприкейшне, а старые строки `ZhkFact` с этим
+    # именем в базе останутся — `Zhk::Discrepancies.all` строит очередь
+    # из сырых `ZhkFact` и про `FILLABLE` ничего не знает, так что такая
+    # строка на экране появится. Экран не должен на ней падать.
+    let!(:complex) { create(:residential_complex, name: 'Скобелев') }
+
+    before do
+      ZhkFact.create!(residential_complex: complex, field: 'totally_unknown_field',
+                       value: 'А', source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: complex, field: 'totally_unknown_field',
+                       value: 'Б', source: 'developer_site', observed_at: Time.current)
+    end
+
+    it 'показывает сырое имя поля вместо падения' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('totally_unknown_field')
+    end
+  end
 end
