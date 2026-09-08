@@ -177,6 +177,35 @@ RSpec.describe 'Webhooks::ZhkIngestController', type: :request do
       expect(ZhkIngestRun.count).to eq(0)
     end
 
+    it 'отрицательный счётчик — тот же JSON-контракт 422, а не HTML-страница исключения' do
+      # `ZhkIngestRun` валидирует count >= 0, и `-1` дожил бы до `create!`
+      # в `record_run`: `RecordInvalid` наружу — формально тоже 422, но НЕ
+      # тем телом, которое обещано во всех остальных отказах. Отрицательное
+      # число наблюдений не имеет смысла — отвергаем на входе.
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => -1 } }.to_json,
+                                           headers: headers
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['error']).to eq('invalid_payload')
+      expect(response.parsed_body['detail']).to include('erz')
+      expect(ZhkIngestRun.count).to eq(0)
+    end
+
+    it 'отрицательный счётчик строкой («-1») отвергается так же' do
+      # Дыра закрывается на обеих ветках: JSON-целое приходит `Integer` и
+      # регэкспа не касается вовсе, строка — наоборот.
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => '-1' } }.to_json,
+                                           headers: headers
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['error']).to eq('invalid_payload')
+      expect(ZhkIngestRun.count).to eq(0)
+    end
+
     it 'счётчик строкой («7») принимается — сводка дороже строгости' do
       # Отказ здесь стоит не разобранной сводки, а сводка — единственный
       # носитель тревоги о молчащем источнике.

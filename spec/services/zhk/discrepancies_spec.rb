@@ -136,6 +136,31 @@ RSpec.describe Zhk::Discrepancies do
       expect(row[:values].map { |v| v[:value] }).to eq(%w[2022 2023])
     end
 
+    it 'предупреждает в лог, когда снимает расхождение осиротевших фактов' do
+      # Снятие осиротевшей строки — потеря, и она не должна быть
+      # молчаливой: пропавшее расхождение дороже лишнего (докстринг
+      # модуля). Проверяем именно предупреждение, а не только отсутствие
+      # падения: без него строка исчезает с экрана без следа.
+      removed = create(:residential_complex, :soft_deleted, name: 'Удалённый')
+      ZhkFact.create!(residential_complex: removed, field: 'developer', value: 'Атом',
+                       source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: removed, field: 'developer', value: 'Химик',
+                       source: 'edinstvo', observed_at: Time.current)
+      allow(Rails.logger).to receive(:warn)
+
+      expect(described_class.all).to be_empty
+      expect(Rails.logger).to have_received(:warn).with(a_string_including('[Zhk::Discrepancies] снято 1'))
+    end
+
+    it 'не предупреждает, когда снимать нечего' do
+      fact('built_to', '2022', 'erz')
+      fact('built_to', '2023', 'edinstvo')
+      allow(Rails.logger).to receive(:warn)
+
+      expect(described_class.all.size).to eq(1)
+      expect(Rails.logger).not_to have_received(:warn).with(a_string_including('[Zhk::Discrepancies]'))
+    end
+
     it 'не включает поля без реального расхождения' do
       fact('developer', 'Единство', 'erz')
       fact('developer', 'Единство', 'edinstvo')
