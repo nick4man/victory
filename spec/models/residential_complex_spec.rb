@@ -364,18 +364,50 @@ RSpec.describe ResidentialComplex do
       expect(complex.body_plain).to include('Льговская')
     end
 
+    it 'покрывает все три ЖК, у которых есть редакционный текст' do
+      run_seed
+      run_texts
+
+      expect(described_class.sitemap_ready.unscope(where: :published).pluck(:slug))
+        .to match_array(%w[otkrytie legenda priokskiy-park])
+    end
+
+    # Расхождения, ради которых поля в справочнике оставлены пустыми, текст
+    # обязан обходить: класс «Легенды» (комфорт против бизнеса) и год ввода
+    # «Приокского парка» (2026 против «сдан 2016–2017» у ЦИАН). Регресс тут
+    # ловит не опечатку, а возврат к додумыванию.
+    it 'не называет класс жилья «Легенды» — источники по нему расходятся' do
+      run_seed
+      run_texts
+
+      expect(described_class.find_by(slug: 'legenda').body_plain)
+        .not_to match(/бизнес-класс|комфорт-класс/i)
+    end
+
+    it 'не называет год ввода и стадию «Приокского парка»' do
+      run_seed
+      run_texts
+
+      plain = described_class.find_by(slug: 'priokskiy-park').body_plain
+      expect(plain).not_to match(/20(1[6-9]|2[0-9])/)
+      expect(plain).not_to match(/строится|сдан в /i)
+    end
+
     # Ради этого блок faq и обязателен: FaqHelper вытаскивает пары прямо из
     # <details>, и FAQPage-разметка на /zhk/:slug появляется сама.
     it 'даёт FAQ-пары, из которых собирается FAQPage' do
       run_seed
       run_texts
 
-      pairs = ActionController::Base.helpers.extend(FaqHelper)
-                                    .faq_pairs_from_html(described_class.find_by(slug: 'otkrytie').body_html)
+      helper = ActionController::Base.helpers.extend(FaqHelper)
 
-      expect(pairs.size).to eq(6)
-      expect(pairs.first.first).to include('Открытие')
-      expect(pairs.map(&:last)).to all(be_present)
+      %w[otkrytie legenda priokskiy-park].each do |slug|
+        pairs = helper.faq_pairs_from_html(described_class.find_by(slug: slug).body_html)
+
+        expect(pairs.size).to be >= 5
+        expect(pairs.map(&:first)).to all(end_with('?'))
+        expect(pairs.map(&:last)).to all(be_present)
+      end
     end
 
     it 'идемпотентен: повторный прогон ничего не меняет' do
