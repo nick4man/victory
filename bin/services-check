@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Проверяет учёт и границы служб в services/.
+
+Правило «один репозиторий — много маленьких служб» держится не на
+договорённости, а на этой проверке. Без неё владение живёт в прозе, а проза
+устаревает молча: ровно так два из четырёх каталогов годами объявляли себя
+чужими, пока файлы лежали в нашем репозитории.
+
+Запуск: bin/services-check    (нужен только python3, Ruby не требуется —
+проверка обязана работать в том числе там, где Ruby нет)
+"""
+
+import os
+import re
+import sys
+from datetime import date
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SERVICES = os.path.join(ROOT, 'services')
+
+REQUIRED = ['service', 'owner', 'kind', 'entrypoint', 'tests', 'deploy',
+            'depends_on', 'ported_from', 'port_status', 'repatriate_by']
+
+# Даты в проекте — европейские dd.MM.yy (правило #3 CLAUDE.md).
+DATE_RX = re.compile(r'^(\d{2})\.(\d{2})\.(\d{2})$')
+
+CODE_EXT = ('.py', '.sh', '.rb')
+
+errors = []
+
+
+def fail(msg):
+    errors.append(msg)
+
+
+def read_manifest(path):
+    """Минимальный парсер frontmatter: плоские `ключ: значение`.
+
+    Намеренно без pyyaml — проверка должна запускаться на голой машине,
+    а зависимость ради десяти строк сделала бы её пропускаемой.
+    """
+    with open(path, encoding='utf-8') as fh:
+        text = fh.read()
+    if not text.startswith('---\n'):
+        return None
+    end = text.find('\n---\n', 4)
+    if end == -1:
+        return None
+    data = {}
+    for line in text[4:end].splitlines():
+        if not line.strip() or ':' not in line:
+            continue
+        key, _, value = line.partition(':')
+        data[key.strip()] = value.strip()
+    return data
+
+
+def check_date_not_expired(service, value):
+    m = DATE_RX.match(value)
+    if not m:
+        fail('%s: repatriate_by = %r — нужен формат dd.MM.yy' % (service, value))
+        return
+    day, month, year = (int(p) for p in m.groups())
+    try:
+        due = date(2000 + year, month, day)
+    except ValueError:
+        fail('%s: repatriate_by = %r — такой даты не существует' % (service, value))
+        return
+    if due < date.today():
+        fail('%s: срок репатриации истёк %s. Это не повод молча продлить: '
+             'либо доводим перенос до конца, либо переносим дату осознанно и '
+             'пишем в манифесте, почему.' % (service, value))
+
+
+def check_manifest(name, path):
+    manifest = read_manifest(path)
+    if manifest is None:
+        fail('%s: SERVICE.md без frontmatter — нечего проверять' % name)
+        return
+
+    for key in REQUIRED:
+        if key not in manifest:
+            fail('%s: в манифесте нет поля %s' % (name, key))
+    if errors and any(name in e for e in errors[-len(REQUIRED):]):
+        pass
+
+    if manifest.get('service') != name:
+        fail('%s: поле service = %r не совпадает с именем каталога'
+             % (name, manifest.get('service')))
+
+    # Владелец всегда victory: openclaw и прочие внешние источники — архивы,
+    # из которых мы разбираем код, а не апстримы, которым мы что-то должны.
+    if manifest.get('owner') != 'victory':
+        fail('%s: owner = %r. Владелец всех служб — victory; внешний источник '
+             'указывается в ported_from, а не в owner.' % (name, manifest.get('owner')))
+
+    if manifest.get('depends_on') != 'none':
+        fail('%s: depends_on = %r. Службы не зависят друг от друга: связь — '
+             'через контракт (вебхук, HTTP, формат файла), а не через импорт.'
+             % (name, manifest.get('depends_on')))
+
+    status = manifest.get('port_status')
+    if status not in ('done', 'in-progress', 'not-started'):
+        fail('%s: port_status = %r — ожидается done / in-progress / not-started'
+             % (name, status))
+    elif status == 'done':
+        if manifest.get('repatriate_by') != '—':
+            fail('%s: port_status done, но стоит срок репатриации' % name)
+    else:
+        value = manifest.get('repatriate_by', '')
+        if value in ('—', ''):
+            fail('%s: port_status = %s без срока в repatriate_by. Незавершённый '
+                 'перенос без даты — это «никогда».' % (name, status))
+        else:
+            check_date_not_expired(name, value)
+
+
+def check_boundaries(name, service_dir, siblings):
+    """Импорт соседней службы или Rails-кода ломает модульность."""
+    for dirpath, _dirnames, filenames in os.walk(service_dir):
+        for filename in filenames:
+            if not filename.endswith(CODE_EXT):
+                continue
+            path = os.path.join(dirpath, filename)
+            rel = os.path.relpath(path, ROOT)
+            with open(path, encoding='utf-8', errors='replace') as fh:
+                lines = fh.readlines()
+            for num, line in enumerate(lines, 1):
+                stripped = line.strip()
+                if stripped.startswith('#'):
+                    continue
+                for other in siblings:
+                    if other == name:
+                        continue
+                    if 'services/%s' % other in line or re.search(
+                            r'\b%s\b' % re.escape(other.replace('-', '_')), line):
+                        fail('%s:%d ссылается на службу %s — службы не знают '
+                             'друг о друге' % (rel, num, other))
+                if re.match(r'^\s*(from|import)\s+app[\s.]', line) or \
+                        re.search(r'\.\./\.\./app/', line):
+                    fail('%s:%d импортирует Rails-код — обмен только через '
+                         'контракт' % (rel, num))
+
+
+def main():
+    if not os.path.isdir(SERVICES):
+        print('services/ не найден — проверять нечего')
+        return 0
+
+    names = sorted(d for d in os.listdir(SERVICES)
+                   if os.path.isdir(os.path.join(SERVICES, d)))
+    if not names:
+        print('services/ пуст')
+        return 0
+
+    for name in names:
+        service_dir = os.path.join(SERVICES, name)
+        manifest_path = os.path.join(service_dir, 'SERVICE.md')
+        if not os.path.isfile(manifest_path):
+            fail('%s: нет SERVICE.md. Каталог под services/ без манифеста — '
+                 'служба без владельца.' % name)
+            continue
+        check_manifest(name, manifest_path)
+        check_boundaries(name, service_dir, names)
+
+    if errors:
+        print('Проверка служб не пройдена:\n')
+        for e in errors:
+            print('  • %s' % e)
+        print('\nПравила — services/README.md')
+        return 1
+
+    print('Службы (%d): учёт в порядке, границы не нарушены' % len(names))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
