@@ -1,12 +1,12 @@
 services:
   db:
-    # Custom: postgis/postgis:15-3.5 + apt postgresql-15-pgvector.
+    # Custom: postgres:15-bookworm + apt postgis-3 и pgvector из pgdg.
     # Drop-in replacement for postgres:15 — same major version + same data layout,
     # same VOLUME mount. pgdata named volume preserved across image swap.
     build:
       context: .
       dockerfile: Dockerfile.postgres
-    image: viktory-postgres-pgvector:pg15-postgis35
+    image: viktory-postgres-pgvector:pg15-postgis36
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}

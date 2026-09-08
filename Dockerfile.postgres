@@ -1,24 +1,24 @@
-# Postgres 15 + PostGIS 3.5 + pgvector
+# Postgres 15 + PostGIS 3.5 + pgvector, на Debian bookworm.
 #
-# Built on the official postgis/postgis image (which auto-runs
-# CREATE EXTENSION postgis on first init). pgvector is added via the
-# apt.postgresql.org repo that the postgis base image already trusts.
-FROM postgis/postgis:15-3.5
+# Почему не postgis/postgis:15-3.5, как было раньше: тот образ собран на
+# bullseye, а у bullseye 07.09.26 протух подписанный Release
+# debian-security. apt-get update внутри сборки стал выходить с кодом 100,
+# и джоб RSpec в CI перестал доходить до запуска спеков. Само это не
+# чинится — окно протухания только растёт.
+#
+# Bookworm-варианта у postgis/postgis нет (в реестре только 15-3.5 и
+# 15-3.5-alpine), поэтому берём официальный postgres:15-bookworm и ставим
+# оба расширения из apt.postgresql.org — репозиторий, который базовый
+# образ уже настроил и которому доверяет.
+#
+# Мажор PostgreSQL намеренно остаётся 15: этот же Dockerfile собирает
+# прод-базу (docker-compose.yml) и dev-базу для bin/rb. Смена мажора
+# потребовала бы dump/restore прода.
+FROM postgres:15-bookworm
 
-# `Acquire::Check-Valid-Until=false` — не косметика и не «отключим проверку».
-# Базовый образ собран на Debian bullseye, а его security-репозиторий
-# перестал обновляться: файл Release протух, и `apt-get update` на этом
-# возвращает код 100. Сборка падала сама собой, по календарю, без единой
-# правки в репозитории — 07.09.26 из-за этого покраснел main.
-#
-# Флаг велит apt не отвергать протухшие метаданные. Подписи при этом
-# проверяются как обычно — отключается только проверка срока годности.
-# Образ живёт минуты внутри CI-джоба, ставит один пакет и умирает вместе
-# с ним, поэтому устаревший индекс безопасности здесь ничего не решает.
-#
-# Правильное лечение — база на bookworm вместо bullseye; сделать его нужно
-# отдельно и с прогоном, потому что смена базы меняет версии PostGIS и
-# локали, а на них завязаны спеки геопоиска.
-RUN apt-get -o Acquire::Check-Valid-Until=false update \
- && apt-get install -y --no-install-recommends postgresql-15-pgvector \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      postgresql-15-postgis-3 \
+      postgresql-15-postgis-3-scripts \
+      postgresql-15-pgvector \
  && rm -rf /var/lib/apt/lists/*
