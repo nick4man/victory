@@ -72,7 +72,9 @@ seed_complexes = [
     developer: 'Единство', address: 'Рязань, ул. Княжье Поле, 1Б',
     address_patterns: ['ул. Княжье Поле', 'ул. Рыбновская'] },
 
-  # otkritie62.ru (сайт объекта) + edinstvo62.ru/complex/55
+  # otkrytie62.ru (сайт объекта) + edinstvo62.ru/complex/55
+  # Домен исправлен 08.09.26: «otkritie62.ru» не резолвится вовсе, рабочий —
+  # через `y`. /complex/55 отдаёт 301 на /complex/otkrytie, нужен `curl -L`.
   # Единственный класс, который ставим: заявлен самим застройщиком.
   { slug: 'otkrytie', name: 'Открытие', district_slug: 'dashkovo-pesochnya',
     developer: 'Единство', address: 'Рязань, ул. Льговская, 6, 8, 10',

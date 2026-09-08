@@ -337,6 +337,88 @@ RSpec.describe ResidentialComplex do
     end
   end
 
+  describe 'rake zhk:texts' do
+    def run_seed
+      original = $stdout
+      $stdout = StringIO.new
+      load Rails.root.join('db/seeds/residential_complexes.rb')
+    ensure
+      $stdout = original
+    end
+
+    def run_texts
+      original = $stdout
+      $stdout = StringIO.new
+      load Rails.root.join('db/seeds/zhk_texts.rb')
+    ensure
+      $stdout = original
+    end
+
+    it 'заливает текст и пре-рендерит обе проекции' do
+      run_seed
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      expect(complex.body_blocks).to be_present
+      expect(complex.body_html).to include('<h2>Дома и сроки</h2>')
+      expect(complex.body_plain).to include('Льговская')
+    end
+
+    # Ради этого блок faq и обязателен: FaqHelper вытаскивает пары прямо из
+    # <details>, и FAQPage-разметка на /zhk/:slug появляется сама.
+    it 'даёт FAQ-пары, из которых собирается FAQPage' do
+      run_seed
+      run_texts
+
+      pairs = ActionController::Base.helpers.extend(FaqHelper)
+                                    .faq_pairs_from_html(described_class.find_by(slug: 'otkrytie').body_html)
+
+      expect(pairs.size).to eq(6)
+      expect(pairs.first.first).to include('Открытие')
+      expect(pairs.map(&:last)).to all(be_present)
+    end
+
+    it 'идемпотентен: повторный прогон ничего не меняет' do
+      run_seed
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      before = complex.attributes.slice('body_blocks', 'body_html', 'body_plain')
+      touched_at = complex.updated_at
+
+      run_texts
+      run_texts
+
+      complex.reload
+      expect(complex.attributes.slice('body_blocks', 'body_html', 'body_plain')).to eq(before)
+      expect(complex.updated_at).to eq(touched_at)
+    end
+
+    it 'не перетирает текст, который правил редактор' do
+      run_seed
+      described_class.find_by(slug: 'otkrytie')
+        .update!(body_blocks: [{ 'kind' => 'paragraph', 'text' => 'Редакторская версия.' }])
+
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      expect(complex.body_blocks.size).to eq(1)
+      expect(complex.body_html).to eq('<p>Редакторская версия.</p>')
+    end
+
+    # Сид текстов не создаёт ЖК: запись без фактуры — это работа zhk:seed.
+    it 'не создаёт записей, когда справочник пуст' do
+      expect { run_texts }.not_to change(described_class.unscoped, :count)
+    end
+
+    it 'публикацию не трогает — это решение редактора' do
+      run_seed
+      run_texts
+
+      expect(described_class.find_by(slug: 'otkrytie').published).to be(false)
+    end
+  end
+
   describe 'публичное представление' do
     it 'отдаёт путь и отображаемое имя' do
       complex = create(:residential_complex, name: 'Легенда')
