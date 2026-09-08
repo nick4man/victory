@@ -101,7 +101,7 @@ Rails-дереве и используется и `spec/requests/webhooks/zhk_in
 
 После обхода всех источников (успешных и упавших) `run.py` шлёт
 `POST /webhooks/zhk_ingest/summary` с `{"counts": {"erz": N,
-"developer_site": M}}`. На Rails-стороне `Zhk::RunSummary` пишет каждое
+"edinstvo": M}}`. На Rails-стороне `Zhk::RunSummary` пишет каждое
 число в журнал `ZhkIngestRun` (не в `zhk_observations` — тот считает
 только новый/изменившийся контент и почти всегда околонулевой на
 статичном каталоге, см. докстринг миграции
@@ -179,19 +179,19 @@ DRY_RUN=1 .venv/bin/python3 run.py
 Ожидаемый вывод — строки вида:
 
 ```
-INFO DRY_RUN erz:23500236001 — {'developer': 'ООО СЗ Среда', 'floors': '9', 'commissioning': 'от III кв. 2026'}
+INFO DRY_RUN erz:23500236001 | Среда (Рязань) — {'developer': 'ООО СЗ Среда', 'floors': '9', 'commissioning': 'от III кв. 2026'}
 ...
 INFO erz: нашли (DRY_RUN) 10
-INFO DRY_RUN edinstvo:128 — {'developer': 'Единство'}
+INFO DRY_RUN edinstvo:128 | Пожарский (Рязань) — {'developer': 'Единство'}
 ...
-INFO developer_site: нашли (DRY_RUN) 44
-INFO DRY_RUN: сводка прогона не отправляется, итог по источникам: {'erz': 10, 'developer_site': 44}
+INFO edinstvo: нашли (DRY_RUN) 44
+INFO DRY_RUN: сводка прогона не отправляется, итог по источникам: {'erz': 10, 'edinstvo': 44}
 ```
 
 Два наблюдения по факту прогона 08.09.26, которые стоит держать в
 голове, читая свой собственный вывод:
 
-- **`developer_site` находит карточки ДОМОВ, а не ЖК** — 44 в счётчике
+- **`edinstvo` находит карточки ДОМОВ, а не ЖК** — 44 в счётчике
   против ~12 засеянных комплексов не ошибка: домашняя страница
   `edinstvo62.ru` отдаёт по `/building/<id>` на каждый корпус/подъезд, а
   несколько корпусов одного ЖК сводятся в одну карточку справочника уже

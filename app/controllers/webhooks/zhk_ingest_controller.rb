@@ -79,6 +79,17 @@ module Webhooks
     # 422 (круг правок 1, симметрично проверке `observations.is_a?(Array)`
     # в `create` выше).
     #
+    # ЗНАЧЕНИЯ проверяются там же и по той же причине: форма контейнера
+    # без формы содержимого закрывает половину дыры. `Zhk::RunSummary`
+    # везде зовёт `count.to_i`, а у вложенного объекта или массива
+    # (`{"counts": {"erz": {"a": 1}}}`) метода `to_i` нет вовсе — снова
+    # `NoMethodError` → 500 на входе, который контроллер обязан отвергать
+    # сам. Проверка нарочно ЛОЯЛЬНАЯ (число или строка, читаемая как
+    # число): сборщик шлёт JSON-целые, но 422 здесь стоит не разобранной
+    # сводки, а сводка — единственный носитель тревоги о молчащем
+    # источнике; сужать её приём строже необходимого дороже, чем принять
+    # "7".
+    #
     # `delivered` в ответе — не декоративное поле: `run.py` обязан узнать,
     # дошла ли сводка ДО сотрудников, а не только принял ли её сервер.
     # Без этого поля молчаливый отказ Telegram (не настроен
@@ -93,12 +104,33 @@ module Webhooks
       end
 
       counts = raw_counts.to_unsafe_h
+      bad_key = counts.keys.find { |key| !countable?(counts[key]) }
+      if bad_key
+        return render json: { error: 'invalid_payload',
+                              detail: "counts[#{bad_key}] must be a number" },
+                      status: :unprocessable_entity
+      end
+
       text = Zhk::RunSummary.call(counts)
       delivered = notify_staff(text)
       render json: { status: 'ok', delivered: delivered }
     end
 
     private
+
+    # Значение `counts`, которое `Zhk::RunSummary` сможет привести к числу
+    # через `to_i`, не бросив `NoMethodError`. Числа — как есть; строка —
+    # только если она читается как целое («7», «-1»): у произвольной
+    # строки `to_i` есть, но отдаёт молчаливый 0, а молчаливый ноль в
+    # счётчике источника — это ложная тревога о молчании (или, хуже,
+    # скрытая настоящая). Хеши, массивы, `nil` и булевы — отказ.
+    def countable?(value)
+      case value
+      when Integer, Float then true
+      when String then value.strip.match?(/\A-?\d+\z/)
+      else false
+      end
+    end
 
     # Уведомление — best-effort в смысле «не рушит HTTP-ответ», но НЕ
     # best-effort в смысле «неважно, дошло ли»: возвращает `true`/`false`,

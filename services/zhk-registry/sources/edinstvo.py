@@ -49,7 +49,14 @@ log = logging.getLogger(__name__)
 class EdinstvoSource:
     """Реализация протокола `Source`, см. `sources/base.py`."""
 
-    name = "developer_site"
+    # Имя источника — ИДЕНТИЧНОСТЬ, а не роль. Идентичность `ZhkFact`
+    # это `(complex, field, source)`, поэтому второй сайт застройщика
+    # под общим именем «developer_site» перетирал бы факты первого, и
+    # настоящее расхождение стало бы невидимым — ровно то, ради чего
+    # таблица заведена. К этому же имени привязан журнал `ZhkIngestRun`
+    # (детектор молчащего источника), так что переименование позже
+    # стоило бы обнуления его истории.
+    name = "edinstvo"
     weight = 3
 
     def __init__(self, session, contact: str):

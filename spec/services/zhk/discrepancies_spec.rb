@@ -13,14 +13,14 @@ RSpec.describe Zhk::Discrepancies do
   describe '.fields_for' do
     it 'молчит, когда источники согласны' do
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'Единство', 'developer_site')
+      fact('developer', 'Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
 
     it 'называет поле, по которому источники спорят' do
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'Северная компания', 'developer_site')
+      fact('developer', 'Северная компания', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to eq(['developer'])
     end
@@ -36,7 +36,7 @@ RSpec.describe Zhk::Discrepancies do
       # нет мнения. Это НЕ то же самое, что источник явно сообщил пустоту
       # (см. следующий пример) — сравнивать здесь не с чем, мнение одно.
       fact('developer', nil, 'erz')
-      fact('developer', 'Единство', 'developer_site')
+      fact('developer', 'Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
@@ -46,28 +46,28 @@ RSpec.describe Zhk::Discrepancies do
       # «данных нет». Это утверждение, конфликтующее с «Единство» другого
       # источника, — редактору есть что разрешать.
       fact('developer', '', 'erz')
-      fact('developer', 'Единство', 'developer_site')
+      fact('developer', 'Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to eq(['developer'])
     end
 
     it 'не считает расхождением разный регистр одного и того же значения' do
       fact('wall_material', 'монолитно-кирпичный', 'erz')
-      fact('wall_material', 'Монолитно-кирпичный', 'developer_site')
+      fact('wall_material', 'Монолитно-кирпичный', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
 
     it 'не считает расхождением застройщика с/без «ГК» — маркетинговой приставки' do
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'ГК Единство', 'developer_site')
+      fact('developer', 'ГК Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
 
     it 'не считает расхождением застройщика с/без «СЗ» — обязательной по 214-ФЗ приставки' do
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'СЗ Единство', 'developer_site')
+      fact('developer', 'СЗ Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
@@ -78,14 +78,14 @@ RSpec.describe Zhk::Discrepancies do
       # (под очередь/объект в долевом строительстве заводят отдельное
       # ООО), и этот конфликт обязан дойти до редактора, а не схлопнуться.
       fact('developer', 'ООО Единство', 'erz')
-      fact('developer', 'АО Единство', 'developer_site')
+      fact('developer', 'АО Единство', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to eq(['developer'])
     end
 
     it 'не считает расхождением год с/без суффикса «г.»' do
       fact('built_to', '2026', 'erz')
-      fact('built_to', '2026 г.', 'developer_site')
+      fact('built_to', '2026 г.', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
@@ -94,7 +94,7 @@ RSpec.describe Zhk::Discrepancies do
       # Римский квартал цифр не содержит вовсе — единственная 4-значная
       # группа в обеих строках это год, и она совпадает.
       fact('built_to', '4 кв. 2026', 'erz')
-      fact('built_to', 'IV кв. 2026', 'developer_site')
+      fact('built_to', 'IV кв. 2026', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to be_empty
     end
@@ -104,7 +104,7 @@ RSpec.describe Zhk::Discrepancies do
       # «4», а не год — и «4 кв. 2026» против «4 кв. 2027» тонуло в
       # молчании. Год должен браться по 4-значной группе.
       fact('built_to', '4 кв. 2026', 'erz')
-      fact('built_to', '4 кв. 2027', 'developer_site')
+      fact('built_to', '4 кв. 2027', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to eq(['built_to'])
     end
@@ -115,9 +115,9 @@ RSpec.describe Zhk::Discrepancies do
       # совпадать, тест должен ловить отсутствие явной сортировки, а не
       # угадывать её по совпадению с порядком INSERT.
       fact('wall_material', 'монолит', 'erz')
-      fact('wall_material', 'кирпич', 'developer_site')
+      fact('wall_material', 'кирпич', 'edinstvo')
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'Северная компания', 'developer_site')
+      fact('developer', 'Северная компания', 'edinstvo')
 
       expect(described_class.fields_for(complex)).to eq(%w[developer wall_material])
     end
@@ -129,7 +129,7 @@ RSpec.describe Zhk::Discrepancies do
       # порядок должен воспроизводиться от прогона к прогону (`.order(:id)`
       # в реализации), это и проверяем через `eq` с конкретным порядком.
       fact('built_to', '2022', 'erz')
-      fact('built_to', '2023', 'developer_site')
+      fact('built_to', '2023', 'edinstvo')
 
       row = described_class.all.first
       expect(row[:field]).to eq('built_to')
@@ -138,16 +138,16 @@ RSpec.describe Zhk::Discrepancies do
 
     it 'не включает поля без реального расхождения' do
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'Единство', 'developer_site')
+      fact('developer', 'Единство', 'edinstvo')
       fact('built_to', '2022', 'erz')
-      fact('built_to', '2023', 'developer_site')
+      fact('built_to', '2023', 'edinstvo')
 
       expect(described_class.all.map { |row| row[:field] }).to eq(['built_to'])
     end
 
     it 'указывает конкретный ЖК в строке' do
       fact('built_to', '2022', 'erz')
-      fact('built_to', '2023', 'developer_site')
+      fact('built_to', '2023', 'edinstvo')
 
       expect(described_class.all.first[:complex]).to eq(complex)
     end
@@ -167,11 +167,11 @@ RSpec.describe Zhk::Discrepancies do
       ZhkFact.create!(residential_complex: other, field: 'wall_material', value: 'монолит',
                        source: 'erz', observed_at: Time.current)
       ZhkFact.create!(residential_complex: other, field: 'wall_material', value: 'кирпич',
-                       source: 'developer_site', observed_at: Time.current)
+                       source: 'edinstvo', observed_at: Time.current)
       fact('wall_material', 'монолит', 'erz')
-      fact('wall_material', 'кирпич', 'developer_site')
+      fact('wall_material', 'кирпич', 'edinstvo')
       fact('developer', 'Единство', 'erz')
-      fact('developer', 'Северная компания', 'developer_site')
+      fact('developer', 'Северная компания', 'edinstvo')
 
       rows = described_class.all
       expect(rows.map { |r| [r[:complex].id, r[:field]] })

@@ -169,6 +169,24 @@ class TestRunSourceIsolation(unittest.TestCase):
         self.assertEqual(sent, 0)
         client.send.assert_not_called()
 
+    def test_dry_run_logs_name_and_city_not_just_the_id(self):
+        # DRY_RUN — единственный предпусковой инструмент, и единственный
+        # его вопрос: КАКИЕ карточки заведутся. По «edinstvo:83» этого не
+        # видно — ни что за ЖК, ни в том ли он городе.
+        source = FakeSource("edinstvo", refs=[{"external_id": "edinstvo:83", "name": "Пожарский"}])
+        client = MagicMock()
+
+        with self.assertLogs("zhk-registry", level="INFO") as logs:
+            found = run_source(source, client, dry_run=True)
+
+        self.assertEqual(found, 1)
+        client.send.assert_not_called()
+        dry_lines = [line for line in logs.output if "DRY_RUN" in line]
+        self.assertEqual(len(dry_lines), 1)
+        self.assertIn("edinstvo:83", dry_lines[0])
+        self.assertIn("Пожарский", dry_lines[0])
+        self.assertIn("Рязань", dry_lines[0])
+
     def test_invalid_rows_are_not_counted_as_applied(self):
         # Сервер вправе отвергнуть часть (или весь) батч как invalid,
         # оставаясь в HTTP 200 — count обязан отражать РЕАЛЬНО применённые
@@ -211,13 +229,13 @@ class TestRunSourceIsolation(unittest.TestCase):
 class TestCrawlIsolation(unittest.TestCase):
     def test_one_source_failing_entirely_does_not_stop_the_other(self):
         broken = FakeSource("erz", discover_error=RuntimeError("сайт лёг"))
-        healthy = FakeSource("developer_site", refs=[{"external_id": "edinstvo:1"}])
+        healthy = FakeSource("edinstvo", refs=[{"external_id": "edinstvo:1"}])
         client = MagicMock()
         client.send.return_value = [{"status": "created"}]
 
         counts = crawl([broken, healthy], client)
 
-        self.assertEqual(counts, {"erz": 0, "developer_site": 1})
+        self.assertEqual(counts, {"erz": 0, "edinstvo": 1})
         # Второй источник обойдён ровно один раз — не пропущен и не задет
         # падением первого.
         client.send.assert_called_once()
@@ -225,7 +243,7 @@ class TestCrawlIsolation(unittest.TestCase):
     @patch("run.time.sleep")
     def test_source_failing_even_after_retries_is_isolated_too(self, mock_sleep):
         broken = FakeSource("erz", refs=[{"external_id": "erz:1"}])
-        healthy = FakeSource("developer_site", refs=[{"external_id": "edinstvo:1"}])
+        healthy = FakeSource("edinstvo", refs=[{"external_id": "edinstvo:1"}])
         client = MagicMock()
         client.send.side_effect = [_http_error(503)] * (MAX_RETRIES + 1) + [
             [{"status": "created"}]
@@ -233,7 +251,7 @@ class TestCrawlIsolation(unittest.TestCase):
 
         counts = crawl([broken, healthy], client)
 
-        self.assertEqual(counts, {"erz": 0, "developer_site": 1})
+        self.assertEqual(counts, {"erz": 0, "edinstvo": 1})
 
 
 class TestPostSummary(unittest.TestCase):
@@ -308,13 +326,13 @@ class TestMainExitCode(unittest.TestCase):
         # Мутация "сводка не отправляется вовсе" (пропуск вызова
         # post_summary) должна быть поймана — раньше в этом файле не было
         # ни одного теста, который бы это заметил (находка ревью).
-        mock_crawl.return_value = {"erz": 0, "developer_site": 5}
+        mock_crawl.return_value = {"erz": 0, "edinstvo": 5}
         mock_post_summary.return_value = True
 
         main()
 
         mock_post_summary.assert_called_once()
-        self.assertEqual(mock_post_summary.call_args.args[2], {"erz": 0, "developer_site": 5})
+        self.assertEqual(mock_post_summary.call_args.args[2], {"erz": 0, "edinstvo": 5})
 
 
 if __name__ == "__main__":

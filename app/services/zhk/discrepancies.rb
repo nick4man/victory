@@ -67,20 +67,57 @@ module Zhk
     end
 
     # @return [Array<Hash>] для экрана админки, по всем ЖК сразу
+    #
+    # Факты, чей ЖК не резолвится, СНИМАЮТСЯ — и это решение, а не
+    # умолчание. `ZhkFact` живёт независимо от карточки: `default_scope`
+    # `ResidentialComplex` прячет мягко удалённые, поэтому у осиротевших
+    # фактов `residential_complex` отдаёт `nil`, а вьюха зовёт
+    # `row[:complex].display_name` — падала ВСЯ страница, а не одна
+    # строка. Достижимость не теоретическая: мягко удалённый ЖК не
+    # матчится, следующий обход заводит его заново, редактор удаляет
+    # дубль снова — осиротевшие факты копятся штатным циклом чистки.
+    #
+    # Почему снимаем, а не тянем `unscoped`: экран — рабочая очередь по
+    # карточкам, которые в справочнике ЕСТЬ. Вернуть сюда мягко удалённый
+    # ЖК значило бы позвать редактора править то, что он сам осознанно
+    # убрал, и заодно молча предрешить вопрос «матчер видит удалённых или
+    # факты удаляются вместе с карточкой», записанный отдельной задачей до
+    # боевого запуска. Эта правка не решает его, а лишь перестаёт ронять
+    # экран.
+    #
+    # Потеря при этом НЕ молчаливая: снятые строки считаются и уходят в
+    # лог — иначе расхождение исчезало бы с экрана без следа, а это тот
+    # самый дорогой класс (пропавшее расхождение хуже лишнего, см.
+    # докстринг модуля).
     def all
-      facts_by_complex_and_field(ZhkFact.all)
-        .filter_map do |(_complex_id, field), facts|
-          next unless discrepant?(facts)
+      orphaned = 0
 
-          {
-            complex: facts.first.residential_complex,
-            field: field,
-            values: facts.map do |f|
-              { value: f.value, source: f.source, url: f.url, observed_at: f.observed_at }
-            end
-          }
-        end
-        .sort_by { |row| [row[:complex]&.id.to_i, row[:field]] }
+      rows = facts_by_complex_and_field(ZhkFact.all)
+             .filter_map do |(_complex_id, field), facts|
+               next unless discrepant?(facts)
+
+               complex = facts.first.residential_complex
+               if complex.nil?
+                 orphaned += 1
+                 next
+               end
+
+               {
+                 complex: complex,
+                 field: field,
+                 values: facts.map do |f|
+                   { value: f.value, source: f.source, url: f.url, observed_at: f.observed_at }
+                 end
+               }
+             end
+
+      if orphaned.positive?
+        Rails.logger.warn(
+          "[Zhk::Discrepancies] снято #{orphaned} расхождений: карточка ЖК мягко удалена, факты осиротели"
+        )
+      end
+
+      rows.sort_by { |row| [row[:complex].id, row[:field]] }
     end
 
     # @return [Boolean] спорит ли набор фактов одного поля между собой

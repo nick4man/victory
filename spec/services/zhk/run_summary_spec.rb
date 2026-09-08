@@ -44,9 +44,9 @@ RSpec.describe Zhk::RunSummary do
 
     it 'молчащим считается только тот источник, у которого действительно провал, а не сосед' do
       run('erz', 40)
-      run('developer_site', 10)
+      run('edinstvo', 10)
 
-      expect(described_class.silent_sources('erz' => 5, 'developer_site' => 9)).to eq(['erz'])
+      expect(described_class.silent_sources('erz' => 5, 'edinstvo' => 9)).to eq(['erz'])
     end
 
     it 'источник, молчащий третью неделю подряд, продолжает считаться молчащим (уровневое правило, круг правок 2)' do
@@ -84,11 +84,11 @@ RSpec.describe Zhk::RunSummary do
 
   describe '.call' do
     it 'включает счётчики каждого источника и дату в формате dd.MM.yy' do
-      text = described_class.call('erz' => 3, 'developer_site' => 7)
+      text = described_class.call('erz' => 3, 'edinstvo' => 7)
 
       expect(text).to include(Time.zone.today.strftime('%d.%m.%y'))
       expect(text).to include('erz: 3')
-      expect(text).to include('developer_site: 7')
+      expect(text).to include('edinstvo: 7')
     end
 
     it 'экранирует имя источника — сообщение уходит в Telegram с parse_mode HTML' do

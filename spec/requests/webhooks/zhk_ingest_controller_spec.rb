@@ -140,7 +140,7 @@ RSpec.describe 'Webhooks::ZhkIngestController', type: :request do
     it 'отправляет сводку в staff-чат, отвечает 200 и delivered: true' do
       allow(tg_client).to receive(:send_message)
 
-      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3, 'developer_site' => 7 } }.to_json,
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3, 'edinstvo' => 7 } }.to_json,
                                            headers: headers
 
       expect(response).to have_http_status(:ok)
@@ -148,6 +148,45 @@ RSpec.describe 'Webhooks::ZhkIngestController', type: :request do
       expect(tg_client).to have_received(:send_message).with(
         a_string_matching(/erz: 3/), chat_id: '123456'
       )
+    end
+
+    it 'вложенный объект в значении counts — 422, а не 500' do
+      # `Zhk::RunSummary` везде зовёт `count.to_i`, а у хеша `to_i` нет
+      # вовсе — без проверки формы ЗНАЧЕНИЙ это необработанный
+      # NoMethodError, то есть 500 на входе, который контроллер обязан
+      # отвергать сам (проверка формы контейнера закрывала лишь половину).
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => { 'a' => 1 } } }.to_json,
+                                           headers: headers
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.parsed_body['error']).to eq('invalid_payload')
+      expect(response.parsed_body['detail']).to include('erz')
+      expect(tg_client).not_to have_received(:send_message)
+      expect(ZhkIngestRun.count).to eq(0)
+    end
+
+    it 'массив в значении counts — тоже 422' do
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => [1, 2] } }.to_json,
+                                           headers: headers
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(ZhkIngestRun.count).to eq(0)
+    end
+
+    it 'счётчик строкой («7») принимается — сводка дороже строгости' do
+      # Отказ здесь стоит не разобранной сводки, а сводка — единственный
+      # носитель тревоги о молчащем источнике.
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => '7' } }.to_json,
+                                           headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(ZhkIngestRun.find_by(source: 'erz').count).to eq(7)
     end
 
     it 'сбой Telegram::Client::Error не превращает уже обработанный прогон в 500, но delivered: false' do

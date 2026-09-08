@@ -32,7 +32,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Единство',
                        source: 'erz', url: 'https://erz.ru/skobelev', observed_at: Time.zone.local(2026, 9, 1))
       ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Северная компания',
-                       source: 'developer_site', url: 'https://severnaya.ru', observed_at: Time.zone.local(2026, 9, 3))
+                       source: 'edinstvo', url: 'https://severnaya.ru', observed_at: Time.zone.local(2026, 9, 3))
     end
 
     it 'показывает ЖК, поле, оба значения, оба источника и ссылку на карточку' do
@@ -44,7 +44,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       expect(response.body).to include('Единство')
       expect(response.body).to include('Северная компания')
       expect(response.body).to include('erz')
-      expect(response.body).to include('developer_site')
+      expect(response.body).to include('edinstvo')
       expect(response.body).to include(edit_admin_residential_complex_path(complex))
     end
 
@@ -63,7 +63,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       ZhkFact.create!(residential_complex: complex, field: 'developer',
                        value: '<script>alert(1)</script>', source: 'erz', observed_at: Time.current)
       ZhkFact.create!(residential_complex: complex, field: 'developer',
-                       value: 'Единство', source: 'developer_site', observed_at: Time.current)
+                       value: 'Единство', source: 'edinstvo', observed_at: Time.current)
     end
 
     it 'экранирует значение с HTML-разметкой' do
@@ -81,7 +81,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Единство',
                        source: 'erz', url: 'javascript:alert(document.cookie)', observed_at: Time.current)
       ZhkFact.create!(residential_complex: complex, field: 'developer', value: 'Северная компания',
-                       source: 'developer_site', url: 'https://severnaya.ru', observed_at: Time.current)
+                       source: 'edinstvo', url: 'https://severnaya.ru', observed_at: Time.current)
     end
 
     it 'не превращает javascript: в рабочий href, но показывает значение текстом' do
@@ -106,7 +106,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       ZhkFact.create!(residential_complex: complex, field: 'wall_material', value: 'монолит',
                        source: 'erz', observed_at: Time.current)
       ZhkFact.create!(residential_complex: complex, field: 'wall_material', value: 'кирпич',
-                       source: 'developer_site', observed_at: Time.current)
+                       source: 'edinstvo', observed_at: Time.current)
     end
 
     it 'показывает русскую подпись поля, а не служебное имя колонки' do
@@ -130,7 +130,7 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
       ZhkFact.create!(residential_complex: complex, field: 'totally_unknown_field',
                        value: 'А', source: 'erz', observed_at: Time.current)
       ZhkFact.create!(residential_complex: complex, field: 'totally_unknown_field',
-                       value: 'Б', source: 'developer_site', observed_at: Time.current)
+                       value: 'Б', source: 'edinstvo', observed_at: Time.current)
     end
 
     it 'показывает сырое имя поля вместо падения' do
@@ -138,6 +138,42 @@ RSpec.describe 'Admin::ZhkDiscrepancies', type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('totally_unknown_field')
+    end
+  end
+
+  describe 'осиротевшие факты мягко удалённого ЖК' do
+    # `ZhkFact` живёт независимо от карточки: `default_scope`
+    # `ResidentialComplex` прячет мягко удалённые, и `residential_complex`
+    # у таких фактов отдаёт `nil`. Вьюха зовёт `row[:complex].display_name`
+    # — падала ВСЯ страница, а не одна строка. Цикл достижим штатно:
+    # мягко удалённый ЖК не матчится, следующий обход заводит дубль,
+    # редактор удаляет его снова, осиротевшие факты копятся.
+    let!(:live) { create(:residential_complex, name: 'Скобелев') }
+    let!(:removed) { create(:residential_complex, :soft_deleted, name: 'Удалённый') }
+
+    before do
+      ZhkFact.create!(residential_complex: live, field: 'developer', value: 'Единство',
+                       source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: live, field: 'developer', value: 'Северная компания',
+                       source: 'edinstvo', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: removed, field: 'developer', value: 'Атом',
+                       source: 'erz', observed_at: Time.current)
+      ZhkFact.create!(residential_complex: removed, field: 'developer', value: 'Химик',
+                       source: 'edinstvo', observed_at: Time.current)
+    end
+
+    it 'не роняет страницу и показывает расхождение по живому ЖК' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('Скобелев')
+      expect(response.body).to include('Северная компания')
+    end
+
+    it 'не показывает расхождение по удалённой карточке' do
+      admin_get admin_zhk_discrepancies_path
+
+      expect(response.body).not_to include('Химик')
     end
   end
 end

@@ -48,7 +48,7 @@ RSpec.describe Zhk::Ingest do
   it 'поднимает расхождение, когда второй источник спорит с первым' do
     described_class.call(payload)
 
-    other = payload.merge('source' => 'developer_site', 'external_id' => 'edinstvo:83',
+    other = payload.merge('source' => 'edinstvo', 'external_id' => 'edinstvo:83',
                           'fields' => { 'developer' => 'Другой застройщик' })
     result = described_class.call(other)
 

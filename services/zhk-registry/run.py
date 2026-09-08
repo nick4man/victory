@@ -200,7 +200,15 @@ def run_source(source, client: IngestClient, dry_run: bool = False) -> int:
 
     if dry_run:
         for obs in observations:
-            log.info("DRY_RUN %s — %s", obs.external_id, obs.to_payload()["fields"])
+            # Имя и город — не украшение строки: DRY_RUN это
+            # предпусковая проверка селекторов, и единственный её
+            # вопрос — КАКИЕ карточки заведутся. `external_id` и
+            # `fields` на него не отвечают: по «edinstvo:83» не
+            # видно ни что это за ЖК, ни в том ли он городе.
+            log.info(
+                "DRY_RUN %s | %s (%s) — %s",
+                obs.external_id, obs.name, obs.city, obs.to_payload()["fields"],
+            )
         return len(observations)
 
     results = send_with_retry(client, observations, source.name)

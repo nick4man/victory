@@ -132,7 +132,7 @@ class TestEdinstvoCard(unittest.TestCase):
         obs = self.source.parse_card(self.html, url=CARD_URL)
 
         self.assertEqual(obs.fields["developer"], "Единство")
-        self.assertEqual(obs.source, "developer_site")
+        self.assertEqual(obs.source, "edinstvo")
 
     def test_price_absent_not_computed_from_total(self):
         # На карточке есть только итоговая цена «от» за квартиру целиком
