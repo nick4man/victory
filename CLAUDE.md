@@ -111,8 +111,11 @@ ActionCable, и посетитель не увидит ничего, хотя в
 отвечают ошибкой на каждом вызове: `groq/llama-3.3-70b-versatile` даёт HTTP 404
 и стоит **первым** в `LLM_CHAIN_CHAT`, `kr/claude-sonnet-4.5` даёт HTTP 400
 «No credentials for provider: kiro». 08.09.26 цепочка `:analysis` упала
-целиком. Алерта не было и не будет: `Llm::ChatResponder` глотает
-`StandardError` без re-raise, поэтому мимо Sentry, `retry_on` и TG-алертов.
+целиком. Клиент при этом не остаётся один: `Llm::ChatResponder` возвращает
+`escalate: true`, и `LlmReplyJob` зовёт живого агента в TG. А вот инженерного
+сигнала нет — исключение проглочено без re-raise, поэтому мимо Sentry и
+`retry_on`. Сбой цепочки выглядит как обычная эскалация, и найти его можно
+только по логам либо по `metadata->>'model' = 'fallback'`.
 
 ### Известные дефекты (проверены по коду и проду)
 
@@ -135,7 +138,10 @@ ActionCable, и посетитель не увидит ничего, хотя в
 
 ### ENV чат-бота
 
-В `techContext.md` их нет, держи здесь. Значения — в `.env`, не в conversation.
+`OMNIROUTE_*`, `LLM_CHAIN_*`, `GOOGLE_EMBEDDING_API_KEY` и `AUDIT_API_*` в
+`techContext.md` отсутствуют, поэтому держи их здесь. Остальные строки таблицы
+там есть — тут они ради полноты отказов, значения смотри в `techContext.md`.
+Сами значения — в `.env`, в переписку их не тащить.
 
 | Переменная | При пустом значении |
 |---|---|
@@ -144,7 +150,7 @@ ActionCable, и посетитель не увидит ничего, хотя в
 | `GOOGLE_EMBEDDING_API_KEY` | `semantic_search` возвращает `tool_failed`, `EmbedXxxJob` уходят в ретраи |
 | `TELEGRAM_STAFF_CHAT_ID`, `TELEGRAM_BOT_TOKEN` | эскалация теряется молча: `TelegramNotifyJob` глотает ошибку |
 | `AUDIT_API_BASE_URL`, `AUDIT_API_TOKEN` | `run_investment_audit` отдаёт `engine_unavailable` |
-| `REDIS_URL` | rate-limit отключается молча, cost-счётчики не пишутся |
+| `REDIS_URL` | rate-limit отключается молча, cost-счётчики не пишутся. ⚠️ **Пустая строка хуже отсутствия**: `config/cable.yml` берёт её через `ENV.fetch`, дефолт не подставляется, и ложится ActionCable — то есть ровно тот отказ, при котором посетитель не видит ответов |
 
 Мёртвый груз: `LLM_MODEL_PRIMARY` и `LLM_MODEL_FALLBACK` есть в `.env`, кодом не читаются.
 
@@ -189,9 +195,9 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 проверяет только `Rails.env.production?`. Перед прогоном убедись, что
 `DATABASE_URL` не подсунут, либо гоняй `bin/rb --db`.
 
-⚠️ `WebMock` подключён, но следом стоит `allow_net_connect!`, а VCR в проекте
-нет. Спек без явного стаба LLM уйдёт в реальный OmniRoute за реальные деньги.
-Стаб делать через DI, как в `spec/services/llm/intent_classifier_spec.rb`.
+Сеть в спеках закрыта: `spec/rails_helper.rb` держит
+`WebMock.disable_net_connect!(allow_localhost: true)`. VCR в проекте нет, так что
+стаб LLM делай через DI, как в `spec/services/llm/intent_classifier_spec.rb`.
 
 Наблюдение за живым ботом — логов достаточно, админки для диалогов нет:
 
