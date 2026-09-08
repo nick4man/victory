@@ -7,6 +7,11 @@ namespace :zhk do
     load Rails.root.join('db/seeds/residential_complexes.rb')
   end
 
+  desc 'Залить редакционные тексты ЖК в пустые body_blocks (идемпотентно)'
+  task texts: :environment do
+    load Rails.root.join('db/seeds/zhk_texts.rb')
+  end
+
   desc 'Показать покрытие справочника: контент / фото / объекты'
   task coverage: :environment do
     # Критерии — из Zhk::Coverage, общего с админкой: иначе консоль и
