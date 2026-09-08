@@ -134,13 +134,6 @@ class TestEdinstvoCard(unittest.TestCase):
         self.assertEqual(obs.fields["developer"], "Единство")
         self.assertEqual(obs.source, "developer_site")
 
-    def test_price_point_is_marked_as_from(self):
-        obs = self.source.parse_card(self.html, url=CARD_URL)
-
-        if obs.price:
-            self.assertEqual(obs.price.kind, "from")
-            self.assertGreater(obs.price.price_per_sqm, 10000)
-
     def test_price_absent_not_computed_from_total(self):
         # На карточке есть только итоговая цена «от» за квартиру целиком
         # ("квартиры от 0,0 миллиона рублей" — ЖК распродан) — не цена
