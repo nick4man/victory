@@ -311,6 +311,21 @@ RSpec.describe ResidentialComplex do
       expect(described_class.find_by(slug: 'skobelev').housing_class).to be_nil
     end
 
+    # Расхождение по «Приокскому парку» (08.09.26): справочник держал
+    # «строится, ввод 2026», ЦИАН — «сдан, 2016–2017». Разница определяет,
+    # что человек покупает, поэтому спорное обнулено. `buildings_count`
+    # остался: два корпуса подтверждают оба источника.
+    it 'не называет стадию и срок там, где источники разошлись на годы' do
+      run_seed
+
+      complex = described_class.find_by(slug: 'priokskiy-park')
+      expect(complex.build_status).to be_nil
+      expect(complex.built_to).to be_nil
+      expect(complex.floors_min).to be_nil
+      expect(complex.floors_max).to be_nil
+      expect(complex.buildings_count).to eq(2)
+    end
+
     it 'не откатывает правки редактора' do
       run_seed
       described_class.find_by(slug: 'legenda').update!(name: 'Легенда Плюс', developer: 'Другой')
