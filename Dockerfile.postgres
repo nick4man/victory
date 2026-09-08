@@ -1,4 +1,4 @@
-# Postgres 15 + PostGIS 3.5 + pgvector, на Debian bookworm.
+# Postgres 15 + PostGIS 3.6 + pgvector, на Debian bookworm.
 #
 # Почему не postgis/postgis:15-3.5, как было раньше: тот образ собран на
 # bullseye, а у bullseye 07.09.26 протух подписанный Release
@@ -16,9 +16,21 @@
 # потребовала бы dump/restore прода.
 FROM postgres:15-bookworm
 
+# Ветка PostGIS закреплена на 3.6.*. Раньше версию держал тег базового образа;
+# без пина метапакет однажды молча приведёт 3.7 под тем же именем образа, и CI
+# начнёт проверять не то, что стоит в проде. Если pgdg выкатит 3.7 и уберёт
+# 3.6 — сборка упадёт громко, и версию поднимут осознанно, вместе с
+# postgis_extensions_upgrade() на проде.
+#
+# `-scripts` перечислен явно: с --no-install-recommends он иначе не приедет, а
+# без него нет postgis_tiger_geocoder, который требует db/structure.sql.
+#
+# Автосоздания расширений здесь нет (в postgis/postgis его давал initdb-скрипт):
+# в свежей базе стоит один plpgsql. Схему это не задевает — db/structure.sql
+# создаёт все семь расширений сам.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      postgresql-15-postgis-3 \
-      postgresql-15-postgis-3-scripts \
+      'postgresql-15-postgis-3=3.6.*' \
+      'postgresql-15-postgis-3-scripts=3.6.*' \
       postgresql-15-pgvector \
  && rm -rf /var/lib/apt/lists/*

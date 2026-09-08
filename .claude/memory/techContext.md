@@ -113,6 +113,44 @@ bundle exec whenever --clear-crontab
 - 03:00: `UpdatePropertyStatisticsJob`
 - 10:00: `PropertyValuationFollowUpJob`
 
+### Переезд базы на bookworm — что сделать при пересборке прод-образа
+
+С PR #42 `Dockerfile.postgres` строится от `postgres:15-bookworm`, а не от
+`postgis/postgis:15-3.5` (у bullseye 07.09.26 протух `Release` debian-security и
+сборка перестала проходить). Мажор PostgreSQL прежний, каталог данных и volume
+`pgdata` совместимы, но **одной пересборки мало**.
+
+| | Было | Стало |
+|---|---|---|
+| PostgreSQL | 15.13 | 15.19 |
+| PostGIS | 3.5.2 | 3.6.4 |
+| pgvector | 0.8.2 | 0.8.6 |
+| glibc | 2.31 | 2.36 |
+
+Смена glibc меняет порядок сортировки: у `viktory_realty_test` в `datcollversion`
+записано `2.31`, новый образ даёт `2.36`. Индексы по тексту, построенные под
+старой библиотекой, надо перестроить — иначе поиск и уникальные ограничения
+могут повести себя неверно. После `docker compose up -d --build db`:
+
+```sql
+REINDEX DATABASE viktory_realty_development;
+ALTER DATABASE viktory_realty_development REFRESH COLLATION VERSION;
+SELECT postgis_extensions_upgrade();
+ALTER EXTENSION vector UPDATE;
+```
+
+⚠️ `REINDEX DATABASE` держит блокировки — гнать в окно простоя, не на живом
+трафике. Проверить результат: `SELECT postgis_full_version();` не должен просить
+upgrade, а `datcollversion` должен стать `2.36`.
+
+Ещё одно следствие: базовый образ больше не создаёт `postgis` в свежей базе сам
+(в `postgis/postgis` это делал initdb-скрипт, теперь в новой базе только
+`plpgsql`). Схемы это не касается — `db/structure.sql` создаёт все семь
+расширений, — но `bin/backup verify` теперь проверяет `postgis` осмысленно.
+
+Соседние сессии: `pgdata` в стеке `bin/rb` создан старым образом; 15.19 поверх
+каталога 15.13 стартует штатно, при странностях — `bin/rb --nuke`.
+
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
 Прод (`/home/q/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
