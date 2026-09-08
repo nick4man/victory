@@ -72,32 +72,65 @@ module Webhooks
     # источник против своей обычной нормы — контроллер здесь не содержит
     # доменной логики, только приём и доставку в TG, как и `create` не
     # содержит логики применения наблюдения.
+    #
+    # `counts` — не `params.require(:counts).to_unsafe_h` напрямую: у
+    # скалярного `counts` (например `{"counts": 5}`) нет `to_unsafe_h`, и
+    # это был бы необработанный `NoMethodError` → 500 вместо законного
+    # 422 (круг правок 1, симметрично проверке `observations.is_a?(Array)`
+    # в `create` выше).
+    #
+    # `delivered` в ответе — не декоративное поле: `run.py` обязан узнать,
+    # дошла ли сводка ДО сотрудников, а не только принял ли её сервер.
+    # Без этого поля молчаливый отказ Telegram (не настроен
+    # `TELEGRAM_STAFF_CHAT_ID`, TG недоступен) выглядел бы для сборщика
+    # как полный успех — а тревога о молчащем источнике как раз и была бы
+    # тем сообщением, которое не дошло.
     def summary
-      counts = params.require(:counts).to_unsafe_h
+      raw_counts = params[:counts]
+      unless raw_counts.is_a?(ActionController::Parameters)
+        return render json: { error: 'invalid_payload', detail: 'counts must be an object' },
+                      status: :unprocessable_entity
+      end
+
+      counts = raw_counts.to_unsafe_h
       text = Zhk::RunSummary.call(counts)
-      notify_staff(text)
-      render json: { status: 'ok' }
+      delivered = notify_staff(text)
+      render json: { status: 'ok', delivered: delivered }
     end
 
     private
 
-    # Уведомление — best-effort. К моменту вызова `summary` все наблюдения
-    # этого прогона уже применены предыдущими вызовами `create`: сводка
-    # только информирует сотрудников, сама по себе она ничего не пишет в
-    # справочник. Поэтому сбой Telegram (токен/чат не настроены, TG
-    # недоступен) не должен превращать уже успешно обработанный прогон в
-    # 500 для сборщика — тому нечего было бы чинить в ответ на такой сбой,
-    # а важные данные он уже доставил раньше.
+    # Уведомление — best-effort в смысле «не рушит HTTP-ответ», но НЕ
+    # best-effort в смысле «неважно, дошло ли»: возвращает `true`/`false`,
+    # и `summary` обязан прокинуть это наружу (см. комментарий выше про
+    # `delivered`). К моменту вызова `summary` все наблюдения этого
+    # прогона уже применены предыдущими вызовами `create` — сама сводка
+    # ничего не пишет в справочник, поэтому сбой её ДОСТАВКИ не должен
+    # превращать уже успешно обработанный прогон в 500 для сборщика.
+    #
+    # `rescue StandardError`, а не узкий `Telegram::Client::Error`
+    # (круг правок 1): `Telegram::Client#api_call` ходит через
+    # `Net::HTTP.start` напрямую и оборачивает в `Telegram::Client::Error`
+    # только ответ API вида `{"ok": false}` — таймаут (`Net::OpenTimeout`,
+    # `Net::ReadTimeout`), сбой DNS (`SocketError`) или обрыв соединения
+    # долетели бы отсюда НЕ обёрнутыми. Перечислять эти классы поимённо
+    # означало бы гарантированно забыть один (ещё `OpenSSL::SSL::SSLError`,
+    # `Errno::ECONNRESET`, `EOFError`...) — здесь риск пропустить класс
+    # исключения дороже риска поймать что-то лишнее: назначение метода
+    # ровно в том, чтобы сбой ДОСТАВКИ сводки никогда не долетал до
+    # клиента как 500.
     def notify_staff(text)
       chat_id = ENV['TELEGRAM_STAFF_CHAT_ID'].presence
       unless chat_id
         Rails.logger.warn('[ZhkIngest#summary] TELEGRAM_STAFF_CHAT_ID не задан — сводка не отправлена')
-        return
+        return false
       end
 
       Telegram::Client.new.send_message(text, chat_id: chat_id)
-    rescue Telegram::Client::Error => e
-      Rails.logger.warn("[ZhkIngest#summary] не удалось отправить сводку в Telegram: #{e.message}")
+      true
+    rescue StandardError => e
+      Rails.logger.warn("[ZhkIngest#summary] не удалось отправить сводку в Telegram: #{e.class} #{e.message}")
+      false
     end
 
     # Один элемент батча. Форма `raw` заранее не гарантирована — служба

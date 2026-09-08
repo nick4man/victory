@@ -3013,6 +3013,39 @@ ALTER SEQUENCE public.zhk_facts_id_seq OWNED BY public.zhk_facts.id;
 
 
 --
+-- Name: zhk_ingest_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zhk_ingest_runs (
+    id bigint NOT NULL,
+    source character varying NOT NULL,
+    count integer NOT NULL,
+    ran_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: zhk_ingest_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zhk_ingest_runs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zhk_ingest_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zhk_ingest_runs_id_seq OWNED BY public.zhk_ingest_runs.id;
+
+
+--
 -- Name: zhk_observations; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3525,6 +3558,13 @@ ALTER TABLE ONLY public.viewing_schedules ALTER COLUMN id SET DEFAULT nextval('p
 --
 
 ALTER TABLE ONLY public.zhk_facts ALTER COLUMN id SET DEFAULT nextval('public.zhk_facts_id_seq'::regclass);
+
+
+--
+-- Name: zhk_ingest_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_ingest_runs ALTER COLUMN id SET DEFAULT nextval('public.zhk_ingest_runs_id_seq'::regclass);
 
 
 --
@@ -4059,6 +4099,14 @@ ALTER TABLE ONLY public.viewing_schedules
 
 ALTER TABLE ONLY public.zhk_facts
     ADD CONSTRAINT zhk_facts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zhk_ingest_runs zhk_ingest_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_ingest_runs
+    ADD CONSTRAINT zhk_ingest_runs_pkey PRIMARY KEY (id);
 
 
 --
@@ -6843,6 +6891,13 @@ CREATE INDEX index_viewing_schedules_on_viewing_type ON public.viewing_schedules
 
 
 --
+-- Name: index_zhk_ingest_runs_on_source_and_ran_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_zhk_ingest_runs_on_source_and_ran_at ON public.zhk_ingest_runs USING btree (source, ran_at);
+
+
+--
 -- Name: index_zhk_observations_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7447,6 +7502,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260907120300'),
 ('20260907120200'),
 ('20260907120100'),
 ('20260907120000'),

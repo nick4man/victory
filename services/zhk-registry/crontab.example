@@ -19,4 +19,12 @@
 # .env рядом со скриптом — см. .env.example (VICTORY_BASE_URL,
 # ZHK_INGEST_TOKEN, CRAWLER_CONTACT); run.py читает его сам через
 # python-dotenv, в крон-строку секреты прописывать не нужно.
-0 3 * * 2 cd /home/q/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1
+#
+# flock -n — защита от наложения прогонов: обычный обход укладывается в
+# минуты, но при ретраях (5xx/сетевые обрывы, см. run.py) может растянуться
+# на десятки минут, а следующий крон-тик не ждёт предыдущего. Без lock-файла
+# два одновременных run.py удвоили бы нагрузку на источники (нарушив паузу
+# вежливости DELAY_SECONDS между СВОИМИ же запросами) и прислали бы два
+# набора counts за одно окно сравнения — `-n` не ждёт лока, а тихо
+# пропускает тик целиком, если предыдущий прогон ещё не закончился.
+0 3 * * 2 flock -n /tmp/zhk-registry.lock -c 'cd /home/q/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1'

@@ -137,34 +137,64 @@ RSpec.describe 'Webhooks::ZhkIngestController', type: :request do
       expect(Telegram::Client).not_to have_received(:new)
     end
 
-    it 'отправляет сводку в staff-чат и отвечает 200' do
+    it 'отправляет сводку в staff-чат, отвечает 200 и delivered: true' do
       allow(tg_client).to receive(:send_message)
 
       post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3, 'developer_site' => 7 } }.to_json,
                                            headers: headers
 
       expect(response).to have_http_status(:ok)
-      expect(response.parsed_body).to eq('status' => 'ok')
+      expect(response.parsed_body).to eq('status' => 'ok', 'delivered' => true)
       expect(tg_client).to have_received(:send_message).with(
         a_string_matching(/erz: 3/), chat_id: '123456'
       )
     end
 
-    it 'сбой Telegram не превращает уже обработанный прогон в 500' do
+    it 'сбой Telegram::Client::Error не превращает уже обработанный прогон в 500, но delivered: false' do
       allow(tg_client).to receive(:send_message).and_raise(Telegram::Client::Error, 'bad request')
 
       post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3 } }.to_json, headers: headers
 
       expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['delivered']).to be(false)
     end
 
-    it 'без TELEGRAM_STAFF_CHAT_ID сводку не шлёт, но отвечает 200' do
+    it 'таймаут Net::HTTP (не Telegram::Client::Error) тоже не превращает прогон в 500' do
+      # `Telegram::Client#api_call` оборачивает в `Telegram::Client::Error`
+      # только ответ вида {"ok": false} — таймаут/DNS-сбой из `Net::HTTP`
+      # долетают отсюда НЕ обёрнутыми (круг правок 1, находка ревью).
+      allow(tg_client).to receive(:send_message).and_raise(Net::OpenTimeout, 'execution expired')
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3 } }.to_json, headers: headers
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['delivered']).to be(false)
+    end
+
+    it 'без TELEGRAM_STAFF_CHAT_ID сводку не шлёт, отвечает 200 и delivered: false' do
       ENV['TELEGRAM_STAFF_CHAT_ID'] = nil
 
       post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 3 } }.to_json, headers: headers
 
       expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['delivered']).to be(false)
       expect(Telegram::Client).not_to have_received(:new)
+    end
+
+    it '422, а не 500, когда counts не объект' do
+      post '/webhooks/zhk_ingest/summary', params: { counts: 5 }.to_json, headers: headers
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(Telegram::Client).not_to have_received(:new)
+    end
+
+    it 'записывает прогон в ZhkIngestRun — источник для следующего сравнения' do
+      allow(tg_client).to receive(:send_message)
+
+      post '/webhooks/zhk_ingest/summary', params: { counts: { 'erz' => 12 } }.to_json, headers: headers
+
+      run = ZhkIngestRun.for_source('erz').last
+      expect(run.count).to eq(12)
     end
   end
 end
