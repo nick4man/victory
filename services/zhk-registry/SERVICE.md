@@ -1,10 +1,10 @@
 ---
 service: zhk-registry
 owner: victory
-kind: python-client
-entrypoint: client.py
+kind: python-cron
+entrypoint: run.py
 tests: cd services/zhk-registry && python3 -m unittest discover -v
-deploy: —
+deploy: user crontab on prod host, main checkout — see crontab.example
 depends_on: none
 ported_from: —
 port_status: done
@@ -13,16 +13,15 @@ repatriate_by: —
 
 # zhk-registry
 
-Каркас питоновской стороны «Реестра новостроек Рязани»: форма наблюдения
-(`Observation`) и клиент, который шлёт наблюдения на вход Rails-вебхука
-`POST /webhooks/zhk_ingest`. Сама выкачка внешних источников (ЕРЗ, сайты
-застройщиков) — задел следующих задач, этой службой пока не делается.
+Питоновская сторона «Реестра новостроек Рязани»: обходит открытые
+источники (ЕРЗ, сайты застройщиков), отправляет наблюдения на вход
+Rails-вебхука `POST /webhooks/zhk_ingest` и репортует сводку прогона на
+`POST /webhooks/zhk_ingest/summary`.
 
-`deploy: —` и `entrypoint: client.py` — на момент этой задачи у службы нет
-самостоятельного процесса, который запускают по расписанию: `client.py`
-это библиотека для будущего сборщика, а не CLI. Как только появится
-исполняемый вход (крон-скрипт наподобие `urgent_collector.py`),
-`entrypoint` и `deploy` обновляются вместе с ним.
+`run.py` — исполняемый вход, ставится в крон раз в неделю
+(`crontab.example`). `entrypoint: client.py` из более ранней версии этого
+файла устарел: `client.py` остаётся библиотекой (`IngestClient`), но
+процессом, который реально запускают по расписанию, стал `run.py`.
 
 Подробности — `README.md` (что делает, контракт) и `CLAUDE.md` (границы:
 чего нельзя импортировать и трогать).

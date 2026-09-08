@@ -66,7 +66,39 @@ module Webhooks
       render json: { results: observations.map { |raw| apply(raw) } }
     end
 
+    # Сводка одного прогона `run.py` — присылается ПОСЛЕ всех батчей
+    # `create`, когда обход всех источников (успешных и упавших) уже
+    # закончен. `Zhk::RunSummary.call` сам решает, молчал ли какой-то
+    # источник против своей обычной нормы — контроллер здесь не содержит
+    # доменной логики, только приём и доставку в TG, как и `create` не
+    # содержит логики применения наблюдения.
+    def summary
+      counts = params.require(:counts).to_unsafe_h
+      text = Zhk::RunSummary.call(counts)
+      notify_staff(text)
+      render json: { status: 'ok' }
+    end
+
     private
+
+    # Уведомление — best-effort. К моменту вызова `summary` все наблюдения
+    # этого прогона уже применены предыдущими вызовами `create`: сводка
+    # только информирует сотрудников, сама по себе она ничего не пишет в
+    # справочник. Поэтому сбой Telegram (токен/чат не настроены, TG
+    # недоступен) не должен превращать уже успешно обработанный прогон в
+    # 500 для сборщика — тому нечего было бы чинить в ответ на такой сбой,
+    # а важные данные он уже доставил раньше.
+    def notify_staff(text)
+      chat_id = ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+      unless chat_id
+        Rails.logger.warn('[ZhkIngest#summary] TELEGRAM_STAFF_CHAT_ID не задан — сводка не отправлена')
+        return
+      end
+
+      Telegram::Client.new.send_message(text, chat_id: chat_id)
+    rescue Telegram::Client::Error => e
+      Rails.logger.warn("[ZhkIngest#summary] не удалось отправить сводку в Telegram: #{e.message}")
+    end
 
     # Один элемент батча. Форма `raw` заранее не гарантирована — служба
     # сбора могла прислать не-объект внутри массива (`["мусор"]`); в этом

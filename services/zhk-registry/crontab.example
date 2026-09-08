@@ -1,0 +1,22 @@
+# Обход справочника ЖК — раз в неделю, ночью с понедельника на вторник.
+#
+# Раз в неделю, а не чаще: источники — статичные каталоги новостроек
+# (ЕРЗ, сайт застройщика), их состав не меняется день ото дня, а обход
+# уважает чужие сайты паузой между запросами (`sources/base.py`,
+# DELAY_SECONDS). Ночью — минимальная нагрузка на обе стороны, и своя,
+# и чужую.
+#
+# Ставится в крон ПОЛЬЗОВАТЕЛЯ на хосте прода (`crontab -e`, не
+# /etc/crontab — там нужен отдельный столбец пользователя и другой
+# формат). Каталог — main-чекаут (`/home/q/victory`), где живёт прод, а
+# не сессионный worktree разработки: см. `git worktree list` в
+# корневом CLAUDE.md репозитория.
+#
+# .venv — окружение службы, создаётся один раз:
+#   cd /home/q/victory/services/zhk-registry
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+#
+# .env рядом со скриптом — см. .env.example (VICTORY_BASE_URL,
+# ZHK_INGEST_TOKEN, CRAWLER_CONTACT); run.py читает его сам через
+# python-dotenv, в крон-строку секреты прописывать не нужно.
+0 3 * * 2 cd /home/q/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1

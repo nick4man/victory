@@ -806,6 +806,8 @@ Rails.application.routes.draw do
     # Служба сбора данных о ЖК (services/zhk-registry) шлёт сюда батчи
     # наблюдений. Решение, что применить, принимает Rails — см. Zhk::Ingest.
     post 'zhk_ingest', to: 'zhk_ingest#create', as: :zhk_ingest
+    # Сводка одного прогона run.py — после всех батчей create выше.
+    post 'zhk_ingest/summary', to: 'zhk_ingest#summary', as: :zhk_ingest_summary
 
     # Telegram
     post 'telegram', to: 'telegram#create'
