@@ -56,6 +56,8 @@ module Telegram
           # Phase 15 — control panel
           ['/dashboard',    :manager,
            'Полная сводка АН: лиды/задачи/сотрудники/KPI + inline drilldown. Alias <code>/panel</code>'],
+          ['/tutorial',     :staff,
+           'Интерактивное обучение боту: уроки по шагам с кнопками, 5 минут'],
           ['/cheatsheet',   :staff,
            'Все возможности бота для твоей роли. Закрепи (long-press → Pin). Alias <code>/shortcuts</code>'],
 
