@@ -6,31 +6,22 @@
 # См. .claude/plans/seo/a2-zhk-landings.md, секция «Фаза 3».
 #
 # Индексация подчиняется `ResidentialComplex#indexable?` (текст ЛИБО живые
-# объекты) — условие сознательно инкапсулировано в модели, здесь не
-# дублируется (см. комментарий класса модели: расхождение sitemap/robots
-# Яндекс демотирует).
+# объекты) и — для хаба — `ResidentialComplex.hub_indexable?`. Оба условия
+# сознательно инкапсулированы в модели, здесь не дублируются (см.
+# комментарий класса модели: расхождение sitemap/robots Яндекс демотирует).
 class ResidentialComplexesController < ApplicationController
   include RendersNotFound
-
-  # Ниже этого порога `/zhk` остаётся 200, но с noindex,follow — страница
-  # существует и полезна редким прямым заходам, но как отдельная точка
-  # входа в выдачу ещё не готова. Тот же порог — гейт мержа PR (см. план).
-  HUB_MIN_COMPLEXES = 3
-
-  # Хаб пока рязанский: заголовок, description и H1 говорят «Рязани», и
-  # выборка обязана этому соответствовать. Модель валидирует город против
-  # Cities::REGISTRY, то есть московский или питерский ЖК завести можно —
-  # без этого фильтра первый же такой попал бы в список под рязанским H1.
-  # Мультигородский хаб — отдельная работа (свой роут, свой title).
-  HUB_CITY = 'Рязань'
 
   # 48 карточек на страницу — и столько же обещает ItemList в разметке.
   LISTINGS_LIMIT = 48
 
   def index
-    @complexes      = ResidentialComplex.visible.sitemap_ready.in_city(HUB_CITY).order(:name).to_a
+    # Выборка и порог — на модели (`hub_listed` / `hub_indexable?`), потому
+    # что тот же ответ обязан дать sitemap. Пока правило жило здесь, а
+    # sitemap считал по-своему, хаб уходил в sitemap с noindex на борту.
+    @complexes      = ResidentialComplex.hub_listed.to_a
     @listing_counts = on_site_counts_for(@complexes)
-    @hub_ready      = @complexes.size >= HUB_MIN_COMPLEXES
+    @hub_ready      = ResidentialComplex.hub_indexable?(@complexes)
 
     expires_in 15.minutes
 
@@ -98,8 +89,11 @@ class ResidentialComplexesController < ApplicationController
   # используется и агрегатами (ListingStats), и списком карточек. Эталон
   # (`LandingsController#build_scope`) пересобирает scope до 4× за запрос —
   # здесь так делать не нужно, ЖК не фасетируется по intent/type/rooms.
+  # includes(:user) — карточка объекта показывает риэлтора с телефоном
+  # (`_property_card.html.erb`), и без прелоада это до 48 лишних запросов
+  # на страницу. Эталон — PropertiesController#index.
   def listings_scope
-    @listings_scope ||= @complex.on_site_listings.order(created_at: :desc)
+    @listings_scope ||= @complex.on_site_listings.includes(:user).order(created_at: :desc)
   end
 
   # Короткий шаблон намеренно: бренд-название ЖК уже несёт основной вес

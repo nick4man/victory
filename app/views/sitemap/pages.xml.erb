@@ -196,13 +196,17 @@
     <% end %>
   <% end %>
   <%# Жилые комплексы (A2 Фаза 3) — entity-слой под бренд-запросы. Хаб
-      попадает сюда всегда, карточки — только с редакционным текстом. %>
-  <url>
-    <loc><%= zhk_index_url %></loc>
-    <lastmod><%= (@complexes.maximum(:updated_at) || Time.current).to_date.iso8601 %></lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
+      попадает сюда, только когда сам себя пускает в индекс: гейт
+      (`ResidentialComplex.hub_indexable?`) — один и тот же для robots-мета
+      на `/zhk` и для этой записи. Карточки — из той же выборки хаба. %>
+  <% if @hub_indexable %>
+    <url>
+      <loc><%= zhk_index_url %></loc>
+      <lastmod><%= (@complexes.maximum(:updated_at) || Time.current).to_date.iso8601 %></lastmod>
+      <changefreq>weekly</changefreq>
+      <priority>0.6</priority>
+    </url>
+  <% end %>
   <% @complexes.each do |complex| %>
     <url>
       <loc><%= zhk_url(complex) %></loc>

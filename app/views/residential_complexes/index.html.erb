@@ -6,10 +6,13 @@
 <%# description выводит layout из content_for :seo_description — второй
     тег здесь давал бы два <meta name="description"> на страницу. %>
 <% content_for :head do %>
-  <%# Гейт хаба (см. HUB_MIN_COMPLEXES в контроллере) — страница существует
-      и полезна прямым заходам даже с 1-2 готовыми ЖК, но отдельной точкой
-      входа в выдачу становится только начиная с трёх. То же правило,
-      что soft-404 guard district-лендингов (noindex,follow, не 404). %>
+  <%# Гейт хаба (`ResidentialComplex.hub_indexable?`, порог
+      HUB_MIN_COMPLEXES) — страница существует и полезна прямым заходам
+      даже с 1-2 готовыми ЖК, но отдельной точкой входа в выдачу
+      становится только начиная с трёх. То же правило, что soft-404 guard
+      district-лендингов (noindex,follow, не 404). Тот же предикат решает,
+      попадёт ли хаб в sitemap — иначе мы предлагаем краулеру страницу,
+      которая тут же говорит ему noindex. %>
   <% unless @hub_ready %>
     <meta name="robots" content="noindex,follow">
   <% end %>
