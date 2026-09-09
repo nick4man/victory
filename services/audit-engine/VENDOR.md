@@ -1,5 +1,12 @@
 # Vendored: СОДИКС Audit Engine v2.0
 
+> ⚠️ **Права на код — наши (решение 07.09.26).** Ниже описано фактическое
+> положение дел: здесь лежит копия, снятая с хоста `chat` 11.05.26, и
+> репатриация ещё не начата. Срок и план переноса — в `SERVICE.md` рядом;
+> после `31.03.27` проверка `bin/services-check` начнёт напоминать.
+> Формулировки «не разрабатывается в этом репозитории» и «canonical source
+> lives elsewhere» описывают историю, а не владение.
+
 This is a **vendored copy** of `audit-engine-v2` — a FastAPI-based property
 investment audit engine (Efficiency Index, Monte Carlo, hedonic regression,
 PDF reports). It is **not** developed in this repository; the canonical source

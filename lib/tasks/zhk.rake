@@ -7,6 +7,11 @@ namespace :zhk do
     load Rails.root.join('db/seeds/residential_complexes.rb')
   end
 
+  desc 'Залить редакционные тексты ЖК в пустые body_blocks (идемпотентно)'
+  task texts: :environment do
+    load Rails.root.join('db/seeds/zhk_texts.rb')
+  end
+
   desc 'Показать покрытие справочника: контент / фото / объекты'
   task coverage: :environment do
     # Критерии — из Zhk::Coverage, общего с админкой: иначе консоль и
@@ -46,5 +51,18 @@ namespace :zhk do
       puts format('  #%-6d %-58s %s', p.id, p.address.to_s.truncate(56), p.district.presence || '—')
     end
     puts '  (кандидатов нет)' if result.candidates.empty?
+  end
+
+  desc 'ЖК, названные в карточках каталога, но отсутствующие в справочнике'
+  task hints: :environment do
+    rows = Zhk::CatalogHints.call
+    if rows.empty?
+      puts '[zhk:hints] подсказок нет — каталог не называет ЖК, которых мы не знаем'
+    else
+      rows.each do |row|
+        puts format('%-30s объектов: %-3d пример: %s',
+                    row[:name], row[:property_ids].size, row[:sample_address])
+      end
+    end
   end
 end

@@ -1,0 +1,73 @@
+<% content_for :title, 'Админка · Расхождения источников — АН Виктори' %>
+
+<section class="px-6 lg:px-12 pt-28 pb-20 bg-background min-h-screen">
+  <div class="max-w-7xl mx-auto">
+    <nav class="text-xs tracking-[0.2em] uppercase text-muted-foreground mb-6">
+      <%= link_to '← К дашборду', admin_root_path, class: 'hover:text-foreground' %>
+    </nav>
+
+    <div class="mb-8">
+      <p class="text-[11px] tracking-[0.4em] text-muted-foreground mb-2">АДМИНКА</p>
+      <h1 class="text-3xl lg:text-4xl font-light tracking-tight text-foreground mb-3">Расхождения источников</h1>
+      <p class="text-sm text-muted-foreground max-w-2xl">
+        Поля, по которым источники службы сбора не согласны между собой. Пока
+        расхождение не разрешено вручную, поле в карточке ЖК остаётся
+        пустым — неверная фактура на публичной странице хуже отсутствующей.
+      </p>
+    </div>
+
+    <% if @rows.empty? %>
+      <p class="text-sm text-muted-foreground">Расхождений нет — все источники согласны друг с другом.</p>
+    <% else %>
+      <div class="space-y-6">
+        <% @rows.each do |row| %>
+          <div class="border border-border">
+            <div class="flex items-baseline justify-between gap-3 flex-wrap p-4 border-b border-border bg-card/40">
+              <h2 class="text-sm text-foreground">
+                <%= link_to row[:complex].display_name,
+                      edit_admin_residential_complex_path(row[:complex]),
+                      class: 'text-foreground underline hover:no-underline' %>
+                <span class="text-muted-foreground">· поле «<%= field_label(row[:field]) %>»</span>
+              </h2>
+            </div>
+
+            <table class="w-full text-sm">
+              <thead class="text-[10px] tracking-[0.25em] text-muted-foreground uppercase">
+                <tr>
+                  <th class="text-left p-3">Значение</th>
+                  <th class="text-left p-3">Источник</th>
+                  <th class="text-left p-3">Ссылка</th>
+                  <th class="text-left p-3">Когда</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% row[:values].each do |value| %>
+                  <tr class="border-t border-border">
+                    <td class="p-3 text-foreground"><%= value[:value] %></td>
+                    <td class="p-3 text-muted-foreground"><%= value[:source] %></td>
+                    <td class="p-3">
+                      <% if (safe_url = safe_source_url(value[:url])) %>
+                        <%= link_to 'источник', safe_url, target: '_blank', rel: 'noopener',
+                              class: 'text-muted-foreground underline hover:text-foreground' %>
+                      <% elsif value[:url].present? %>
+                        <%# Схема не в белом списке (напр. javascript:) — источник прислал
+                            мусор. Показываем текстом: редактору полезно это видеть, а не
+                            гадать, почему ссылка молча пропала. Ни в коем случае не href. %>
+                        <span class="text-muted-foreground" title="Ссылка отклонена: недопустимая схема">
+                          <%= value[:url] %>
+                        </span>
+                      <% else %>
+                        <span class="text-muted-foreground">—</span>
+                      <% end %>
+                    </td>
+                    <td class="p-3 text-muted-foreground"><%= value[:observed_at]&.strftime('%d.%m.%y') %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+</section>

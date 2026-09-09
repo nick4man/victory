@@ -1,12 +1,16 @@
 services:
   db:
-    # Custom: postgis/postgis:15-3.5 + apt postgresql-15-pgvector.
-    # Drop-in replacement for postgres:15 — same major version + same data layout,
-    # same VOLUME mount. pgdata named volume preserved across image swap.
+    # Custom: postgres:15-bookworm + apt postgis-3 и pgvector из pgdg.
+    # Мажор PostgreSQL тот же (15), раскладка данных и volume pgdata те же.
+    # 🚨 Но это больше НЕ бесшовная замена: база переехала с bullseye на
+    # bookworm, glibc 2.31 → 2.36, PostGIS 3.5 → 3.6, pgvector 0.8.2 → 0.8.6.
+    # После пересборки прод-образа нужны REINDEX + REFRESH COLLATION VERSION и
+    # обновление расширений — процедура в techContext.md, секция «Переезд базы
+    # на bookworm».
     build:
       context: .
       dockerfile: Dockerfile.postgres
-    image: viktory-postgres-pgvector:pg15-postgis35
+    image: viktory-postgres-pgvector:pg15-postgis36
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}

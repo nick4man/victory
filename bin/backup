@@ -246,7 +246,7 @@ cmd_verify() {
   # Тот же образ, что и в проде — иначе не проверить расширения.
   docker run -d --rm --name "$cname" \
     -e POSTGRES_PASSWORD=verify -e POSTGRES_DB=verify \
-    viktory-postgres-pgvector:pg15-postgis35 >/dev/null
+    viktory-postgres-pgvector:pg15-postgis36 >/dev/null
   # shellcheck disable=SC2064
   trap "docker rm -f '$cname' >/dev/null 2>&1 || true" EXIT
 
@@ -275,10 +275,11 @@ cmd_verify() {
     | docker exec -i "$cname" pg_restore -U postgres -d verify --no-owner --no-acl \
     >"$BACKUP_ROOT/tmp/verify-restore.log" 2>&1 || true
 
-  # postgis в этом образе присутствует в свежесозданной базе и без дампа, поэтому
-  # сам по себе он ничего не доказывает — реальную нагрузку несут vector, pg_trgm
-  # и unaccent, которые появляются только из восстановленных данных. Проверено на
-  # намеренно битом дампе: postgis нашёлся, остальные три — нет.
+  # Раньше базой был postgis/postgis, который создавал postgis в свежей базе сам,
+  # и проверка на него ничего не доказывала — нагрузку несли vector, pg_trgm и
+  # unaccent, появляющиеся только из восстановленных данных. С переездом на
+  # postgres:15-bookworm этого initdb-скрипта нет: проверено, в свежей базе стоит
+  # один plpgsql. Теперь все четыре расширения приезжают из дампа и значимы.
   log '  проверяю расширения'
   local ext missing=''
   for ext in postgis vector pg_trgm unaccent; do

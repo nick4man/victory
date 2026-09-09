@@ -210,14 +210,25 @@ grep '^LLM_CHAIN' .env                                                    # ре
 
 ## `services/` — подсистемы вне Rails
 
-Не путать с `app/services/` (Ruby service objects, ~260 файлов). Верхний уровень:
+Не путать с `app/services/` (Ruby service objects, ~260 файлов). Архитектура —
+**один репозиторий, много маленьких служб**. Полные правила и индекс:
+`services/README.md`; обязательства конкретной службы — в её `SERVICE.md`.
 
-| Каталог | Язык |
-|---|---|
-| `audit-engine/` | Python (FastAPI), вендорится извне — см. `VENDOR.md` |
-| `chat-host-cron/` | bash |
-| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md`. Владелец кода — victory, но `pipeline_utils.py` + `content_db_utils.py` вендорятся из openclaw: `VENDOR.md` + `sync-check.sh` |
-| `web-comparables/` | не код, один `SKILL.md` |
+| Каталог | Язык | Перенос |
+|---|---|---|
+| `audit-engine/` | Python (FastAPI) | не начат, срок 31.03.27 |
+| `chat-host-cron/` | bash | завершён |
+| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md` | завершён |
+| `web-comparables/` | не код, один `SKILL.md` | завершён |
+
+Четыре правила, проверяются `bin/services-check` (нужен только python3) на каждый PR:
+
+1. у каждого каталога под `services/` есть `SERVICE.md` — манифест лежит внутри службы, потому что в worktree со sparse-checkout общий индекс не выкачивается, а служба выкачивается;
+2. **владелец всегда victory**; внешний источник — в поле `ported_from`, никогда в `owner`;
+3. службы не знают друг о друге (`depends_on: none`) — связь только через контракт: вебхук, HTTP, формат файла. Импорт соседней службы или Rails-кода роняет проверку;
+4. незавершённый перенос обязан иметь дату `repatriate_by`; после неё проверка ругается, и продление становится осознанным решением в диффе.
+
+🚨 **openclaw — архив, а не апстрим.** Репозиторий `nick4man/openclaw` напрямую больше не правится, права на весь код агентства здесь; тот репозиторий постепенно разбираем. Но **репозиторий openclaw и каталог openclaw на диске — разные вещи**: `/opt/.openclaw/…/workspace-conveyor/IT/scripts` остаётся боевым, оттуда крон гоняет конвейер. Это цель деплоя, а не источник правды.
 
 🚨 Rails-конвенции сюда НЕ переносятся: skill `victory-rails-conventions` и правила 1–2 выше — только для Ruby. Из трёх жёстких правил в Python-сервисы едет одно: даты `dd.MM.yy`.
 
