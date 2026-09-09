@@ -52,4 +52,17 @@ namespace :zhk do
     end
     puts '  (кандидатов нет)' if result.candidates.empty?
   end
+
+  desc 'ЖК, названные в карточках каталога, но отсутствующие в справочнике'
+  task hints: :environment do
+    rows = Zhk::CatalogHints.call
+    if rows.empty?
+      puts '[zhk:hints] подсказок нет — каталог не называет ЖК, которых мы не знаем'
+    else
+      rows.each do |row|
+        puts format('%-30s объектов: %-3d пример: %s',
+                    row[:name], row[:property_ids].size, row[:sample_address])
+      end
+    end
+  end
 end

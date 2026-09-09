@@ -1,0 +1,15 @@
+{
+  "source": "erz",
+  "url": "https://erzrf.ru/novostroyki/zhk-skobelev-564336001",
+  "external_id": "erz:564336001",
+  "fetched_at": "2026-09-07T05:00:00Z",
+  "name": "Скобелев",
+  "city": "Рязань",
+  "fields": {
+    "developer": "Единство",
+    "built_to": 2022,
+    "buildings_count": 4,
+    "address": "Рязань, ул. Шереметьевская"
+  },
+  "price": { "kind": "from", "price_per_sqm": 65000, "rooms": null }
+}

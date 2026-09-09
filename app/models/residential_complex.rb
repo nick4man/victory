@@ -43,6 +43,13 @@ class ResidentialComplex < ApplicationRecord
   # `property.residential_complex` отдаёт nil.
   has_many :properties
 
+  # Журналы службы сбора. `dependent:` не ставим по той же причине, что и у
+  # properties: мягкое удаление идёт через update!, а dependent висит на
+  # destroy — он был бы мёртвым кодом.
+  has_many :zhk_facts
+  has_many :zhk_price_points
+  has_many :zhk_observations
+
   # _prefix per CLAUDE.md convention → complex.housing_class_comfort?
   enum :housing_class, { econom: 0, comfort: 1, business: 2, elite: 3 },
        prefix: true                                    # эконом / комфорт / бизнес / элит
@@ -63,6 +70,16 @@ class ResidentialComplex < ApplicationRecord
   validates :built_from, :built_to,
             numericality: { only_integer: true, greater_than: 1900, less_than_or_equal_to: 2100 },
             allow_nil: true
+  # Раньше только `built_from`/`built_to` были прикрыты `numericality` —
+  # `buildings_count`/`floors_min`/`floors_max` молча принимали что угодно,
+  # и неявный `to_i` при типизации превращал мусор («две», «-5») в
+  # правдоподобное число (0, -5), которое FactApplier применял как
+  # настоящее значение. Дырка того же класса, что была у `rooms` в
+  # `Zhk::Ingest` до отдельного фикса — там для мусора можно было
+  # написать свою санитайзацию перед записью, здесь источник правды один
+  # (`ActiveRecord::Base#save!`), значит правило — здесь.
+  validates :buildings_count, :floors_min, :floors_max,
+            numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
   validate :district_slug_known
   validate :built_range_ordered
 
