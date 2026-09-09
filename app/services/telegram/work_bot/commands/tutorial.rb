@@ -36,13 +36,22 @@ module Telegram
         end
 
         def deliver_via_dm(result)
-          send_card(result, chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+          return reply(dm_unavailable_hint) unless card_delivered?(result)
+
           reply('📚 Обучение отправил тебе в личку.')
+        end
+
+        # Отдельный метод, чтобы rescue накрывал ровно отправку в личку: если бы
+        # он захватывал и ответ в группу, упавший ответ выдавался бы за
+        # недоступную личку — с советом открыть диалог, который уже открыт.
+        def card_delivered?(result)
+          send_card(result, chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+          true
         rescue Telegram::Client::Error => e
           # В отличие от /help, откатиться на вывод в группу нельзя: у карточки
           # кнопки, и в общем чате их нажмёт не тот, кому урок адресован.
           Rails.logger.warn("[Commands::Tutorial] DM failed: #{e.message}")
-          reply(dm_unavailable_hint)
+          false
         end
 
         def dm_unavailable_hint

@@ -27,7 +27,16 @@ module Telegram
           @renderer ||= Telegram::WorkBot::TutorialRenderer.new(tg_user: tg_user)
         end
 
+        # ack держим ВНЕ обработки ошибок редактирования: answerCallbackQuery
+        # умеет падать сам по себе («query is too old»), и если бы его сбой
+        # попадал в тот же rescue, успешно перерисованный урок дублировался бы
+        # новой карточкой.
         def render(result, ack_text: nil)
+          ack(deliver(result) == :resent ? 'Открыл свежую карточку' : ack_text)
+        end
+
+        # @return [Symbol] :edited | :unchanged | :resent
+        def deliver(result)
           client.edit_message_text(
             result.markdown,
             chat_id: chat_id,
@@ -35,12 +44,12 @@ module Telegram
             parse_mode: 'HTML',
             reply_markup: result.keyboard
           )
-          ack(ack_text)
+          :edited
         rescue Telegram::Client::Error => e
           # Повторное нажатие того же шага — Telegram отвечает «message is not
           # modified». Слать на это новую карточку значило бы засорять личку
           # на каждый дабл-тап.
-          return ack(ack_text) if e.message.match?(/not modified/i)
+          return :unchanged if e.message.match?(/not modified/i)
 
           # Карточку нажали спустя дни: editMessageText уже недоступен. Оставлять
           # человека с мёртвой кнопкой не годится — открываем свежую карточку.
@@ -51,7 +60,7 @@ module Telegram
             parse_mode: 'HTML',
             reply_markup: result.keyboard
           )
-          ack('Открыл свежую карточку')
+          :resent
         end
 
         def private_chat?

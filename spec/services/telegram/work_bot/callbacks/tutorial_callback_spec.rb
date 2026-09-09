@@ -88,6 +88,16 @@ RSpec.describe Telegram::WorkBot::Callbacks::TutorialCallback do
       expect(tg_client).to have_received(:answer_callback_query)
     end
 
+    it 'сбой ответа на кнопку не дублирует уже перерисованный урок' do
+      allow(tg_client).to receive(:answer_callback_query)
+        .and_raise(Telegram::Client::Error, 'Bad Request: query is too old')
+
+      expect { run('tutorial:go:1') }.to raise_error(Telegram::Client::Error)
+
+      expect(tg_client).to have_received(:edit_message_text).once
+      expect(tg_client).not_to have_received(:send_message)
+    end
+
     it 'на устаревшем сообщении открывает свежую карточку' do
       allow(tg_client).to receive(:edit_message_text)
         .and_raise(Telegram::Client::Error, 'Bad Request: message to edit not found')

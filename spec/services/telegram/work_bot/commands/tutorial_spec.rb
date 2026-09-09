@@ -58,6 +58,14 @@ RSpec.describe Telegram::WorkBot::Commands::Tutorial do
       )
     end
 
+    it 'при успешной доставке не советует открыть личку' do
+      run(group_message)
+
+      expect(tg_client).not_to have_received(:send_message).with(
+        a_string_including('Напиши мне в личные сообщения'), anything
+      )
+    end
+
     it 'если личка недоступна — подсказывает открыть её, но карточку в группу не выкладывает' do
       allow(tg_client).to receive(:send_message) do |text, **|
         raise Telegram::Client::Error, 'Forbidden: bot was blocked by the user' if text.include?('Урок 1 из')
