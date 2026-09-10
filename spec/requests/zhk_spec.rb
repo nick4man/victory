@@ -170,4 +170,63 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
       expect(response.headers['Cache-Control']).not_to include('max-age=900')
     end
   end
+
+  # Размеры og:image — не косметика: VK/Telegram резервируют кроп по
+  # объявленным числам ДО загрузки файла. Ветки precedence объявляют РАЗНЫЕ
+  # размеры (брендовый og.jpg — 1200×630, hero-вариант листинга — 1920×1440),
+  # и до этих спеков ветка листинга молча донашивала дефолт layout.
+  describe 'GET /zhk/:slug — OG-разметка' do
+    let!(:complex) { create(:residential_complex, :with_body, name: 'Легенда') }
+
+    def og(doc, prop)
+      doc.at_css(%(meta[property="og:image:#{prop}"]))&.[]('content')
+    end
+
+    context 'без брендового og.jpg, но с объектами (сегодня основной путь)' do
+      before { create(:property, :on_site, residential_complex: complex) }
+
+      it 'берёт картинку первого листинга и объявляет размеры hero-варианта' do
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(doc.at_css('meta[property="og:image"]')['content'])
+          .to include('/rails/active_storage/')
+        expect(og(doc, 'width')).to eq('1920')
+        expect(og(doc, 'height')).to eq('1440')
+      end
+    end
+
+    context 'с брендовым og.jpg' do
+      let(:photo_dir) { Rails.public_path.join("images/zhk/#{complex.slug}") }
+
+      before do
+        photo_dir.mkpath
+        photo_dir.join('og.jpg').binwrite("\xFF\xD8\xFF\xD9".b)
+      end
+
+      after { FileUtils.rm_rf(photo_dir) }
+
+      it 'объявляет 1200×630 — размеры самого баннера, не hero-варианта' do
+        create(:property, :on_site, residential_complex: complex)
+
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(doc.at_css('meta[property="og:image"]')['content'])
+          .to end_with("/images/zhk/#{complex.slug}/og.jpg")
+        expect(og(doc, 'width')).to eq('1200')
+        expect(og(doc, 'height')).to eq('630')
+      end
+    end
+
+    context 'без фото и без объектов' do
+      it 'оставляет дефолт layout — 1920 не протекает на общую заглушку' do
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(og(doc, 'width')).to eq('1200')
+        expect(og(doc, 'height')).to eq('630')
+      end
+    end
+  end
 end

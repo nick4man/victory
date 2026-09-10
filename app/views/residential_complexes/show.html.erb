@@ -28,6 +28,13 @@
   <% content_for :og_image_height, 630 %>
 <% elsif (og_lead = @listings.first) && og_lead.images.attached? %>
   <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+  <%# Размеры обязаны ехать вместе с картинкой. Дефолт layout — 1200×630, он
+      описывает брендовый og.jpg ветки выше, а :hero это resize_to_limit
+      [1920, 1440] (property.rb:153). VK/Telegram резервируют кроп по
+      объявленным числам ДО загрузки файла, поэтому чужие размеры дают
+      срезанный превью, а не просто неточность. Эталон — properties/show.html.erb:41-46. %>
+  <% content_for :og_image_width, 1920 %>
+  <% content_for :og_image_height, 1440 %>
 <% end %>
 
 <% faq_pairs = @complex.body_html.present? ? faq_pairs_from_html(@complex.body_html) : [] %>
