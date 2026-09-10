@@ -31,6 +31,14 @@
       "file": "app/controllers/application_controller.rb",
       "line": 269,
       "note": "store_location лишь пишет session[:return_to] = request.fullpath при request.get?. Для HEAD условие false -> return_to просто не сохранится (benign no-op). Нет auth-обхода, нет state-mutation. Weak confidence."
+    },
+    {
+      "code": "ResidentialComplex.visible.friendly.find(params[:id]).body_html",
+      "fingerprint": "948a5450f74bc3968f3a50ee3dcf955df7bc289585ecce6a9da706e35005ccf9",
+      "check_name": "CrossSiteScripting",
+      "file": "app/views/residential_complexes/show.html.erb",
+      "line": 207,
+      "note": "body_html не редакторский ввод, а машинная сборка: RendersLandingBlocks пре-рендерит его из body_blocks через LandingBlocksHelper#render_landing_blocks, где каждый узел строится content_tag/safe_join и текст экранируется на генерации. Единственное место, где экранирование отменялось — cite в блоке цитаты (интерполяция + .html_safe на всю строку), — закрыто 07.09.26 тем же PR. Ослаблять до sanitize нельзя: аллой-лист пришлось бы вести вручную, и новый вид блока молча терял бы разметку (details/summary в FAQ). Пересмотреть при добавлении блока, который эмитит HTML не через content_tag."
     }
   ],
   "brakeman_version": "6.2.2"

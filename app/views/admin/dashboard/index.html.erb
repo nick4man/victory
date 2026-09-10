@@ -149,8 +149,11 @@
             <dd class="text-foreground"><%= @zhk_counts[:published] %></dd>
           </div>
           <div>
-            <dt class="text-muted-foreground text-xs">Готовы к sitemap</dt>
-            <dd class="text-foreground"><%= @zhk_counts[:ready] %></dd>
+            <%# Считается по hub_listed: не «с текстом вообще», а «с текстом и в Рязани» — %>
+            <%# то же правило, по которому хаб решает про noindex. Порог рядом, чтобы %>
+            <%# «3» не читалось как «гейт открыт», когда он ещё нет. %>
+            <dt class="text-muted-foreground text-xs">Готовы к хабу /zhk</dt>
+            <dd class="text-foreground"><%= @zhk_counts[:ready] %> / <%= @zhk_counts[:hub_min] %></dd>
           </div>
           <div>
             <dt class="text-muted-foreground text-xs">Объектов привязано</dt>
