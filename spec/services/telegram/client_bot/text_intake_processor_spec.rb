@@ -14,6 +14,11 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
     }
   end
 
+  def intake_result(metadata: {}, success: true, lead_event: :default, error: nil)
+    event = lead_event == :default ? instance_double('LeadEvent', metadata: metadata) : lead_event
+    ::Lead::Intake::Result.new(success: success, lead_event: event, error: error)
+  end
+
   describe '.applies?' do
     it 'true для private DM от не-staff с text' do
       expect(described_class.applies?(base_msg)).to be(true)
@@ -109,7 +114,7 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
       before do
         stub_intent(intent: 'inquiry', confidence: 0.9)
         allow(::Lead::Intake).to receive(:call).and_return(
-          { lead_event: instance_double('LeadEvent', metadata: { 'returning_client' => false }) }
+          intake_result(metadata: { 'returning_client' => false })
         )
       end
 
@@ -134,18 +139,14 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
     context 'actionable appointment vs question — разные reply texts' do
       it 'appointment → «Принято! Передал агенту»' do
         stub_intent(intent: 'appointment', confidence: 0.9)
-        allow(::Lead::Intake).to receive(:call).and_return(
-          { lead_event: instance_double('LeadEvent', metadata: {}) }
-        )
+        allow(::Lead::Intake).to receive(:call).and_return(intake_result)
         described_class.new(base_msg, client: tg_client).call
         expect(tg_client).to have_received(:send_message).with(a_string_matching(/Принято!.*согласовать время/), anything)
       end
 
       it 'question → «Спасибо за вопрос»' do
         stub_intent(intent: 'question', confidence: 0.9)
-        allow(::Lead::Intake).to receive(:call).and_return(
-          { lead_event: instance_double('LeadEvent', metadata: {}) }
-        )
+        allow(::Lead::Intake).to receive(:call).and_return(intake_result)
         described_class.new(base_msg, client: tg_client).call
         expect(tg_client).to have_received(:send_message).with(a_string_matching(/Спасибо за вопрос/), anything)
       end
@@ -155,7 +156,7 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
       before do
         stub_intent(intent: 'inquiry', confidence: 0.9)
         allow(::Lead::Intake).to receive(:call).and_return(
-          { lead_event: instance_double('LeadEvent', metadata: { 'returning_client' => true }) }
+          intake_result(metadata: { 'returning_client' => true })
         )
       end
 
@@ -176,6 +177,34 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
       it 'возвращает :intake_failed без crash' do
         result = described_class.new(base_msg, client: tg_client).call
         expect(result).to eq(:intake_failed)
+      end
+    end
+
+    context 'Lead::Intake вернул Result(success: false)' do
+      before do
+        stub_intent(intent: 'inquiry', confidence: 0.9)
+        allow(::Lead::Intake).to receive(:call).and_return(
+          intake_result(success: false, lead_event: nil, error: 'ActiveRecord::RecordInvalid: phone')
+        )
+      end
+
+      it ':intake_failed и клиенту ничего не отвечаем' do
+        result = described_class.new(base_msg, client: tg_client).call
+        expect(result).to eq(:intake_failed)
+        expect(tg_client).not_to have_received(:send_message)
+      end
+    end
+
+    context 'Lead::Intake вернул success без LeadEvent (A7 gate — адаптер пропустил лид)' do
+      before do
+        stub_intent(intent: 'inquiry', confidence: 0.9)
+        allow(::Lead::Intake).to receive(:call).and_return(intake_result(lead_event: nil))
+      end
+
+      it ':skipped без reply клиенту' do
+        result = described_class.new(base_msg, client: tg_client).call
+        expect(result).to eq(:skipped)
+        expect(tg_client).not_to have_received(:send_message)
       end
     end
 
