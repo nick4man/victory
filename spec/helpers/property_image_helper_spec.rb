@@ -40,9 +40,17 @@ RSpec.describe PropertyImageHelper, type: :helper do
       expect(dims).to eq([800, 600])
     end
 
-    # AnalyzeJob асинхронный: сразу после загрузки метаданных ещё нет.
-    it 'nil, пока блоб не проанализирован' do
+    it 'nil, когда метаданных нет вовсе' do
       expect(helper.property_og_image_dimensions(image_with({}))).to be_nil
+    end
+
+    # Форма, которая в проде и лежит на 21809 блобах из 21873: анализ
+    # прошёл, размеров не записал. Повторно он не запустится, поэтому
+    # трактовать её как переходную нельзя.
+    it 'nil у проанализированного блоба без размеров — это норма, а не переход' do
+      metadata = { 'identified' => true, 'analyzed' => true }
+
+      expect(helper.property_og_image_dimensions(image_with(metadata))).to be_nil
     end
 
     it 'nil на объекте без блоба, а не исключение' do
