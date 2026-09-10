@@ -79,6 +79,33 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
 
       expect(response.body.scan('fetchpriority="high"').size).to eq(1)
     end
+
+    # `_property_card` показывает риэлтора с телефоном, то есть дёргает
+    # `property.user` на каждой карточке. Без `includes(:user)` в
+    # `listings_scope` это до 48 запросов к users на страницу. Считаем
+    # именно обращения к users, а не общий порог: порог переживает
+    # снятие прелоада на малой выборке, а этот счётчик — нет.
+    it 'не ходит в users на каждую карточку (прелоад риэлтора)' do
+      # У каждого объекта свой агент (фабрика создаёт user на объект),
+      # иначе прелоад и его отсутствие дали бы одинаковую цифру.
+      create_list(:property, 3, :on_site, residential_complex: complex)
+
+      agents_hit = 0
+      counter = lambda do |_n, _s, _f, _i, payload|
+        next if payload[:name] == 'SCHEMA'
+
+        agents_hit += 1 if payload[:sql]&.match?(/FROM\s+"users"/)
+      end
+
+      ActiveSupport::Notifications.subscribed(counter, 'sql.active_record') do
+        get "/zhk/#{complex.slug}"
+      end
+
+      expect(response).to have_http_status(:ok)
+      # 5 карточек, у каждой свой агент => один WHERE id IN (...) прелоада.
+      # Без includes(:user) здесь было бы пять запросов, по одному на карточку.
+      expect(agents_hit).to be <= 1
+    end
   end
 
   describe 'GET /zhk/:slug — опубликованный ЖК без текста и без объектов' do

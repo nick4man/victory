@@ -38,11 +38,15 @@ module Admin
         published: LandingContent.published.count
       }
       # `ready` — не украшение: гейт Фазы 3 это «≥3 ЖК с собственным
-      # текстом», пусть редактор видит прогресс с дашборда.
+      # текстом», пусть редактор видит прогресс с дашборда. Считаем ровно
+      # `hub_listed` — тем же предикатом, что хаб `/zhk` и sitemap. По
+      # `sitemap_ready` цифра врала: три московских ЖК с текстом давали
+      # «готовы: 3», хотя хаб рязанский и продолжал отдавать noindex.
       @zhk_counts = {
         total:     ResidentialComplex.count,
         published: ResidentialComplex.visible.count,
-        ready:     ResidentialComplex.sitemap_ready.count,
+        ready:     ResidentialComplex.hub_listed.count,
+        hub_min:   ResidentialComplex::HUB_MIN_COMPLEXES,
         # Через ассоциацию, а не where.not(nil): иначе в счётчик попали бы
         # объекты мягко удалённых ЖК, тогда как соседние цифры — под
         # default_scope. Одна карточка не должна смешивать две вселенные.
