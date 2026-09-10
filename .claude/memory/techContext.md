@@ -198,6 +198,27 @@ grep не отличит свежесобранный образ от лежав
 🚨 **Не `docker compose up -d --build db`**: он сначала гасит базу и только потом
 собирает — при сетевой заминке прод останется без БД на всё время разбирательства.
 
+**Эталон дымовых проверок — снять здесь же, на живой старой базе.** Иначе после
+переезда сравнивать не с чем: каталог маленький (09.09.26 `/properties` показывает
+17 объектов, `district` NULLable и заполнен у меньшинства), и «мало строк»
+неотличимо от «сортировка поехала».
+```bash
+DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee /home/q/db-baseline.txt
+SELECT district, count(*) FROM properties
+ WHERE district IS NOT NULL AND district <> ''
+ GROUP BY district ORDER BY count(*) DESC, district;
+SELECT count(*) AS geo FROM properties
+ WHERE geom IS NOT NULL
+   AND ST_DWithin(geom, ST_MakePoint(39.74, 54.63)::geography, 5000);
+SELECT count(*) AS embeddings FROM property_embeddings;
+SQL
+```
+Файл держать вне `/home/q/victory` — в чекауте его снесёт первый же `git clean -fd`.
+После окна те же три запроса должны дать те же числа: проверка сравнивает «до/после»,
+а не угаданный порог.
+
 #### Окно простоя
 
 **4. Погасить приложение: sidekiq первым, web вторым.**
@@ -270,22 +291,27 @@ SELECT extname, extversion FROM pg_extension ORDER BY extname; -- те же 7 + 
 не зависит; упомянуто, чтобы потом не искали. Если всё же понадобится —
 `reindexdb --system`.
 
-**8. Отметить коллацию — каждой базе кластера, включая `postgres`, `template1` и
-`template0`.**
+**8. Отметить коллацию — всем базам кластера, а список взять запросом.**
 ```bash
-for d in "$DB" postgres template1 template0; do
-  /usr/bin/docker compose exec -T db psql -U "$PGU" -d postgres \
-    -c "ALTER DATABASE \"$d\" REFRESH COLLATION VERSION;"
-done
+/usr/bin/docker compose exec -T db psql -U "$PGU" -d postgres -Atc \
+  "SELECT format('ALTER DATABASE %I REFRESH COLLATION VERSION;', datname)
+     FROM pg_database WHERE datcollversion IS NOT NULL" \
+| /usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d postgres
 /usr/bin/docker compose exec -T db psql -U "$PGU" -d postgres \
-  -c 'SELECT datname, datcollversion FROM pg_database;'
+  -c 'SELECT datname, datcollversion FROM pg_database ORDER BY datname;'
 ```
-Пропустить служебные базы — получить WARNING про коллацию на каждом коннекте.
-`template0` в списке намеренно: `REFRESH COLLATION VERSION` правит строку в
-`pg_database` и внутрь базы не подключается, так что её закрытость коннектам не
-мешает, — а оставленная `2.31` и выглядела бы в выводе как недоделанный шаг, и
-досталась бы каждой созданной из неё базе.
-Проверка: `2.36` во всех четырёх строках.
+Пропустить служебные базы — получить WARNING про коллацию на каждом коннекте. Но и
+перечислять их руками нельзя, по двум причинам сразу. Кластер инициализирован
+образом `postgis/postgis:15-3.5`, поэтому баз пять, а не четыре: кроме `$DB`,
+`postgres`, `template1` и `template0` в нём есть `template_postgis` — забытая, она
+останется на `2.31`. А `template0` команду не принимает вовсе: `datcollversion` у неё
+NULL (PostgreSQL её намеренно не хранит), и `REFRESH` падает с
+`ERROR: invalid collation version change`. Условие `datcollversion IS NOT NULL`
+закрывает оба случая — `template_postgis` подхватывается само, `template0`
+отсеивается. Список строим запросом, а не в цикле по переменной: в zsh
+`for d in $DBS` не разбивает строку на слова и уезжает в
+`database "postgres\ntemplate1" does not exist`.
+Проверка: `2.36` во всех строках, кроме `template0` — её ячейка пуста и до, и после.
 
 **9. Поднять приложение, sidekiq последним.**
 ```bash
@@ -300,32 +326,40 @@ done
 curl -sI https://victory62.org | head -1         # 200
 /usr/bin/docker compose logs --tail=50 sidekiq   # cron-джобы идут
 ```
+Все три SQL-проверки — те же запросы, что в эталоне до окна: сравниваем вывод с
+`/home/q/db-baseline.txt`, а не с ожиданием «строк должно быть много».
 ```sql
--- гео: GiST + PostGIS 3.6 — счётчик должен быть больше нуля
+-- гео: GiST + PostGIS 3.6 — счётчик тот же, что в эталоне
 -- (properties.geom уже geography(Point,4326), приводится только правый аргумент)
 SELECT count(*) FROM properties
  WHERE geom IS NOT NULL
    AND ST_DWithin(geom, ST_MakePoint(39.74, 54.63)::geography, 5000);
 
--- вектор: HNSW + pgvector 0.8.6. Пробный вектор кладём в переменную psql — под
--- подзапрос-скаляр планировщик HNSW не подставляет, и «проверка» уходила бы мимо
--- индекса. Первая строка — счётчик: ноль означает, что эмбеддингов нет вовсе
--- (EmbedPropertyJob не отрабатывал) и вектор-проверка неприменима.
+-- вектор: HNSW + pgvector 0.8.6. Первая строка — счётчик, сверить с эталоном.
+-- 🚨 Если он 0 — эмбеддингов нет вовсе (EmbedPropertyJob не отрабатывал), и два
+-- следующих запроса ПРОПУСТИТЬ: \gset на пустой выборке не заведёт переменную
+-- (`no rows returned for \gset`), а EXPLAIN следом упадёт с
+-- `syntax error at or near ":"`.
 SELECT count(*) AS embeddings FROM property_embeddings;
+-- Пробный вектор кладём в переменную psql — под подзапрос-скаляр планировщик HNSW
+-- не подставляет, и «проверка» уходила бы мимо индекса.
 SELECT embedding AS probe FROM property_embeddings LIMIT 1 \gset
 EXPLAIN (COSTS OFF) SELECT property_id FROM property_embeddings
- ORDER BY embedding <=> :'probe' LIMIT 5;      -- ждём Index Scan using ... hnsw;
-                                               -- Seq Scan на крошечной таблице —
-                                               -- выбор планировщика, не поломка
+ ORDER BY embedding <=> :'probe' LIMIT 5;      -- ждём Index Scan using
+                                               -- idx_property_embeddings_cosine
+                                               -- (слова hnsw в плане нет — это метод
+                                               -- индекса, а не его имя); Seq Scan на
+                                               -- крошечной таблице — выбор
+                                               -- планировщика, не поломка
 SELECT property_id FROM property_embeddings
  ORDER BY embedding <=> :'probe' LIMIT 5;      -- пять строк, а не ошибка
 
--- кириллица, btree по живому каталогу (index_properties_on_district): пять строк с
--- ненулевыми счётчиками. Каталог наполняет TopnlabSyncJob каждые 30 мин, поэтому
--- пустой ответ здесь — провал, а не «данных нет».
+-- кириллица, btree по живому каталогу (index_properties_on_district): районы,
+-- счётчики и порядок — как в эталоне. Абсолютные числа тут ничего не доказывают:
+-- district NULLable и заполнен у меньшинства объектов.
 SELECT district, count(*) FROM properties
  WHERE district IS NOT NULL AND district <> ''
- GROUP BY district ORDER BY count(*) DESC LIMIT 5;
+ GROUP BY district ORDER BY count(*) DESC, district;
 -- порядок русского алфавита: ждём t. f — сортировка ушла в C-локаль, а тогда и
 -- WARNING про collation version из шага 5 не появился бы.
 SELECT 'е' < 'ё' AND 'ё' < 'ж' AS ru_order_ok;
@@ -363,24 +397,38 @@ grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 через compose-оверрайд, две минуты.
 ```bash
 cd /home/q/victory
-cat > docker-compose.rollback.yml <<'YML'
+cat > /home/q/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f docker-compose.rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
   up -d --force-recreate db
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
-/usr/bin/docker compose up -d web sidekiq
+/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+  up -d web sidekiq
+/usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
+⚠️ Файл оверрайда — **вне** `/home/q/victory`: в чекауте он ляжет untracked, и первый
+же `git clean -fd` снесёт откат. Путь абсолютный, `-f` его принимает.
 🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
 то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
 `pgdata` от bookworm-образа: ретег подсунул бы им PostGIS 3.5 поверх каталога 3.6 —
 ровно ту поломку, от которой эта процедура защищает прод, только молча и в чужой
 сессии. На тот же тег смотрит `cmd_verify` в `bin/backup`.
-Оверрайд живёт до конца разбирательства и передаётся **каждой** последующей команде
-compose по сервису `db`: обычный `up -d db` вернёт контейнер на bookworm-образ.
+Оверрайд живёт до конца разбирательства и передаётся **любой** команде compose,
+которая тянет `db`, — не только командам «по сервису `db`». У `web` и `sidekiq` в
+`docker-compose.yml` стоит `depends_on: db: condition: service_healthy`, поэтому
+compose примиряет зависимость с той конфигурацией, что ему дали: `up -d web sidekiq`
+без оверрайда молча пересоздаёт базу на bookworm-образе. Молча — буквально: в выводе
+только `Container victory-db-1 Started`, слова `Recreated` нет, а проверка `inspect`
+стоит строкой выше и уже прошла. Отсюда и повторный `inspect` после подъёма
+приложения. Проверено на синтетическом compose-проекте: без оверрайда контейнер
+уехал с образа отката обратно на базовый, с обоими `-f` та же команда печатает
+`Running` и `db` не трогает.
 Собирать с оверрайдом нельзя — `build db` перезапишет им сам `pre-bookworm`.
+⚠️ `docker compose config` показывает итоговую конфигурацию, но печатает
+`POSTGRES_PASSWORD` открытым текстом — вывод не копировать в чат и тикеты.
 Как и в Ruby-процедуре, откат — это дерево И образы: пока прод-чекаут стоит на
 коммите с новым `Dockerfile.postgres`, следующая пересборка снова соберёт bookworm.
 Либо держать оверрайд, либо вернуть чекаут на коммит перед #42.
@@ -391,18 +439,22 @@ compose по сервису `db`: обычный `up -d db` вернёт кон�
 ```bash
 cd /home/q/victory
 /usr/bin/docker compose stop sidekiq web
-cat > docker-compose.rollback.yml <<'YML'
+cat > /home/q/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f docker-compose.rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
   up -d --force-recreate db
 # путь обязателен: без аргумента `restore` печатает список копий, возвращает 0 и
 # НИЧЕГО не восстанавливает. Имя файла — из вывода шага 1.
 /usr/local/bin/victory-backup restore \
   /var/backups/victory/db/viktory-<dd.MM.yy-HHmm>.dump.gpg
-/usr/bin/docker compose up -d web sidekiq
+# оба -f обязательны и здесь — иначе поверх только что восстановленного каталога
+# PostGIS 3.5 поднимутся библиотеки 3.6, ровно та поломка, от которой мы откатываемся
+/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+  up -d web sidekiq
+/usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
 ```
 Скрипт спросит подтверждение — ввести имя базы (`$POSTGRES_DB`) целиком.
 
@@ -419,7 +471,7 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
 
 **Триггеры отката:** база не дошла до `healthy` за ~100 с (бюджет healthcheck);
 `postgis_extensions_upgrade()` завершилась ошибкой; после подъёма сайт не отдаёт
-200 либо гео-/вектор-/кириллическая проверки пустые. **Не триггер:** WARNING про collation version
+200 либо гео-/вектор-/кириллическая проверки разошлись с эталоном. **Не триггер:** WARNING про collation version
 до шага 8 — он там и должен быть.
 
 #### Хвосты
