@@ -104,13 +104,28 @@ git worktree repair --relative-paths <пути...>    # пути всех worktr
 ```
 
 Без явного списка `repair` бессилен: сломанная репо-сторона не даёт ему найти каталоги.
-Откат к абсолютным — `git config --unset worktree.useRelativePaths` плюс
-`git worktree repair --no-relative-paths <пути...>`; расширение снимется само.
+Строка `repair: gitdir absolute/relative path mismatch: …` в выводе — сообщение о самой
+конверсии, а не отказ.
+
+Откат к абсолютным — три команды, и третья обязательна:
+
+```bash
+git config --unset worktree.useRelativePaths
+git worktree repair --no-relative-paths <пути...>
+git config --unset extensions.relativeWorktrees   # сам он не снимается
+```
+
+Без третьей строки указатели станут абсолютными, но расширение останется в `.git/config`, и
+git 2.39.5 в контейнерах продолжит отказываться от репозитория — со стороны выглядит так,
+будто откат не сработал. Проверено на образе `victory-web`: со снятым расширением
+`git worktree list` внутри `/app` отвечает, `core.repositoryformatversion = 1` сам по себе
+старому git не мешает.
 
 История: 10.09.26 массовая замена `/home/q` → `~` по 51 файлу заехала и в git-метаданные.
 Тильду git не разворачивает, поэтому все 15 worktree разом стали `prunable`; тем же заходом
 были незаметно отключены две страховки — deny-правило `Edit(//home/q/victory/**)` в
 `.claude/settings.json` и live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
+Обе восстановлены в тот же день; секция описывает конфигурацию после починки.
 
 ## Команды
 
