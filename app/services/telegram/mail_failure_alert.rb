@@ -14,25 +14,36 @@ module Telegram
   #
   # Контракт:
   #   Telegram::MailFailureAlert.call(job: sidekiq_job_hash, exception: e) -> bool
-  #   true  — алерт ушёл
-  #   false — не почтовая джоба, подавлено троттлом либо некому слать
+  #   true  — алерт доставлен хотя бы одному получателю
+  #   false — не почтовая джоба, подавлено троттлом, некому слать либо
+  #           ни один DM не ушёл
   class MailFailureAlert
     # Джобы, чья смерть означает непришедшее письмо.
     #
-    # Все мейлеры через `deliver_later` идут одним классом
-    # `ActionMailer::MailDeliveryJob`, поэтому список закрывает их скопом.
-    # Дописывать сюда нужно только собственные джобы, которые шлют почту
-    # сами (как InquiryNotificationJob).
+    # Мейлеры через `deliver_later` идут одним классом
+    # `ActionMailer::MailDeliveryJob`. Остальные — собственные джобы, которые
+    # зовут `deliver_now` внутри себя, поэтому обёртки не получают: их
+    # приходится перечислять поимённо (`grep -rl deliver_ app/jobs`).
     MAIL_JOB_CLASSES = %w[
       ActionMailer::MailDeliveryJob
       ActionMailer::DeliveryJob
       InquiryNotificationJob
+      ViewingNotificationJob
+      PropertyValuationJob
+      PropertyValuationFollowUpJob
+      PropertyValuationCompletedJob
     ].freeze
 
     # Потеря письма — не transient-сбой, но при лежащем SMTP умирают сразу
-    # десятки джоб. Час на связку (джоба + класс ошибки) держит директоров
+    # десятки джоб. Час на связку (джоба + класс ошибки) держит получателей
     # в курсе без alert fatigue.
     THROTTLE_TTL = 1.hour
+
+    # Ищем адрес ТОЛЬКО в аргументах мейлера. Раньше грепали весь хеш джобы —
+    # а к моменту смерти в нём лежит и `error_message`, поэтому в «Кому»
+    # попадал адрес, выдранный из текста SMTP-ошибки (на реальных 457
+    # мёртвых письмах — 19 раз чужой адрес против 5 верных).
+    EMAIL_IN_TEXT = /[\w+.-]+@[a-z\d.-]+\.[a-z]+/i
 
     def self.call(job:, exception:)
       new(job: job, exception: exception).call
@@ -45,16 +56,22 @@ module Telegram
 
     def call
       return false unless mail_job?
-      return false unless throttle_allows?
 
+      # Получателей резолвим ДО троттла: иначе пустой каскад «съедал» бы
+      # часовой слот и глушил все последующие алерты о потере писем.
       cascade = Telegram::CriticalRecipients.resolve
       if cascade.empty?
         Rails.logger.error("[MailFailureAlert] письмо потеряно, но получателей алерта нет: #{summary}")
         return false
       end
 
-      deliver_to(cascade)
-      true
+      return false unless throttle_allows?
+
+      delivered = deliver_to(cascade)
+      return true if delivered.positive?
+
+      Rails.logger.error("[MailFailureAlert] письмо потеряно, но ни один DM не ушёл: #{summary}")
+      false
     rescue StandardError => e
       Rails.logger.error("[MailFailureAlert] #{e.class}: #{e.message}")
       false
@@ -81,23 +98,23 @@ module Telegram
     def throttle_allows?
       return true if Telegram::AlertThrottle.allow?(key: throttle_key, ttl: THROTTLE_TTL)
 
-      Rails.logger.info(
-        "[MailFailureAlert] throttled — #{throttle_key} " \
-        "(suppressed=#{Telegram::AlertThrottle.suppressed_count(key: throttle_key)})"
-      )
+      Rails.logger.info("[MailFailureAlert] throttled — #{throttle_key}")
       false
     end
 
+    # @return [Integer] сколько получателей реально получили алерт
     def deliver_to(cascade)
       text = alert_text(cascade)
       client = Telegram::Client.new
-      cascade.each do |recipient|
+      cascade.count do |recipient|
         chat_id = recipient.dm_chat_id || recipient.tg_user_id
-        next if chat_id.blank?
+        next false if chat_id.blank?
 
         client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+        true
       rescue StandardError => e
         Rails.logger.warn("[MailFailureAlert] DM to #{recipient.mention}: #{e.message}")
+        false
       end
     end
 
@@ -106,39 +123,42 @@ module Telegram
       error_line = escape("#{exception.class}: #{exception.message.to_s.truncate(160)}")
 
       "📭 <b>Письмо не доставлено</b>\n" \
-        "Кому: <code>#{escape(recipient_email)}</code>\n" \
+        "#{addressee_line}" \
         "Отправитель: <code>#{escape(mailer_signature)}</code>\n" \
         "Ошибка: <code>#{error_line}</code>\n" \
         "Попыток: #{job['retry_count'].to_i + 1}, потеряно #{Time.current.strftime('%d.%m.%y %H:%M')}" \
-        "#{suppress_note}#{tier_note}\n\n" \
+        "#{tier_note}\n\n" \
         '<i>Письмо ушло в dead-очередь и само не повторится.</i>'
     end
 
-    def suppress_note
-      count = Telegram::AlertThrottle.suppressed_count(key: throttle_key)
-      count.positive? ? "\n<i>(подавлено #{count} похожих за последний час)</i>" : ''
+    # Собственные джобы принимают id записи, а не адрес (InquiryNotificationJob
+    # → `arguments: [39]`). Показываем что есть: без этого строка «Кому: —»
+    # не даёт руководителю ни одной зацепки, кого именно не дождались.
+    def addressee_line
+      email = recipient_email
+      return "Кому: <code>#{escape(email)}</code>\n" if email
+
+      args = mailer_arguments
+      return '' if args.blank?
+
+      "Аргументы: <code>#{escape(args.inspect.truncate(80))}</code>\n"
     end
 
-    # Свой регекс, а не URI::MailTo::EMAIL_REGEXP: тот якорный (\A...\z) и
-    # ищет совпадение по всей строке, поэтому внутри дампа джобы не находит
-    # ничего. Здесь нужен именно поиск подстроки.
-    EMAIL_IN_TEXT = /[\w+.-]+@[a-z\d.-]+\.[a-z]+/i
-
-    # У MailDeliveryJob адрес лежит вглубине хеша аргументов, у собственных
-    # джоб структура своя. Ищем первое, что похоже на адрес, вместо разбора
-    # формата — он у каждой джобы разный.
     def recipient_email
-      job.to_s[EMAIL_IN_TEXT] || '—'
+      mailer_arguments.to_s[EMAIL_IN_TEXT]
+    end
+
+    # Аргументы, с которыми звали мейлер/джобу. ActiveJob кладёт их в
+    # args[0]['arguments']; plain Sidekiq::Job — прямо в args.
+    def mailer_arguments
+      first = job['args'].is_a?(Array) ? job['args'][0] : nil
+      first.is_a?(Hash) ? first['arguments'] : job['args']
     end
 
     # Для MailDeliveryJob первые два аргумента — класс мейлера и его метод.
-    #
-    # Разбираем по шагу с проверкой типа: у собственных джоб `args` — это
-    # массив скаляров (InquiryNotificationJob → [90]), и `dig` по нему падает
-    # с NoMethodError. Падение здесь глушило АЛЕРТ ЦЕЛИКОМ.
+    # У собственных джоб там id записи, поэтому откатываемся на имя класса.
     def mailer_signature
-      first = job['args'].is_a?(Array) ? job['args'][0] : nil
-      args = first.is_a?(Hash) ? first['arguments'] : nil
+      args = mailer_arguments
       return job_class unless args.is_a?(Array) && args[0].is_a?(String)
 
       args[1].is_a?(String) ? "#{args[0]}##{args[1]}" : args[0]
