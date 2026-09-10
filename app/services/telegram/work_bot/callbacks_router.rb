@@ -34,7 +34,9 @@ module Telegram
         'link_staff' => 'Telegram::WorkBot::Callbacks::LinkStaffCallback',
         # Сбор собственника объекта у агента: контакт / отложить / не мой /
         # отправить приглашение на подписание.
-        'owner' => 'Telegram::WorkBot::Callbacks::OwnerRequestCallback'
+        'owner' => 'Telegram::WorkBot::Callbacks::OwnerRequestCallback',
+        # Листание уроков `/tutorial` и финальный экран.
+        'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)
