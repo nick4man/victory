@@ -46,7 +46,7 @@ RSpec.describe Topnlab::StaffSyncService do
     it 'заводит пользователя и отдаёт его в сводке' do
       result = service.call
 
-      expect(result).to include(success: true, users: 1, skipped_users: 0)
+      expect(result).to include(success: true, users: 1, failed_users: 0, malformed_records: 0)
     end
 
     it 'кладёт в запись данные из CRM' do
@@ -83,7 +83,7 @@ RSpec.describe Topnlab::StaffSyncService do
     it 'обнуляет телефон и всё-таки сохраняет запись' do
       result = service.call
 
-      expect(result).to include(success: true, users: 1, skipped_users: 0)
+      expect(result).to include(success: true, users: 1, failed_users: 0, malformed_records: 0)
       expect(User.find_by(email: 'landline@victory62.test')).to have_attributes(
         phone: nil, crm_user_id: 502
       )
@@ -131,16 +131,24 @@ RSpec.describe Topnlab::StaffSyncService do
       expect { service.call }.not_to raise_error
     end
 
-    it 'пропускает запись и считает её в сводке' do
+    it 'пропускает запись и считает её в сводке отдельно от мусора в payload' do
       result = service.call
 
-      expect(result).to include(success: true, users: 1, skipped_users: 1)
+      expect(result).to include(success: true, users: 1, failed_users: 1, malformed_records: 0)
     end
 
     it 'продолжает проход и сохраняет следующего сотрудника' do
       service.call
 
       expect(User.find_by(email: 'next-in-line@victory62.test')).to be_present
+    end
+
+    it 'поднимает предупреждение в сводке — запись не доехала до БД' do
+      allow(Rails.logger).to receive(:warn)
+
+      service.call
+
+      expect(Rails.logger).to have_received(:warn).with('[StaffSync] skipped 1 user(s)')
     end
 
     it 'пишет в лог маску вместо адреса — email это персональные данные' do
@@ -164,7 +172,15 @@ RSpec.describe Topnlab::StaffSyncService do
     it 'считается пропущенной, а не молча исчезает' do
       result = service.call
 
-      expect(result).to include(users: 1, skipped_users: 1)
+      expect(result).to include(users: 1, malformed_records: 1, failed_users: 0)
+    end
+
+    it 'не поднимает предупреждение — сотрудника без email синхронизировать нечем' do
+      allow(Rails.logger).to receive(:warn)
+
+      service.call
+
+      expect(Rails.logger).not_to have_received(:warn).with(/\[StaffSync\]/)
     end
   end
 
@@ -184,8 +200,20 @@ RSpec.describe Topnlab::StaffSyncService do
       expect(User.find_by(email: 'survivor@victory62.test')).to be_present
     end
 
-    it 'считает мусор пропуском' do
-      expect(service.call).to include(users: 1, skipped_users: 1)
+    it 'считает мусор отдельно — это не несохранённая запись' do
+      expect(service.call).to include(users: 1, malformed_records: 1, failed_users: 0)
+    end
+
+    # Предупреждение, которое горит на КАЖДОМ прогоне, перестают читать: поле
+    # count приезжает Integer'ом из data.values.flatten при любом хеш-ответе
+    # Topnlab, то есть warn на мусор был бы вечным, а настоящая авария в нём
+    # потерялась бы. Ровно та болезнь ложного зелёного, что и в bin/backup.
+    it 'не поднимает предупреждение — это штатный ответ Topnlab, а не авария' do
+      allow(Rails.logger).to receive(:warn)
+
+      service.call
+
+      expect(Rails.logger).not_to have_received(:warn).with(/\[StaffSync\]/)
     end
   end
 end

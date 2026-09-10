@@ -19,14 +19,30 @@ module Topnlab
       dept_count = upsert_structure(structure) if structure
 
       users_payload = @client.get_users
-      saved_users, skipped_users = upsert_users(Array(users_payload))
+      saved_users, failed_users, malformed_records = upsert_users(Array(users_payload))
 
-      # Пропуски выносим в сводку и в лог отдельно: раньше запись, не доехавшая
-      # до БД, не оставляла никакого следа в результате прогона, и «синхронизация
+      # Предупреждаем ТОЛЬКО о записях, не доехавших до БД: раньше такая запись
+      # не оставляла никакого следа в результате прогона, и «синхронизация
       # прошла» ничем не отличалось от «половина сотрудников не синхронизирована».
-      Rails.logger.warn("[StaffSync] skipped #{skipped_users} user(s)") if skipped_users.positive?
+      Rails.logger.warn("[StaffSync] skipped #{failed_users} user(s)") if failed_users.positive?
 
-      { success: true, departments: dept_count.to_i, users: saved_users, skipped_users: skipped_users }
+      # Мусор в payload сюда намеренно НЕ входит. Topnlab отвечает на get-users
+      # то массивом, то хешем-хешей, и Client#get_users разворачивает второй
+      # вариант через data.values.flatten — Integer (поле count) в списке штатен,
+      # а не аварийен. Считай мы его пропуском — warn горел бы на КАЖДОМ прогоне,
+      # а предупреждение, которое горит всегда, перестают читать, и настоящая
+      # авария в нём теряется.
+      if malformed_records.positive?
+        Rails.logger.debug { "[StaffSync] ignored #{malformed_records} non-user record(s) in payload" }
+      end
+
+      {
+        success:           true,
+        departments:       dept_count.to_i,
+        users:             saved_users,
+        failed_users:      failed_users,
+        malformed_records: malformed_records
+      }
     rescue Topnlab::Client::Error => e
       Rails.logger.error("[StaffSync] Topnlab error: #{e.message}")
       { success: false, error: e.message }
@@ -113,11 +129,20 @@ module Topnlab
     # users_payload is a flat array (or hash-of-hashes) of CRM user records.
     # Match by email; create local User on the fly with random password if missing.
     #
-    # @return [Array(Integer, Integer)] сохранено, пропущено
+    # Непрошедшие записи считаем ДВУМЯ разными счётчиками, потому что это две
+    # разные ситуации, а не одна:
+    #   мусор в payload   — не-Hash или запись без email. Штатный шум Topnlab,
+    #                       повторяется каждый прогон, синхронизации не мешает.
+    #   не сохранено      — запись дошла до save и не записалась. Авария: этого
+    #                       сотрудника в БД нет и не будет до ручного разбора.
+    # Смешивать их значит поднимать тревогу на шуме — см. warn/debug в #call.
+    #
+    # @return [Array(Integer, Integer, Integer)] сохранено, не сохранено, мусора в payload
     def upsert_users(payload)
       records = normalize_users(payload)
       saved = 0
-      skipped = 0
+      failed = 0
+      malformed = 0
 
       records.each do |u|
         # Topnlab отвечает на get-users то массивом, то хешем-хешей, и клиент
@@ -125,13 +150,13 @@ module Topnlab
         # records может приехать Integer (например, поле count). `u['email']`
         # на нём поднимает TypeError мимо всех rescue ниже и роняет весь проход.
         unless u.is_a?(Hash)
-          skipped += 1
+          malformed += 1
           next
         end
 
         email = u['email'].to_s.downcase.strip
         if email.blank?
-          skipped += 1
+          malformed += 1
           next
         end
 
@@ -169,11 +194,11 @@ module Topnlab
         if save_user_safely(user, email)
           saved += 1
         else
-          skipped += 1
+          failed += 1
         end
       end
 
-      [saved, skipped]
+      [saved, failed, malformed]
     end
 
     # Multiple Topnlab users can share a landline → blank phone on UniqueViolation
@@ -187,6 +212,13 @@ module Topnlab
       # Ищем имя индекса, а не подстроку 'phone': сообщение PG содержит и строку
       # DETAIL с самим значением ключа, поэтому конфликт по email вида
       # phone-support@… уходил бы в ветку обнуления телефона и врал бы в логе.
+      #
+      # 'index_users_on_phone' — осознанная привязка к идентификатору в БД
+      # (db/structure.sql): PG::UniqueViolation не сообщает, ПО КАКОЙ колонке
+      # конфликт, кроме как именем индекса, и другого способа отличить его от
+      # конфликта по email или crm_user_id нет. Переименуют индекс — ветка
+      # обнуления телефона молча перестанет срабатывать, но запись уйдёт в
+      # «не сохранено» с warn и полным текстом ошибки, а не потеряется.
       return log_skipped_user(user, email, e) unless e.message.include?('index_users_on_phone')
 
       retry_save_without_phone(user, email, e)
