@@ -27,7 +27,7 @@
   <% content_for :og_image_width, 1200 %>
   <% content_for :og_image_height, 630 %>
 <% elsif (og_lead = @listings.first) && og_lead.images.attached? %>
-  <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+  <% declare_property_og_image(og_lead.images.first) %>
 <% end %>
 
 <% faq_pairs = @complex.body_html.present? ? faq_pairs_from_html(@complex.body_html) : [] %>
