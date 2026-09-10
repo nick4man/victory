@@ -67,6 +67,51 @@
 - Расширения: `postgis`, `vector` (pgvector), `pg_trgm`, `unaccent`.
 - ~13 базовых миграций; новые — по фазам.
 
+## Git — относительные пути worktree (с 10.09.26)
+
+Указатели worktree относительные с **обеих** сторон: `.git/worktrees/<id>/gitdir` →
+`../../../../victory-seo/.git`, а `<worktree>/.git` → `gitdir: ../victory/.git/worktrees/victory-seo`.
+Дерево `~/victory*` можно перенести целиком, не сломав ни один checkout.
+
+Включено локально в `.git/config` main checkout (конфиг не коммитится):
+
+```bash
+git config worktree.useRelativePaths true   # новые `git worktree add` сразу относительные
+# git при первой конверсии сам дописал extensions.relativeWorktrees = true
+```
+
+🚨 **Требует git ≥2.48 везде, откуда репозиторий читают.** `extensions.relativeWorktrees` —
+защитный флаг: git старее обязан отказаться от репозитория **целиком**, а не молча испортить
+указатели. `trixie/main` даёт только 2.47.3 — на хосте git ставился отдельно (сейчас 2.56).
+
+⚠️ В прод-контейнерах `victory-web-1` / `victory-sidekiq-1` git **2.39.5**, поэтому любая
+git-команда внутри `/app` теперь падает:
+
+```
+fatal: unknown repository extension found:
+	relativeworktrees
+```
+
+Потребителей у неё сейчас нет — git-источников в `Gemfile` нет, shell-out в git из `app/`,
+`lib/`, `config/` нет, `bin/rb` дёргает `git rev-parse` на хосте до контейнера. Но при
+следующей пересборке образов git стоит поднять до ≥2.48.
+
+Починка указателей (после переезда каталогов или порчи путей) — из main checkout:
+
+```bash
+git worktree list                                 # битые видны как `prunable`
+git worktree repair --relative-paths <пути...>    # пути всех worktree, явным списком
+```
+
+Без явного списка `repair` бессилен: сломанная репо-сторона не даёт ему найти каталоги.
+Откат к абсолютным — `git config --unset worktree.useRelativePaths` плюс
+`git worktree repair --no-relative-paths <пути...>`; расширение снимется само.
+
+История: 10.09.26 массовая замена `/home/q` → `~` по 51 файлу заехала и в git-метаданные.
+Тильду git не разворачивает, поэтому все 15 worktree разом стали `prunable`; тем же заходом
+были незаметно отключены две страховки — deny-правило `Edit(//home/q/victory/**)` в
+`.claude/settings.json` и live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
+
 ## Команды
 
 ### Сервер
