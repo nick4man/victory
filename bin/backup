@@ -227,6 +227,57 @@ prune_files_snapshots() {
 # Таблицы для сверки: не все 100+, а те, потеря которых видна бизнесу.
 VERIFY_TABLES='properties users inquiries conversations property_valuations'
 
+# Ошибки pg_restore, которые НЕ считаем провалом: они про различия окружения, а
+# не про испорченный дамп. Одноразовый контейнер поднимается без наших ролей, а
+# расширения в нём уже могут стоять — испортить данные это не может.
+#
+# Список намеренно узкий: всё, что в него не попало, валит проверку. Обратный
+# подход («любая ошибка безобидна») уже стоил нам четырёх суток ложного зелёного,
+# а «любая ошибка = провал» сделал бы verify вечно красным, и его перестали бы
+# читать — с тем же итогом.
+VERIFY_BENIGN_ERRORS='role "[^"]*" does not exist|must be owner of|extension "[^"]*" already exists|schema "public" already exists'
+
+# Судит о результате восстановления по ЛОГУ pg_restore, а не по коду возврата.
+#
+# Раньше здесь стоял `|| true`, и весь разбор сводился к четырём расширениям —
+# а они переживают частично неудавшееся восстановление. 06.09.26 pg_restore не
+# смог создать index_users_on_phone («Key (phone)=(+7…) is duplicated»), написал
+# в лог «errors ignored on restore: 1», а victory-backup-weekly.service
+# отрапортовал Result=success. Проверка врала зелёным четвёртые сутки — то есть
+# бэкап был непроверенным ровно тогда, когда все считали его проверенным.
+#
+# @param $1 путь к логу восстановления
+# @param $2 код возврата конвейера gpg|pg_restore
+verify_restore_log() {
+  local logfile="$1" rc="$2" reported hard
+
+  # Итоговую строку печатает сам pg_restore, когда дошёл до конца.
+  reported=$(sed -n 's/^pg_restore: warning: errors ignored on restore: \([0-9][0-9]*\).*/\1/p' \
+    "$logfile" 2>/dev/null | tail -1)
+
+  if [ -z "$reported" ]; then
+    # Строки нет вовсе — восстановление не доехало до конца: битый файл, чужая
+    # парольная фраза, оборвавшийся контейнер. Тогда судим по коду возврата.
+    [ "$rc" = 0 ] && return 0
+    die "$(printf 'восстановление оборвалось (код %s), начало лога:\n%s' \
+      "$rc" "$(head -5 "$logfile" 2>/dev/null)")"
+  fi
+
+  [ "$reported" -gt 0 ] || return 0
+
+  hard=$(grep '^pg_restore: error:' "$logfile" | grep -Ev "$VERIFY_BENIGN_ERRORS" || true)
+  if [ -z "$hard" ]; then
+    log "  восстановление сообщило об ошибках ($reported), все они из списка безобидных"
+    return 0
+  fi
+
+  # Первые строки ошибок — прямо в сообщение: из письма и journalctl должно быть
+  # видно, ЧТО сломалось, без похода в файл на сервере. -A2 добирает DETAIL,
+  # где лежит конкретный ключ-дубликат.
+  die "$(printf 'восстановление прошло с ошибками (%s), первые из них:\n%s\nполный лог: %s' \
+    "$reported" "$(grep -A2 '^pg_restore: error:' "$logfile" | head -9)" "$logfile")"
+}
+
 # @param $1 путь к дампу; по умолчанию самый свежий.
 # Аргумент обязателен по смыслу: runbook велит при неудачной проверке взять
 # копию постарше — а раньше такой запуск молча проверял всё тот же свежий файл
@@ -268,12 +319,14 @@ cmd_verify() {
   done
 
   log '  восстанавливаю дамп'
-  # pg_restore возвращает ненулевой код на безобидных warning'ах (отсутствующие
-  # роли, уже существующие расширения), поэтому судим по фактическому
-  # результату ниже, а не по коду возврата.
+  # Код возврата сохраняем, но решение принимает verify_restore_log: pg_restore
+  # даёт ненулевой код и на безобидных различиях окружения, а по-настоящему
+  # опасное (не создался индекс, не доехала таблица) видно только в логе.
+  local restore_log="$BACKUP_ROOT/tmp/verify-restore.log" restore_rc=0
   gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$dump" 2>/dev/null \
     | docker exec -i "$cname" pg_restore -U postgres -d verify --no-owner --no-acl \
-    >"$BACKUP_ROOT/tmp/verify-restore.log" 2>&1 || true
+    >"$restore_log" 2>&1 || restore_rc=$?
+  verify_restore_log "$restore_log" "$restore_rc"
 
   # Раньше базой был postgis/postgis, который создавал postgis в свежей базе сам,
   # и проверка на него ничего не доказывала — нагрузку несли vector, pg_trgm и
