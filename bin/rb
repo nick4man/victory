@@ -27,6 +27,21 @@
 #   Порт — RB_WEB_PORT (по умолчанию 3001), адрес — RB_WEB_BIND (127.0.0.1).
 #   Sidekiq в стеке НЕТ намеренно, см. docker-compose.ruby.yml.
 #
+# Гемы без `bundle install` — копией готового bundle-волюма прода:
+#
+#   bin/rb --seed-bundle                       # victory_bundle → волюм сессии
+#   bin/rb --seed-bundle --from victory-victory_bundle
+#   bin/rb --seed-bundle --force               # перезалить поверх непустого
+#
+#   Полная установка в свежем worktree — десятки минут и поход в сеть, а рядом
+#   на хосте уже лежат распакованные гемы прода. Источник монтируется :ro.
+#
+#   ⚠ Гемы прод-волюма соответствуют Gemfile.lock ПРОДА. Если в этом worktree
+#     lock другой (бампнули гем, ветка с новой зависимостью), `bundle check`
+#     не сойдётся и `bundle install` всё равно понадобится — но доставит он
+#     только разницу, а не весь bundle с нуля. Проверять сразу после заливки:
+#         bin/rb bundle check
+#
 # Флаги:
 #   --db      поднять postgres+redis перед командой (нужно для rails/rspec;
 #             без него контейнер стартует один — быстрее в разы)
@@ -35,6 +50,9 @@
 #   --shell   интерактивный bash вместо разовой команды
 #   --down    погасить стек ЭТОЙ сессии (данные в волюмах сохраняются)
 #   --nuke    погасить + снести волюмы ЭТОЙ сессии (чужие и прод не трогает)
+#   --seed-bundle [--from <волюм>] [--force]
+#             залить гемы в bundle-волюм ЭТОЙ сессии из чужого волюма
+#             (по умолчанию прод-волюм victory_bundle, монтируется :ro)
 #
 # У каждой сессии свой compose-проект `victory-rb-<session>`, поэтому четыре
 # сессии могут работать параллельно, не деля ни БД, ни bundle-волюм. Образ
@@ -83,6 +101,95 @@ export HOST_UID="$(id -u)" HOST_GID="$(id -g)"
 
 COMPOSE=("$DOCKER" compose -p "$PROJECT" -f docker-compose.ruby.yml)
 
+# ── Гемы копией готового волюма вместо bundle install ───────────────────────
+# `bundle install` в свежем worktree — десятки минут и поход в сеть за гемами,
+# которые уже лежат распакованными в bundle-волюме прода. Копируем их в волюм
+# ЭТОЙ сессии. Источник монтируется :ro — прод не изменяется никогда.
+#
+# Пришло из bin/chat-stack (ветка dev/chat), где команда `seed-bundle` умела
+# ровно одну пару волюмов, зашитую в две константы. Здесь адресат вычисляется,
+# поэтому командой пользуется любая сессия.
+seed_bundle() {
+  local src='victory_bundle' force=0 key dst resolved occupied
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --from)
+        src="${2:-}"
+        [ -n "$src" ] || { echo 'bin/rb: --from без имени волюма.' >&2; exit 2; }
+        shift 2 ;;
+      --force) force=1; shift ;;
+      *)
+        echo "bin/rb: --seed-bundle не понимает '$1'. Форма: --seed-bundle [--from <волюм>] [--force]" >&2
+        exit 2 ;;
+    esac
+  done
+
+  # Имя целевого волюма НЕ собираем строкой из ${PROJECT}_bundle: если compose
+  # когда-нибудь начнёт называть волюмы иначе, такая догадка молча создаст
+  # пустой волюм не того имени, а гемы уедут в никуда. Спрашиваем сам compose:
+  # ключ волюма ищем по точке монтирования (/usr/local/bundle) в сервисе ruby,
+  # итоговое имя берём из секции volumes его же вывода.
+  resolved=$("${COMPOSE[@]}" config --format json | python3 -c '
+import json, sys
+cfg = json.load(sys.stdin)
+mounts = [m for m in cfg["services"]["ruby"]["volumes"]
+          if m.get("type") == "volume" and m.get("target") == "/usr/local/bundle"]
+if len(mounts) != 1:
+    sys.exit(1)
+key = mounts[0]["source"]
+print(key, cfg.get("volumes", {}).get(key, {}).get("name") or key)
+') || {
+    echo 'bin/rb: не нашёл в docker-compose.ruby.yml волюм на /usr/local/bundle у сервиса ruby.' >&2
+    echo '        Compose-файл изменился — поправь --seed-bundle, не догадывайся об имени.' >&2
+    exit 1
+  }
+  read -r key dst <<<"$resolved"
+
+  if ! "$DOCKER" volume inspect "$src" >/dev/null 2>&1; then
+    echo "bin/rb: волюма-источника '$src' на хосте нет." >&2
+    echo '        Проверь имя:  /usr/bin/docker volume ls | grep bundle' >&2
+    echo '        Прод-волюм называется victory_bundle и существует только там, где поднят прод-стек.' >&2
+    exit 1
+  fi
+
+  if "$DOCKER" volume inspect "$dst" >/dev/null 2>&1; then
+    occupied=$("$DOCKER" run --rm -v "$dst:/dst:ro" alpine sh -c 'ls -A /dst | head -1')
+    if [ -n "$occupied" ] && [ "$force" -ne 1 ]; then
+      echo "bin/rb: волюм '$dst' уже не пуст — молча поверх не заливаю." >&2
+      echo '        Так бывает штатно: первый же запуск контейнера наполняет пустой волюм' >&2
+      echo '        гемами из образа. Если те гемы устраивают — заливка не нужна.' >&2
+      echo '        Перезалить осознанно:  bin/rb --seed-bundle --force' >&2
+      echo '        Снести и начать с нуля:  bin/rb --nuke' >&2
+      exit 1
+    fi
+  else
+    # Метки те же, что ставит compose: без них он на каждый запуск ругается
+    # «volume exists but was not created by Docker Compose».
+    "$DOCKER" volume create \
+      --label com.docker.compose.project="$PROJECT" \
+      --label com.docker.compose.volume="$key" \
+      "$dst" >/dev/null
+  fi
+
+  echo "Копирую $src → $dst (источник :ro) ..."
+  # chown: в прод-волюме гемы принадлежат root, а контейнер бежит под uid
+  # хоста. Без этого читать можно, а `bundle install` за недостающим гемом
+  # падает с Permission denied.
+  #
+  # Объём считаем по ИСТОЧНИКУ, хотя интересен размер копии: du берёт st_blocks,
+  # а у только что записанных файлов они ещё нулевые (delayed allocation), и
+  # свежий /dst показывал 7-14M вместо 242M. Копия побайтовая — размеры равны.
+  "$DOCKER" run --rm -v "$src:/src:ro" -v "$dst:/dst" alpine sh -c "
+    cp -a /src/. /dst/
+    chown -R ${HOST_UID}:${HOST_GID} /dst
+    printf 'Готово: %s гемов, %s\\n' \"\$(ls -d /dst/ruby/*/gems/*/ 2>/dev/null | wc -l)\" \"\$(du -sh /src | cut -f1)\"
+  "
+  echo 'Проверка:  bin/rb bundle check'
+  echo '⚠ Гемы соответствуют Gemfile.lock ПРОДА. Если lock в этом worktree другой —'
+  echo '  bundle check не сойдётся, и bundle install всё равно нужен (но доставит разницу).'
+}
+
 WITH_DB=0
 DO_BUILD=0
 WEB=0
@@ -93,6 +200,7 @@ while [ $# -gt 0 ]; do
     --build) DO_BUILD=1; shift ;;
     --down)  exec "${COMPOSE[@]}" --profile web down ;;
     --nuke)  exec "${COMPOSE[@]}" --profile web down -v ;;
+    --seed-bundle) shift; seed_bundle "$@"; exit 0 ;;
     --shell) shift; set -- 'bash'; break ;;
     --) shift; break ;;
     *) break ;;
