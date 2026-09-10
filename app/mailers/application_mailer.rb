@@ -72,11 +72,17 @@ class ApplicationMailer < ActionMailer::Base
   
   private
   
-  # Log all sent emails
-  def log_email_sent
-    Rails.logger.info "Email sent: #{message.subject} to #{message.to}"
+  # after_action срабатывает ПОСЛЕ рендера, но ДО SMTP-транзакции: здесь
+  # известно только то, что письмо собрано. Прежняя формулировка «Email sent»
+  # утверждала обратное и стояла в логе прямо перед «Failed delivery» —
+  # из-за неё сбой почты с 30.06.26 полгода выглядел успехом.
+  #
+  # Факт доставки логирует сам ActionMailer строкой `Delivered mail ...`,
+  # а безвозвратную потерю — Telegram::MailFailureAlert.
+  def log_email_prepared
+    Rails.logger.info "Email prepared: #{message.subject} to #{message.to}"
   end
-  
-  after_action :log_email_sent
+
+  after_action :log_email_prepared
 end
 

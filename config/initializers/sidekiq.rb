@@ -36,6 +36,20 @@ Sidekiq.configure_server do |config|
   }
 end
 
+# 10.09.26 — потерянное письмо больше не пропадает молча.
+#
+# `error_handlers` выше срабатывает на КАЖДУЮ ошибку, включая промежуточные
+# ретраи, и фильтрует по CRITICAL_SIDEKIQ_JOBS — почты в списке нет. Поэтому
+# письма умирали тихо: 457 штук в dead-очереди за 16.05–10.09.26, включая
+# 39 уведомлений по заявкам с сайта.
+#
+# `death_handlers` срабатывает один раз — когда письмо потеряно окончательно.
+Sidekiq.configure_server do |config|
+  config.death_handlers << lambda { |job, exception|
+    Telegram::MailFailureAlert.call(job: job, exception: exception)
+  }
+end
+
 def notify_directors_about_sidekiq_failure(job_class, exception, context)
   return unless defined?(TelegramUser) && defined?(Telegram::Client)
 
