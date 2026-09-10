@@ -167,4 +167,25 @@ RSpec.describe Topnlab::StaffSyncService do
       expect(result).to include(users: 1, skipped_users: 1)
     end
   end
+
+  describe 'мусор вместо записи в payload' do
+    # Topnlab отвечает на get-users то массивом, то хешем-хешей, и клиент
+    # разворачивает второй вариант через data.values.flatten — оттуда легко
+    # приезжает не-Hash. Раньше `u['email']` на нём поднимал TypeError мимо
+    # всех rescue и ронял весь проход.
+    before do
+      allow(client).to receive(:get_users).and_return(
+        [14, crm_user(email: 'survivor@victory62.test', crm_id: 507)]
+      )
+    end
+
+    it 'не роняет проход и сохраняет нормальную запись' do
+      expect { service.call }.not_to raise_error
+      expect(User.find_by(email: 'survivor@victory62.test')).to be_present
+    end
+
+    it 'считает мусор пропуском' do
+      expect(service.call).to include(users: 1, skipped_users: 1)
+    end
+  end
 end

@@ -120,6 +120,15 @@ module Topnlab
       skipped = 0
 
       records.each do |u|
+        # Topnlab отвечает на get-users то массивом, то хешем-хешей, и клиент
+        # разворачивает второй вариант через data.values.flatten — оттуда в
+        # records может приехать Integer (например, поле count). `u['email']`
+        # на нём поднимает TypeError мимо всех rescue ниже и роняет весь проход.
+        unless u.is_a?(Hash)
+          skipped += 1
+          next
+        end
+
         email = u['email'].to_s.downcase.strip
         if email.blank?
           skipped += 1
@@ -175,7 +184,10 @@ module Topnlab
     def save_user_safely(user, email)
       user.save(validate: false)
     rescue ActiveRecord::RecordNotUnique => e
-      return log_skipped_user(user, email, e) unless e.message.include?('phone')
+      # Ищем имя индекса, а не подстроку 'phone': сообщение PG содержит и строку
+      # DETAIL с самим значением ключа, поэтому конфликт по email вида
+      # phone-support@… уходил бы в ветку обнуления телефона и врал бы в логе.
+      return log_skipped_user(user, email, e) unless e.message.include?('index_users_on_phone')
 
       retry_save_without_phone(user, email, e)
     rescue StandardError => e
