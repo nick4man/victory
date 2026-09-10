@@ -137,7 +137,15 @@ module PropertyImageHelper
   # объявляем рамку. Это приближение, но заведомо ближе, чем чужие
   # 1200×630 из дефолта.
   def declare_property_og_image(image)
-    content_for :og_image, property_image_url(image, variant: :hero)
+    url = property_image_url(image, variant: :hero)
+    # Картинка не отрендерилась — HEIC без варианта, битый блоб, ошибка
+    # генерации URL — и property_image_url отдал сток с Unsplash. Его
+    # пропорций мы не знаем, а объявить рядом размеры фотографии объекта
+    # значило бы соврать ровно так же, как дефолт layout. Молчим целиком:
+    # layout подставит og-default.jpg, который и есть 1200×630.
+    return if url == FALLBACK_HERO_URL
+
+    content_for :og_image, url
     dimensions = property_og_image_dimensions(image) || HERO_LIMIT
     content_for :og_image_width, dimensions.first
     content_for :og_image_height, dimensions.last

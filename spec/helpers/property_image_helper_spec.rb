@@ -48,5 +48,28 @@ RSpec.describe PropertyImageHelper, type: :helper do
     it 'nil на объекте без блоба, а не исключение' do
       expect(helper.property_og_image_dimensions(nil)).to be_nil
     end
+
+    # HERO_LIMIT повторяет рамку варианта руками. Связываем её с моделью
+    # спеком: без этого смена resize_to_limit в Property тихо разъедется с
+    # объявленными размерами, и остальные примеры этого не заметят —
+    # они сверяются с самой константой.
+    it 'рамка совпадает с вариантом :hero в модели' do
+      transformations = Property.attachment_reflections['images']
+                                .named_variants[:hero].transformations
+
+      expect(described_class::HERO_LIMIT).to eq(transformations[:resize_to_limit])
+    end
+  end
+
+  describe '#declare_property_og_image' do
+    # Размеры без картинки хуже, чем ничего: layout сам отдаст og-default.jpg
+    # ровно на 1200×630, и разметка останется согласованной.
+    it 'молчит целиком, когда картинка деградировала до стока' do
+      helper.declare_property_og_image(nil)
+
+      expect(helper.content_for(:og_image)).to be_nil
+      expect(helper.content_for(:og_image_width)).to be_nil
+      expect(helper.content_for(:og_image_height)).to be_nil
+    end
   end
 end
