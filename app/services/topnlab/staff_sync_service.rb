@@ -19,9 +19,14 @@ module Topnlab
       dept_count = upsert_structure(structure) if structure
 
       users_payload = @client.get_users
-      user_count = upsert_users(Array(users_payload))
+      saved_users, skipped_users = upsert_users(Array(users_payload))
 
-      { success: true, departments: dept_count.to_i, users: user_count.to_i }
+      # Пропуски выносим в сводку и в лог отдельно: раньше запись, не доехавшая
+      # до БД, не оставляла никакого следа в результате прогона, и «синхронизация
+      # прошла» ничем не отличалось от «половина сотрудников не синхронизирована».
+      Rails.logger.warn("[StaffSync] skipped #{skipped_users} user(s)") if skipped_users.positive?
+
+      { success: true, departments: dept_count.to_i, users: saved_users, skipped_users: skipped_users }
     rescue Topnlab::Client::Error => e
       Rails.logger.error("[StaffSync] Topnlab error: #{e.message}")
       { success: false, error: e.message }
@@ -107,11 +112,19 @@ module Topnlab
 
     # users_payload is a flat array (or hash-of-hashes) of CRM user records.
     # Match by email; create local User on the fly with random password if missing.
+    #
+    # @return [Array(Integer, Integer)] сохранено, пропущено
     def upsert_users(payload)
       records = normalize_users(payload)
-      records.count do |u|
+      saved = 0
+      skipped = 0
+
+      records.each do |u|
         email = u['email'].to_s.downcase.strip
-        next false if email.blank?
+        if email.blank?
+          skipped += 1
+          next
+        end
 
         user = User.find_or_initialize_by(email: email)
         first_name  = u['firstname'].presence
@@ -144,21 +157,63 @@ module Topnlab
         # Deactivate fired users but keep the record.
         user.active = false if attrs[:crm_status] == 'fired'
 
-        save_user_safely(user, email)
+        if save_user_safely(user, email)
+          saved += 1
+        else
+          skipped += 1
+        end
       end
+
+      [saved, skipped]
     end
 
     # Multiple Topnlab users can share a landline → blank phone on UniqueViolation
     # rather than skipping the whole user (we still want their CRM linkage).
+    #
+    # Сбой на ОДНОЙ записи не имеет права ронять весь проход: сотрудников 14, и
+    # из-за одного конфликта не должны остаться несинхронизированными остальные.
     def save_user_safely(user, email)
       user.save(validate: false)
     rescue ActiveRecord::RecordNotUnique => e
-      raise e unless e.message.include?('phone')
+      return log_skipped_user(user, email, e) unless e.message.include?('phone')
+
+      retry_save_without_phone(user, email, e)
+    rescue StandardError => e
+      log_skipped_user(user, email, e)
+    end
+
+    # Повторное сохранение вынесено в отдельный метод со СВОИМ rescue намеренно.
+    # В Ruby соседний `rescue StandardError` не перехватывает исключение,
+    # поднятое внутри другого rescue-блока: когда второй save спотыкался о
+    # index_users_on_crm_user_id, исключение улетало наружу и роняло весь
+    # upsert_users. С 08.09.26 TopnlabStaffSyncJob падал так ежедневно, все
+    # 4 ретрая, и часть из 14 сотрудников не синхронизировалась вовсе.
+    def retry_save_without_phone(user, email, phone_conflict)
       user.phone = nil
       user.save(validate: false)
     rescue StandardError => e
-      Rails.logger.warn("[StaffSync] save failed for #{email}: #{e.class} #{e.message}")
+      log_skipped_user(user, email, e, after: phone_conflict)
+    end
+
+    # @return [false] всегда — чтобы вызывающий посчитал запись пропущенной.
+    def log_skipped_user(user, email, error, after: nil)
+      context = "crm_user_id=#{user.crm_user_id.inspect}"
+      context += " after #{after.class}" if after
+      Rails.logger.warn(
+        "[StaffSync] skipped #{mask_email(email)} (#{context}): " \
+        "#{error.class} #{error.message.to_s.lines.first.to_s.strip.truncate(160)}"
+      )
       false
+    end
+
+    # Email сотрудника — персональные данные, целиком в лог не пишем. Домен
+    # оставляем: он корпоративный и без него по логу не понять, чья это запись.
+    def mask_email(email)
+      local, domain = email.to_s.split('@', 2)
+      return '(пусто)' if local.blank?
+
+      masked = local.length > 2 ? "#{local[0]}***#{local[-1]}" : "#{local[0]}***"
+      domain.present? ? "#{masked}@#{domain}" : masked
     end
 
     def normalize_users(payload)
