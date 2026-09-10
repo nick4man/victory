@@ -231,14 +231,7 @@ VERIFY_TABLES='properties users inquiries conversations property_valuations'
 # не про испорченный дамп.
 #
 #   role … does not exist   — одноразовый контейнер поднимается без наших ролей;
-#   must be owner of        — оттуда же: COMMENT ON EXTENSION чужого владельца;
-#   schema … already exists — CREATE SCHEMA в дампе идёт БЕЗ IF NOT EXISTS
-#                             (public, tiger, tiger_data, topology), поэтому на
-#                             образе, где postgis уже развёрнут, здоровый дамп
-#                             спотыкался бы на пустом месте и verify стал бы
-#                             вечно красным. Объекты внутри схемы при этом
-#                             восстанавливаются, и их провал был бы виден
-#                             отдельной ошибкой.
+#   must be owner of        — оттуда же: COMMENT ON EXTENSION чужого владельца.
 #
 # Список намеренно узкий: всё, что в него не попало, валит проверку. Обратный
 # подход («любая ошибка безобидна») уже стоил нам четырёх суток ложного зелёного,
@@ -250,7 +243,34 @@ VERIFY_TABLES='properties users inquiries conversations property_valuations'
 # возникло — это значило бы, что расширение стоит в образе, и проверка ниже
 # прошла бы по нему, а не по восстановленным данным. Ровно тот ложный зелёный,
 # который этот код и закрывает.
-VERIFY_BENIGN_ERRORS='role "[^"]*" does not exist|must be owner of|schema "[^"]*" already exists'
+#
+# Схем здесь тоже НЕТ — правка по ревью 10.09.26. Раньше в списке стояло
+# schema "…" already exists с обоснованием «CREATE SCHEMA в дампе идёт без
+# IF NOT EXISTS (public, tiger, tiger_data, topology)». Обоснование не совпало с
+# тем, что происходит на самом деле:
+#
+#   * в прод-базе этих схем нет вовсе — пять расширений (plpgsql, postgis,
+#     pg_trgm, unaccent, vector), а tiger/tiger_data/topology создаёт
+#     postgis_tiger_geocoder, который не установлен;
+#   * pg_dump -Fc с этой базы не выкладывает НИ ОДНОЙ записи типа SCHEMA — ни
+#     tiger*, ни даже public. Проверено `pg_dump … | pg_restore -l`: 965 записей
+#     в оглавлении, SCHEMA среди них ноль;
+#   * контейнер проверки поднимается на нашем bookworm-образе, а он при initdb
+#     не создаёт ничего, кроме plpgsql (см. Dockerfile.postgres) — то есть и
+#     встречной схемы, о которую можно споткнуться, там нет.
+#
+# Ошибка была недостижима, а исключение под неё — молчаливым: ровно то, из-за
+# чего этот файл и правится. Откуда взялось обоснование: `db:migrate` на пустом
+# volume действительно падает на schema "tiger" already exists, но это ДРУГОЙ
+# путь — загрузка db/structure.sql (там схемы объявлены и IF NOT EXISTS нет)
+# на старом postgis/postgis-образе, который создавал их сам. К восстановлению
+# дампа это отношения не имеет. Расхождение «structure.sql объявляет — прод не
+# имеет» известно и разбирается отдельно.
+#
+# Если запись типа SCHEMA в дампе однажды появится (кто-то поставил
+# postgis_tiger_geocoder), verify покраснеет — и это ровно тот сигнал, который
+# надо увидеть, а не проглотить заранее заготовленным исключением.
+VERIFY_BENIGN_ERRORS='role "[^"]*" does not exist|must be owner of'
 
 # Судит о результате восстановления по ЛОГУ pg_restore, а не по коду возврата.
 #
