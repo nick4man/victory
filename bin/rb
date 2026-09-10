@@ -31,10 +31,20 @@
 #
 #   bin/rb --seed-bundle                       # victory_bundle → волюм сессии
 #   bin/rb --seed-bundle --from victory-victory_bundle
-#   bin/rb --seed-bundle --force               # перезалить поверх непустого
+#   bin/rb --seed-bundle --force               # ЗАМЕНИТЬ содержимое непустого
 #
 #   Полная установка в свежем worktree — десятки минут и поход в сеть, а рядом
 #   на хосте уже лежат распакованные гемы прода. Источник монтируется :ro.
+#
+#   ⚠ --force — замена, а не «долить поверх»: приёмник очищается перед копией.
+#     Иначе гем, выпавший из Gemfile.lock, жил бы в волюме вечно — bundler по
+#     локу его не подхватит, но в specifications/ остался бы гемспек
+#     зависимости, которой в проекте уже нет. Непустой волюм без --force не
+#     трогается вовсе.
+#
+#   ⚠ Копия идёт одноразовым контейнером из образа `alpine`. Если образа на
+#     хосте ещё нет, первый запуск всё-таки сходит в сеть — но за ним одним,
+#     а не за сотней гемов.
 #
 #   ⚠ Гемы прод-волюма соответствуют Gemfile.lock ПРОДА. Если в этом worktree
 #     lock другой (бампнули гем, ветка с новой зависимостью), `bundle check`
@@ -110,7 +120,7 @@ COMPOSE=("$DOCKER" compose -p "$PROJECT" -f docker-compose.ruby.yml)
 # ровно одну пару волюмов, зашитую в две константы. Здесь адресат вычисляется,
 # поэтому командой пользуется любая сессия.
 seed_bundle() {
-  local src='victory_bundle' force=0 key dst resolved occupied
+  local src='victory_bundle' force=0 key dst resolved occupied rc
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -139,9 +149,11 @@ if len(mounts) != 1:
     sys.exit(1)
 key = mounts[0]["source"]
 print(key, cfg.get("volumes", {}).get(key, {}).get("name") or key)
-') || {
+' 2>/dev/null) || {
     echo 'bin/rb: не нашёл в docker-compose.ruby.yml волюм на /usr/local/bundle у сервиса ruby.' >&2
-    echo '        Compose-файл изменился — поправь --seed-bundle, не догадывайся об имени.' >&2
+    echo '        Причина одна из: сервис или волюм переименован, compose-файл не читается,' >&2
+    echo '        на хосте нет python3. Что именно — покажет:' >&2
+    echo "            $DOCKER compose -p $PROJECT -f docker-compose.ruby.yml config --format json" >&2
     exit 1
   }
   read -r key dst <<<"$resolved"
@@ -161,6 +173,7 @@ print(key, cfg.get("volumes", {}).get(key, {}).get("name") or key)
       echo '        гемами из образа. Если те гемы устраивают — заливка не нужна.' >&2
       echo '        Перезалить осознанно:  bin/rb --seed-bundle --force' >&2
       echo '        Снести и начать с нуля:  bin/rb --nuke' >&2
+      echo '        (--nuke уносит ВСЕ волюмы сессии, включая pgdata/redisdata, не только гемы)' >&2
       exit 1
     fi
   else
@@ -173,6 +186,14 @@ print(key, cfg.get("volumes", {}).get(key, {}).get("name") or key)
   fi
 
   echo "Копирую $src → $dst (источник :ro) ..."
+  # Приёмник чистим перед копией. `cp -a` только доливает: без очистки
+  # --force означал бы «слить два бандла», и гем, выпавший из Gemfile.lock,
+  # остался бы в волюме вместе со своим гемспеком. Удаляем строго внутри
+  # /dst; источник смонтирован :ro и на запись физически недоступен.
+  #
+  # Пустой источник отбиваем ДО удаления (код 3): иначе --force молча
+  # превращал бы рабочий волюм в пустой и рапортовал «Готово: 0 гемов».
+  #
   # chown: в прод-волюме гемы принадлежат root, а контейнер бежит под uid
   # хоста. Без этого читать можно, а `bundle install` за недостающим гемом
   # падает с Permission denied.
@@ -180,11 +201,30 @@ print(key, cfg.get("volumes", {}).get(key, {}).get("name") or key)
   # Объём считаем по ИСТОЧНИКУ, хотя интересен размер копии: du берёт st_blocks,
   # а у только что записанных файлов они ещё нулевые (delayed allocation), и
   # свежий /dst показывал 7-14M вместо 242M. Копия побайтовая — размеры равны.
+  rc=0
   "$DOCKER" run --rm -v "$src:/src:ro" -v "$dst:/dst" alpine sh -c "
+    set -e
+    if [ -z \"\$(ls -A /src)\" ]; then
+      echo 'bin/rb: волюм-источник пуст — заливать нечего, приёмник не тронут.' >&2
+      exit 3
+    fi
+    find /dst -mindepth 1 -delete
     cp -a /src/. /dst/
     chown -R ${HOST_UID}:${HOST_GID} /dst
     printf 'Готово: %s гемов, %s\\n' \"\$(ls -d /dst/ruby/*/gems/*/ 2>/dev/null | wc -l)\" \"\$(du -sh /src | cut -f1)\"
-  "
+  " || rc=$?
+
+  if [ "$rc" -eq 3 ]; then
+    # Источник пуст — контейнер сказал об этом сам и ничего не удалил.
+    exit 1
+  elif [ "$rc" -ne 0 ]; then
+    echo "❌ Заливка оборвалась (код $rc). Волюм '$dst' — в неизвестном состоянии:" >&2
+    echo '   старое уже могло быть снесено, новое доехало не целиком. Как есть не используй.' >&2
+    echo '   Повторить:  bin/rb --seed-bundle --force' >&2
+    echo "   Или снести волюм целиком:  $DOCKER volume rm $dst" >&2
+    exit 1
+  fi
+
   echo 'Проверка:  bin/rb bundle check'
   echo '⚠ Гемы соответствуют Gemfile.lock ПРОДА. Если lock в этом worktree другой —'
   echo '  bundle check не сойдётся, и bundle install всё равно нужен (но доставит разницу).'
@@ -243,6 +283,7 @@ fi
 
 if [ $# -eq 0 ]; then
   echo 'usage: bin/rb [--db|--web|--build|--shell|--down|--nuke] <команда...>' >&2
+  echo '       bin/rb --seed-bundle [--from <волюм>] [--force]   # гемы копией чужого волюма' >&2
   exit 2
 fi
 
