@@ -134,7 +134,13 @@ RSpec.describe Topnlab::StaffSyncService do
     it 'пропускает запись и считает её в сводке отдельно от мусора в payload' do
       result = service.call
 
-      expect(result).to include(success: true, users: 1, failed_users: 1, malformed_records: 0)
+      expect(result).to include(users: 1, failed_users: 1, malformed_records: 0)
+    end
+
+    # Безусловный success: true врал: прогон, где сотрудник не доехал до БД,
+    # снаружи ничем не отличался от удачного.
+    it 'не отчитывается об успехе, раз запись не доехала до БД' do
+      expect(service.call).to include(success: false)
     end
 
     it 'продолжает проход и сохраняет следующего сотрудника' do
@@ -143,12 +149,16 @@ RSpec.describe Topnlab::StaffSyncService do
       expect(User.find_by(email: 'next-in-line@victory62.test')).to be_present
     end
 
-    it 'поднимает предупреждение в сводке — запись не доехала до БД' do
+    # Уровень error, а не warn: джобы нет в списках критичных, TG-алерта не
+    # будет, и эта строка — единственный след того, что сотрудник выпал из синка.
+    it 'пишет сводку о пропуске на уровне error' do
+      allow(Rails.logger).to receive(:error)
       allow(Rails.logger).to receive(:warn)
 
       service.call
 
-      expect(Rails.logger).to have_received(:warn).with('[StaffSync] skipped 1 user(s)')
+      expect(Rails.logger).to have_received(:error).with('[StaffSync] skipped 1 user(s)')
+      expect(Rails.logger).not_to have_received(:warn).with(/skipped 1 user\(s\)/)
     end
 
     it 'пишет в лог маску вместо адреса — email это персональные данные' do
@@ -175,12 +185,14 @@ RSpec.describe Topnlab::StaffSyncService do
       expect(result).to include(users: 1, malformed_records: 1, failed_users: 0)
     end
 
-    it 'не поднимает предупреждение — сотрудника без email синхронизировать нечем' do
+    it 'не поднимает тревогу — сотрудника без email синхронизировать нечем' do
       allow(Rails.logger).to receive(:warn)
+      allow(Rails.logger).to receive(:error)
 
       service.call
 
       expect(Rails.logger).not_to have_received(:warn).with(/\[StaffSync\]/)
+      expect(Rails.logger).not_to have_received(:error).with(/\[StaffSync\]/)
     end
   end
 
@@ -208,12 +220,55 @@ RSpec.describe Topnlab::StaffSyncService do
     # count приезжает Integer'ом из data.values.flatten при любом хеш-ответе
     # Topnlab, то есть warn на мусор был бы вечным, а настоящая авария в нём
     # потерялась бы. Ровно та болезнь ложного зелёного, что и в bin/backup.
-    it 'не поднимает предупреждение — это штатный ответ Topnlab, а не авария' do
+    it 'не поднимает тревогу — это штатный ответ Topnlab, а не авария' do
       allow(Rails.logger).to receive(:warn)
+      allow(Rails.logger).to receive(:error)
 
       service.call
 
       expect(Rails.logger).not_to have_received(:warn).with(/\[StaffSync\]/)
+      expect(Rails.logger).not_to have_received(:error).with(/\[StaffSync\]/)
+    end
+  end
+
+  describe 'БД отвалилась посреди прохода' do
+    # `rescue StandardError` в save_user_safely ловит не только конфликт
+    # индексов, но и обрыв соединения — значит в failed уходят ВСЕ записи.
+    # Здесь безусловный success: true был опаснее всего: прогон, в котором в БД
+    # не доехал НИ ОДИН сотрудник, снаружи выглядел удачным.
+    let(:first)  { build(:user, email: 'first@victory62.test') }
+    let(:second) { build(:user, email: 'second@victory62.test') }
+
+    before do
+      allow(client).to receive(:get_users).and_return(
+        [
+          crm_user(email: 'first@victory62.test', crm_id: 508),
+          crm_user(email: 'second@victory62.test', crm_id: 509)
+        ]
+      )
+
+      allow(User).to receive(:find_or_initialize_by).and_call_original
+      allow(User).to receive(:find_or_initialize_by)
+        .with(email: 'first@victory62.test').and_return(first)
+      allow(User).to receive(:find_or_initialize_by)
+        .with(email: 'second@victory62.test').and_return(second)
+
+      [first, second].each do |user|
+        allow(user).to receive(:save)
+          .and_raise(ActiveRecord::StatementInvalid, 'PG::ConnectionBad: connection is closed')
+      end
+    end
+
+    it 'не рапортует об успехе, когда не сохранился никто' do
+      expect(service.call).to include(success: false, users: 0, failed_users: 2)
+    end
+
+    it 'сообщает о провале на уровне error' do
+      allow(Rails.logger).to receive(:error)
+
+      service.call
+
+      expect(Rails.logger).to have_received(:error).with('[StaffSync] skipped 2 user(s)')
     end
   end
 end

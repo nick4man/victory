@@ -21,10 +21,19 @@ module Topnlab
       users_payload = @client.get_users
       saved_users, failed_users, malformed_records = upsert_users(Array(users_payload))
 
-      # Предупреждаем ТОЛЬКО о записях, не доехавших до БД: раньше такая запись
+      # Сообщаем ТОЛЬКО о записях, не доехавших до БД: раньше такая запись
       # не оставляла никакого следа в результате прогона, и «синхронизация
       # прошла» ничем не отличалось от «половина сотрудников не синхронизирована».
-      Rails.logger.warn("[StaffSync] skipped #{failed_users} user(s)") if failed_users.positive?
+      #
+      # Уровень error, а не warn: пропуск сотрудника — тихая авария. Сменил
+      # человек email в CRM — find_or_initialize_by(email:) заводит вторую
+      # запись с тем же crm_user_id, ловит конфликт по index_users_on_crm_user_id
+      # и выпадает из синка. Раньше это роняло джобу — грубо, зато заметно;
+      # теперь джоба зелёная, а TopnlabStaffSyncJob не входит ни в
+      # ApplicationJob::CRITICAL_JOB_CLASSES, ни в CRITICAL_SIDEKIQ_JOBS — и эта
+      # строка остаётся единственным следом события. Значит она обязана читаться
+      # как сбой, а не как заметка на полях.
+      Rails.logger.error("[StaffSync] skipped #{failed_users} user(s)") if failed_users.positive?
 
       # Мусор в payload сюда намеренно НЕ входит. Topnlab отвечает на get-users
       # то массивом, то хешем-хешей, и Client#get_users разворачивает второй
@@ -36,8 +45,14 @@ module Topnlab
         Rails.logger.debug { "[StaffSync] ignored #{malformed_records} non-user record(s) in payload" }
       end
 
+      # success ложен, если хоть одна запись не доехала до БД. Безусловное
+      # `true` врало в самом опасном сценарии: `rescue StandardError` в цикле
+      # накрывает и обрыв соединения (PG::ConnectionBad,
+      # ActiveRecord::StatementInvalid), поэтому упавшая посреди прохода БД
+      # давала «success: true, failed_users: 14» — зелёный итог поверх нуля
+      # синхронизированных сотрудников.
       {
-        success:           true,
+        success:           failed_users.zero?,
         departments:       dept_count.to_i,
         users:             saved_users,
         failed_users:      failed_users,
