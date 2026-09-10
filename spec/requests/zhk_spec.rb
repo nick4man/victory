@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'rails_helper'
+require 'tmpdir'
 
 # A2 Фаза 3 — публичная страница ЖК `/zhk/:slug`.
 #
@@ -196,15 +197,26 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
       end
     end
 
+    # Каталог фото вьюха строит от `Rails.public_path` — его и подменяем.
+    # Писать по настоящему пути нельзя: слаг резолвится в реальный ЖК
+    # («legenda»), и `rm_rf` снёс бы фотографии, которые редактор туда
+    # положит, а прерванный прогон оставил бы 4-байтовую заглушку
+    # `og.jpg` — она ломает и соседние примеры, и следующий запуск.
+    # Middleware статики захватило свой путь при загрузке приложения,
+    # так что подмена задевает только эту вьюху.
     context 'с брендовым og.jpg' do
-      let(:photo_dir) { Rails.public_path.join("images/zhk/#{complex.slug}") }
+      # `allow` не переживает `around` — rspec-mocks живёт внутри примера,
+      # не снаружи. Потому подмена в before, а уборка в after.
+      let(:tmp_public) { Pathname(Dir.mktmpdir) }
 
       before do
+        photo_dir = tmp_public.join("images/zhk/#{complex.slug}")
         photo_dir.mkpath
         photo_dir.join('og.jpg').binwrite("\xFF\xD8\xFF\xD9".b)
+        allow(Rails).to receive(:public_path).and_return(tmp_public)
       end
 
-      after { FileUtils.rm_rf(photo_dir) }
+      after { FileUtils.rm_rf(tmp_public) }
 
       it 'объявляет 1200×630 — размеры самого баннера, не hero-варианта' do
         create(:property, :on_site, residential_complex: complex)
