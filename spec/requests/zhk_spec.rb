@@ -184,14 +184,28 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
     end
 
     context 'без брендового og.jpg, но с объектами (сегодня основной путь)' do
-      before { create(:property, :on_site, residential_complex: complex) }
+      let!(:listing) { create(:property, :on_site, residential_complex: complex) }
 
-      it 'берёт картинку первого листинга и объявляет размеры hero-варианта' do
+      it 'берёт картинку первого листинга и объявляет фактические размеры варианта' do
+        # Портрет: resize_to_limit [1920, 1440] упирается в высоту → 960×1440.
+        # Объявить саму рамку здесь значило бы соврать на 960 пикселей ширины.
+        listing.images.first.blob.update!(metadata: { 'width' => 1000, 'height' => 1500 })
+
         get "/zhk/#{complex.slug}"
 
         doc = response.parsed_body
         expect(doc.at_css('meta[property="og:image"]')['content'])
           .to include('/rails/active_storage/')
+        expect(og(doc, 'width')).to eq('960')
+        expect(og(doc, 'height')).to eq('1440')
+      end
+
+      # AnalyzeJob асинхронный, и до него размеров нет. Тогда объявляем
+      # рамку — приближение, но не чужие 1200×630 из дефолта layout.
+      it 'до анализа блоба объявляет рамку варианта, а не дефолт layout' do
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
         expect(og(doc, 'width')).to eq('1920')
         expect(og(doc, 'height')).to eq('1440')
       end
