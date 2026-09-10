@@ -137,22 +137,28 @@ bundle exec whenever --clear-crontab
 а библиотеки старого образа — 3.5/0.8.2. Подменить образ обратно на
 `pg15-postgis35` технически ничто не мешает, но это не откат: база стартует и
 падает на первой же PostGIS-функции. **С шага 6 откат существует только через
-восстановление из дампа.** До шага 6 откат — вернуть тег образа, две минуты.
+восстановление из дампа.** До шага 6 откат — вернуть контейнер на старый образ
+compose-оверрайдом, две минуты.
 
 Зачем REINDEX: смена glibc меняет порядок сортировки (`datcollversion` был `2.31`,
 новый образ даёт `2.36`), и текстовые индексы, построенные под старой библиотекой,
 врут — включая уникальные ограничения. В `db/structure.sql` таких индексов 123, из
-них 39 UNIQUE; кириллица реально лежит в `districts(city, name)`,
-`city_median_prices(city, property_type)`, `landing_contents(...)`,
-`zhk_facts(field, source)`, `zhk_observations(...)`,
-`external_listings(source, source_id)`. Не зависят от коллации 5 HNSW по `vector`
+них 39 UNIQUE; кириллица лежит в `properties(city)` и `properties(district)` — это
+единственная таблица, про которую точно известно, что она полна (её наполняет
+`TopnlabSyncJob` каждые 30 мин), — а также в `city_median_prices(city, property_type)`,
+`landing_contents(...)`, `zhk_facts(field, source)`, `zhk_observations(...)`,
+`external_listings(source, source_id)`. UNIQUE `districts(city, name)` тоже в этом
+списке, но сама таблица пуста: её наполняла бы `rake districts:import_voronezh` (см.
+комментарий в `app/models/district.rb`), а такой задачи в репозитории нет — поэтому
+в дымовых проверках `districts` не участвует. Не зависят от коллации 5 HNSW по `vector`
 и 2 GiST по гео-колонкам (`districts.boundary` — geometry, `properties.geom` —
 geography); индексов `gin_trgm_ops` в схеме нет. При этом бояться нечего:
 volume `victory_pgdata` весит ~170 МБ (замер 09.09.26), REINDEX отработает за
 секунды — дольше всего перестраиваются те самые 5 HNSW.
 
 **Простой — только шаги 4–9: 2–3 минуты, худший случай 5.** Шаги 1–3 идут на живом
-трафике, и сделать их надо заранее.
+трафике, и сделать их надо заранее; шаги 10–11 — после закрытия окна, но не
+«когда-нибудь».
 
 #### Без простоя
 
@@ -162,6 +168,8 @@ volume `victory_pgdata` весит ~170 МБ (замер 09.09.26), REINDEX от
 ls -lt /var/backups/victory/db/ | head -3
 ```
 Проверка: сверху свежий `viktory-<dd.MM.yy-HHmm>.dump.gpg` ненулевого размера.
+**Полный путь выписать** — откат B принимает его аргументом, а без аргумента
+`restore` ничего не восстанавливает.
 🚨 Стоп: дампа нет или он нулевой — дальше не идти вообще.
 
 **2. Откат-тег на старый образ** (по аналогии с `victory-web:pre-ruby34`).
@@ -176,10 +184,15 @@ ls -lt /var/backups/victory/db/ | head -3
 **3. Собрать новый образ, пока старый контейнер обслуживает трафик.**
 ```bash
 cd /home/q/victory
+/usr/bin/docker image inspect -f '{{.Id}} {{.Created}}' \
+  viktory-postgres-pgvector:pg15-postgis36        # ДО сборки, записать
 /usr/bin/docker compose build db
-/usr/bin/docker image ls | grep pg15-postgis36
+/usr/bin/docker image inspect -f '{{.Id}} {{.Created}}' \
+  viktory-postgres-pgvector:pg15-postgis36        # ПОСЛЕ: ID и дата другие
 ```
-Проверка: сборка прошла, тег `pg15-postgis36` свежий.
+Проверка: ID образа сменился. Именно ID, а не `docker image ls | grep`: тег
+`pg15-postgis36` на хосте уже есть — его собирают сессионные стеки `bin/rb`, — и
+grep не отличит свежесобранный образ от лежавшего с прошлой недели.
 🚨 Стоп: apt не достучался до `apt.postgresql.org` — разбираться сейчас, при живой
 базе, а не с погашенной.
 🚨 **Не `docker compose up -d --build db`**: он сначала гасит базу и только потом
@@ -190,19 +203,24 @@ cd /home/q/victory
 **4. Погасить приложение: sidekiq первым, web вторым.**
 ```bash
 /usr/bin/docker compose stop sidekiq web
-/usr/bin/docker compose ps
+/usr/bin/docker compose ps -a
 ```
 У обоих `restart: unless-stopped`: с пропавшей БД Rails засыпает лог ошибками, а
 Sidekiq жжёт retry-бюджет на джобах, упавших не по своей вине. Sidekiq первым —
 чтобы он не набирал новых джоб, пока web ещё отвечает.
-Проверка: оба `Exited`. Сайт в этот момент отдаёт 502 — ожидаемо, окно открыто.
+Проверка: оба `Exited`. Флаг `-a` обязателен: установленный compose (v5.1.3) без него
+печатает только запущенные контейнеры, и «остановлен» не отличить от «не существует».
+Сайт в этот момент отдаёт 502 — ожидаемо, окно открыто.
 
-**5. Поднять базу на новом образе.**
+**5. Пересоздать контейнер базы на новом образе.**
 ```bash
 /usr/bin/docker compose up -d db
 /usr/bin/docker compose ps db
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'
 ```
+База работала всё это время, гасить её отдельно не нужно: имя образа в compose
+изменилось, поэтому `up -d` сам погасит старый контейнер и поднимет на его месте
+новый — поверх того же volume `pgdata`.
 Проверка: `Up (healthy)` (healthcheck — `pg_isready`), образ `pg15-postgis36`, в
 логах нет `FATAL`.
 🚨 Стоп: `healthy` не наступил за ~100 с — откат A. Порог не с потолка: у сервиса
@@ -216,20 +234,26 @@ Sidekiq жжёт retry-бюджет на джобах, упавших не по 
 ```bash
 DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
 PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
-/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL'
+/usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d "$DB" <<'SQL'
 SELECT postgis_extensions_upgrade();
 ALTER EXTENSION vector UPDATE;
 SQL
 ```
 Имя базы — из `$POSTGRES_DB`, не хардкодом: compose берёт его оттуда же.
+`-v ON_ERROR_STOP=1` не украшение: psql, читающий скрипт со stdin, при SQL-ошибке
+всё равно выходит с кодом 0 — без флага стоп-условие на точке невозврата держится
+только на внимательности человека.
 `postgis_extensions_upgrade()` по документации PostGIS иногда требует **двух
-прогонов** (первый поднимает сам `postgis`, второй — зависимые
-`postgis_raster`/`topology`): повторять, пока вывод не перестанет сообщать об
-upgrade.
+прогонов** (первый поднимает сам `postgis`, второй — зависимые): повторять, пока
+вывод не перестанет сообщать об upgrade. Расширений в базе семь (`db/structure.sql`):
+`fuzzystrmatch`, `pg_trgm`, `postgis`, `postgis_tiger_geocoder`, `postgis_topology`,
+`unaccent`, `vector`. `postgis_raster` среди них нет, а капризнее прочих на апгрейде
+исторически `postgis_tiger_geocoder` — он живёт в схеме `tiger`.
 Проверка:
 ```sql
 SELECT postgis_full_version();                                 -- без "needs upgrade"
-SELECT extname, extversion FROM pg_extension ORDER BY extname; -- postgis 3.6.x, vector 0.8.6
+SELECT extname, extversion FROM pg_extension ORDER BY extname; -- те же 7 + plpgsql,
+                                                               -- postgis 3.6.x, vector 0.8.6
 ```
 🚨 Стоп: функция завершилась **ошибкой** (не WARNING) — дальше не идти, откат B.
 
@@ -246,9 +270,10 @@ SELECT extname, extversion FROM pg_extension ORDER BY extname; -- postgis 3.6.x,
 не зависит; упомянуто, чтобы потом не искали. Если всё же понадобится —
 `reindexdb --system`.
 
-**8. Отметить коллацию — каждой базе кластера, включая `postgres` и `template1`.**
+**8. Отметить коллацию — каждой базе кластера, включая `postgres`, `template1` и
+`template0`.**
 ```bash
-for d in "$DB" postgres template1; do
+for d in "$DB" postgres template1 template0; do
   /usr/bin/docker compose exec -T db psql -U "$PGU" -d postgres \
     -c "ALTER DATABASE \"$d\" REFRESH COLLATION VERSION;"
 done
@@ -256,7 +281,11 @@ done
   -c 'SELECT datname, datcollversion FROM pg_database;'
 ```
 Пропустить служебные базы — получить WARNING про коллацию на каждом коннекте.
-Проверка: везде `2.36`.
+`template0` в списке намеренно: `REFRESH COLLATION VERSION` правит строку в
+`pg_database` и внутрь базы не подключается, так что её закрытость коннектам не
+мешает, — а оставленная `2.31` и выглядела бы в выводе как недоделанный шаг, и
+досталась бы каждой созданной из неё базе.
+Проверка: `2.36` во всех четырёх строках.
 
 **9. Поднять приложение, sidekiq последним.**
 ```bash
@@ -277,37 +306,120 @@ curl -sI https://victory62.org | head -1         # 200
 SELECT count(*) FROM properties
  WHERE geom IS NOT NULL
    AND ST_DWithin(geom, ST_MakePoint(39.74, 54.63)::geography, 5000);
--- вектор: HNSW + pgvector 0.8.6 — пять строк, а не ошибка
+
+-- вектор: HNSW + pgvector 0.8.6. Пробный вектор кладём в переменную psql — под
+-- подзапрос-скаляр планировщик HNSW не подставляет, и «проверка» уходила бы мимо
+-- индекса. Первая строка — счётчик: ноль означает, что эмбеддингов нет вовсе
+-- (EmbedPropertyJob не отрабатывал) и вектор-проверка неприменима.
+SELECT count(*) AS embeddings FROM property_embeddings;
+SELECT embedding AS probe FROM property_embeddings LIMIT 1 \gset
+EXPLAIN (COSTS OFF) SELECT property_id FROM property_embeddings
+ ORDER BY embedding <=> :'probe' LIMIT 5;      -- ждём Index Scan using ... hnsw;
+                                               -- Seq Scan на крошечной таблице —
+                                               -- выбор планировщика, не поломка
 SELECT property_id FROM property_embeddings
- ORDER BY embedding <=> (SELECT embedding FROM property_embeddings LIMIT 1) LIMIT 5;
--- текстовый UNIQUE с кириллицей: известный район находится
-SELECT id FROM districts WHERE city = 'Рязань' AND name = 'Канищево';
+ ORDER BY embedding <=> :'probe' LIMIT 5;      -- пять строк, а не ошибка
+
+-- кириллица, btree по живому каталогу (index_properties_on_district): пять строк с
+-- ненулевыми счётчиками. Каталог наполняет TopnlabSyncJob каждые 30 мин, поэтому
+-- пустой ответ здесь — провал, а не «данных нет».
+SELECT district, count(*) FROM properties
+ WHERE district IS NOT NULL AND district <> ''
+ GROUP BY district ORDER BY count(*) DESC LIMIT 5;
+-- порядок русского алфавита: ждём t. f — сортировка ушла в C-локаль, а тогда и
+-- WARNING про collation version из шага 5 не появился бы.
+SELECT 'е' < 'ё' AND 'ё' < 'ж' AS ru_order_ok;
 ```
+
+#### После окна — два шага, без которых процедура не закончена
+
+**10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
+```bash
+sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup
+grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
+```
+Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая
+на `pg15-postgis35`. Weekly-таймер (вс 04:33 UTC) гоняет ею `verify`: копия поднимет
+старый образ и попробует развернуть в него дамп, снятый уже с PostGIS 3.6 —
+проверка восстановления упадёт, и упадёт молча. Пока копия не синхронизирована,
+теги `pg15-postgis35` и `pre-bookworm` удалять нельзя.
+
+**11. Записать, что прод-БД переехала.**
+```bash
+/usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pg15-postgis36
+```
+Заменить в этой секции строку «Прод на 09.09.26 всё ещё на старом образе» на дату
+переезда и обновить строку про БД в `progress.md` (таблица «что в проде»).
+`bin/prod-mark` тут не поможет: он отмечает выкаченный коммит, а коммит не двигался —
+переехал только образ.
+
+**Оба шага обязательны, иначе состояние прода снова станет невидимым:** без 10
+ближайшая воскресная проверка бэкапов ломается, без 11 через месяц «процедура
+написана» неотличимо от «процедура выполнена».
 
 #### Откат
 
-**A — до шага 6** (расширения ещё не тронуты): вернуть тег и контейнер, быстро.
+**A — до шага 6** (расширения ещё не тронуты): вернуть контейнер на старый образ
+через compose-оверрайд, две минуты.
 ```bash
-/usr/bin/docker compose stop db
-/usr/bin/docker tag viktory-postgres-pgvector:pre-bookworm \
-                    viktory-postgres-pgvector:pg15-postgis36
-/usr/bin/docker compose up -d --force-recreate db
+cd /home/q/victory
+cat > docker-compose.rollback.yml <<'YML'
+services:
+  db:
+    image: viktory-postgres-pgvector:pre-bookworm
+YML
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.rollback.yml \
+  up -d --force-recreate db
+/usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
 /usr/bin/docker compose up -d web sidekiq
 ```
+🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
+то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
+`pgdata` от bookworm-образа: ретег подсунул бы им PostGIS 3.5 поверх каталога 3.6 —
+ровно ту поломку, от которой эта процедура защищает прод, только молча и в чужой
+сессии. На тот же тег смотрит `cmd_verify` в `bin/backup`.
+Оверрайд живёт до конца разбирательства и передаётся **каждой** последующей команде
+compose по сервису `db`: обычный `up -d db` вернёт контейнер на bookworm-образ.
+Собирать с оверрайдом нельзя — `build db` перезапишет им сам `pre-bookworm`.
 Как и в Ruby-процедуре, откат — это дерево И образы: пока прод-чекаут стоит на
 коммите с новым `Dockerfile.postgres`, следующая пересборка снова соберёт bookworm.
-Либо держать подменённый тег, либо вернуть чекаут на коммит перед #42.
+Либо держать оверрайд, либо вернуть чекаут на коммит перед #42.
 
-**B — после шага 6**: старый образ И восстановление из дампа шага 1.
+**B — после шага 6**: старый образ И восстановление из дампа шага 1. Приложение
+поднимается последним — блок A заканчивается подъёмом web+sidekiq, а здесь они
+работали бы по базе, которую `pg_restore --clean` в этот момент перезаписывает.
 ```bash
-/usr/local/bin/victory-backup restore     # интерактивно, дамп от шага 1
+cd /home/q/victory
+/usr/bin/docker compose stop sidekiq web
+cat > docker-compose.rollback.yml <<'YML'
+services:
+  db:
+    image: viktory-postgres-pgvector:pre-bookworm
+YML
+/usr/bin/docker compose -f docker-compose.yml -f docker-compose.rollback.yml \
+  up -d --force-recreate db
+# путь обязателен: без аргумента `restore` печатает список копий, возвращает 0 и
+# НИЧЕГО не восстанавливает. Имя файла — из вывода шага 1.
+/usr/local/bin/victory-backup restore \
+  /var/backups/victory/db/viktory-<dd.MM.yy-HHmm>.dump.gpg
+/usr/bin/docker compose up -d web sidekiq
 ```
-Порядок: погасить web/sidekiq → вернуть образ как в откате A → восстановить дамп →
-поднять приложение.
+Скрипт спросит подтверждение — ввести имя базы (`$POSTGRES_DB`) целиком.
+
+⚠️ **Если restore не завёлся.** Перед перезаписью `cmd_restore` снимает страховочный
+дамп текущего состояния (`cmd_db no-prune`) и при неудаче обрывается через `die` —
+восстановление может не начаться вовсе. А снимается этот дамп с базы, чей каталог
+уже 3.6, под библиотеками 3.5, так что `pg_dump` вправе упасть на первой же
+PostGIS-функции. Тогда не давить на скрипт, а проверить дамп в стороне: поднять
+`pre-bookworm` разовым `docker run` со своим volume, развернуть в него дамп шага 1
+руками (`gpg --batch --decrypt --passphrase-file … | docker exec -i <контейнер>
+pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедиться, что дамп
+живой, и только после этого подменять боевой `pgdata`. Боевой каталог до этого
+момента не трогаем: если дамп окажется негодным, он единственное, что осталось.
 
 **Триггеры отката:** база не дошла до `healthy` за ~100 с (бюджет healthcheck);
 `postgis_extensions_upgrade()` завершилась ошибкой; после подъёма сайт не отдаёт
-200 либо гео-/вектор-запросы пустые. **Не триггер:** WARNING про collation version
+200 либо гео-/вектор-/кириллическая проверки пустые. **Не триггер:** WARNING про collation version
 до шага 8 — он там и должен быть.
 
 #### Хвосты
@@ -318,14 +430,9 @@ SELECT id FROM districts WHERE city = 'Рязань' AND name = 'Канищев�
   симлинк на `bin/backup` прод-чекаута; тогда тег переключался бы в момент `git pull`,
   а не пересборки — отсюда общее правило «образ собираем ДО pull». Но на 09.09.26
   это **не симлинк, а отдельная копия** (обычный файл от 11.08.26), застрявшая на
-  `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36`.
-  Практическое следствие: weekly-таймер (вс 04:33 UTC) гоняет `verify` и поднимает
-  этой копией **старый** образ — значит, тег `pg15-postgis35` (и `pre-bookworm`)
-  удалять нельзя, пока копия жива, иначе ближайшая воскресная проверка
-  восстановления упадёт на `docker run` несуществующего образа. После миграции —
-  синхронизировать копию с чекаутом руками и проверить
-  `grep pg15 /usr/local/bin/victory-backup`. Daily-таймер (03:31 UTC) `verify` не
-  гоняет.
+  `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36` — отсюда
+  шаг 10 и запрет удалять теги `pg15-postgis35`/`pre-bookworm`, пока копия не
+  синхронизирована. Daily-таймер (03:31 UTC) `verify` не гоняет.
 - **Соседний стек `victory-victory`** (`/home/q/victory-victory`, свой `pgdata`,
   свой compose-проект) тоже на `pg15-postgis35`. Это полноценный compose-стек, а не
   `bin/rb`, — `--nuke` к нему неприменим: ему нужна та же процедура либо явное
