@@ -7,7 +7,7 @@
 #
 # Источник правды — ветка `prod` на origin: её двигает bin/prod-mark после
 # успешной выкатки. Ветку тянет обычный `git fetch`, а .git у всех worktree
-# общий (/home/q/victory/.git), поэтому один fetch обновляет состояние сразу
+# общий (`<main checkout>/.git`), поэтому один fetch обновляет состояние сразу
 # для всех сессий — отдельный транспорт не нужен.
 #
 # Подключение: . .claude/hooks/lib/prod-state.sh
@@ -18,8 +18,21 @@
 PROD_FETCH_TTL="${PROD_FETCH_TTL:-300}"
 PROD_FETCH_TIMEOUT="${PROD_FETCH_TIMEOUT:-8}"
 
-# Локальный прод-чекаут — есть только на хосте, где живёт прод.
-PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+# Локальный прод-чекаут — есть только на хосте, где живёт прод. Это всегда main
+# checkout (он же live-prod bind-mount), поэтому путь вычисляем из git, а не
+# хардкодим: репозиторий живёт на двух хостах с разными корнями, а функции ниже
+# зовут из любого worktree, в том числе вложенного. `--git-common-dir` даёт
+# `<main checkout>/.git` (в самом main checkout — относительный `.git`), значит
+# родитель и есть нужный каталог. VICTORY_PROD_DIR — приоритетный override.
+# `pwd -P` — физический путь: его сравнивают с `git rev-parse --show-toplevel`,
+# который физический всегда, и логический путь через симлинк не совпал бы.
+prod_main_checkout() {
+  local common
+  common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
+}
+
+PROD_DIR="${VICTORY_PROD_DIR:-$(prod_main_checkout)}"
 
 # Обновить refs, если давно не обновляли. Никогда не блокирует и не падает:
 # сеть может лежать, а старт сессии от этого зависеть не должен.
@@ -45,6 +58,7 @@ prod_sha() {
 # SHA прод-чекаута напрямую — точнее отметки, но работает лишь на прод-хосте.
 # Нужен, чтобы поймать случай «выкатили, но bin/prod-mark не запустили».
 prod_local_sha() {
+  [ -n "$PROD_DIR" ] || return 0
   [ -d "$PROD_DIR/.git" ] || [ -f "$PROD_DIR/.git" ] || return 0
   git -C "$PROD_DIR" rev-parse HEAD 2>/dev/null || true
 }

@@ -23,7 +23,32 @@
 
 set -euo pipefail
 
-PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+# Прод-чекаут — это main checkout репозитория (он же live-prod bind-mount).
+# Вычисляем из git вместо хардкода: репозиторий живёт на двух хостах с разными
+# корнями, а скрипт зовут из любого worktree. `--git-common-dir` указывает на
+# `<main checkout>/.git` (в самом main checkout — относительный `.git`), поэтому
+# родитель и есть прод-чекаут. VICTORY_PROD_DIR — приоритетный override.
+#
+# Отсчёт ведём от каталога САМОГО СКРИПТА, а не от cwd. Скрипт пишет в GitHub
+# (`refs/heads/prod`), и «что считать выкаченным» не должно зависеть от того,
+# откуда его позвали: из постороннего клона victory на том же хосте отметка
+# указала бы на невыкаченный коммит. Файл физически лежит в нужном репозитории,
+# поэтому его каталог — надёжная точка отсчёта.
+#
+# `pwd -P` — путь должен быть физическим: его сравнивают и передают в `git -C`,
+# а логический путь через симлинк сделал бы отметку неотличимой от чужой.
+main_checkout() {
+  local here common
+  here=$(CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || return 0
+  common=$(git -C "$here" rev-parse --git-common-dir 2>/dev/null) || return 0
+  case "$common" in
+    /*) : ;;                  # абсолютный — как есть
+    *)  common="$here/$common" ;;   # относительный — якорим к каталогу скрипта
+  esac
+  (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
+}
+
+PROD_DIR="${VICTORY_PROD_DIR:-$(main_checkout)}"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 MODE="write"
 
@@ -42,6 +67,8 @@ WARNED=0
 
 # --- 1. Прод-чекаут -----------------------------------------------------------
 
+[ -n "$PROD_DIR" ] || die 'Не удалось определить main checkout — запускай из git-репозитория
+   (или задай VICTORY_PROD_DIR).'
 [ -e "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR
    Скрипт запускают на хосте, где живёт прод. Переопределить — VICTORY_PROD_DIR."
 
