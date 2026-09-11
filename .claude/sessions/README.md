@@ -1,6 +1,6 @@
 # .claude/sessions/ — inter-session coordination
 
-**5 параллельных Claude Code сессий** работают на repo victory62. С 04.06.26 — **per-session git worktrees** (раньше все делили main checkout → branch-checkout collisions).
+**5 параллельных Claude Code сессий** работают на repo victory62. С 04.06.26 — **per-session git worktrees** (раньше все делили main checkout → branch-checkout collisions). Пути worktree ниже даны **относительно main checkout** (они его соседи); абсолютные — в `git worktree list`.
 
 | Session | Purpose | Worktree path | Branch | Ruby |
 |---|---|---|---|---|
@@ -38,7 +38,8 @@ git-команды внутри `/app` из-за этого не работаю�
 Каждая сессия открывает свой terminal:
 
 ```bash
-cd ../victory-chat          # ← cd в свой worktree; identity берётся из .claude-session
+# ← cd в свой worktree (например `victory-chat` — сосед main checkout, полный путь
+#   смотри в `git worktree list`); identity берётся из .claude-session
 claude --resume chat
 ```
 

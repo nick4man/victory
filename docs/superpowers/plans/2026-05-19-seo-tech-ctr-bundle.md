@@ -81,7 +81,7 @@ Capture metrics для each.
 - [ ] **Step 3: Create audit doc**
 
 ```bash
-mkdir -p .claude/docs/seo
+cd "$(git rev-parse --show-toplevel)" && mkdir -p .claude/docs/seo
 ```
 
 Write to `.claude/docs/seo/cwv-audit-2026-05-19.md` со следующей структурой:

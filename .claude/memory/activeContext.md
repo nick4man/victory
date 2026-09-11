@@ -43,7 +43,7 @@ override через `export CLAUDE_SESSION`.
 | **seo** | `../victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
 | **upgrade** | `../victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
 
-🚨 **main checkout** (родитель всех worktree) — и **живой прод-bind-mount** (`victory-web-1`
+🚨 **main checkout** (корень, из которого выросли все worktree) — он же **живой прод-bind-mount** (`victory-web-1`
 → `/app`, code-reload). Правка там уходит на сайт мгновенно. Только deploy/merge.
 
 Границы: write/edit/git — **только внутри своего worktree**. Чужие worktree и
@@ -316,7 +316,7 @@ Smoke-test'ы прошли (synthetic OCR text + mocked Vision response). Изв
 
 ## Артефакты и ссылки
 
-- TZ для этой фазы (если есть): `TZ_VICTORY62_NEWS_CROSSLINK.md` — вне репозитория, в домашнем каталоге
+- TZ для этой фазы (если есть): `TZ_VICTORY62_NEWS_CROSSLINK.md` — вне репозитория, на прод-хосте `/home/q/`
 - TG dev/owner чат: `TELEGRAM_STAFF_CHAT_ID = -1003937910508` (можно слать тестовые артефакты)
 - Прод: https://victory62.org
 - repo-map.md: `.claude/repo-map.md` — пересборка через `rake repo:map` (см. `lib/tasks/repo_map.rake`)

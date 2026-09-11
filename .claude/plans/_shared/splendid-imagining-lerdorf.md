@@ -87,7 +87,7 @@ Marker-файл `.claude-session` в корне каждого worktree — **и
 - В каждом worktree `cat .claude-session` = ожидаемое имя.
 - Прогнать hook вручную без env: `CLAUDE_PROJECT_DIR=../victory-chat bash ../victory-chat/.claude/hooks/session-start.sh` → печатает `session=chat` + путь worktree, без mismatch-warning; тот же прогон в main checkout → предупреждение «prod bind-mount / deploy-only».
 - `cd ../victory-upgrade && bin/claude-inbox list` → нет ошибки «invalid session»; `bin/claude-inbox send chat "test"` из upgrade проходит; получатель в `victory-chat` видит сообщение.
-- `git -C ../victory branch --show-current` → `main` (не трогали); **прод HTTP 200** (main checkout не менялся — только добавлен gitignored `.claude-session`).
+- `git branch --show-current` в main checkout → `main` (не трогали); **прод HTTP 200** (main checkout не менялся — только добавлен gitignored `.claude-session`).
 
 ## Risks / mitigations
 - **Нельзя трогать main checkout** (live prod). Все refresh — на ДРУГИХ worktree. В main checkout добавляется только gitignored `.claude-session=main` (ноль влияния на код/reload).

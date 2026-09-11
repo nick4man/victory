@@ -37,7 +37,7 @@ echo main > .claude-session
 Session start command:
 ```bash
 export CLAUDE_SESSION=chat     # или victory / seo / upgrade
-cd ../victory-chat
+# cd в свой worktree (например `victory-chat` — сосед main checkout; полный путь — `git worktree list`)
 claude --resume chat
 ```
 

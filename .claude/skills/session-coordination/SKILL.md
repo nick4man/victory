@@ -7,7 +7,7 @@ description: Use when working in parallel Claude Code sessions on the victory62 
 
 ## The setup
 
-Над одним репозиторием **4 parallel Claude Code сессии** работают. До 04.06.26 они делили одно working dir и регулярно бились checkout'ами друг друга — мы прожили эту боль (cross-session branch switches под committами). **Решение: git worktree per session**.
+Над одним репозиторием **4 parallel Claude Code сессии** работают. Пути worktree в таблице — **относительно main checkout** (они его соседи); абсолютные смотри в `git worktree list`. До 04.06.26 они делили одно working dir и регулярно бились checkout'ами друг друга — мы прожили эту боль (cross-session branch switches под committами). **Решение: git worktree per session**.
 
 | Session | Worktree path | Branch convention | Ruby | Tools |
 |---|---|---|---|---|
@@ -46,7 +46,8 @@ echo main > .claude-session
 После setup каждая сессия открывает свой terminal и:
 
 ```bash
-cd ../victory-chat        # identity берётся из .claude-session (marker-файл)
+# cd в свой worktree (например `victory-chat` — сосед main checkout; полный путь — `git worktree list`)
+# identity берётся из .claude-session (marker-файл)
 claude --resume chat           # session restart inside worktree
 ```
 
@@ -121,7 +122,7 @@ Gemfile.lock один на репо, поэтому два одновремен�
 
 ```
 ⛔ app/models/property.rb занят сессией chat
-   worktree: ../victory-chat
+   worktree: <абсолютный путь worktree>   # хук печатает его из `git worktree list`
    с 08.08.26 21:14 (12 мин назад), task=extract concerns
    Снять: bin/lock-clean --release app/models/property.rb
    Обойти разово: CLAUDE_LOCK_BYPASS=1

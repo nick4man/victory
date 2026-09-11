@@ -149,7 +149,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 echo 'eval "$(mise activate bash)"' >> ~/.bashrc
 
 # Установка Ruby через mise
-cd "$(git rev-parse --show-toplevel)"   # корень чекаута
+cd <каталог, куда клонирован репозиторий>
 mise trust  # Доверить конфиг
 mise install  # Установить инструменты из mise.toml
 ```

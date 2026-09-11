@@ -137,8 +137,10 @@ live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
 `config/backup.env.example` (подключается через `.` из systemd под root) и крон-строки
 (`config/schedule.rb`, `services/zhk-registry/crontab.example`) — ни cwd, ни `$HOME`
 владельца чекаута там недоступны. Плюс runbook'и прод-хоста ниже: путь прод-чекаута в них
-часть процедуры и совпадает с `APP_ROOT` в `/etc/victory-backup/backup.env` и `ExecStart`
-в юнитах бэкапа, поэтому «относительный» вариант рассинхронизировал бы их.
+часть процедуры и совпадает с `APP_ROOT` в `/etc/victory-backup/backup.env`, откуда его
+читает `bin/backup` под root, поэтому «относительный» вариант рассинхронизировал бы их.
+(В самих юнитах `deploy/systemd/victory-backup-*` пути чекаута нет — `ExecStart` указывает
+на `/usr/local/bin/victory-backup`, копию скрипта.)
 
 ## Команды
 
@@ -461,7 +463,7 @@ curl -sI https://victory62.org | head -1         # 200
 
 **10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
 ```bash
-sudo cp bin/backup /usr/local/bin/victory-backup
+sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup   # абсолютный: шаг отложенный, cwd из шага 3 уже не тот
 grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 ```
 Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая

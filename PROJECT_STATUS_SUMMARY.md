@@ -176,7 +176,7 @@
 ## ⚡ БЫСТРЫЙ ЗАПУСК
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"   # корень чекаута
+cd <каталог, куда клонирован репозиторий>
 
 # Установка
 bundle install && yarn install
