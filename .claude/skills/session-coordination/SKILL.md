@@ -11,12 +11,12 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 
 | Session | Worktree path | Branch convention | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.3.6** | `bin/rb` (rails/rspec/bundle) |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.3.6** | curl, python3, `bin/rb` |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.3.6** | curl, lighthouse, `bin/rb` |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.3.6** | `bin/rb` + `RUBY_TARGET=` для проб |
+| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.4.10** | `bin/rb` (rails/rspec/bundle) |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.4.10** | curl, python3, `bin/rb` |
+| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, `bin/rb` |
+| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.4.10** | `bin/rb` + `RUBY_TARGET=` для проб |
 
-> 🚨 `/home/q/victory` — **main checkout, ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.3.6** (после Rails-8.1 EOL-апгрейда 08.08.26).
+> 🚨 `/home/q/victory` — **main checkout, ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.4.10** (после Rails-8.1 EOL-апгрейда 08.08.26).
 
 ## Why worktree (vs shared working tree)
 

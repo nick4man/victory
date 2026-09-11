@@ -75,7 +75,7 @@ Marker-файл `.claude-session` в корне каждого worktree — **и
     - убрать «(migration pending)» / «(TBD)» — victory-victory теперь существует;
     - документировать marker-файл `.claude-session` как основной способ идентичности (ручной `export CLAUDE_SESSION` — как override);
     - выделить предупреждение **`/home/q/victory` = live-prod bind-mount, только deploy/merge, НИКОГДА не активная разработка**;
-    - Ruby **3.3.6** везде (старое разделение chruby 3.2.2 / system 3.3 устарело после EOL-апгрейда);
+    - Ruby **3.4.10** везде (старое разделение chruby 3.2.2 / system 3.3 устарело после EOL-апгрейда; 3.3.6 → 3.4.10 с 07.09.26);
     - добавить `victory-victory` в setup-скрипт.
 13. `CLAUDE.md` — секция «Параллельные сессии Claude Code»: пути worktree + «main checkout = deploy-only» + marker-identity.
 

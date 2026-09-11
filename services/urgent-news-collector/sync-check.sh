@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# ОТКЛЮЧЁН 11.09.26. Синхронизация с openclaw запрещена.
+# ОТКЛЮЧЁН 11.09.26. Выкладка в каталог openclaw запрещена.
 #
-# Раньше этот скрипт сверял каталог с боевой копией в
-# /opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts и умел лить файлы
-# в обе стороны (--pull-vendored / --push-owned).
-#
-# Решение 11.09.26: openclaw (/opt/.openclaw/.openclaw/**) — АРХИВ. Только
-# чтение, писать туда нельзя. Боевой код переехал в victory:
+# История в двух шагах:
+#   07.09.26 (#40) — репозиторий openclaw объявлен архивом, а каталог
+#     /opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts остался боевым:
+#     скрипт перестал быть «сверкой двух копий» и стал выкладкой (--deploy).
+#   11.09.26 — архивом объявлен и каталог на диске. Писать туда нельзя,
+#     боевой конвейер переехал, выкладывать этим скриптом больше некуда.
 #
 #   исходник  services/urgent-news-collector/   (источник правды)
-#   боевой    /opt/victory-conveyor/            (деплой, git checkout из main)
+#   боевой    /opt/victory-conveyor/            (git checkout из main)
 #
-# Обновить боевой каталог:  /opt/victory-conveyor/deploy.sh
-# Подробности:              VENDOR.md, CLAUDE.md этого каталога
+# Выкатка теперь: ./deploy.sh [ревизия]
+# Подробности:    SERVICE.md рядом
 
-echo "sync-check.sh отключён 11.09.26: openclaw переведён в архив." >&2
-echo "Деплой теперь: /opt/victory-conveyor/deploy.sh (см. VENDOR.md)." >&2
+echo "sync-check.sh отключён 11.09.26: каталог openclaw переведён в архив." >&2
+echo "Выкатка теперь ./deploy.sh (см. SERVICE.md)." >&2
 exit 2

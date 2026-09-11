@@ -20,6 +20,18 @@ class SitemapController < ApplicationController
   # Slow-change bucket (monthly/yearly priority). Я. может crawl-ить раз в
   # неделю — содержимое RyazanDistricts constant + page copy.
   def pages
+    # Ровно то же множество, что показывает хаб `/zhk` — одна выборка
+    # (`hub_listed`) на двоих. `sitemap_ready` строго уже, чем `indexable?`
+    # (см. комментарий класса ResidentialComplex): предлагать краулеру
+    # обойти карточку, на которой нечего читать, — тратить crawl-квоту на
+    # страницу, которая всё равно не ранжируется. Фильтр по городу — часть
+    # той же выборки: не-рязанский ЖК хаб не перечисляет, значит и в
+    # sitemap он попал бы орфаном без единой входящей ссылки.
+    @complexes = ResidentialComplex.hub_listed
+    # Сам хаб — только когда он же отдаёт индексируемую страницу. Раньше он
+    # стоял в sitemap безусловно и на пустом справочнике (а на проде он
+    # пуст) уезжал туда с `noindex,follow` на борту.
+    @hub_indexable = ResidentialComplex.hub_indexable?(@complexes)
     respond_to(&:xml)
   end
 

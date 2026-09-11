@@ -15,6 +15,8 @@
 # to russian display names + PropertyType slugs via constants below. Unknown
 # slugs raise RoutingError → 404 (Yandex penalises soft-404s heavily).
 class LandingsController < ApplicationController
+  include RendersNotFound
+
   # Per-type definitions: accusative (for "Купить ..." headlines), plural
   # (for "Найдено 12 квартир"), the Topnlab PropertyType.slug to filter by,
   # and whether rooms count makes sense for this type.
@@ -159,11 +161,6 @@ class LandingsController < ApplicationController
     when /\A[1-4]\z/ then raw.to_i
     else :invalid
     end
-  end
-
-  def render_not_found(reason = nil)
-    Rails.logger.info("[Landings] 404: #{reason}") if reason
-    render template: 'errors/not_found', status: :not_found, formats: [:html]
   end
 
   def build_h1

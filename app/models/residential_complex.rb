@@ -25,6 +25,12 @@
 # фактурой обязана ранжироваться — потому indexable? и не завязан на
 # инвентарь. Менять эти правила только парой: расхождение между тем, что
 # в sitemap, и тем, что отдаёт noindex, Яндекс демотирует.
+#
+# Из того же правила растут `hub_listed` / `hub_indexable?` ниже: хаб
+# `/zhk` и sitemap обязаны говорить об одном множестве. Живут они здесь, а
+# не в сервисе, ровно потому, что правило парное к `sitemap_ready?` —
+# разведи их по разным файлам, и следующая правка снова поменяет одно без
+# другого.
 class ResidentialComplex < ApplicationRecord
   extend FriendlyId
   # `:history` — слаг лежит в БД и редактируем, старые URL обязаны
@@ -42,6 +48,13 @@ class ResidentialComplex < ApplicationRecord
   # вернуть), а от вьюх удалённый ЖК скрыт `default_scope` — обращение
   # `property.residential_complex` отдаёт nil.
   has_many :properties
+
+  # Журналы службы сбора. `dependent:` не ставим по той же причине, что и у
+  # properties: мягкое удаление идёт через update!, а dependent висит на
+  # destroy — он был бы мёртвым кодом.
+  has_many :zhk_facts
+  has_many :zhk_price_points
+  has_many :zhk_observations
 
   # _prefix per CLAUDE.md convention → complex.housing_class_comfort?
   enum :housing_class, { econom: 0, comfort: 1, business: 2, elite: 3 },
@@ -63,6 +76,16 @@ class ResidentialComplex < ApplicationRecord
   validates :built_from, :built_to,
             numericality: { only_integer: true, greater_than: 1900, less_than_or_equal_to: 2100 },
             allow_nil: true
+  # Раньше только `built_from`/`built_to` были прикрыты `numericality` —
+  # `buildings_count`/`floors_min`/`floors_max` молча принимали что угодно,
+  # и неявный `to_i` при типизации превращал мусор («две», «-5») в
+  # правдоподобное число (0, -5), которое FactApplier применял как
+  # настоящее значение. Дырка того же класса, что была у `rooms` в
+  # `Zhk::Ingest` до отдельного фикса — там для мусора можно было
+  # написать свою санитайзацию перед записью, здесь источник правды один
+  # (`ActiveRecord::Base#save!`), значит правило — здесь.
+  validates :buildings_count, :floors_min, :floors_max,
+            numericality: { only_integer: true, greater_than: 0 }, allow_nil: true
   validate :district_slug_known
   validate :built_range_ordered
 
@@ -72,6 +95,33 @@ class ResidentialComplex < ApplicationRecord
   # Единственное правило попадания в sitemap: собственный редакционный
   # текст. Наличие объектов НЕ требуется — см. комментарий класса.
   scope :sitemap_ready, -> { visible.where.not(body_html: [nil, '']) }
+
+  # Хаб `/zhk` пока рязанский: title, description и H1 говорят «Рязани», а
+  # город валидируется против Cities::REGISTRY — то есть московский ЖК
+  # завести можно. Без фильтра он попал бы в список под рязанским H1, а в
+  # sitemap — вообще без единой входящей ссылки. Мультигородский хаб —
+  # отдельная работа (свой роут, свой title).
+  HUB_CITY = 'Рязань'
+
+  # Ниже этого порога `/zhk` остаётся 200, но отдаёт noindex,follow и в
+  # sitemap не попадает: страница полезна редким прямым заходам, но как
+  # точка входа в выдачу ещё не готова. Тот же порог — гейт мержа (см.
+  # .claude/plans/seo/a2-zhk-landings.md, «Фаза 3»).
+  HUB_MIN_COMPLEXES = 3
+
+  # ЕДИНСТВЕННАЯ выборка хаба. Ею обязаны пользоваться и страница `/zhk`,
+  # и sitemap: до этого контроллер фильтровал по Рязани, а sitemap брал
+  # все города, и первый же не-рязанский ЖК с текстом уезжал в sitemap
+  # орфаном.
+  scope :hub_listed, -> { sitemap_ready.in_city(HUB_CITY).order(:name) }
+
+  # Гейт индексации хаба — одно правило на оба потребителя: страница вешает
+  # noindex,follow, когда он ложен, sitemap в тот же момент обязан хаб не
+  # перечислять. Принимает уже загруженную выборку, чтобы страница не
+  # считала повторно то, что держит в руках.
+  def self.hub_indexable?(complexes = hub_listed)
+    complexes.size >= HUB_MIN_COMPLEXES
+  end
 
   # Soft delete (правило #1 CLAUDE.md — без гема paranoia)
   scope :not_deleted, -> { where(deleted_at: nil) }
@@ -117,6 +167,12 @@ class ResidentialComplex < ApplicationRecord
   def on_site_listings_count
     @on_site_listings_count ||= on_site_listings.count
   end
+
+  # Позволяет отдать уже посчитанное значение: страница ЖК считает тот же
+  # COUNT в агрегатах (ListingStats), и без этого `indexable?` шёл бы в
+  # базу второй раз за тем же числом. Правило индексации при этом
+  # остаётся здесь, в модели, а не переезжает во вьюху.
+  attr_writer :on_site_listings_count
 
   # Счётчик мемоизирован — сбрасываем, иначе после привязки объектов
   # в админке тот же объект отдаёт залипшее значение.

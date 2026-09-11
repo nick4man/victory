@@ -2,6 +2,11 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "deny": [
+      "Bash(rclone delete *)",
+      "Bash(rclone deletefile *)",
+      "Bash(rclone purge *)",
+      "Edit(//home/q/victory/**)",
+      "Write(//home/q/victory/**)",
       "Bash(./sync-check.sh:*)",
       "Bash(bash sync-check.sh:*)",
       "Bash(sh sync-check.sh:*)",

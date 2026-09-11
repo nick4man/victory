@@ -46,9 +46,18 @@ set -euo pipefail
 
   # Скрипты конвейера.
   git -C "$REPO" archive "$REF:services/urgent-news-collector" | tar x -C "$DEST"
-  # Зеркало на сайт — живёт в соседнем сервисе, но деплоится рядом (MIRROR_SCRIPT).
-  git -C "$REPO" archive "$REF:services/chat-host-cron" post_news_to_victory.sh | tar x -C "$DEST"
-  chmod +x "$DEST/post_news_to_victory.sh" "$DEST/deploy.sh"
+  chmod +x "$DEST/deploy.sh"
+
+  # Зеркало на сайт принадлежит другой службе (chat-host-cron) и выкладывается
+  # своим деплоем. Мы его не тянем: службы не знают друг о друге, связь — это
+  # контракт «исполняемый файл по пути», который проверяет bin/services-check.
+  MIRROR="${MIRROR_SCRIPT:-$DEST/post_news_to_victory.sh}"
+  if [ -x "$MIRROR" ]; then
+    echo "✓ зеркало на месте: $MIRROR"
+  else
+    echo "⚠ нет исполняемого зеркала по пути $MIRROR — посты уйдут с fallback-URL."
+    echo "  Выложи post_news_to_victory.sh (служба chat-host-cron) или задай MIRROR_SCRIPT."
+  fi
 
   # venv: создаём при первом деплое, дальше только доставляем зависимости.
   if [ ! -x "$DEST/.venv/bin/python3" ]; then

@@ -21,6 +21,8 @@ module Telegram
       COMMANDS = {
         '/help' => Commands::Help,
         '/start' => Commands::Help, # alias TG default → /help (плюс side-effect dm_chat_id update)
+        # Интерактивное обучение боту — карточка уроков с кнопками в личке.
+        '/tutorial' => Commands::Tutorial,
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
         '/promote' => Commands::Promote,

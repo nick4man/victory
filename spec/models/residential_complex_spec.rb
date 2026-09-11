@@ -274,7 +274,7 @@ RSpec.describe ResidentialComplex do
     it 'идемпотентен: повторные прогоны не плодят записи' do
       run_seed
       first_count = described_class.unscoped.count
-      expect(first_count).to eq(7)
+      expect(first_count).to eq(12)
 
       run_seed
       run_seed
@@ -286,8 +286,44 @@ RSpec.describe ResidentialComplex do
       run_seed
 
       expect(described_class.unscoped.pluck(:slug)).to match_array(
-        %w[priokskiy-park legenda vidnyy metropark skobelev otkrytie staroe-selo-2]
+        %w[priokskiy-park legenda vidnyy metropark skobelev otkrytie staroe-selo
+           pozharskiy severnyy margelov gollandiya-parkovyy-kvartal leto]
       )
+    end
+
+    # Регресс на реальный отказ: заполнение шло через `||=`, а у
+    # address_patterns дефолт `[]` — истинное значение, поэтому паттерны
+    # молча не проставлялись, и подсказка объектов в админке была пустой
+    # у всех ЖК разом.
+    it 'проставляет address_patterns, а не оставляет пустой массив' do
+      run_seed
+
+      expect(described_class.find_by(slug: 'otkrytie').address_patterns)
+        .to include('ул. Льговская, д. 10')
+    end
+
+    # Источники по этим полям расходятся, и сид обязан оставить их пустыми:
+    # неверная фактура на entity-странице хуже отсутствующей.
+    it 'не выдумывает фактуру там, где источники разошлись' do
+      run_seed
+
+      expect(described_class.find_by(slug: 'metropark').developer).to be_nil
+      expect(described_class.find_by(slug: 'skobelev').housing_class).to be_nil
+    end
+
+    # Расхождение по «Приокскому парку» (08.09.26): справочник держал
+    # «строится, ввод 2026», ЦИАН — «сдан, 2016–2017». Разница определяет,
+    # что человек покупает, поэтому спорное обнулено. `buildings_count`
+    # остался: два корпуса подтверждают оба источника.
+    it 'не называет стадию и срок там, где источники разошлись на годы' do
+      run_seed
+
+      complex = described_class.find_by(slug: 'priokskiy-park')
+      expect(complex.build_status).to be_nil
+      expect(complex.built_to).to be_nil
+      expect(complex.floors_min).to be_nil
+      expect(complex.floors_max).to be_nil
+      expect(complex.buildings_count).to eq(2)
     end
 
     it 'не откатывает правки редактора' do
@@ -299,6 +335,134 @@ RSpec.describe ResidentialComplex do
       complex = described_class.find_by(slug: 'legenda')
       expect(complex.name).to eq('Легенда Плюс')
       expect(complex.developer).to eq('Другой')
+    end
+
+    # Очистка — тоже правка. Админка сознательно даёт стереть паттерны
+    # пустой textarea; сид на `blank?` восстанавливал бы их обратно, и
+    # редактор не смог бы избавиться от неверного паттерна в принципе.
+    it 'не восстанавливает то, что редактор осознанно стёр' do
+      run_seed
+      described_class.find_by(slug: 'legenda').update!(address_patterns: [], wall_material: '')
+
+      run_seed
+
+      complex = described_class.find_by(slug: 'legenda')
+      expect(complex.address_patterns).to eq([])
+      expect(complex.wall_material).to eq('')
+    end
+  end
+
+  describe 'rake zhk:texts' do
+    def run_seed
+      original = $stdout
+      $stdout = StringIO.new
+      load Rails.root.join('db/seeds/residential_complexes.rb')
+    ensure
+      $stdout = original
+    end
+
+    def run_texts
+      original = $stdout
+      $stdout = StringIO.new
+      load Rails.root.join('db/seeds/zhk_texts.rb')
+    ensure
+      $stdout = original
+    end
+
+    it 'заливает текст и пре-рендерит обе проекции' do
+      run_seed
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      expect(complex.body_blocks).to be_present
+      expect(complex.body_html).to include('<h2>Дома и сроки</h2>')
+      expect(complex.body_plain).to include('Льговская')
+    end
+
+    it 'покрывает все три ЖК, у которых есть редакционный текст' do
+      run_seed
+      run_texts
+
+      expect(described_class.sitemap_ready.unscope(where: :published).pluck(:slug))
+        .to match_array(%w[otkrytie legenda priokskiy-park])
+    end
+
+    # Расхождения, ради которых поля в справочнике оставлены пустыми, текст
+    # обязан обходить: класс «Легенды» (комфорт против бизнеса) и год ввода
+    # «Приокского парка» (2026 против «сдан 2016–2017» у ЦИАН). Регресс тут
+    # ловит не опечатку, а возврат к додумыванию.
+    it 'не называет класс жилья «Легенды» — источники по нему расходятся' do
+      run_seed
+      run_texts
+
+      expect(described_class.find_by(slug: 'legenda').body_plain)
+        .not_to match(/бизнес-класс|комфорт-класс/i)
+    end
+
+    it 'не называет год ввода и стадию «Приокского парка»' do
+      run_seed
+      run_texts
+
+      plain = described_class.find_by(slug: 'priokskiy-park').body_plain
+      expect(plain).not_to match(/20(1[6-9]|2[0-9])/)
+      expect(plain).not_to match(/строится|сдан в /i)
+    end
+
+    # Ради этого блок faq и обязателен: FaqHelper вытаскивает пары прямо из
+    # <details>, и FAQPage-разметка на /zhk/:slug появляется сама.
+    it 'даёт FAQ-пары, из которых собирается FAQPage' do
+      run_seed
+      run_texts
+
+      helper = ActionController::Base.helpers.extend(FaqHelper)
+
+      %w[otkrytie legenda priokskiy-park].each do |slug|
+        pairs = helper.faq_pairs_from_html(described_class.find_by(slug: slug).body_html)
+
+        expect(pairs.size).to be >= 5
+        expect(pairs.map(&:first)).to all(end_with('?'))
+        expect(pairs.map(&:last)).to all(be_present)
+      end
+    end
+
+    it 'идемпотентен: повторный прогон ничего не меняет' do
+      run_seed
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      before = complex.attributes.slice('body_blocks', 'body_html', 'body_plain')
+      touched_at = complex.updated_at
+
+      run_texts
+      run_texts
+
+      complex.reload
+      expect(complex.attributes.slice('body_blocks', 'body_html', 'body_plain')).to eq(before)
+      expect(complex.updated_at).to eq(touched_at)
+    end
+
+    it 'не перетирает текст, который правил редактор' do
+      run_seed
+      described_class.find_by(slug: 'otkrytie')
+        .update!(body_blocks: [{ 'kind' => 'paragraph', 'text' => 'Редакторская версия.' }])
+
+      run_texts
+
+      complex = described_class.find_by(slug: 'otkrytie')
+      expect(complex.body_blocks.size).to eq(1)
+      expect(complex.body_html).to eq('<p>Редакторская версия.</p>')
+    end
+
+    # Сид текстов не создаёт ЖК: запись без фактуры — это работа zhk:seed.
+    it 'не создаёт записей, когда справочник пуст' do
+      expect { run_texts }.not_to change(described_class.unscoped, :count)
+    end
+
+    it 'публикацию не трогает — это решение редактора' do
+      run_seed
+      run_texts
+
+      expect(described_class.find_by(slug: 'otkrytie').published).to be(false)
     end
   end
 

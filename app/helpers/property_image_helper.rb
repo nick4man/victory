@@ -94,6 +94,67 @@ module PropertyImageHelper
     FALLBACK_HERO_URL
   end
 
+  # Рамка hero-варианта (property.rb:153). Именно РАМКА, не размер:
+  # resize_to_limit вписывает в неё, сохраняя пропорции и не растягивая.
+  HERO_LIMIT = [1920, 1440].freeze
+
+  # Фактические размеры hero-варианта — то, что надо объявлять в
+  # og:image:width/height.
+  #
+  # Почему нельзя объявлять саму рамку: совпадение бывает только у
+  # ландшафтных 4:3. Портрет 1000×1500 даёт 960×1440, 16:9 — 1920×1080.
+  # VK/Telegram резервируют кроп по объявленным числам ДО загрузки файла,
+  # поэтому промах даёт срезанный превью, а не неточность в разметке.
+  #
+  # nil, если размеров в метаданных нет. Это НЕ редкий случай: на 10.09.26
+  # в проде размеры есть у 414 блобов из 21873, при этом 21809 помечены
+  # `analyzed: true` — анализ прошёл, размеры не записал (метаданные вида
+  # `{"identified":true,"analyzed":true}`), и сам по себе он не повторится.
+  # Значит вызывающий обязан иметь осмысленный ответ на nil, а не считать
+  # его переходным состоянием.
+  def property_og_image_dimensions(image, limit: HERO_LIMIT)
+    return nil unless image.respond_to?(:blob)
+
+    meta   = image.blob.metadata || {}
+    width  = meta['width'].to_i
+    height = meta['height'].to_i
+    return nil unless width.positive? && height.positive?
+
+    # min(..., 1.0) — вариант не растягивает: исходник мельче рамки
+    # отдаётся как есть.
+    scale = [limit[0].fdiv(width), limit[1].fdiv(height), 1.0].min
+    [(width * scale).round, (height * scale).round]
+  rescue StandardError
+    nil
+  end
+
+  # Объявляет og:image вместе с размерами. Живёт в хелпере, а не в
+  # партиале, потому что все три страницы (карточка объекта,
+  # district-лендинг, ЖК) берут одну и ту же картинку и до этого объявляли
+  # её по-разному: две донашивали дефолт layout 1200×630 поверх
+  # hero-варианта, третья объявляла рамку resize_to_limit.
+  #
+  # Размеры обязательны: без них VK часто пропускает превью целиком.
+  # Когда фактических размеров нет — а сегодня это подавляющее большинство
+  # блобов, см. property_og_image_dimensions — объявляем рамку. Она верна
+  # для ландшафтных 4:3 и завышает ширину у портрета, то есть остаётся
+  # приближением; точным это станет только после бэкфилла метаданных.
+  # Но и приближение ближе к правде, чем чужие 1200×630 из дефолта.
+  def declare_property_og_image(image)
+    url = property_image_url(image, variant: :hero)
+    # Картинка не отрендерилась — HEIC без варианта, битый блоб, ошибка
+    # генерации URL — и property_image_url отдал сток с Unsplash. Его
+    # пропорций мы не знаем, а объявить рядом размеры фотографии объекта
+    # значило бы соврать ровно так же, как дефолт layout. Молчим целиком:
+    # layout подставит og-default.jpg, который и есть 1200×630.
+    return if url == FALLBACK_HERO_URL
+
+    content_for :og_image, url
+    dimensions = property_og_image_dimensions(image) || HERO_LIMIT
+    content_for :og_image_width, dimensions.first
+    content_for :og_image_height, dimensions.last
+  end
+
   private
 
   # format → variant suffix mapping. :jpeg использует базовые variants без

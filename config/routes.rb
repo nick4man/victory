@@ -185,6 +185,15 @@ Rails.application.routes.draw do
   end
 
   # ============================================
+  # ЖК (A2 Фаза 3 — entity-страницы под бренд-запросы жилых комплексов)
+  # ============================================
+  # Отдельный namespace, не вложенный в /kupit/kvartira/zhk/:slug — страница
+  # ЖК это сущность, а не фасет intent×type (см. план A2, «Ключевые решения»).
+  get '/zhk',     to: 'residential_complexes#index', as: :zhk_index
+  get '/zhk/:id', to: 'residential_complexes#show',  as: :zhk,
+                  constraints: { id: %r{[a-z0-9-]+} }
+
+  # ============================================
   # PROPERTIES (Каталог недвижимости)
   # ============================================
   resources :properties do
@@ -684,6 +693,10 @@ Rails.application.routes.draw do
       end
     end
 
+    # Где источники спорят между собой — очередь на проверку редактором.
+    # Только показывает: решение «кто прав» человеческое, а не автоматическое.
+    get 'zhk_discrepancies', to: 'zhk_discrepancies#index', as: :zhk_discrepancies
+
     # Property publication dashboard — shows the result of the
     # ready_for_site? gate for every CRM-synced Property, plus the
     # force_publish override toggle. Lets admins fix "missing from
@@ -798,6 +811,12 @@ Rails.application.routes.draw do
     # News ingest from chat-host cron (urgent / digest pipelines).
     # Bearer-auth via ENV[NEWS_INGEST_TOKEN]. See services/chat-host-cron/.
     post 'news_ingest', to: 'news_ingest#create', as: :news_ingest
+
+    # Служба сбора данных о ЖК (services/zhk-registry) шлёт сюда батчи
+    # наблюдений. Решение, что применить, принимает Rails — см. Zhk::Ingest.
+    post 'zhk_ingest', to: 'zhk_ingest#create', as: :zhk_ingest
+    # Сводка одного прогона run.py — после всех батчей create выше.
+    post 'zhk_ingest/summary', to: 'zhk_ingest#summary', as: :zhk_ingest_summary
 
     # Telegram
     post 'telegram', to: 'telegram#create'

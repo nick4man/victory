@@ -2977,6 +2977,149 @@ ALTER SEQUENCE public.viewing_schedules_id_seq OWNED BY public.viewing_schedules
 
 
 --
+-- Name: zhk_facts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zhk_facts (
+    id bigint NOT NULL,
+    residential_complex_id bigint NOT NULL,
+    field character varying NOT NULL,
+    value character varying,
+    source character varying NOT NULL,
+    url character varying,
+    observed_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: zhk_facts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zhk_facts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zhk_facts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zhk_facts_id_seq OWNED BY public.zhk_facts.id;
+
+
+--
+-- Name: zhk_ingest_runs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zhk_ingest_runs (
+    id bigint NOT NULL,
+    source character varying NOT NULL,
+    count integer NOT NULL,
+    ran_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: zhk_ingest_runs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zhk_ingest_runs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zhk_ingest_runs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zhk_ingest_runs_id_seq OWNED BY public.zhk_ingest_runs.id;
+
+
+--
+-- Name: zhk_observations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zhk_observations (
+    id bigint NOT NULL,
+    source character varying NOT NULL,
+    external_id character varying NOT NULL,
+    url character varying,
+    fetched_at timestamp(6) without time zone NOT NULL,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    digest character varying NOT NULL,
+    residential_complex_id bigint,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: zhk_observations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zhk_observations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zhk_observations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zhk_observations_id_seq OWNED BY public.zhk_observations.id;
+
+
+--
+-- Name: zhk_price_points; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.zhk_price_points (
+    id bigint NOT NULL,
+    residential_complex_id bigint NOT NULL,
+    source character varying NOT NULL,
+    observed_at timestamp(6) without time zone NOT NULL,
+    price_per_sqm integer NOT NULL,
+    kind integer DEFAULT 0 NOT NULL,
+    rooms integer,
+    url character varying,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: zhk_price_points_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.zhk_price_points_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: zhk_price_points_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.zhk_price_points_id_seq OWNED BY public.zhk_price_points.id;
+
+
+--
 -- Name: activation_events id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3408,6 +3551,34 @@ ALTER TABLE ONLY public.users ALTER COLUMN id SET DEFAULT nextval('public.users_
 --
 
 ALTER TABLE ONLY public.viewing_schedules ALTER COLUMN id SET DEFAULT nextval('public.viewing_schedules_id_seq'::regclass);
+
+
+--
+-- Name: zhk_facts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_facts ALTER COLUMN id SET DEFAULT nextval('public.zhk_facts_id_seq'::regclass);
+
+
+--
+-- Name: zhk_ingest_runs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_ingest_runs ALTER COLUMN id SET DEFAULT nextval('public.zhk_ingest_runs_id_seq'::regclass);
+
+
+--
+-- Name: zhk_observations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_observations ALTER COLUMN id SET DEFAULT nextval('public.zhk_observations_id_seq'::regclass);
+
+
+--
+-- Name: zhk_price_points id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_price_points ALTER COLUMN id SET DEFAULT nextval('public.zhk_price_points_id_seq'::regclass);
 
 
 --
@@ -3923,6 +4094,38 @@ ALTER TABLE ONLY public.viewing_schedules
 
 
 --
+-- Name: zhk_facts zhk_facts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_facts
+    ADD CONSTRAINT zhk_facts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zhk_ingest_runs zhk_ingest_runs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_ingest_runs
+    ADD CONSTRAINT zhk_ingest_runs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zhk_observations zhk_observations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_observations
+    ADD CONSTRAINT zhk_observations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: zhk_price_points zhk_price_points_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_price_points
+    ADD CONSTRAINT zhk_price_points_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: idx_article_embeddings_cosine; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4056,6 +4259,13 @@ CREATE INDEX idx_on_district_property_type_deal_type_efc4ddb17d ON public.extern
 
 
 --
+-- Name: idx_on_residential_complex_id_observed_at_684b7798f0; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_on_residential_complex_id_observed_at_684b7798f0 ON public.zhk_price_points USING btree (residential_complex_id, observed_at);
+
+
+--
 -- Name: idx_on_telegram_group_message_id_95e1cb4d35; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4123,6 +4333,20 @@ CREATE INDEX idx_topnlab_doc_chunks_cosine ON public.topnlab_doc_chunks USING hn
 --
 
 CREATE UNIQUE INDEX idx_topnlab_doc_chunks_source_pos ON public.topnlab_doc_chunks USING btree (source_file, chunk_index);
+
+
+--
+-- Name: idx_zhk_facts_identity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_zhk_facts_identity ON public.zhk_facts USING btree (residential_complex_id, field, source);
+
+
+--
+-- Name: idx_zhk_observations_identity; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_zhk_observations_identity ON public.zhk_observations USING btree (source, external_id, digest);
 
 
 --
@@ -6667,6 +6891,27 @@ CREATE INDEX index_viewing_schedules_on_viewing_type ON public.viewing_schedules
 
 
 --
+-- Name: index_zhk_ingest_runs_on_source_and_ran_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_zhk_ingest_runs_on_source_and_ran_at ON public.zhk_ingest_runs USING btree (source, ran_at);
+
+
+--
+-- Name: index_zhk_observations_on_residential_complex_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_zhk_observations_on_residential_complex_id ON public.zhk_observations USING btree (residential_complex_id);
+
+
+--
+-- Name: index_zhk_observations_on_source_and_fetched_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_zhk_observations_on_source_and_fetched_at ON public.zhk_observations USING btree (source, fetched_at);
+
+
+--
 -- Name: tasks fk_rails_0016c50613; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -6704,6 +6949,14 @@ ALTER TABLE ONLY public.tasks
 
 ALTER TABLE ONLY public.messages
     ADD CONSTRAINT fk_rails_12e9de2e48 FOREIGN KEY (recipient_id) REFERENCES public.users(id);
+
+
+--
+-- Name: zhk_facts fk_rails_13ccf0fe21; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_facts
+    ADD CONSTRAINT fk_rails_13ccf0fe21 FOREIGN KEY (residential_complex_id) REFERENCES public.residential_complexes(id);
 
 
 --
@@ -7099,6 +7352,14 @@ ALTER TABLE ONLY public.active_storage_attachments
 
 
 --
+-- Name: zhk_price_points fk_rails_c4482d9aba; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_price_points
+    ADD CONSTRAINT fk_rails_c4482d9aba FOREIGN KEY (residential_complex_id) REFERENCES public.residential_complexes(id);
+
+
+--
 -- Name: lead_events fk_rails_c91ddfdd52; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7211,6 +7472,14 @@ ALTER TABLE ONLY public.case_studies
 
 
 --
+-- Name: zhk_observations fk_rails_f036dfdc48; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.zhk_observations
+    ADD CONSTRAINT fk_rails_f036dfdc48 FOREIGN KEY (residential_complex_id) REFERENCES public.residential_complexes(id);
+
+
+--
 -- Name: client_documents fk_rails_f619b0f9ca; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7233,6 +7502,10 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260907120300'),
+('20260907120200'),
+('20260907120100'),
+('20260907120000'),
 ('20260814022000'),
 ('20260810064000'),
 ('20260809191100'),

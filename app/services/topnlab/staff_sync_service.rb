@@ -19,9 +19,45 @@ module Topnlab
       dept_count = upsert_structure(structure) if structure
 
       users_payload = @client.get_users
-      user_count = upsert_users(Array(users_payload))
+      saved_users, failed_users, malformed_records = upsert_users(Array(users_payload))
 
-      { success: true, departments: dept_count.to_i, users: user_count.to_i }
+      # Сообщаем ТОЛЬКО о записях, не доехавших до БД: раньше такая запись
+      # не оставляла никакого следа в результате прогона, и «синхронизация
+      # прошла» ничем не отличалось от «половина сотрудников не синхронизирована».
+      #
+      # Уровень error, а не warn: пропуск сотрудника — тихая авария. Сменил
+      # человек email в CRM — find_or_initialize_by(email:) заводит вторую
+      # запись с тем же crm_user_id, ловит конфликт по index_users_on_crm_user_id
+      # и выпадает из синка. Раньше это роняло джобу — грубо, зато заметно;
+      # теперь джоба зелёная, а TopnlabStaffSyncJob не входит ни в
+      # ApplicationJob::CRITICAL_JOB_CLASSES, ни в CRITICAL_SIDEKIQ_JOBS — и эта
+      # строка остаётся единственным следом события. Значит она обязана читаться
+      # как сбой, а не как заметка на полях.
+      Rails.logger.error("[StaffSync] skipped #{failed_users} user(s)") if failed_users.positive?
+
+      # Мусор в payload сюда намеренно НЕ входит. Topnlab отвечает на get-users
+      # то массивом, то хешем-хешей, и Client#get_users разворачивает второй
+      # вариант через data.values.flatten — Integer (поле count) в списке штатен,
+      # а не аварийен. Считай мы его пропуском — warn горел бы на КАЖДОМ прогоне,
+      # а предупреждение, которое горит всегда, перестают читать, и настоящая
+      # авария в нём теряется.
+      if malformed_records.positive?
+        Rails.logger.debug { "[StaffSync] ignored #{malformed_records} non-user record(s) in payload" }
+      end
+
+      # success ложен, если хоть одна запись не доехала до БД. Безусловное
+      # `true` врало в самом опасном сценарии: `rescue StandardError` в цикле
+      # накрывает и обрыв соединения (PG::ConnectionBad,
+      # ActiveRecord::StatementInvalid), поэтому упавшая посреди прохода БД
+      # давала «success: true, failed_users: 14» — зелёный итог поверх нуля
+      # синхронизированных сотрудников.
+      {
+        success:           failed_users.zero?,
+        departments:       dept_count.to_i,
+        users:             saved_users,
+        failed_users:      failed_users,
+        malformed_records: malformed_records
+      }
     rescue Topnlab::Client::Error => e
       Rails.logger.error("[StaffSync] Topnlab error: #{e.message}")
       { success: false, error: e.message }
@@ -107,11 +143,37 @@ module Topnlab
 
     # users_payload is a flat array (or hash-of-hashes) of CRM user records.
     # Match by email; create local User on the fly with random password if missing.
+    #
+    # Непрошедшие записи считаем ДВУМЯ разными счётчиками, потому что это две
+    # разные ситуации, а не одна:
+    #   мусор в payload   — не-Hash или запись без email. Штатный шум Topnlab,
+    #                       повторяется каждый прогон, синхронизации не мешает.
+    #   не сохранено      — запись дошла до save и не записалась. Авария: этого
+    #                       сотрудника в БД нет и не будет до ручного разбора.
+    # Смешивать их значит поднимать тревогу на шуме — см. warn/debug в #call.
+    #
+    # @return [Array(Integer, Integer, Integer)] сохранено, не сохранено, мусора в payload
     def upsert_users(payload)
       records = normalize_users(payload)
-      records.count do |u|
+      saved = 0
+      failed = 0
+      malformed = 0
+
+      records.each do |u|
+        # Topnlab отвечает на get-users то массивом, то хешем-хешей, и клиент
+        # разворачивает второй вариант через data.values.flatten — оттуда в
+        # records может приехать Integer (например, поле count). `u['email']`
+        # на нём поднимает TypeError мимо всех rescue ниже и роняет весь проход.
+        unless u.is_a?(Hash)
+          malformed += 1
+          next
+        end
+
         email = u['email'].to_s.downcase.strip
-        next false if email.blank?
+        if email.blank?
+          malformed += 1
+          next
+        end
 
         user = User.find_or_initialize_by(email: email)
         first_name  = u['firstname'].presence
@@ -144,21 +206,73 @@ module Topnlab
         # Deactivate fired users but keep the record.
         user.active = false if attrs[:crm_status] == 'fired'
 
-        save_user_safely(user, email)
+        if save_user_safely(user, email)
+          saved += 1
+        else
+          failed += 1
+        end
       end
+
+      [saved, failed, malformed]
     end
 
     # Multiple Topnlab users can share a landline → blank phone on UniqueViolation
     # rather than skipping the whole user (we still want their CRM linkage).
+    #
+    # Сбой на ОДНОЙ записи не имеет права ронять весь проход: сотрудников 14, и
+    # из-за одного конфликта не должны остаться несинхронизированными остальные.
     def save_user_safely(user, email)
       user.save(validate: false)
     rescue ActiveRecord::RecordNotUnique => e
-      raise e unless e.message.include?('phone')
+      # Ищем имя индекса, а не подстроку 'phone': сообщение PG содержит и строку
+      # DETAIL с самим значением ключа, поэтому конфликт по email вида
+      # phone-support@… уходил бы в ветку обнуления телефона и врал бы в логе.
+      #
+      # 'index_users_on_phone' — осознанная привязка к идентификатору в БД
+      # (db/structure.sql): PG::UniqueViolation не сообщает, ПО КАКОЙ колонке
+      # конфликт, кроме как именем индекса, и другого способа отличить его от
+      # конфликта по email или crm_user_id нет. Переименуют индекс — ветка
+      # обнуления телефона молча перестанет срабатывать, но запись уйдёт в
+      # «не сохранено» с warn и полным текстом ошибки, а не потеряется.
+      return log_skipped_user(user, email, e) unless e.message.include?('index_users_on_phone')
+
+      retry_save_without_phone(user, email, e)
+    rescue StandardError => e
+      log_skipped_user(user, email, e)
+    end
+
+    # Повторное сохранение вынесено в отдельный метод со СВОИМ rescue намеренно.
+    # В Ruby соседний `rescue StandardError` не перехватывает исключение,
+    # поднятое внутри другого rescue-блока: когда второй save спотыкался о
+    # index_users_on_crm_user_id, исключение улетало наружу и роняло весь
+    # upsert_users. С 08.09.26 TopnlabStaffSyncJob падал так ежедневно, все
+    # 4 ретрая, и часть из 14 сотрудников не синхронизировалась вовсе.
+    def retry_save_without_phone(user, email, phone_conflict)
       user.phone = nil
       user.save(validate: false)
     rescue StandardError => e
-      Rails.logger.warn("[StaffSync] save failed for #{email}: #{e.class} #{e.message}")
+      log_skipped_user(user, email, e, after: phone_conflict)
+    end
+
+    # @return [false] всегда — чтобы вызывающий посчитал запись пропущенной.
+    def log_skipped_user(user, email, error, after: nil)
+      context = "crm_user_id=#{user.crm_user_id.inspect}"
+      context += " after #{after.class}" if after
+      Rails.logger.warn(
+        "[StaffSync] skipped #{mask_email(email)} (#{context}): " \
+        "#{error.class} #{error.message.to_s.lines.first.to_s.strip.truncate(160)}"
+      )
       false
+    end
+
+    # Email сотрудника — персональные данные, целиком в лог не пишем. Домен
+    # оставляем: он корпоративный и без него по логу не понять, чья это запись.
+    def mask_email(email)
+      local, domain = email.to_s.split('@', 2)
+      return '(пусто)' if local.blank?
+
+      masked = local.length > 2 ? "#{local[0]}***#{local[-1]}" : "#{local[0]}***"
+      domain.present? ? "#{masked}@#{domain}" : masked
     end
 
     def normalize_users(payload)
