@@ -101,7 +101,7 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 |---|---|---|
 | `audit-engine/` | Python (FastAPI) | не начат, срок 31.03.27 |
 | `chat-host-cron/` | bash | завершён |
-| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md` | завершён |
+| `urgent-news-collector/` | Python, конвейер новостей: срочные + дайджест + ставки банков — читай его `CLAUDE.md` | завершён, боевой каталог `/opt/victory-conveyor` |
 | `web-comparables/` | не код, один `SKILL.md` | завершён |
 
 Четыре правила, проверяются `bin/services-check` (нужен только python3) на каждый PR:
@@ -111,7 +111,9 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 3. службы не знают друг о друге (`depends_on: none`) — связь только через контракт: вебхук, HTTP, формат файла. Импорт соседней службы или Rails-кода роняет проверку;
 4. незавершённый перенос обязан иметь дату `repatriate_by`; после неё проверка ругается, и продление становится осознанным решением в диффе.
 
-🚨 **openclaw — архив, а не апстрим.** Репозиторий `nick4man/openclaw` напрямую больше не правится, права на весь код агентства здесь; тот репозиторий постепенно разбираем. Но **репозиторий openclaw и каталог openclaw на диске — разные вещи**: `/opt/.openclaw/…/workspace-conveyor/IT/scripts` остаётся боевым, оттуда крон гоняет конвейер. Это цель деплоя, а не источник правды.
+🚨 **openclaw — архив целиком: и репозиторий, и каталог на диске.** Репозиторий `nick4man/openclaw` напрямую не правится с 07.09.26, права на весь код агентства здесь. С **11.09.26** архивом объявлен и каталог `/opt/.openclaw/.openclaw/**`: только чтение, писать туда нельзя. Прежняя оговорка «каталог остаётся боевым, это цель деплоя» **отменена** — конвейер новостей выкатывается из git в `/opt/victory-conveyor` (`services/urgent-news-collector/deploy.sh`).
+
+Оба синк-скрипта отключены и отказываются запускаться: `services/urgent-news-collector/sync-check.sh` (был `--deploy`) и `services/audit-engine/upstream-sync.sh`. Запрет продублирован в `.claude/settings.json` → `permissions.deny`, туда же запрет на запись в каталог архива. ⚠️ Хвост: живой контейнер `audit-v2-api` пока поднят из архива — переезд стека отдельным шагом, см. `services/audit-engine/VENDOR.md`.
 
 🚨 Rails-конвенции сюда НЕ переносятся: skill `victory-rails-conventions` и правила 1–2 выше — только для Ruby. Из трёх жёстких правил в Python-сервисы едет одно: даты `dd.MM.yy`.
 

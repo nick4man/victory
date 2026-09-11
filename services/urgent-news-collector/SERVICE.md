@@ -4,7 +4,7 @@ owner: victory
 kind: python-cron
 entrypoint: urgent_collector.py
 tests: cd services/urgent-news-collector && python3 -m unittest discover
-deploy: cron на openclaw-машине, см. crontab.example
+deploy: ./deploy.sh в /opt/victory-conveyor, крон оттуда — см. crontab.example
 depends_on: none
 ported_from: openclaw (архив)
 port_status: done
@@ -22,27 +22,42 @@ repatriate_by: —
 `pipeline_utils.py` и `content_db_utils.py`, которые до 07.09.26 считались
 вендором из openclaw. Прежний запрет «эти два файла здесь не править» снят.
 
-## Репозиторий openclaw и каталог openclaw — разные вещи
+## openclaw — архив целиком (11.09.26)
 
-Их смешение и размыло владение, поэтому проговариваем отдельно:
+07.09.26 разделили две вещи: **репозиторий** `github.com/nick4man/openclaw` —
+архив, а **каталог** `/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts` на
+диске — боевой, цель выкладки. Разделение сняло путаницу с владением, но
+оставило прод внутри архива.
 
-- **репозиторий** `github.com/nick4man/openclaw` — архив. Напрямую не
-  правится больше никогда. Из него мы постепенно разбираем и доводим до ума
-  код, который писался для агентства;
-- **каталог** `/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts` на
-  диске — боевой: оттуда крон запускает конвейер. Это цель **деплоя**, а не
-  источник правды.
+11.09.26 архивом объявлен и каталог: `/opt/.openclaw/.openclaw/**` — только
+чтение. Боевой каталог теперь `/opt/victory-conveyor`, наполняется `deploy.sh`
+(`git archive` из main). `sync-check.sh` отключён вместе с режимом `--deploy`:
+выкладывать в архив больше некуда. Запрет продублирован в
+`.claude/settings.json` (`permissions.deny`).
 
-Отсюда правило: `./sync-check.sh` больше не «сверка двух копий», а выкладка.
-Забирать что-либо оттуда нечего — режима `--pull-vendored` не существует.
+Боевой каталог держит то, чего нет в git и что деплой не трогает: `.env`
+(секреты), `logs/`, `notifications/`, `published/`, `.venv/`.
 
-## Восемь чужих потребителей
+## Зеркало на сайт — чужое
 
-`bank_rates_trigger.py`, `weekly_digest_trigger.py`, `backfill_embeddings.py`,
-`weekly_infra_check.py`, `test_digest_resilience.py` и соседи лежат в архиве и
-импортируют оба общих модуля. После выкладки они работают с нашей копией.
-Довести их до ума и перенести сюда — часть общего разбора архива, к владению
-модулями отношения не имеет.
+`MIRROR_SCRIPT` указывает на `post_news_to_victory.sh`, который принадлежит
+службе chat-host-cron и выкладывается её собственным деплоем. `deploy.sh` его
+намеренно **не тянет** — только проверяет, что исполняемый файл лежит по пути,
+и предупреждает, если нет. Связь двух служб — контракт «файл по пути», а не
+импорт; это и проверяет `bin/services-check`.
+
+## Соседи по архиву
+
+`bank_rates_trigger.py` и `weekly_digest_trigger.py` **переехали сюда**
+11.09.26: оба публикуют в victory (`posts_queue`, вебхук `news_ingest`) и делят
+с коллектором `pipeline_utils.py` / `content_db_utils.py` — врозь вышли бы две
+расходящиеся копии общих модулей.
+
+В архиве остались `backfill_embeddings.py`, `weekly_infra_check.py`,
+`ingest_macro_economics.py`, `ingest_posts_queue.py`, `gemini_embedding_writer.py`,
+`auto_assembly_trigger.py`, `test_digest_resilience.py`. Они в victory не
+публикуют, их крон-строки всё ещё читают архив — чтение разрешено. Довести их
+до ума — часть общего разбора архива.
 
 ## Граница
 

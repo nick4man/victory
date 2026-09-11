@@ -40,7 +40,19 @@ def fmt_ddmmyy(d) -> str:
     except (ValueError, TypeError):
         return str(d)
 
-MIRROR_SCRIPT = "/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh"
+# Пути боевого каталога считаются ПРИ ВЫЗОВЕ, а не при импорте: вызывающие
+# скрипты подтягивают .env уже после `import pipeline_utils`, и константа,
+# вычисленная на импорте, не увидела бы CONVEYOR_HOME из файла.
+def conveyor_home() -> str:
+    return os.environ.get("CONVEYOR_HOME", "/opt/victory-conveyor")
+
+
+# Зеркало на сайт. Скрипт живёт в victory (services/chat-host-cron/) и
+# деплоится рядом с конвейером; путь наружу снят 11.09.26.
+def mirror_script_path() -> str:
+    return os.environ.get(
+        "MIRROR_SCRIPT", os.path.join(conveyor_home(), "post_news_to_victory.sh")
+    )
 SITE_BASE_URL = "https://victory62.org"
 
 BRAND_TAGS = ["#Виктори_Главное", "#Виктори_Молния", "#Виктори_Аналитика"]
@@ -161,7 +173,10 @@ def filter_topic_hashtags(raw):
     return out
 
 
-NOTIFICATIONS_DIR = "/opt/.openclaw/.openclaw/workspace-conveyor/SHARED/notifications"
+def notifications_dir() -> str:
+    return os.environ.get(
+        "NOTIFICATIONS_DIR", os.path.join(conveyor_home(), "notifications")
+    )
 
 
 def notify_failure(
@@ -199,9 +214,10 @@ def notify_failure(
         "detail": detail[:2000],
     }
     try:
-        os.makedirs(NOTIFICATIONS_DIR, exist_ok=True)
+        notif_dir = notifications_dir()
+        os.makedirs(notif_dir, exist_ok=True)
         path = os.path.join(
-            NOTIFICATIONS_DIR,
+            notif_dir,
             f"{component}_failed_{now.strftime('%Y%m%dT%H%M%SZ')}.json",
         )
         with open(path, "w", encoding="utf-8") as fh:
@@ -242,15 +258,16 @@ def mirror_to_victory(meta_path: str, text_path: str) -> str | None:
     токен не задан, или сайт ответил ошибкой — вызывающий код использует
     fallback_site_url() в этом случае.
     """
-    if not os.path.exists(MIRROR_SCRIPT):
-        logger.warning("[victory62-mirror] script missing: %s", MIRROR_SCRIPT)
+    mirror_script = mirror_script_path()
+    if not os.path.exists(mirror_script):
+        logger.warning("[victory62-mirror] script missing: %s", mirror_script)
         return None
     if not os.environ.get("VICTORY_NEWS_TOKEN"):
         logger.warning("[victory62-mirror] VICTORY_NEWS_TOKEN not set; skipping")
         return None
     try:
         result = subprocess.run(
-            [MIRROR_SCRIPT, meta_path, text_path],
+            [mirror_script, meta_path, text_path],
             capture_output=True, text=True, timeout=60, check=False,
         )
     except Exception as e:
@@ -297,14 +314,17 @@ def build_site_footer(url: str) -> str:
 
 # ============================================================================
 # LLM fallback chain — публикатор больше не зависит от одной модели в omniroute.
-# Зеркалит main.fallbacks из /opt/.openclaw/.openclaw/openclaw.json (id="main"),
+# Зеркалит main.fallbacks из openclaw.json (id="main"),
 # но содержит только реально живые сейчас маршруты. Битые перечислены ниже
 # в комментарии — вернуть, когда у провайдеров отпустит rate-limit.
 # ============================================================================
 
 OMNIROUTE_BASE = os.environ.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
 OPENCLAW_JSON_PATH = os.environ.get(
-    "OPENCLAW_JSON_PATH", "/opt/.openclaw/.openclaw/openclaw.json"
+    # Последняя (и только на чтение) связь с архивом openclaw: срабатывает,
+    # лишь если OMNIROUTE_API_KEY не задан в .env. В проде задан — см. .env.example.
+    "OPENCLAW_JSON_PATH",
+    "/opt/.openclaw/.openclaw/openclaw.json",
 )
 
 MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
