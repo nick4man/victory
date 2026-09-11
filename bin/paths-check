@@ -9,14 +9,27 @@ deny-правило в `.claude/settings.json` и live-prod guard в `bin/rb` �
 из одной замены, и ни одна не проявилась ошибкой при правке.
 
 Проверка ловит оба направления дрейфа:
-  1. новый абсолютный `/home/q` в файле, которому он не положен;
-  2. тильда как путь там, где потребитель её не разворачивает (JSON, systemd,
-     nginx, env-файлы, крон-строки).
+  1. абсолютный домашний путь в файле, которому он не положен;
+  2. путь, который потребитель не развернёт: `~/...`, `~/-worktree/...`, `$HOME/...`,
+     `${HOME}/...` в JSON, systemd, nginx, compose, env-файлах и крон-строках.
+     `$HOME` здесь не прихоть: его называет само правило в techContext.md.
+
+Границы охвата, чтобы зелёная галочка не читалась как «такого больше не случится»:
+
+  * проверяются только отслеживаемые git'ом файлы. Самая дорогая поломка 10.09.26 —
+    `.git/worktrees/*/gitdir` у 15 worktree — лежит вне индекса и никакой проверкой
+    содержимого репозитория не ловится;
+  * `/opt/.openclaw/...` намеренно не проверяется: это легитимная цель деплоя на
+    второй машине, её упоминают десяток отслеживаемых файлов;
+  * не-UTF8 файлы пропускаются молча (41 шрифт, картинка, снапшот). Здесь намеренное
+    расхождение с `bin/services-check`, который читает с `errors='replace'`: с ним в
+    проход попали бы все бинарники. Цена — legacy-файл в cp1251 не проверится.
 
 Запуск: bin/paths-check    (нужен только python3 — проверка обязана работать и там,
 где Ruby нет)
 """
 
+import fnmatch
 import os
 import re
 import subprocess
@@ -24,7 +37,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Файлы, которым абсолютный `/home/q` положен. Причины — по группам в
+# Файлы, которым абсолютный домашний путь положен. Причины — по группам в
 # techContext.md: VDS (другая машина), файлы вне чекаута, потребители без cwd,
 # восстановление с нуля и sudo-шаги. Добавлять сюда — осознанное решение в диффе.
 ABSOLUTE_ALLOWED = {
@@ -37,6 +50,8 @@ ABSOLUTE_ALLOWED = {
     '.claude/skills/traefik-config-authoring/SKILL.md',
     '.mcp.json',
     'CLAUDE.md',
+    'DEPLOYMENT.md',
+    'DEPLOYMENT_PROGRESS.md',
     'app/services/topnlab/client.rb',
     'bin/backup',
     'bin/paths-check',
@@ -50,23 +65,26 @@ ABSOLUTE_ALLOWED = {
     'docs/superpowers/plans/2026-09-07-zhk-registry.md',
     'docs/superpowers/specs/2026-08-09-backups-design.md',
     'docs/topnlab-webhook-setup.md',
+    'services/audit-engine/SKILL_API_CONTRACT.md',
     'services/zhk-registry/crontab.example',
 }
 
-# Потребители, которые читают строку буквально: ни cwd, ни разворачивания тильды.
-TILDE_FORBIDDEN = (
-    '.mcp.json',
-    '.claude/settings.json',
-    'config/backup.env.example',
-    'config/nginx/viktory-realty.conf',
-    'config/schedule.rb',
-    'services/zhk-registry/crontab.example',
-)
-TILDE_FORBIDDEN_SUFFIX = ('.service', '.timer')
+# Потребители, читающие строку буквально: ни cwd, ни разворачивания тильды и `$HOME`.
+# Список выводится из имени файла, а не перечисляется вручную: умолчание должно быть
+# «защищён, пока не исключили», иначе следующий такой файл приедет без защиты — так
+# устроен и `bin/services-check`, который берёт предмет проверки с диска.
+LITERAL_SUFFIX = ('.service', '.timer', '.json', '.conf')
+LITERAL_GLOB = ('docker-compose*.yml', 'docker-compose*.yaml', 'crontab*',
+                '.env', '.env.*', '*.env', '*env*.example')
+LITERAL_PATH = ('config/database.yml', 'config/storage.yml', 'config/schedule.rb')
+# Opt-out для файлов, где такая строка заведомо не путь (пока пусто — но место есть,
+# чтобы исключение было видно в диффе, а не растворилось в регулярке).
+LITERAL_EXEMPT = set()
 
-ABS_RX = re.compile(r'/home/q')
-# Тильда именно как путь: `~/что-то`. `~` в прозе и в регулярках не трогаем.
-TILDE_PATH_RX = re.compile(r'~/[A-Za-z0-9_.]')
+ABS_RX = re.compile(r"/home/(?:[^/\s\"'`]+/|q\b)")
+# `~`, `~/-upgrade` (имена worktree начинаются с дефиса), `$HOME`, `${HOME}`.
+# Пробел после `~` не ловим намеренно: nginx-директива `location ^~ /assets/` — не путь.
+UNEXPANDED_RX = re.compile(r'(?:~[A-Za-z0-9_-]*|\$\{?HOME\}?)/')
 
 DOC = '.claude/memory/techContext.md, секция «Где абсолютный путь обязателен»'
 
@@ -76,7 +94,7 @@ def tracked_files():
         out = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z'],
                              capture_output=True, check=True).stdout
         return [p.decode('utf-8') for p in out.split(b'\0') if p]
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
         found = []
         for base, dirs, files in os.walk(ROOT):
             dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', 'tmp')]
@@ -85,16 +103,22 @@ def tracked_files():
         return found
 
 
-def tilde_forbidden(path):
-    return path in TILDE_FORBIDDEN or path.endswith(TILDE_FORBIDDEN_SUFFIX)
+def literal_consumer(path):
+    if path in LITERAL_EXEMPT:
+        return False
+    if path in LITERAL_PATH or path.endswith(LITERAL_SUFFIX):
+        return True
+    name = os.path.basename(path)
+    return any(fnmatch.fnmatch(name, pattern) for pattern in LITERAL_GLOB)
 
 
 def main():
     errors = []
-    for path in tracked_files():
-        full = os.path.join(ROOT, path)
+    tracked = tracked_files()
+
+    for path in tracked:
         try:
-            with open(full, encoding='utf-8') as handle:
+            with open(os.path.join(ROOT, path), encoding='utf-8') as handle:
                 lines = handle.readlines()
         except (OSError, UnicodeDecodeError):
             continue
@@ -102,16 +126,32 @@ def main():
         for num, line in enumerate(lines, 1):
             if ABS_RX.search(line) and path not in ABSOLUTE_ALLOWED:
                 errors.append(
-                    f'{path}:{num}: абсолютный /home/q в файле, которому он не положен.\n'
+                    f'{path}:{num}: абсолютный домашний путь в файле, которому он не положен.\n'
                     f'    Внутри репозитория путь должен быть относительным либо\n'
                     f'    вычисляться в рантайме (git rev-parse --show-toplevel,\n'
                     f'    --git-common-dir). Если путь правда обязан быть абсолютным —\n'
                     f'    добавь файл в ABSOLUTE_ALLOWED и объясни причину в {DOC}.')
-            if TILDE_PATH_RX.search(line) and tilde_forbidden(path):
+            if UNEXPANDED_RX.search(line) and literal_consumer(path):
                 errors.append(
-                    f'{path}:{num}: тильда как путь у потребителя, который её не\n'
-                    f'    разворачивает (JSON, systemd, nginx, env-файл или крон-строка).\n'
+                    f'{path}:{num}: `~` или `$HOME` у потребителя, который их не\n'
+                    f'    разворачивает (JSON, systemd, nginx, compose, env-файл, крон-строка).\n'
                     f'    Здесь нужен абсолютный путь: {DOC}.')
+
+    # Гниение allowlist: запись без вхождений выдаёт файлу бессрочную лицензию молча.
+    tracked_set = set(tracked)
+    for entry in sorted(ABSOLUTE_ALLOWED):
+        if entry not in tracked_set:
+            errors.append(f'{entry}: запись в ABSOLUTE_ALLOWED, но файла в индексе нет — убери её.')
+            continue
+        try:
+            with open(os.path.join(ROOT, entry), encoding='utf-8') as handle:
+                body = handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if not ABS_RX.search(body):
+            errors.append(
+                f'{entry}: абсолютных путей в файле больше нет, а запись в '
+                f'ABSOLUTE_ALLOWED осталась — убери её, иначе лицензия бессрочная.')
 
     if errors:
         print('bin/paths-check: нарушения инварианта по путям\n')
@@ -120,7 +160,8 @@ def main():
         print(f'Всего: {len(errors)}')
         return 1
 
-    print('bin/paths-check: инвариант по путям соблюдён')
+    print(f'bin/paths-check: инвариант по путям соблюдён '
+          f'({len(ABSOLUTE_ALLOWED)} файлов в allowlist, проверено {len(tracked)})')
     return 0
 
 

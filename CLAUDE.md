@@ -177,15 +177,16 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 - **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут (он же main checkout) обновляют руками, и 07.09.26 он отставал на 33 коммита. Процедура — `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
-- **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
+- **PR → main** — единственный путь в прод. На PR приезжает **12 проверок**, и `.github/workflows/lint.yml` даёт шесть из них:
 
   | Проверка | Откуда |
   |---|---|
-  | RuboCop, Brakeman, bundler-audit | `.github/workflows/lint.yml` — единственный workflow в репозитории |
+  | RuboCop, Brakeman, bundler-audit, RSpec, «Учёт и границы служб», «Пути — относительные внутри репозитория» | `.github/workflows/lint.yml` — единственный workflow в репозитории |
   | CodeQL + `Analyze (ruby / python / javascript-typescript / actions)` | code scanning **default setup**, включён через UI GitHub — файла в репозитории нет, `ls .github/workflows/` его не покажет |
   | GitGuardian Security Checks | GitHub App, вне репозитория |
 
-  **RSpec — тоже джоб в `lint.yml`** (поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон). Сеть в спеках закрыта WebMock, ActiveJob на `:test`.
+  RSpec поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон; сеть в спеках закрыта WebMock, ActiveJob на `:test`. Проверки `bin/services-check` и `bin/paths-check` — на одном python3, они обязаны работать и там, где Ruby нет.
+  ⚠️ Фильтр `branches: [main]` у `pull_request` снят 11.09.26: он смотрел на **базу** PR, поэтому стековые PR не получали ни одной проверки из `lint.yml` и их приходилось гонять через `workflow_dispatch` руками.
 - 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
   Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
   Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` работает только на прод-хосте `victory` (см. «Команды»); на openclaw-машине гонять код нечем — ревью там читает diff, но не запускает. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
