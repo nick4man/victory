@@ -34,7 +34,7 @@
   <% content_for :og_image_width, 1200 %>
   <% content_for :og_image_height, 630 %>
 <% elsif (og_lead = @properties.first) && og_lead.images.attached? %>
-  <% content_for :og_image, property_image_url(og_lead.images.first, variant: :hero) %>
+  <% declare_property_og_image(og_lead.images.first) %>
 <% end %>
 <%# Body content — prefer DB-backed (admin-editable) LandingContent. If
     none exists for this slot, fall back to the file-backed ERB partial

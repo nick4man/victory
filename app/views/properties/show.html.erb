@@ -34,16 +34,11 @@
     <meta property="place:location:longitude" content="<%= @property.longitude %>">
   <% end %>
 <% end %>
-<%# OG/Twitter image — hero variant of the first photo (1920×1440). VK,
-    Telegram, Дзен all generate richer preview cards when they get a
-    landscape image ≥1200px on the long side. %>
+<%# OG/Twitter image — hero-вариант первой фотографии. Размеры объявляет
+    хелпер по фактическим метаданным блоба: рамка [1920, 1440] совпадает с
+    результатом только у ландшафтных 4:3, у портрета и 16:9 — нет. %>
 <% if @property.images.attached? %>
-  <% content_for :og_image, property_image_url(@property.images.first, variant: :hero) %>
-  <%# Hero variant uses resize_to_limit [1920, 1440] — actual dims may
-      be smaller if source is portrait, but VK/Дзен parsers accept max
-      bounds. Without explicit dimensions VK often skips preview entirely. %>
-  <% content_for :og_image_width, 1920 %>
-  <% content_for :og_image_height, 1440 %>
+  <% declare_property_og_image(@property.images.first) %>
 <% end %>
 <%# og:type left to layout default ('website'). The previous 'article'
     value made VK/Telegram render this listing as a news post — wrong

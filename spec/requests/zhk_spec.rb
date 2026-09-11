@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'rails_helper'
+require 'tmpdir'
 
 # A2 Фаза 3 — публичная страница ЖК `/zhk/:slug`.
 #
@@ -168,6 +169,92 @@ RSpec.describe 'ResidentialComplexes (публичная страница ЖК)'
       get "/zhk/#{old_slug}"
 
       expect(response.headers['Cache-Control']).not_to include('max-age=900')
+    end
+  end
+
+  # Размеры og:image — не косметика: VK/Telegram резервируют кроп по
+  # объявленным числам ДО загрузки файла. Ветки precedence объявляют РАЗНЫЕ
+  # размеры (брендовый og.jpg — 1200×630, hero-вариант листинга — 1920×1440),
+  # и до этих спеков ветка листинга молча донашивала дефолт layout.
+  describe 'GET /zhk/:slug — OG-разметка' do
+    let!(:complex) { create(:residential_complex, :with_body, name: 'Легенда') }
+
+    def og(doc, prop)
+      doc.at_css(%(meta[property="og:image:#{prop}"]))&.[]('content')
+    end
+
+    context 'без брендового og.jpg, но с объектами (сегодня основной путь)' do
+      let!(:listing) { create(:property, :on_site, residential_complex: complex) }
+
+      it 'берёт картинку первого листинга и объявляет фактические размеры варианта' do
+        # Портрет: resize_to_limit [1920, 1440] упирается в высоту → 960×1440.
+        # Объявить саму рамку здесь значило бы соврать на 960 пикселей ширины.
+        listing.images.first.blob.update!(metadata: { 'width' => 1000, 'height' => 1500 })
+
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(doc.at_css('meta[property="og:image"]')['content'])
+          .to include('/rails/active_storage/')
+        expect(og(doc, 'width')).to eq('960')
+        expect(og(doc, 'height')).to eq('1440')
+      end
+
+      # Сегодня основной путь: размеры есть у 414 блобов из 21873, остальные
+      # проанализированы без них. Объявляем рамку — приближение (у портрета
+      # завышает ширину), но не чужие 1200×630 из дефолта layout. Точным это
+      # станет после бэкфилла метаданных, не раньше.
+      it 'без размеров в метаданных объявляет рамку варианта, а не дефолт layout' do
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(og(doc, 'width')).to eq('1920')
+        expect(og(doc, 'height')).to eq('1440')
+      end
+    end
+
+    # Каталог фото вьюха строит от `Rails.public_path` — его и подменяем.
+    # Писать по настоящему пути нельзя: слаг резолвится в реальный ЖК
+    # («legenda»), и `rm_rf` снёс бы фотографии, которые редактор туда
+    # положит, а прерванный прогон оставил бы 4-байтовую заглушку
+    # `og.jpg` — она ломает и соседние примеры, и следующий запуск.
+    # Middleware статики захватило свой путь при загрузке приложения,
+    # так что подмена задевает только эту вьюху.
+    context 'с брендовым og.jpg' do
+      # `allow` не переживает `around` — rspec-mocks живёт внутри примера,
+      # не снаружи. Потому подмена в before, а уборка в after.
+      let(:tmp_public) { Pathname(Dir.mktmpdir) }
+
+      before do
+        photo_dir = tmp_public.join("images/zhk/#{complex.slug}")
+        photo_dir.mkpath
+        photo_dir.join('og.jpg').binwrite("\xFF\xD8\xFF\xD9".b)
+        allow(Rails).to receive(:public_path).and_return(tmp_public)
+      end
+
+      after { FileUtils.rm_rf(tmp_public) }
+
+      it 'объявляет 1200×630 — размеры самого баннера, не hero-варианта' do
+        create(:property, :on_site, residential_complex: complex)
+
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(doc.at_css('meta[property="og:image"]')['content'])
+          .to end_with("/images/zhk/#{complex.slug}/og.jpg")
+        expect(og(doc, 'width')).to eq('1200')
+        expect(og(doc, 'height')).to eq('630')
+      end
+    end
+
+    context 'без фото и без объектов' do
+      it 'оставляет дефолт layout — 1920 не протекает на общую заглушку' do
+        get "/zhk/#{complex.slug}"
+
+        doc = response.parsed_body
+        expect(og(doc, 'width')).to eq('1200')
+        expect(og(doc, 'height')).to eq('630')
+      end
     end
   end
 end
