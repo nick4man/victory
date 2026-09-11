@@ -24,10 +24,10 @@ curl -sS -o /dev/null -w "%{http_code}\n" \
 
 ## Шаг 2 — копируем скрипт на chat-host
 
-С локальной машины (где есть SSH-доступ к chat):
+С локальной машины (где есть SSH-доступ к chat), из корня репозитория:
 
 ```bash
-scp /home/q/victory/services/chat-host-cron/post_news_to_victory.sh \
+scp services/chat-host-cron/post_news_to_victory.sh \
     chat:/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh
 ssh chat 'chmod +x /opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh'
 ```
@@ -116,10 +116,10 @@ https://victory62.org/admin/articles?token=<значение ADMIN_TOKEN из .e
 
 ADMIN_TOKEN в .env уже: `admin-dev-token-rotate-in-prod`.
 
-**ВАЖНО для prod:** замени токен на безопасный:
+**ВАЖНО для prod:** замени токен на безопасный (из прод-чекаута — там же лежат `.env` и `docker-compose.yml`):
 ```bash
 NEW_TOKEN=$(docker compose exec -T web bin/rails secret | tail -1 | tr -d '\r' | head -c 32)
-sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${NEW_TOKEN}|" /home/q/victory/.env
+sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${NEW_TOKEN}|" .env
 docker compose up -d --force-recreate web
 echo "New ADMIN_TOKEN: $NEW_TOKEN"
 ```

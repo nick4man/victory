@@ -460,7 +460,7 @@
 ### Установка:
 
 ```bash
-cd /home/q/site/project/viktory_realty
+cd "$(git rev-parse --show-toplevel)"   # корень чекаута
 
 # 1. Установка зависимостей
 bundle install

@@ -71,7 +71,7 @@
 
 Указатели worktree относительные с **обеих** сторон: `.git/worktrees/<id>/gitdir` →
 `../../../../victory-seo/.git`, а `<worktree>/.git` → `gitdir: ../victory/.git/worktrees/victory-seo`.
-Дерево `~/victory*` можно перенести целиком, не сломав ни один checkout.
+Дерево worktree можно перенести целиком, не сломав ни один checkout.
 
 Включено локально в `.git/config` main checkout (конфиг не коммитится):
 
@@ -123,9 +123,22 @@ git 2.39.5 в контейнерах продолжит отказываться
 
 История: 10.09.26 массовая замена `/home/q` → `~` по 51 файлу заехала и в git-метаданные.
 Тильду git не разворачивает, поэтому все 15 worktree разом стали `prunable`; тем же заходом
-были незаметно отключены две страховки — deny-правило `Edit(//home/q/victory/**)` в
-`.claude/settings.json` и live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
+были незаметно отключены две страховки — deny-правило на main checkout в
+`.claude/settings.json` (глоб сопоставляется буквально, `~` в нём не раскрывается) и
+live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
 Обе восстановлены в тот же день; секция описывает конфигурацию после починки.
+
+⚠️ «Относительное» ≠ тильда. Относительные пути уместны там, где есть cwd репозитория
+(доки, кросс-ссылки, команды из корня) или где корень вычисляется в рантайме
+(`git rev-parse --show-toplevel` / `--git-common-dir` — так сделано в `bin/rb`,
+`bin/prod-mark`, `.claude/hooks/lib/prod-state.sh`, `.claude/hooks/session-start.sh`).
+Абсолютными **обязаны** остаться: юниты systemd (`config/systemd/`, `deploy/systemd/`),
+конфиг nginx, `.mcp.json`, permission-глобы в `.claude/settings.json`,
+`config/backup.env.example` (подключается через `.` из systemd под root) и крон-строки
+(`config/schedule.rb`, `services/zhk-registry/crontab.example`) — ни cwd, ни `$HOME`
+владельца чекаута там недоступны. Плюс runbook'и прод-хоста ниже: путь прод-чекаута в них
+часть процедуры и совпадает с `APP_ROOT` в `/etc/victory-backup/backup.env` и `ExecStart`
+в юнитах бэкапа, поэтому «относительный» вариант рассинхронизировал бы их.
 
 ## Команды
 
@@ -285,8 +298,8 @@ upsert в `properties`, а изменение `district` тянет за соб�
 sidekiq погашен шагом 4, база ещё на старом образе и старом glibc — ровно то
 состояние, с которым сравнивают. Три запроса — секунды, окно от них не вырастет.
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee /home/q/db-baseline.txt
 SELECT district, count(*) FROM properties
  WHERE district IS NOT NULL AND district <> ''
@@ -297,7 +310,8 @@ SELECT count(*) AS geo FROM properties
 SELECT count(*) AS embeddings FROM property_embeddings;
 SQL
 ```
-Файл держать вне `/home/q/victory` — в чекауте его снесёт первый же `git clean -fd`.
+Файл держать **вне чекаута** (отсюда абсолютный `/home/q/...`, а не `tmp/`) — внутри его
+снесёт первый же `git clean -fd`.
 Те же три запроса пойдут ещё внутри окна, сразу после шага 8, и должны дать те же
 числа: проверка сравнивает «до/после», а не угаданный порог.
 
@@ -321,8 +335,8 @@ SQL
 
 **6. Расширения. ТОЧКА НЕВОЗВРАТА.**
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d "$DB" <<'SQL'
 SELECT postgis_extensions_upgrade();
 ALTER EXTENSION vector UPDATE;
@@ -447,7 +461,7 @@ curl -sI https://victory62.org | head -1         # 200
 
 **10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
 ```bash
-sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp bin/backup /usr/local/bin/victory-backup
 grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 ```
 Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая
@@ -487,7 +501,7 @@ YML
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
-⚠️ Файл оверрайда — **вне** `/home/q/victory`: в чекауте он ляжет untracked, и первый
+⚠️ Файл оверрайда — **вне чекаута** (отсюда абсолютный путь): внутри он ляжет untracked, и первый
 же `git clean -fd` снесёт откат. Путь абсолютный, `-f` его принимает.
 🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
 то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
@@ -564,7 +578,7 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36` — отсюда
   шаг 10 и запрет удалять теги `pg15-postgis35`/`pre-bookworm`, пока копия не
   синхронизирована. Daily-таймер (03:31 UTC) `verify` не гоняет.
-- **Соседний стек `victory-victory`** (`/home/q/victory-victory`, свой `pgdata`,
+- **Соседний стек `victory-victory`** (worktree `../victory-victory`, свой `pgdata`,
   свой compose-проект) тоже на `pg15-postgis35`. Это полноценный compose-стек, а не
   `bin/rb`, — `--nuke` к нему неприменим: ему нужна та же процедура либо явное
   решение оставить как есть.
@@ -577,7 +591,8 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
 
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
-Прод (`/home/q/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
+Прод (main checkout, на текущем прод-хосте `/home/q/victory`; compose-проект `victory`)
+монтирует код bind-mount'ом с
 code-reload, поэтому merge в main обновляет код сразу, а **гемы и рантайм — нет**:
 они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
 `victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
@@ -683,4 +698,4 @@ bin/prod-mark            # отметить в GitHub, что именно вы�
 - `~/.claude-shared/` — межсессионный обмен: `inbox/`, `events/`, `locks/`.
 - `.remember/logs/` — дневной журнал remember-плагина (лежит в main checkout).
 
-Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `/home/q/.claude/plugins/installed_plugins.json`.
+Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `installed_plugins.json` в пользовательском `~/.claude/plugins/` (вне репозитория).

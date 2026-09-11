@@ -160,7 +160,7 @@ worktree: сессия, ветка, ahead/behind `origin` и `main`, число 
 ## Проверка
 
 ```bash
-cd /home/q/victory-upgrade
+cd ../victory-upgrade
 
 # 1. Снимок по всем сессиям
 bin/session-status
@@ -168,16 +168,17 @@ bin/session-status
 # 2. Общий inbox работает МЕЖДУ worktree (главная проверка — старый не работал)
 bin/claude-inbox send seo 'тест общего канала'
 ls ~/.claude-shared/inbox/seo/
-cd /home/q/victory-seo && CLAUDE_SESSION=seo bin/claude-inbox list   # должно быть видно
-cd /home/q/victory-upgrade
+cd ../victory-seo && CLAUDE_SESSION=seo bin/claude-inbox list   # должно быть видно
+cd ../victory-upgrade
 
 # 3. Событие конфликта записывается
-mkdir -p /home/q/victory-chat/tmp/claude-locks
-printf 'session=chat\nworktree=/home/q/victory-chat\npath=app/models/property.rb\nstarted=%s\ntask=test\n' \
-  "$(date '+%d.%m.%y %H:%M')" > '/home/q/victory-chat/tmp/claude-locks/app%models%property.rb.lock'
+CHAT_WT=$(cd ../victory-chat && pwd)   # лок хранит абсолютный путь — как его пишет post-edit-lock.sh
+mkdir -p "$CHAT_WT/tmp/claude-locks"
+printf 'session=chat\nworktree=%s\npath=app/models/property.rb\nstarted=%s\ntask=test\n' \
+  "$CHAT_WT" "$(date '+%d.%m.%y %H:%M')" > "$CHAT_WT/tmp/claude-locks/app%models%property.rb.lock"
 echo '{"tool_input":{"file_path":"app/models/property.rb"}}' | .claude/hooks/pre-edit-lock.sh; echo "exit=$?"  # 2
 tail -1 ~/.claude-shared/events/conflicts.jsonl
-rm '/home/q/victory-chat/tmp/claude-locks/app%models%property.rb.lock'
+rm "$CHAT_WT/tmp/claude-locks/app%models%property.rb.lock"
 
 # 4. Живой канал (сессии подняты — проверено ListAgents)
 #    из victory: позвать session-observer и убедиться, что сводка адресная,

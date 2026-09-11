@@ -54,7 +54,7 @@
 
 ## Фазы
 
-Жёсткое разделение сред: **seo-worktree** (`/home/q/victory-seo`, нет bundle/rails/rspec) пишет текст файлов; **victory-worktree** (`/home/q/victory-victory`) прогоняет всё, что требует рантайма. `/home/q/victory` (live-prod bind-mount) и чужие worktree не трогаем. Хендофф — `bin/claude-inbox` по `.claude/skills/session-handoff-protocol`, одно сообщение на границу фазы.
+Жёсткое разделение сред: **seo-worktree** (`../victory-seo`, нет bundle/rails/rspec) пишет текст файлов; **victory-worktree** (`../victory-victory`) прогоняет всё, что требует рантайма. main checkout (live-prod bind-mount) и чужие worktree не трогаем. Хендофф — `bin/claude-inbox` по `.claude/skills/session-handoff-protocol`, одно сообщение на границу фазы.
 
 Каждая фаза — отдельный PR в `main`, CI (rubocop + brakeman + bundler-audit) + обязательный `code-reviewer` по diff.
 

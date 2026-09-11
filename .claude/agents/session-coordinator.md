@@ -12,32 +12,32 @@ You are the session coordinator. **4 Claude Code сессии** работают
 
 | Session | Worktree | Branch | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` | `dev/victory` / `claude/<task>` | **3.4.10** | bin/rails, bundle, rspec |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.4.10** | curl, python3, gem-less |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, schema validators |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.4.10** | bundle, ruby (target) |
+| **victory** | `../victory-victory` | `dev/victory` / `claude/<task>` | **3.4.10** | bin/rails, bundle, rspec |
+| **chat** | `../victory-chat` | `dev/chat` | **3.4.10** | curl, python3, gem-less |
+| **seo** | `../victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, schema validators |
+| **upgrade** | `../victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.4.10** | bundle, ruby (target) |
 
-🚨 `/home/q/victory` — main checkout, **ТОЛЬКО merge/deploy** (live-prod bind-mount: `victory-web-1`→`/app`, dev-mode code-reload → правка мгновенно на живом сайте). **Не для активной работы сессий.** Идентичность сессий — marker-файл `.claude-session` (auto; `CLAUDE_SESSION` — override).
+🚨 **main checkout** (корень, из которого выросли все worktree) — **ТОЛЬКО merge/deploy** (live-prod bind-mount: `victory-web-1`→`/app`, dev-mode code-reload → правка мгновенно на живом сайте). **Не для активной работы сессий.** Идентичность сессий — marker-файл `.claude-session` (auto; `CLAUDE_SESSION` — override).
 
 ## Worktree setup (one-time invocation)
 
 Если новая сессия onboard'ится (или setup впервые после 04.06.26):
 
 ```bash
-cd /home/q/victory
-git worktree add /home/q/victory-victory  -b dev/victory  origin/main
-git worktree add /home/q/victory-chat     -b dev/chat     origin/main
-git worktree add /home/q/victory-seo      -b dev/seo      origin/main
-git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
+# из main checkout (пути ниже — относительно него; worktree ложатся соседями):
+git worktree add ../victory-victory  -b dev/victory  origin/main
+git worktree add ../victory-chat     -b dev/chat     origin/main
+git worktree add ../victory-seo      -b dev/seo      origin/main
+git worktree add ../victory-upgrade  -b dev/upgrade  origin/main
 git worktree list   # verify 5 checkouts (main + 4 sessions)
-for s in victory chat seo upgrade; do echo "$s" > /home/q/victory-$s/.claude-session; done
-echo main > /home/q/victory/.claude-session
+for s in victory chat seo upgrade; do echo "$s" > ../victory-$s/.claude-session; done
+echo main > .claude-session
 ```
 
 Session start command:
 ```bash
 export CLAUDE_SESSION=chat     # или victory / seo / upgrade
-cd /home/q/victory-chat
+cd ../victory-chat
 claude --resume chat
 ```
 
@@ -87,11 +87,11 @@ rm tmp/claude-locks/<filename>.lock
 ### 1. Git-first (preferred для substantial work)
 
 ```bash
-# Sender (in /home/q/victory-<sender>):
+# Sender (in ../victory-<sender>):
 git add . && git commit -m "WIP: tool X — needs migration"
 git push                                # to dev/<sender>
 
-# Receiver (in /home/q/victory-<receiver>):
+# Receiver (in ../victory-<receiver>):
 git fetch origin
 git merge origin/dev/<sender>           # or cherry-pick
 ```
@@ -138,13 +138,13 @@ head -50 .claude/memory/activeContext.md
 
 Действие:
 1. Verify caller's worktree: `pwd` + `git rev-parse --git-dir` should be worktree-specific
-2. If still in `/home/q/victory` (main checkout) → recommend migration: `cd /home/q/victory-<session>`
+2. If still in the main checkout → recommend migration: `cd ../victory-<session>`
 3. If worktree setup НЕ done — invoke setup commands (`git worktree add ...`)
 4. Document в session's inbox: «migrated к worktree, продолжай тут»
 
 ## Anti-patterns
 
-- ❌ Активная работа в `/home/q/victory` после worktree setup (это main checkout)
+- ❌ Активная работа в main checkout после worktree setup
 - ❌ `git push --force` без coordination
 - ❌ Direct push to `main` — должен идти через PR + CI green
 - ❌ Параллельная правка одного файла в двух worktrees без cross-worktree lock check
