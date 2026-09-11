@@ -23,7 +23,18 @@
 
 set -euo pipefail
 
-PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+# Прод-чекаут — это main checkout репозитория (он же live-prod bind-mount).
+# Вычисляем из git вместо хардкода: репозиторий живёт на двух хостах с разными
+# корнями, а скрипт зовут из любого worktree. `--git-common-dir` указывает на
+# `<main checkout>/.git` (в самом main checkout — относительный `.git`), поэтому
+# родитель и есть прод-чекаут. VICTORY_PROD_DIR — приоритетный override.
+main_checkout() {
+  local common
+  common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  (cd "$common/.." 2>/dev/null && pwd) || return 0
+}
+
+PROD_DIR="${VICTORY_PROD_DIR:-$(main_checkout)}"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 MODE="write"
 
@@ -42,6 +53,8 @@ WARNED=0
 
 # --- 1. Прод-чекаут -----------------------------------------------------------
 
+[ -n "$PROD_DIR" ] || die 'Не удалось определить main checkout — запускай из git-репозитория
+   (или задай VICTORY_PROD_DIR).'
 [ -e "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR
    Скрипт запускают на хосте, где живёт прод. Переопределить — VICTORY_PROD_DIR."
 

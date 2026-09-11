@@ -21,6 +21,13 @@
 set :environment, ENV['RAILS_ENV'] || 'development'
 set :output, { error: 'log/cron_error.log', standard: 'log/cron.log' }
 
+# ⚠️ Абсолютные пути в `command` ниже — намеренно, а не забытый хардкод.
+# whenever раскладывает строки в системный crontab: cwd у задачи нет, `~`
+# разворачивается по $HOME вызывающего пользователя (а не владельца чекаута), и
+# относительный путь указал бы куда угодно. Привязка к прод-чекауту здесь же и
+# означает, что расписание применимо только на прод-хосте — см. CLAUDE.md,
+# секцию «Два планировщика». Боевое расписание — `config/sidekiq_cron.yml`.
+
 # Send viewing reminders every hour
 every 1.hour do
   runner 'SendViewingRemindersJob.perform_later'

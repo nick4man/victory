@@ -5,7 +5,9 @@ require 'json'
 require 'uri'
 
 # HTTP client for the Topnlab CRM public API.
-# Documentation: /home/q/document_pdf.md
+# Documentation: .claude/docs/topnlab/ (выжимки в репозитории; поиск —
+# `rake topnlab_docs:search[query]`). Первоисточник — выгрузка `document_pdf.md`
+# из Topnlab, она живёт вне репозитория в домашнем каталоге разработчика.
 #
 # Authentication: API key passed as `key=` query param (or `appkey` in JSON body
 # for getUsers/getStructure). Rate limits: 1 req/6s for /get-ids and /get-entities,

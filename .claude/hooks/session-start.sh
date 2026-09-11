@@ -19,6 +19,17 @@ MARKER_SESSION=$(cat .claude-session 2>/dev/null || echo "")
 SESSION_ID="${CLAUDE_SESSION:-${MARKER_SESSION:-unknown}}"
 WORKTREE_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
+# Main checkout — вычисляем, а не хардкодим: репозиторий живёт на двух хостах с
+# разными корнями. `--git-common-dir` даёт `<main checkout>/.git` (в самом main
+# checkout — относительный `.git`), значит родитель и есть main checkout.
+# Нужен и для inbox-очереди (ниже), и для предупреждений про прод-bind-mount.
+GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
+MAIN_CHECKOUT=""
+[ -n "$GIT_COMMON" ] && MAIN_CHECKOUT=$(cd "$GIT_COMMON/.." 2>/dev/null && pwd)
+[ -n "$MAIN_CHECKOUT" ] || MAIN_CHECKOUT="$WORKTREE_PATH"
+# Все worktree — соседи main checkout, поэтому подсказки строим от его родителя.
+WORKTREES_ROOT=$(dirname "$MAIN_CHECKOUT")
+
 # git-хуки живут в .git/hooks, который под git не попадает — доставляем из
 # отслеживаемого .githooks/. Вызов идемпотентный (symlink уже на месте → no-op),
 # поэтому дёргаем на каждом старте вместо ручного шага при клонировании.
@@ -73,13 +84,7 @@ fi
 # gitignored, so a relative path would read an inbox no sender can write to.
 INBOX_TOTAL=0
 INBOX_HEADLINES=""
-INBOX_COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
-case "$INBOX_COMMON" in
-  '') INBOX_ROOT="$WORKTREE_PATH" ;;
-  *)  INBOX_ROOT=$(cd "$INBOX_COMMON/.." 2>/dev/null && pwd) ;;
-esac
-[ -z "$INBOX_ROOT" ] && INBOX_ROOT="$WORKTREE_PATH"
-INBOX_DIR="$INBOX_ROOT/.claude/sessions/inbox/$SESSION_ID"
+INBOX_DIR="$MAIN_CHECKOUT/.claude/sessions/inbox/$SESSION_ID"
 if [ "$SESSION_ID" != "unknown" ] && [ -d "$INBOX_DIR" ]; then
   # Total count (top-level *.md only, not archive/).
   INBOX_TOTAL=$(find "$INBOX_DIR" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l)
@@ -180,13 +185,13 @@ EOF
 
 # Session identity / worktree guards
 if [ "$SESSION_ID" = "main" ]; then
-  cat <<'WARN'
+  cat <<WARN
 
-🚨  MAIN CHECKOUT (/home/q/victory) — this is the LIVE-PROD bind-mount
+🚨  MAIN CHECKOUT ($MAIN_CHECKOUT) — this is the LIVE-PROD bind-mount
    (victory-web-1 mounts it at /app in RAILS_ENV=development with code-reload,
    so edits here hit the live site instantly). Reserved for deploy/merge ONLY —
    do NOT do active development here. Work in your session worktree
-   (/home/q/victory-<session>). See .claude/sessions/README.md
+   ($WORKTREES_ROOT/victory-<session>). See .claude/sessions/README.md
 WARN
 elif [ "$SESSION_ID" = "unknown" ]; then
   cat <<'WARN'
@@ -205,7 +210,7 @@ if [ -n "$CLAUDE_SESSION" ] && [ -n "$MARKER_SESSION" ] && [ "$CLAUDE_SESSION" !
 
 ⚠️  SESSION/WORKTREE MISMATCH: CLAUDE_SESSION=$CLAUDE_SESSION but this worktree's
    marker is '$MARKER_SESSION' ($WORKTREE_PATH). You may have launched the
-   '$CLAUDE_SESSION' session in the wrong worktree. Expected: /home/q/victory-$CLAUDE_SESSION
+   '$CLAUDE_SESSION' session in the wrong worktree. Expected: $WORKTREES_ROOT/victory-$CLAUDE_SESSION
 WARN
 fi
 

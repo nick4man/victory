@@ -80,14 +80,21 @@ if [ -z "$ROOT" ]; then
 fi
 
 # ── Guard: прод-checkout ────────────────────────────────────────────────────
-# /home/q/victory — live bind-mount в victory-web-1 (RAILS_ENV=development +
+# main checkout — live bind-mount в victory-web-1 (RAILS_ENV=development +
 # code-reload). Поднимать здесь второй стек = гонять миграции по каталогу,
 # который сию секунду обслуживает victory62.org. Отказ, без вариантов.
-if [ "$ROOT" = '/home/q/victory' ]; then
-  cat >&2 <<'MSG'
-❌ Это main checkout (/home/q/victory) — live-prod bind-mount victory-web-1.
+#
+# Путь main checkout вычисляем, а не хардкодим: репозиторий живёт на двух хостах
+# (`<home>/victory` и `/opt/.openclaw/victory`), и на обоих main checkout — тот же
+# live bind-mount. Хардкод одного пути оставлял вторую машину без защиты.
+# `--git-common-dir` даёт `<main checkout>/.git`, значит родитель — сам checkout.
+MAIN=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
+if [ "$ROOT" = "$MAIN" ] && [ -z "${VICTORY_RB_ALLOW_MAIN:-}" ]; then
+  cat >&2 <<MSG
+❌ Это main checkout ($MAIN) — live-prod bind-mount victory-web-1.
    ruby-box здесь не поднимаем. Перейди в свой worktree, например:
-       cd /home/q/victory-upgrade && bin/rb ...
+       cd ../victory-upgrade && bin/rb ...
+   Если этот чекаут заведомо НЕ прод (чистый клон) — VICTORY_RB_ALLOW_MAIN=1.
 MSG
   exit 1
 fi
@@ -103,7 +110,7 @@ PROJECT="victory-rb-${SESSION}"
 
 if [ ! -f .env ]; then
   echo "❌ Нет $ROOT/.env — контейнер не получит DATABASE_URL/REDIS_URL." >&2
-  echo '   Забери из main checkout:  cp /home/q/victory/.env .env && chmod 600 .env' >&2
+  echo "   Забери из main checkout:  cp $MAIN/.env .env && chmod 600 .env" >&2
   exit 1
 fi
 
