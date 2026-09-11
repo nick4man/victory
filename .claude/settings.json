@@ -1,5 +1,18 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(./sync-check.sh:*)",
+      "Bash(bash sync-check.sh:*)",
+      "Bash(sh sync-check.sh:*)",
+      "Bash(services/urgent-news-collector/sync-check.sh:*)",
+      "Bash(./upstream-sync.sh:*)",
+      "Bash(bash upstream-sync.sh:*)",
+      "Bash(services/audit-engine/upstream-sync.sh:*)",
+      "Write(/opt/.openclaw/.openclaw/**)",
+      "Edit(/opt/.openclaw/.openclaw/**)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {

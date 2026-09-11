@@ -54,7 +54,7 @@ Rails-монолит. Четыре входа, и только первый — 
 | `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, SLA, cleanup). Время в MSK, зависит от `TZ` контейнера |
 | `config/schedule.rb` | whenever → системный crontab, ~17 записей |
 
-Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd /home/q/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd ~/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
 
 ## Команды
 
@@ -62,7 +62,7 @@ Rails-монолит. Четыре входа, и только первый — 
 
 | Хост | Ruby | Как гонять |
 |---|---|---|
-| worktree в `/home/q/victory-*` | в контейнере, менеджера версий на хосте нет | **только через `bin/rb`**: `bin/rb bundle exec rubocop`, `bin/rb --db bundle exec rspec` |
+| worktree в `~/victory-*` | в контейнере, менеджера версий на хосте нет | **только через `bin/rb`**: `bin/rb bundle exec rubocop`, `bin/rb --db bundle exec rspec` |
 | worktree в `/opt/.openclaw/` | нет вообще: ни `ruby`, ни `bundle` в PATH, ни контейнеров, ни rails-образа | никак — Ruby-команды не запускать, `post-edit-rubocop.sh` там молчаливый no-op |
 
 Не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть.
@@ -97,10 +97,17 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 
 | Каталог | Язык |
 |---|---|
-| `audit-engine/` | Python (FastAPI), вендорится извне — см. `VENDOR.md` |
+| `audit-engine/` | Python (FastAPI). Вендоринг прекращён 11.09.26 — victory владелец, см. `VENDOR.md`. ⚠️ Живой контейнер `audit-v2-api` пока поднят из архива |
 | `chat-host-cron/` | bash |
-| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md`. Владелец кода — victory, но `pipeline_utils.py` + `content_db_utils.py` вендорятся из openclaw: `VENDOR.md` + `sync-check.sh` |
-| `web-comparables/` | не код, один `SKILL.md` |
+| `urgent-news-collector/` | Python, конвейер новостей (срочные + дайджест + ставки банков) — читай его `CLAUDE.md`. Весь код наш, боевой каталог `/opt/victory-conveyor`, выкатка `deploy.sh` |
+| `web-comparables/` | не код, один `SKILL.md` — скилл оценки недвижимости по аналогам (`real-estate-estimator`) |
+
+🚨 **openclaw (`/opt/.openclaw/.openclaw/**`) — архив (решение 11.09.26).** Только чтение:
+писать туда нельзя, вендоринг и синк запрещены. Оба синк-скрипта отключены и отказываются
+запускаться — `services/urgent-news-collector/sync-check.sh` и
+`services/audit-engine/upstream-sync.sh`; запрет продублирован в `.claude/settings.json`
+(`permissions.deny`). Боевой код конвейера переехал в victory и выкатывается из git
+в `/opt/victory-conveyor` скриптом `services/urgent-news-collector/deploy.sh`.
 
 🚨 Rails-конвенции сюда НЕ переносятся: skill `victory-rails-conventions` и правила 1–2 выше — только для Ruby. Из трёх жёстких правил в Python-сервисы едет одно: даты `dd.MM.yy`.
 
@@ -130,7 +137,7 @@ per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
 
 🚨 **`/opt/.openclaw/victory` = main checkout, НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт.
 
-⚠️ **Таблица выше — про openclaw-машину.** На хосте `/home/q` живут пять своих worktree (`victory`, `-victory`, `-chat`, `-seo`, `-upgrade`) — схема «4 сессии» из `.claude/sessions/README.md` там не историческая, а рабочая. Пути в `.mcp.json` и `.claude/hooks/session-start.sh` ведут именно туда: на openclaw они мёртвые (MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность), на `/home/q` — живые. Проверяй `git worktree list`, а не память.
+⚠️ **Таблица выше — про openclaw-машину.** На хосте `~` живут пять своих worktree (`victory`, `-victory`, `-chat`, `-seo`, `-upgrade`) — схема «4 сессии» из `.claude/sessions/README.md` там не историческая, а рабочая. Пути в `.mcp.json` и `.claude/hooks/session-start.sh` ведут именно туда: на openclaw они мёртвые (MCP `postgres` и `rails-guides` не поднимаются — это сломанный путь, а не отсутствующая возможность), на `~` — живые. Проверяй `git worktree list`, а не память.
 
 Inbox при этом **работает на обеих машинах**: с 07.09.26 `bin/claude-inbox` и `session-start.sh` держат единую очередь в main checkout (резолв через `git --git-common-dir`), а новый worktree саморегистрируется, создав в ней свой каталог — старый жёсткий список имён больше не блокирует.
 
@@ -175,7 +182,7 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
   **RSpec — тоже джоб в `lint.yml`** (поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон). Сеть в спеках закрыта WebMock, ActiveJob на `:test`.
 - 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
   Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
-  Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` работает только на хосте `/home/q` (см. «Команды»); на openclaw-машине гонять код нечем — ревью там читает diff, но не запускает. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
+  Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` работает только на хосте `~` (см. «Команды»); на openclaw-машине гонять код нечем — ревью там читает diff, но не запускает. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
 - 🚨 **Зависимые части едут стеком PR, а не одним большим PR.** Обязательно, если верно любое из двух: (а) работа делится на слои, где следующий не собирается без предыдущего — миграция → сервис → UI; (б) diff перевалил ~500 строк или ~10 файлов. PR #16 (2532 строки, 29 файлов) — ровно этот случай.
   Инструмент — `gh stack`, правила в skill `gh-stack`: `gh stack init <ветки снизу вверх>` → `gh stack submit --open` → `gh stack sync` после каждой правки и после каждого мержа. Ручная цепочка `gh pr create --base` **стек на GitHub не создаёт** — выходят несвязанные PR, а `sync` заменяет весь ручной `rebase --onto` + `pr edit --base`.

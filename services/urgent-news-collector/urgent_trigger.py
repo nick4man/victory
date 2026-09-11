@@ -9,9 +9,10 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
 
-WORKSPACE = "/opt/.openclaw/.openclaw/workspace-conveyor"
+# Боевой каталог конвейера. До 11.09.26 путь вёл в openclaw
+# (workspace-conveyor); openclaw переведён в архив, наружу больше не ходим.
+CONVEYOR_HOME = os.environ.get("CONVEYOR_HOME", "/opt/victory-conveyor")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(WORKSPACE)
 sys.path.append(SCRIPT_DIR)
 
 
@@ -53,7 +54,7 @@ from pipeline_utils import (  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("urgent_trigger")
 
-PIPELINE_LOG = os.path.join(WORKSPACE, "SHARED/logs/urgent_pipeline.log")
+PIPELINE_LOG = os.path.join(CONVEYOR_HOME, "logs/urgent_pipeline.log")
 
 # urgent_events читаем из news-DB (audit-v2-postgres:5433, с pgvector).
 # Запись в production posts_queue идёт через content_db_utils.enqueue_urgent_post,
@@ -471,7 +472,7 @@ def run_urgent_pipeline():
         base_text = body_html.rstrip() + "\n\n" + " ".join(hashtags)
 
         date_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_dir = os.path.join(WORKSPACE, "CREATIVE/published")
+        log_dir = os.path.join(CONVEYOR_HOME, "published")
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, f"urgent_{date_str}.txt")
         meta_file = os.path.join(log_dir, f"urgent_{date_str}.meta.json")

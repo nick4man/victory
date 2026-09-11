@@ -1,20 +1,39 @@
-# Vendored: СОДИКС Audit Engine v2.0
+# Audit Engine v2.0 — код наш
 
-This is a **vendored copy** of `audit-engine-v2` — a FastAPI-based property
-investment audit engine (Efficiency Index, Monte Carlo, hedonic regression,
-PDF reports). It is **not** developed in this repository; the canonical source
-lives elsewhere.
+**Решение 11.09.26: вендоринг прекращён.** openclaw
+(`/opt/.openclaw/.openclaw/**`) переведён в архив — только чтение, писать туда
+нельзя. `upstream-sync.sh` отключён и отказывается запускаться; запрет
+продублирован в `.claude/settings.json`. Источник правды для кода движка —
+этот каталог.
 
-## Source
+Раньше здесь лежала вендорная копия `audit-engine-v2` (FastAPI: Efficiency
+Index, Monte Carlo, гедонистическая регрессия, PDF-отчёты), которую тянули
+с хоста `chat`.
 
-- **Upstream host**: `chat` SSH alias (192.168.0.105)
-- **Upstream paths**:
-  - Engine source — `~/.openclaw/workspace-it-dept/audit-engine-v2/`
-  - Devops stack — `~/.openclaw/workspace-it-dept/devops/audit-v2-stack/`
-  - API contract — `~/.openclaw/skills/audit-engine-v2-api/SKILL.md`
-- **Imported at**: 2026-05-11
-- **Upstream owner**: СОДИКС ИТ-Департамент (chat:agents/devops-engineer)
-- **Upstream contact**: ask via chat-server `realtor-assistant` agent
+## Бывший upstream (только история)
+
+- Хост: `chat` (192.168.0.105); на этой машине — архив `/opt/.openclaw/.openclaw`
+- Движок — `workspace-it-dept/audit-engine-v2/`
+- Стек — `workspace-it-dept/devops/audit-v2-stack/`
+- Контракт API — `skills/audit-engine-v2-api/SKILL.md`
+- Импортировано: 11.05.26. Вендоринг закрыт: 11.09.26
+
+## Состояние на момент заморозки
+
+Копия в victory **опередила архив**: здесь есть то, чего в архиве нет —
+`api/auth.py`, роутеры `jobs.py` / `search.py` / `developers.py`,
+`jobs/scheduler.py`, `parsers/developer_risk.py`, три alembic-миграции
+(`i7e8d4f3a9c1`, `j8f5e6a7b9c2`, `k9a6b7c8d2e3`), `scripts/check_cron_health.py`.
+Расхождений всего ~38 позиций, встречное направление — только
+`data/templates` и правки в `docker-compose.yml` (архив правили 07.09.26).
+
+🚨 **Живой контейнер пока поднят из архива.** `docker inspect audit-v2-api`
+показывает compose-project-dir
+`/opt/.openclaw/.openclaw/workspace-it-dept/devops/audit-v2-stack`, то есть прод
+запущен НЕ из этого каталога. Переезд стека не сделан: смена рабочего каталога
+меняет имя compose-проекта, а с ним и имена томов (`audit-v2-stack_reports`) —
+без `name:` в compose или объявления томов external это тихая потеря данных.
+Делать отдельным шагом, с проверкой томов.
 
 ## Tree layout
 
