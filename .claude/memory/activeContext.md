@@ -28,7 +28,7 @@ Rails **8.1.3.1**, Ruby **3.4.10** в worktree-сессиях (Ruby 3.3 EOL 31.0
 - **victory** — надёжность Topnlab-синка и каталога (PR #10), прод-инфра.
 - **seo** — Phase A2 programmatic SEO: справочник ЖК → лендинги `/zhk`.
 - **upgrade** — EOL закрыт; сейчас долг по спекам и инфра координации сессий.
-- **chat** — site-chatbot, мелкие фиксы кодовой базы.
+- **chat** — site-chatbot как приоритетный канал взаимодействия с клиентами (решение 08.09.26). Порядок: телеметрия воронки → починка LLM-цепочек и алертинга → спеки → новые возможности. Секция «Чат-виджет сайта» в `CLAUDE.md`.
 
 ## Параллельные сессии Claude Code
 
@@ -39,7 +39,7 @@ override через `export CLAUDE_SESSION`.
 | Session | Worktree | Ветка | Назначение |
 |---|---|---|---|
 | **victory** | `/home/q/victory-victory` | feature-ветки | Rails-код, миграции, RSpec, runner |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | site-chatbot, `chat_tools/*`, prompts |
+| **chat** | `/home/q/victory-chat` | `dev/chat` | site-chatbot — приоритетный канал: `chat/*`, `llm/*`, `chat_tools/*`, промпты, виджет |
 | **seo** | `/home/q/victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
 | **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
 

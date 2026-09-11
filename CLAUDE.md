@@ -34,7 +34,7 @@ Rails-монолит. Четыре входа, и только первый — 
 
 | Вход | Где | Аутентификация |
 |---|---|---|
-| Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, ~891 строка `config/routes.rb` | нет (Devise off) |
+| Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, ~891 строка `config/routes.rb`; сюда же чат-виджет `namespace :chat` — **приоритетный канал**, см. ниже | нет (Devise off) |
 | JSON API | `namespace :api { namespace :v1 }` | JWT |
 | Админка | `namespace :admin` | `?token=$ADMIN_TOKEN` |
 | Вебхуки | `app/controllers/webhooks/` — `topnlab`, `telegram`, `news_ingest`, `yookassa`, `amocrm` | у каждого свой секрет из ENV; при пустом ENV контроллер отказывает, а не пропускает |
@@ -44,7 +44,7 @@ Rails-монолит. Четыре входа, и только первый — 
 - **Каталог объектов не наш.** Источник правды — внешняя CRM Topnlab; `Property` — проекция, которую наполняют `TopnlabSyncJob` (каждые 30 мин) и соседние sync-джобы. Инвариант: при неполном обходе архивация пропускается, иначе каталог схлопывается.
 - **Доменная логика — в `app/services/` (~260 файлов), не в моделях и не в контроллерах.** Plain-Ruby класс с `call`, см. `systemPatterns.md`. Не путать с верхнеуровневым `services/`.
 - **Два Telegram-бота из одного Rails**: `telegram/work_bot/` (сотрудники — фактический CRM-канал: команды, задачи, дайджесты, эскалации) и `telegram/client_bot/` (клиенты). Общий вход — `Telegram::InboundProcessor`.
-- **LLM — free-first цепочка**, `Llm::OmniClient` (`DEFAULT_CHAINS[:chat]` / `[:analysis]`, платный Sonnet последний). Tool-calling — `app/services/chat_tools/` + `Llm::ToolRunner`. Перестановка модели вверх по цепочке = деньги, молча.
+- 🚨 **LLM: `DEFAULT_CHAINS` в `Llm::OmniClient` — free-first, но в проде они не используются.** `.env` задаёт `LLM_CHAIN_CHAT` / `LLM_CHAIN_ANALYSIS` / `LLM_CHAIN_STAFF_ANALYSIS`, и там **ноль** `:free`-моделей, а `:analysis` идёт Sonnet-first. Про стоимость и порядок моделей судить по `grep '^LLM_CHAIN' .env`, а не по коду. Подробности и сломанные модели — секция «Чат-виджет».
 - **Эмбеддинги** — pgvector + gem `neighbor`, таблицы `*_embedding`, наполняются `EmbedXxxJob`.
 
 ### Два планировщика, и это не опечатка
@@ -55,6 +55,104 @@ Rails-монолит. Четыре входа, и только первый — 
 | `config/schedule.rb` | whenever → системный crontab, ~17 записей |
 
 Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd /home/q/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+
+## Чат-виджет сайта — приоритетный канал взаимодействия
+
+**Направление (с 08.09.26): чат-виджет развивается как основной интерфейс между
+клиентом и агентством.** Не «ещё одна фича сайта», а тот вход, через который
+клиент должен получать подбор, оценку, аудит и живого агента, не уходя в форму
+и не звоня. Владелец домена — сессия **chat** (`/home/q/victory-chat`).
+Из трёх пилларов канал бьёт сразу в два: `frictionless concierge` и `AI×human`.
+
+### Путь запроса — ответ всегда асинхронный
+
+```
+_chat_widget.html.erb (инлайновый JS, НЕ Stimulus, ActionCable c CDN)
+  GET  /chat/conversation.json   → Chat::ConversationsController  (кука visitor_token 90д, сеет greeting без LLM)
+  POST /chat/conversation/messages → Chat::MessagesController      (rate-limit 5/мин Redis, кап 2000 символов)
+       └ Llm::ScopeGuard.classify → :injection/:off_topic отвечают статикой, LLM не зовётся
+       └ :allowed → LlmReplyJob (Sidekiq)
+            └ Llm::ChatResponder → Llm::ToolRunner (≤5 итераций) → Llm::OmniClient → ChatTools::Registry
+       → ChatMessage(role: assistant) + broadcast в ConversationChannel
+       → маркер <<<ESCALATE:…>>> → conv.escalate! + TelegramNotifyJob → staff-группа
+Ответ сотрудника reply-ом в TG → Telegram::InboundProcessor → ChatMessage(role: agent) → тот же канал
+```
+
+HTTP-эндпоинт ответа бота **не возвращает** — всё доезжает по WebSocket. Ляжет
+ActionCable, и посетитель не увидит ничего, хотя в БД ответ будет.
+
+Оркестратор лежит в `app/services/llm/chat_responder.rb`, а **не** в
+`chat_tools/`. Инструментов в `ChatTools::Registry::HANDLERS` — 11 публичных;
+`chat_tools/staff/*` со своим реестром сайтовому боту недоступны, и эту границу
+безопасности не размывать.
+
+### Инварианты — не ломать
+
+1. **`ScopeGuard` работает до LLM.** Любая новая проверка ввода идёт туда же, а не в промпт: это экономия токенов и единственный барьер, который нельзя обойти джейлбрейком.
+2. **Обещал человека — поставь эскалацию.** Текст «позову агента» без маркера `<<<ESCALATE:>>>` не поднимает никого. Сейчас это нарушено в `Llm::ToolRunner` при исчерпании итераций.
+3. **Тяжёлое — асинхронно.** Эталон — `run_investment_audit`: health-чек, джоба, сразу отдаёт `audit_url`. Анти-эталон — `estimate_property_valuation`, который синхронно тянет геокодинг и цепочку `:analysis` внутри tool-loop.
+4. **Промпт кэшируется 5 минут** по ключу в `chat_responder.rb`. Правишь промпт — бампай ключ, иначе правка не видна.
+5. **Контекст страницы — только через `Llm::PageContext`**, приветствия — через `Llm::PageGreeting`. Новый публичный раздел сайта без записи в эту карту получает `:other`, и бот не понимает, на какой странице стоит.
+
+### Состояние в проде — замер 08.09.26
+
+| Что | Значение |
+|---|---|
+| Диалогов за 30 дней | 3 |
+| `Inquiry` из бота за всю историю / из обычной формы | 1 / 54 |
+| Объектов, видимых боту (`Property.on_site`) | 17 из 127 живых |
+| Ответов `model: 'fallback'` (LLM лёг) | 4 из 70 |
+| Последняя правка `chat_tools/` и `llm/` | 29.05.26 / 23.05.26 |
+
+Бот исправен, но к нему не приходят. **Поэтому расширять набор инструментов
+вширь до появления телеметрии — оптимизация участка, куда никто не заходит.**
+
+🚨 Цепочки в проде переопределены `.env`, `:free`-моделей ноль. Две модели
+отвечают ошибкой на каждом вызове: `groq/llama-3.3-70b-versatile` даёт HTTP 404
+и стоит **первым** в `LLM_CHAIN_CHAT`, `kr/claude-sonnet-4.5` даёт HTTP 400
+«No credentials for provider: kiro». 08.09.26 цепочка `:analysis` упала
+целиком. Клиент при этом не остаётся один: `Llm::ChatResponder` возвращает
+`escalate: true`, и `LlmReplyJob` зовёт живого агента в TG. А вот инженерного
+сигнала нет — исключение проглочено без re-raise, поэтому мимо Sentry и
+`retry_on`. Сбой цепочки выглядит как обычная эскалация, и найти его можно
+только по логам либо по `metadata->>'model' = 'fallback'`.
+
+### Известные дефекты (проверены по коду и проду)
+
+- `Llm::ScopeGuard` — паттерн `DAN` без флага `/i` против уже лоуркейснутой строки, не срабатывает никогда.
+- `Llm::ToolRunner` — `tool_log` собирается и выбрасывается; в `chat_messages.metadata` пишутся только `model` и `escalate`, вопреки комментарию в коде.
+- `ChatTools::GetPropertyDetails` — при пустом `user.phone` подставляет московскую заглушку, а промпт велит зачитать её клиенту.
+- `ChatTools::RunInvestmentAudit` — `city: 'Рязань'` захардкожен, каталог трёхгородской.
+- `PATCH /chat/conversation` реализован, но виджет его не зовёт: контакт собирается только через `qualify_lead`.
+- Виджет обрабатывает лишь `type: 'message'`, события `status_changed` и `closed` игнорирует — после `/close` посетитель пишет в пустоту.
+- `Chatbot::MessagesController` — публичная заглушка «Чатбот в разработке», к боевому виджету отношения не имеет.
+- Спеков на публичный чат нет ни одного: покрыта только staff-сторона.
+
+### Порядок работ
+
+Телеметрия воронки → починка цепочек и алертинга → спеки на публичные тулы →
+карта страниц в `PageContext` → новые возможности. Не наоборот.
+
+⚠️ Ни один пункт не чинит корневое ограничение — **17 объектов на сайте**. Это
+домен сессий victory (Topnlab) и seo, не chat.
+
+### ENV чат-бота
+
+`OMNIROUTE_*`, `LLM_CHAIN_*`, `GOOGLE_EMBEDDING_API_KEY` и `AUDIT_API_*` в
+`techContext.md` отсутствуют, поэтому держи их здесь. Остальные строки таблицы
+там есть — тут они ради полноты отказов, значения смотри в `techContext.md`.
+Сами значения — в `.env`, в переписку их не тащить.
+
+| Переменная | При пустом значении |
+|---|---|
+| `OMNIROUTE_BASE_URL`, `OMNIROUTE_API_KEY` | `Llm::OmniClient` падает на конструкторе → клиент получает fallback + автоэскалацию |
+| `LLM_CHAIN_CHAT` / `_ANALYSIS` / `_STAFF_ANALYSIS` | тихий откат на `DEFAULT_CHAINS`; у `:staff_analysis` дефолта нет, подставляется `:chat` |
+| `GOOGLE_EMBEDDING_API_KEY` | `semantic_search` возвращает `tool_failed`, `EmbedXxxJob` уходят в ретраи |
+| `TELEGRAM_STAFF_CHAT_ID`, `TELEGRAM_BOT_TOKEN` | эскалация теряется молча: `TelegramNotifyJob` глотает ошибку |
+| `AUDIT_API_BASE_URL`, `AUDIT_API_TOKEN` | `run_investment_audit` отдаёт `engine_unavailable` |
+| `REDIS_URL` | rate-limit отключается молча, cost-счётчики не пишутся. ⚠️ **Пустая строка хуже отсутствия**: `config/cable.yml` берёт её через `ENV.fetch`, дефолт не подставляется, и ложится ActionCable — то есть ровно тот отказ, при котором посетитель не видит ответов |
+
+Мёртвый груз: `LLM_MODEL_PRIMARY` и `LLM_MODEL_FALLBACK` есть в `.env`, кодом не читаются.
 
 ## Команды
 
@@ -87,6 +185,25 @@ bundle exec rspec spec/models/property_spec.rb:42  # один пример
 bin/rails db:migrate                  # db:create / db:seed / db:reset
 bundle exec sidekiq -C config/sidekiq.yml
 bundle exec rake repo:map             # регенерация repo-index.md + repo-map.md
+```
+
+### Чат — прогон и наблюдение
+
+🚨 **В chat-стеке `bundle exec rspec` может стереть dev-базу.** `DATABASE_URL`
+побеждает `RAILS_ENV=test`, и спеки идут по `viktory_realty_development`, где
+лежат живые объекты и диалоги. Единственный safeguard в `spec/rails_helper.rb`
+проверяет только `Rails.env.production?`. Перед прогоном убедись, что
+`DATABASE_URL` не подсунут, либо гоняй `bin/rb --db`.
+
+Сеть в спеках закрыта: `spec/rails_helper.rb` держит
+`WebMock.disable_net_connect!(allow_localhost: true)`. VCR в проекте нет, так что
+стаб LLM делай через DI, как в `spec/services/llm/intent_classifier_spec.rb`.
+
+Наблюдение за живым ботом — логов достаточно, админки для диалогов нет:
+
+```bash
+docker logs victory-sidekiq-1 --since 24h 2>&1 | grep 'Llm::OmniClient'   # какая модель ответила / какие упали
+grep '^LLM_CHAIN' .env                                                    # реальные цепочки, не DEFAULT_CHAINS
 ```
 
 Полный список ENV и rake-задач — `.claude/memory/techContext.md` и `lib/tasks/*.rake` (31 файл).
@@ -214,7 +331,7 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 |---|---|
 | **topnlab**, МЛС sync, listings, телефония Asterisk, миграция CRM, webhooks/topnlab | `topnlab-api-expert` |
 | **TG staff bot**, work_bot, escalation, topic_registry, inbox, lead_announcer | `telegram-staff-bot-dev` |
-| **site chatbot**, чат-бот сайта, chat_responder, omni_client, chat_tools, free-first chain | `site-chatbot-dev` |
+| **site chatbot**, чат-бот сайта, chat_responder, omni_client, chat_tools, page_context, воронка виджета | `site-chatbot-dev` — сперва прочитай секцию «Чат-виджет сайта» выше |
 | **SEO**, JSON-LD, sitemap, robots, canonical, hreflang, OG, friendly_id, Schema.org | `seo-content-curator` + skill `victory-seo-checklist` |
 | **property valuation**, оценка, CMA, hedonic, аналоги Avito/Cian | `property-valuation-expert` |
 | **Prawn PDF**, audit_pdf, кириллица, theme, layout PDF | `pdf-report-designer` |
