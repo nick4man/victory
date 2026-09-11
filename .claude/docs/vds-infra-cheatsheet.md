@@ -28,10 +28,10 @@ Docker network: **`proxy`** (bridge, 172.18.0.0/16). Все routed-сервис�
 
 ```
 Static config (mounted ro → /traefik.yaml):
-  /home/q/ubuntu_rep/traefik/data/traefik.yaml
+  ~/ubuntu_rep/traefik/data/traefik.yaml
 
 Dynamic config (mounted ro → /config, watch: true):
-  /home/q/ubuntu_rep/traefik/config/
+  ~/ubuntu_rep/traefik/config/
     config.yml                         главный — routers + services + crowdsec middleware
     authentik.yaml                     SSO integration (forwardAuth)
     basic-auth.yml                     basicAuth middleware (htpasswd-style users)
@@ -45,12 +45,12 @@ Dynamic config (mounted ro → /config, watch: true):
     pihole/                            DNS UI configs
 
 Logs (mounted rw → /var/log/traefik):
-  /home/q/ubuntu_rep/traefik/logs/
+  ~/ubuntu_rep/traefik/logs/
     access.log                         access log (used by CrowdSec acquisition)
     traefik-err.log                    error log — tail после edit'а для verification
 
 ACME (mounted rw → /acme.json):
-  /home/q/ubuntu_rep/traefik/data/acme.json
+  ~/ubuntu_rep/traefik/data/acme.json
   # 600 perms! НЕ читать через шумные команды (logs); only when troubleshooting cert.
 ```
 
@@ -58,22 +58,22 @@ ACME (mounted rw → /acme.json):
 
 ```
 Acquisition (mounted rw → /etc/crowdsec/acquis.yaml):
-  /home/q/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/acquis.yaml
+  ~/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/acquis.yaml
   # log_sources, labels, parsers; добавление нового источника = add block + restart engine
 
 Engine config (mounted rw → /etc/crowdsec):
-  /home/q/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/
+  ~/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/
     config.yaml                  главный
     scenarios/                   detection scenarios
     profiles.yaml                decision profiles (что делать с alert: ban / captcha)
     notifications/               outputs
 
 Database (mounted rw → /var/lib/crowdsec/data):
-  /home/q/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/db/
+  ~/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/db/
   # SQLite по умолчанию; back-up обязателен перед manual edit
 
 Traefik logs (mounted ro → /var/log/traefik):
-  /home/q/ubuntu_rep/traefik/logs/
+  ~/ubuntu_rep/traefik/logs/
   # CrowdSec парсит access.log через acquisition
 ```
 
@@ -178,8 +178,8 @@ http:
 
 ```bash
 # Перед любой правкой dynamic config'а:
-cp /home/q/ubuntu_rep/traefik/config/config.yml \
-   /home/q/ubuntu_rep/traefik/config/config.yml.backup-$(date +%Y%m%d-%H%M%S)
+cp ~/ubuntu_rep/traefik/config/config.yml \
+   ~/ubuntu_rep/traefik/config/config.yml.backup-$(date +%Y%m%d-%H%M%S)
 ```
 
 Старые backups накапливаются — periodic cleanup mini-task (отдельно). Stale patterns в текущей дир: `.save`, `.save.1`, `.save.2`, `.bak`, `.new` — не использовать для новых; новый стандарт **`.backup-YYYYMMDD-HHMMSS`**.

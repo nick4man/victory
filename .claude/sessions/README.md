@@ -1,38 +1,38 @@
 # .claude/sessions/ — inter-session coordination
 
-**5 параллельных Claude Code сессий** работают на repo victory62. С 04.06.26 — **per-session git worktrees** (раньше shared `/home/q/victory` → branch-checkout collisions).
+**5 параллельных Claude Code сессий** работают на repo victory62. С 04.06.26 — **per-session git worktrees** (раньше shared `~/victory` → branch-checkout collisions).
 
 | Session | Purpose | Worktree path | Branch | Ruby |
 |---|---|---|---|---|
-| **victory** | Rails dev (migrations, controllers, models, specs). Dev-server :3000 | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.4.10** |
-| **chat** | Site-chatbot dev + planning + TG via curl | `/home/q/victory-chat` | `dev/chat` | **3.4.10** |
-| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `/home/q/victory-seo` | `dev/seo` | **3.4.10** |
-| **upgrade** | Rails/Ruby EOL upgrades (Rails 8.1 landed 08.08.26) | `/home/q/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.4.10** |
-| **registry** | Внешние службы сбора данных в `services/` (первая — `zhk-registry`), портирование модулей из openclaw | `/home/q/victory-registry` | `claude/zhk-registry` | **3.4.10** |
+| **victory** | Rails dev (migrations, controllers, models, specs). Dev-server :3000 | `~/victory-victory` | `dev/victory` или `claude/<task>` | **3.4.10** |
+| **chat** | Site-chatbot dev + planning + TG via curl | `~/victory-chat` | `dev/chat` | **3.4.10** |
+| **seo** | SEO meta / JSON-LD / sitemap / Lighthouse | `~/victory-seo` | `dev/seo` | **3.4.10** |
+| **upgrade** | Rails/Ruby EOL upgrades (Rails 8.1 landed 08.08.26) | `~/victory-upgrade` | `dev/upgrade` или `test/<eol>` | **3.4.10** |
+| **registry** | Внешние службы сбора данных в `services/` (первая — `zhk-registry`), портирование модулей из openclaw | `~/victory-registry` | `claude/zhk-registry` | **3.4.10** |
 
-> 🚨 **`/home/q/victory` — main checkout, ТОЛЬКО deploy/merge.** Это **live-prod bind-mount**: `victory-web-1` монтирует его в `/app` (`RAILS_ENV=development`, code-reload), поэтому **любая правка там мгновенно попадает на живой сайт**. Никакой активной разработки — работай в своём `/home/q/victory-<session>`. Все 4 сессии на Ruby **3.4.10** (после EOL-апгрейда; старое разделение chruby 3.2.2 / system 3.3 устарело).
+> 🚨 **`~/victory` — main checkout, ТОЛЬКО deploy/merge.** Это **live-prod bind-mount**: `victory-web-1` монтирует его в `/app` (`RAILS_ENV=development`, code-reload), поэтому **любая правка там мгновенно попадает на живой сайт**. Никакой активной разработки — работай в своём `~/victory-<session>`. Все 4 сессии на Ruby **3.4.10** (после EOL-апгрейда; старое разделение chruby 3.2.2 / system 3.3 устарело).
 
 ## Worktree setup (run once)
 
 Если worktrees ещё не созданы:
 
 ```bash
-cd /home/q/victory
-git worktree add /home/q/victory-victory  -b dev/victory  origin/main
-git worktree add /home/q/victory-chat     -b dev/chat     origin/main
-git worktree add /home/q/victory-seo      -b dev/seo      origin/main
-git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
-git worktree add /home/q/victory-registry -b claude/zhk-registry origin/main
+cd ~/victory
+git worktree add ~/victory-victory  -b dev/victory  origin/main
+git worktree add ~/victory-chat     -b dev/chat     origin/main
+git worktree add ~/victory-seo      -b dev/seo      origin/main
+git worktree add ~/victory-upgrade  -b dev/upgrade  origin/main
+git worktree add ~/victory-registry -b claude/zhk-registry origin/main
 git worktree list                                          # подтвердить 6 checkout'ов
 # marker-файл идентичности в каждый worktree:
-for s in victory chat seo upgrade registry; do echo "$s" > /home/q/victory-$s/.claude-session; done
-echo main > /home/q/victory/.claude-session
+for s in victory chat seo upgrade registry; do echo "$s" > ~/victory-$s/.claude-session; done
+echo main > ~/victory/.claude-session
 ```
 
 Каждая сессия открывает свой terminal:
 
 ```bash
-cd /home/q/victory-chat          # ← cd в свой worktree; identity берётся из .claude-session
+cd ~/victory-chat          # ← cd в свой worktree; identity берётся из .claude-session
 claude --resume chat
 ```
 
@@ -142,7 +142,7 @@ bin/claude-inbox done <id>             # move to archive/
 
 ```bash
 # Manual refresh (из любого worktree — Ruby приходит из контейнера bin/rb):
-cd /home/q/victory-victory   # или wherever victory worktree
+cd ~/victory-victory   # или wherever victory worktree
 bin/rb --db bundle exec rake kpi:phase_a > .claude/sessions/kpi-cache.txt
 ```
 
@@ -173,7 +173,7 @@ Hook читает этот файл и печатает в SessionStart output. 
 tmp/claude-locks/app%models%property.rb.lock
 
 session=upgrade
-worktree=/home/q/victory-upgrade
+worktree=~/victory-upgrade
 path=app/models/property.rb
 started=08.08.26 21:14
 pid=812267
@@ -261,7 +261,7 @@ git fetch && git merge origin/dev/<sender>
 
 ## Anti-patterns
 
-- ❌ Активная работа в `/home/q/victory` после worktree setup — это main checkout (зарезервирован для merges)
+- ❌ Активная работа в `~/victory` после worktree setup — это main checkout (зарезервирован для merges)
 - ❌ Запуск `claude` без `export CLAUDE_SESSION=*` — теряется session identity
 - ❌ `CLAUDE_LOCK_BYPASS=1` при живой сессии-владельце — обход нужен для мёртвой
 - ❌ `bundle install` в двух worktrees одновременно — Gemfile.lock race

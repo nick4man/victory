@@ -15,19 +15,19 @@ description: Use when editing Traefik dynamic config (routers, middlewares, serv
 
 ```
 1. READ       — текущий state файла:
-                ssh vds 'cat /home/q/ubuntu_rep/traefik/config/<file>.yml'
+                ssh vds 'cat ~/ubuntu_rep/traefik/config/<file>.yml'
 
 2. DIFF       — показать pлан изменений пользователю (unified diff format)
 
 3. BACKUP     — обязательно перед edit:
-                ssh vds 'cp /home/q/ubuntu_rep/traefik/config/<file>.yml \
-                          /home/q/ubuntu_rep/traefik/config/<file>.yml.backup-$(date +%Y%m%d-%H%M%S)'
+                ssh vds 'cp ~/ubuntu_rep/traefik/config/<file>.yml \
+                          ~/ubuntu_rep/traefik/config/<file>.yml.backup-$(date +%Y%m%d-%H%M%S)'
 
 4. EDIT       — записать новое содержимое через heredoc + scp:
-                cat <<'EOF' | ssh vds 'cat > /home/q/ubuntu_rep/traefik/config/<file>.yml'
+                cat <<'EOF' | ssh vds 'cat > ~/ubuntu_rep/traefik/config/<file>.yml'
                 <new content>
                 EOF
-                # или scp /tmp/local-edit.yml vds:/home/q/ubuntu_rep/traefik/config/<file>.yml
+                # или scp /tmp/local-edit.yml vds:~/ubuntu_rep/traefik/config/<file>.yml
 
 5. VERIFY     — Traefik hot-reload подхватывает за <1s, ошибки идут в err log:
                 sleep 2
@@ -35,8 +35,8 @@ description: Use when editing Traefik dynamic config (routers, middlewares, serv
                 # пусто = OK; есть ошибки → step 6
 
 6. ROLLBACK   — если ERR в logs:
-                ssh vds 'mv /home/q/ubuntu_rep/traefik/config/<file>.yml.backup-<TS> \
-                          /home/q/ubuntu_rep/traefik/config/<file>.yml'
+                ssh vds 'mv ~/ubuntu_rep/traefik/config/<file>.yml.backup-<TS> \
+                          ~/ubuntu_rep/traefik/config/<file>.yml'
                 # повторить step 5 — должно быть чисто
 
 7. REPORT     — пользователю: что изменено, какой router/middleware affected,
@@ -90,7 +90,7 @@ http:
 | Domain без Cloudflare DNS | **letsencrypt** | DNS-01 требует CF API token |
 | Cloudflare proxy ON (orange-cloud) | **cloudflare** | HTTP-01 не доходит до origin |
 
-Existing certs живут в `/home/q/ubuntu_rep/traefik/data/acme.json` (perms 600). НЕ читать через шумные команды.
+Existing certs живут в `~/ubuntu_rep/traefik/data/acme.json` (perms 600). НЕ читать через шумные команды.
 
 ## Middleware shape
 
@@ -237,7 +237,7 @@ ssh vds 'docker exec traefik wget -qO- http://localhost:8080/api/http/middleware
 ### Specific error tail
 
 ```bash
-ssh vds 'tail -50 /home/q/ubuntu_rep/traefik/logs/traefik-err.log'
+ssh vds 'tail -50 ~/ubuntu_rep/traefik/logs/traefik-err.log'
 # vs:
 ssh vds 'docker logs traefik --since 1m --tail 50 2>&1 | grep -iE "error|fail"'
 ```
@@ -288,7 +288,7 @@ middlewares:
 
 Если Traefik по логам OK, но live router state не изменился:
 1. Проверь typo в имени файла — `.yml` vs `.yaml` оба работают, но subdir файлы могут быть skip'нуты
-2. Проверь permissions — `ls -la /home/q/ubuntu_rep/traefik/config/<file>` должен быть `-rw-rw-r--`
+2. Проверь permissions — `ls -la ~/ubuntu_rep/traefik/config/<file>` должен быть `-rw-rw-r--`
 3. Hard fallback: `docker exec traefik traefik` чтобы заставить reread (НЕ restart!) — не работает на v3, нужен `docker restart traefik`
 
 ## When to hand off

@@ -5,7 +5,7 @@ require 'json'
 require 'uri'
 
 # HTTP client for the Topnlab CRM public API.
-# Documentation: /home/q/document_pdf.md
+# Documentation: ~/document_pdf.md
 #
 # Authentication: API key passed as `key=` query param (or `appkey` in JSON body
 # for getUsers/getStructure). Rate limits: 1 req/6s for /get-ids and /get-entities,

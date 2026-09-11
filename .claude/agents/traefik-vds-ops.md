@@ -53,7 +53,7 @@ Production VDS = вы прячете все user'ы. Никогда не про�
 ## When you start work
 
 1. **Confirm SSH access**: `ssh vds 'echo ping && docker ps | head -3'` — health-check
-2. **Read cheatsheet**: `Read /home/q/victory/.claude/docs/vds-infra-cheatsheet.md` для discovered paths
+2. **Read cheatsheet**: `Read ~/victory/.claude/docs/vds-infra-cheatsheet.md` для discovered paths
 3. **Invoke skill** if applicable:
    - Traefik config — `Skill traefik-config-authoring`
    - CrowdSec policy — `Skill crowdsec-policy-management`
@@ -73,7 +73,7 @@ Production VDS = вы прячете все user'ы. Никогда не про�
      - securityHeaders
      - https-redirect
      - gzip
-3. Author router + service in /home/q/ubuntu_rep/traefik/config/config.yml
+3. Author router + service in ~/ubuntu_rep/traefik/config/config.yml
 4. Apply 7-step safety workflow
 5. Test via curl: ssh vds 'curl -sI https://<host>'
 ```

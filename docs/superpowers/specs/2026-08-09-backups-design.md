@@ -10,8 +10,8 @@
 | Объект | Объём | Где лежит |
 |---|---|---|
 | PostgreSQL `viktory_realty_development` (это прод, см. CLAUDE.md) | **68 MB** | контейнер `victory-db-1`, volume `victory_pgdata` |
-| ActiveStorage `storage/` — фото объектов | **3.2 GB**, 21 440 файлов | `/home/q/victory/storage` → subvol `disk-0` (`/home`) |
-| Секреты — `.env`, `config/credentials` | килобайты | `/home/q/victory` |
+| ActiveStorage `storage/` — фото объектов | **3.2 GB**, 21 440 файлов | `~/victory/storage` → subvol `disk-0` (`/home`) |
+| Секреты — `.env`, `config/credentials` | килобайты | `~/victory` |
 
 Свободное место: `/` (subvol `disk-1`) — 47 GB, `/home` (subvol `disk-0`) — 43 GB.
 

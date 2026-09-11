@@ -22,7 +22,7 @@
 ### 1. Клонирование репозитория
 
 ```bash
-cd /home/q/site/project
+cd ~/site/project
 cd viktory_realty
 ```
 

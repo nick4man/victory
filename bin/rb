@@ -80,14 +80,14 @@ if [ -z "$ROOT" ]; then
 fi
 
 # ── Guard: прод-checkout ────────────────────────────────────────────────────
-# /home/q/victory — live bind-mount в victory-web-1 (RAILS_ENV=development +
+# ~/victory — live bind-mount в victory-web-1 (RAILS_ENV=development +
 # code-reload). Поднимать здесь второй стек = гонять миграции по каталогу,
 # который сию секунду обслуживает victory62.org. Отказ, без вариантов.
 if [ "$ROOT" = '/home/q/victory' ]; then
   cat >&2 <<'MSG'
-❌ Это main checkout (/home/q/victory) — live-prod bind-mount victory-web-1.
+❌ Это main checkout (~/victory) — live-prod bind-mount victory-web-1.
    ruby-box здесь не поднимаем. Перейди в свой worktree, например:
-       cd /home/q/victory-upgrade && bin/rb ...
+       cd ~/victory-upgrade && bin/rb ...
 MSG
   exit 1
 fi
@@ -103,7 +103,7 @@ PROJECT="victory-rb-${SESSION}"
 
 if [ ! -f .env ]; then
   echo "❌ Нет $ROOT/.env — контейнер не получит DATABASE_URL/REDIS_URL." >&2
-  echo '   Забери из main checkout:  cp /home/q/victory/.env .env && chmod 600 .env' >&2
+  echo '   Забери из main checkout:  cp ~/victory/.env .env && chmod 600 .env' >&2
   exit 1
 fi
 

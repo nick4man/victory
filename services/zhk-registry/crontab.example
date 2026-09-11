@@ -8,12 +8,12 @@
 #
 # Ставится в крон ПОЛЬЗОВАТЕЛЯ на хосте прода (`crontab -e`, не
 # /etc/crontab — там нужен отдельный столбец пользователя и другой
-# формат). Каталог — main-чекаут (`/home/q/victory`), где живёт прод, а
+# формат). Каталог — main-чекаут (`~/victory`), где живёт прод, а
 # не сессионный worktree разработки: см. `git worktree list` в
 # корневом CLAUDE.md репозитория.
 #
 # .venv — окружение службы, создаётся один раз:
-#   cd /home/q/victory/services/zhk-registry
+#   cd ~/victory/services/zhk-registry
 #   python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 #
 # .env рядом со скриптом — см. .env.example (VICTORY_BASE_URL,
