@@ -88,15 +88,39 @@ fi
 # (`<home>/victory` и `/opt/.openclaw/victory`), и на обоих main checkout — тот же
 # live bind-mount. Хардкод одного пути оставлял вторую машину без защиты.
 # `--git-common-dir` даёт `<main checkout>/.git`, значит родитель — сам checkout.
-MAIN=$(cd "$(git rev-parse --git-common-dir)/.." && pwd)
-if [ "$ROOT" = "$MAIN" ] && [ -z "${VICTORY_RB_ALLOW_MAIN:-}" ]; then
-  cat >&2 <<MSG
+#
+# `pwd -P` обязателен. `$ROOT` приходит из `git rev-parse --show-toplevel` — это
+# ВСЕГДА физический путь. Логический `pwd` вернул бы путь через симлинк, строки
+# не совпали бы, и guard молча пропустил бы прод: зайти в `/tmp/link-на-victory`
+# достаточно, чтобы поднять стек на живом каталоге сайта.
+GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || echo '')
+MAIN=''
+[ -n "$GIT_COMMON" ] && MAIN=$(cd "$GIT_COMMON/.." 2>/dev/null && pwd -P)
+
+# fail-closed: не смогли определить main checkout — отказ, а не молчаливый пропуск.
+# Пустой `--git-common-dir` дал бы `cd /..` → `MAIN=/`, и guard не сработал бы
+# никогда; `--separate-git-dir` уводит common-dir наружу, и родитель перестаёт
+# быть чекаутом. Для защиты прода «не знаю» должно значить «нет», а не «да».
+if [ -z "$MAIN" ] || [ "$MAIN" = '/' ] || [ ! -e "$MAIN/.git" ]; then
+  echo "bin/rb: не удалось определить main checkout (--git-common-dir → '${GIT_COMMON:-пусто}')." >&2
+  echo '   Без него guard прода не работает, поэтому отказ. Проверь layout репозитория.' >&2
+  exit 1
+fi
+
+if [ "$ROOT" = "$MAIN" ]; then
+  if [ -n "${VICTORY_RB_ALLOW_MAIN:-}" ]; then
+    # Снятие единственной защиты прода не должно проходить бесследно.
+    echo "⚠️  VICTORY_RB_ALLOW_MAIN=1 — guard прода снят вручную." >&2
+    echo "   Поднимаю стек в main checkout ($MAIN). Если это прод-хост, ты ломаешь живой сайт." >&2
+  else
+    cat >&2 <<MSG
 ❌ Это main checkout ($MAIN) — live-prod bind-mount victory-web-1.
    ruby-box здесь не поднимаем. Перейди в свой worktree, например:
        cd ../victory-upgrade && bin/rb ...
    Если этот чекаут заведомо НЕ прод (чистый клон) — VICTORY_RB_ALLOW_MAIN=1.
 MSG
-  exit 1
+    exit 1
+  fi
 fi
 
 cd "$ROOT"

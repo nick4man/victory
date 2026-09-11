@@ -21,12 +21,19 @@
 set :environment, ENV['RAILS_ENV'] || 'development'
 set :output, { error: 'log/cron_error.log', standard: 'log/cron.log' }
 
-# ⚠️ Абсолютные пути в `command` ниже — намеренно, а не забытый хардкод.
-# whenever раскладывает строки в системный crontab: cwd у задачи нет, `~`
-# разворачивается по $HOME вызывающего пользователя (а не владельца чекаута), и
-# относительный путь указал бы куда угодно. Привязка к прод-чекауту здесь же и
-# означает, что расписание применимо только на прод-хосте — см. CLAUDE.md,
-# секцию «Два планировщика». Боевое расписание — `config/sidekiq_cron.yml`.
+# ⚠️ Почему в `command` ниже абсолютные пути. whenever раскладывает строки в
+# системный crontab: cwd у задачи нет, `~` разворачивается по $HOME вызывающего
+# пользователя (а не владельца чекаута), и относительный путь указал бы куда
+# угодно. Поэтому абсолютный путь — единственный работающий вариант, а привязка к
+# прод-чекауту означает, что расписание применимо только на прод-хосте.
+#
+# Это НЕ значит, что все пути ниже верные: задача «Backup database daily» висит
+# на `/home/q/site/project/viktory_realty` — каталог до перехода на Docker,
+# которого на хосте давно нет (тот же мёртвый путь остался в
+# `config/nginx/viktory-realty.conf` и `config/systemd/puma.service`). Задача не
+# работает; чинить или удалять — отдельным PR.
+#
+# Боевое расписание — `config/sidekiq_cron.yml`, см. CLAUDE.md «Два планировщика».
 
 # Send viewing reminders every hour
 every 1.hour do
@@ -69,6 +76,8 @@ every 1.day, at: '4:00 am' do
 end
 
 # Backup database daily
+# 🚨 МЁРТВАЯ ЗАДАЧА: каталога нет с переезда на Docker, бэкап идёт через
+# `bin/backup` + systemd-таймеры (`deploy/systemd/victory-backup-*`).
 every 1.day, at: '1:00 am' do
   command 'cd /home/q/site/project/viktory_realty && bin/backup_database.sh'
 end

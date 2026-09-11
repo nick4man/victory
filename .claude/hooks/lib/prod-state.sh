@@ -24,10 +24,12 @@ PROD_FETCH_TIMEOUT="${PROD_FETCH_TIMEOUT:-8}"
 # зовут из любого worktree, в том числе вложенного. `--git-common-dir` даёт
 # `<main checkout>/.git` (в самом main checkout — относительный `.git`), значит
 # родитель и есть нужный каталог. VICTORY_PROD_DIR — приоритетный override.
+# `pwd -P` — физический путь: его сравнивают с `git rev-parse --show-toplevel`,
+# который физический всегда, и логический путь через симлинк не совпал бы.
 prod_main_checkout() {
   local common
   common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
-  (cd "$common/.." 2>/dev/null && pwd) || return 0
+  (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
 }
 
 PROD_DIR="${VICTORY_PROD_DIR:-$(prod_main_checkout)}"

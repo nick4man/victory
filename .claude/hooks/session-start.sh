@@ -23,12 +23,18 @@ WORKTREE_PATH=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # разными корнями. `--git-common-dir` даёт `<main checkout>/.git` (в самом main
 # checkout — относительный `.git`), значит родитель и есть main checkout.
 # Нужен и для inbox-очереди (ниже), и для предупреждений про прод-bind-mount.
+# `pwd -P` — физический путь, как и у `git rev-parse --show-toplevel`: иначе
+# заход через симлинк дал бы две разные строки на один каталог.
 GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
 MAIN_CHECKOUT=""
-[ -n "$GIT_COMMON" ] && MAIN_CHECKOUT=$(cd "$GIT_COMMON/.." 2>/dev/null && pwd)
-[ -n "$MAIN_CHECKOUT" ] || MAIN_CHECKOUT="$WORKTREE_PATH"
+[ -n "$GIT_COMMON" ] && MAIN_CHECKOUT=$(CDPATH='' cd -- "$GIT_COMMON/.." 2>/dev/null && pwd -P)
+# Вычислился он или пришлось отступить на текущий каталог — разные вещи:
+# предупреждение «это live-prod bind-mount» имеет смысл только в первом случае.
+MAIN_CHECKOUT_RESOLVED=1
+[ -n "$MAIN_CHECKOUT" ] || { MAIN_CHECKOUT="$WORKTREE_PATH"; MAIN_CHECKOUT_RESOLVED=0; }
 # Все worktree — соседи main checkout, поэтому подсказки строим от его родителя.
 WORKTREES_ROOT=$(dirname "$MAIN_CHECKOUT")
+[ "$WORKTREES_ROOT" = '/' ] && WORKTREES_ROOT=''
 
 # git-хуки живут в .git/hooks, который под git не попадает — доставляем из
 # отслеживаемого .githooks/. Вызов идемпотентный (symlink уже на месте → no-op),
@@ -184,7 +190,7 @@ EOF
 [ -n "$PROD_BLOCK" ] && printf '%s\n' "$PROD_BLOCK"
 
 # Session identity / worktree guards
-if [ "$SESSION_ID" = "main" ]; then
+if [ "$SESSION_ID" = "main" ] && [ "$MAIN_CHECKOUT_RESOLVED" -eq 1 ]; then
   cat <<WARN
 
 🚨  MAIN CHECKOUT ($MAIN_CHECKOUT) — this is the LIVE-PROD bind-mount
