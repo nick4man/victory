@@ -122,6 +122,18 @@ RSpec.describe OwnerRequestJob do
       expect(described_class.new.perform).to include(sent: 0)
     end
 
+    # Прогон 14.08.26: из 25 объектов в очереди 17 уже на витрине. Подпись им
+    # проставила миграция при внедрении гейта D5, записи о собственнике при этом
+    # не появилось — `owner_user_id` пуст, а карточка открыта на сайте. Агент
+    # получал бы «не попадает на витрину» про то, что там уже есть.
+    it 'не спрашивает про объекты с подписанным договором' do
+      agent = agent_with_tg(tg_user_id: 900_219)
+      property_for(agent, deal_state: 'ad', status: :active)
+        .update_column(:signed_agency_contract_at, 3.months.ago)
+
+      expect(described_class.new.perform).to include(sent: 0)
+    end
+
     it 'спрашивает про черновик в рекламной стадии' do
       agent = agent_with_tg(tg_user_id: 900_218)
       property_for(agent, deal_state: 'ad', status: :draft)
