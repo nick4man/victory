@@ -1,0 +1,256 @@
+#!/usr/bin/env bash
+# Собирает и ставит git из исходников в ~/.local — без root и без apt.
+#
+# Зачем вообще собирать: у нас 18 worktree на один репозиторий, а `git
+# worktree`, `git maintenance` и reftable заметно менялись в свежих версиях.
+# Дистрибутивный git отстаёт (Debian 13 — 2.47), а обновлять его глобально на
+# машине с продом нельзя. Отсюда префикс в домашнем каталоге: системный
+# /usr/bin/git остаётся нетронутым, откат — rm -rf одного каталога.
+#
+# Скрипт НЕ ставит пакеты сам. Он проверяет зависимости и печатает готовую
+# apt-команду. Установка пакетов в систему — осознанное действие человека,
+# а не побочный эффект запуска скрипта из репозитория.
+#
+# Две грабли, ради которых это и записано (обе стоили проваленной сборки):
+#   * без gettext нет msgfmt — make падает на переводах, уже собрав бинарник,
+#     то есть выглядит как «почти получилось», а результат неустановим;
+#   * без docbook-xsl-ns xsltproc не находит DocBook 5 стили локально и лезет
+#     за ними в интернет, из-за чего man-страницы не собираются.
+#
+#   bin/build-git                 # версия по умолчанию, вместе с man-страницами
+#   bin/build-git v2.56.0         # конкретный тег upstream
+#   bin/build-git --no-man        # без документации (снимает половину зависимостей)
+#   bin/build-git --verbose       # показывать вывод make, а не только итог
+
+set -euo pipefail
+
+# Пин намеренный: «собери свежак» — это невоспроизводимо, у двух разработчиков
+# в разные дни получится разный git. Когда выйдет стабильная 2.56.0 — правится
+# эта строка, и все получают одно и то же.
+GIT_VERSION_DEFAULT='v2.56.0-rc0'
+UPSTREAM='https://github.com/git/git.git'
+
+WITH_MAN=1
+VERBOSE=0
+GIT_VERSION=''
+
+usage() {
+  cat <<'USAGE'
+bin/build-git [ВЕРСИЯ] [--no-man] [--verbose]
+
+  ВЕРСИЯ      тег upstream, например v2.56.0 (по умолчанию — пин из шапки скрипта)
+  --no-man    не собирать man-страницы: быстрее и без asciidoctor/xmlto/docbook
+  --verbose   показывать полный вывод make
+
+Ставит в ~/.local/git-<ВЕРСИЯ>, симлинки — в ~/.local/bin и ~/.local/share/man.
+Системный git не трогает. Откат: rm -rf ~/.local/git-<ВЕРСИЯ>
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --no-man)   WITH_MAN=0 ;;
+    --verbose)  VERBOSE=1 ;;
+    -h|--help)  usage; exit 0 ;;
+    -*)         echo "неизвестный флаг: $1" >&2; usage >&2; exit 2 ;;
+    *)          GIT_VERSION="$1" ;;
+  esac
+  shift
+done
+
+GIT_VERSION="${GIT_VERSION:-$GIT_VERSION_DEFAULT}"
+
+PREFIX="$HOME/.local/git-$GIT_VERSION"
+BINDIR="$HOME/.local/bin"
+MANDIR="$HOME/.local/share/man"
+SRC="${XDG_CACHE_HOME:-$HOME/.cache}/victory/git-src/$GIT_VERSION"
+LOG="${TMPDIR:-/tmp}/build-git-$GIT_VERSION.log"
+
+# Тег v2.56.0-rc0 -> версия 2.56.0.rc0: git репортит через точку, а тегируется
+# через дефис. Нужно для проверки «уже собрано» и для финальной сверки.
+EXPECTED="${GIT_VERSION#v}"
+EXPECTED="${EXPECTED//-/.}"
+
+say()  { printf '%s\n' "$*"; }
+warn() { printf '⚠ %s\n' "$*" >&2; }
+
+# --- симлинки и сверка -------------------------------------------------------
+# Вынесено в функцию, потому что вызывается из двух мест: после свежей сборки и
+# на быстром выходе, когда всё уже собрано. Второй случай важен: каталог мог
+# остаться с прошлого раза, а симлинки — нет (чужой rm, новая машина, $HOME).
+
+link_and_verify() {
+  mkdir -p "$BINDIR"
+  # Симлинкуем весь bin/, а не только git: git-shell и git-upload-pack нужны
+  # для доступа по ssh, scalar — для больших клонов.
+  local f
+  for f in "$PREFIX"/bin/*; do
+    ln -sfn "$f" "$BINDIR/$(basename "$f")"
+  done
+
+  if [ "$WITH_MAN" = 1 ] && [ -d "$PREFIX/share/man" ]; then
+    # man-db выводит manpath из PATH: для ~/.local/bin он смотрит в
+    # ~/.local/share/man, а не в наш префикс. Без этих симлинков `man git`
+    # молча показывал бы страницу от системного git.
+    local section page
+    for section in man1 man5 man7; do
+      [ -d "$PREFIX/share/man/$section" ] || continue
+      mkdir -p "$MANDIR/$section"
+      for page in "$PREFIX/share/man/$section"/*; do
+        ln -sfn "$page" "$MANDIR/$section/$(basename "$page")"
+      done
+    done
+  fi
+
+  case ":$PATH:" in
+    *":$BINDIR:"*) ;;
+    *) warn "$BINDIR нет в PATH — добавь в ~/.zshrc:  export PATH=\"$BINDIR:\$PATH\"" ;;
+  esac
+
+  local resolved
+  resolved="$(command -v git || true)"
+  if [ -z "$resolved" ]; then
+    warn "git в PATH не найден вовсе — после правки PATH станет доступен $BINDIR/git"
+  elif [ "$resolved" != "$BINDIR/git" ]; then
+    warn "в PATH первым идёт $resolved (версия $("$resolved" --version 2>/dev/null | awk '{print $3}'))"
+    warn "собранный git лежит в $BINDIR/git — он не подхватится, пока PATH не переставлен"
+  fi
+
+  say "git $EXPECTED → $PREFIX"
+  say "проверка: $("$PREFIX/bin/git" --version)"
+}
+
+# --- быстрый выход, если уже собрано ----------------------------------------
+
+if [ -x "$PREFIX/bin/git" ] && [ "$("$PREFIX/bin/git" --version | awk '{print $3}')" = "$EXPECTED" ]; then
+  say "уже собрано, пересборка не нужна"
+  link_and_verify
+  exit 0
+fi
+
+# --- зависимости -------------------------------------------------------------
+
+MISSING=()
+
+have_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+# Заголовки лежат либо в /usr/include, либо в multiarch-подкаталоге
+# (/usr/include/x86_64-linux-gnu/...), поэтому проверяем оба варианта.
+have_header() {
+  [ -e "/usr/include/$1" ] && return 0
+  compgen -G "/usr/include/*/$1" >/dev/null && return 0
+  return 1
+}
+
+need() {  # need <проверка> <аргумент> <apt-пакет>
+  "$1" "$2" || MISSING+=("$3")
+}
+
+need have_cmd    cc                build-essential
+need have_cmd    make              build-essential
+need have_cmd    perl              perl
+need have_cmd    msgfmt            gettext
+need have_header zlib.h            zlib1g-dev
+need have_header openssl/ssl.h     libssl-dev
+need have_header curl/curl.h       libcurl4-openssl-dev
+
+# expat нужен только для push по dumb-http/WebDAV. Без него git собирается и
+# работает, но простой `make` об этом не знает и всё равно попытается слинковать
+# http-push.c — поэтому отсутствие заголовка не ошибка, а флаг сборки.
+MAKE_EXTRA=()
+if ! have_header expat.h; then
+  MAKE_EXTRA+=(NO_EXPAT=YesPlease)
+fi
+
+if [ "$WITH_MAN" = 1 ]; then
+  need have_cmd asciidoctor asciidoctor
+  need have_cmd xmlto       xmlto
+  need have_cmd xsltproc    xsltproc
+  # Наличия пакета мало — важно, что каталог резолвит DocBook 5 (namespaced)
+  # локально. Проверяем именно резолв: docbook-xsl без -ns ставится и проходит
+  # проверку на файл, а сборка потом падает попыткой сходить в сеть.
+  catalog_hit="$(xmlcatalog /etc/xml/catalog \
+    'http://docbook.sourceforge.net/release/xsl-ns/current/manpages/docbook.xsl' \
+    2>/dev/null || true)"
+  if [[ "$catalog_hit" != *file:/* ]]; then
+    MISSING+=(docbook-xsl-ns)
+  fi
+fi
+
+# git нужен, чтобы вообще забрать исходники. Отдельным сообщением: apt-команда
+# ниже его не спасёт, если git нет совсем — ставить придётся руками.
+have_cmd git || { echo 'нужен git, чтобы склонировать исходники: sudo apt install git' >&2; exit 1; }
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+  # Дубли убираем: build-essential попадает в список дважды (cc и make).
+  readarray -t MISSING < <(printf '%s\n' "${MISSING[@]}" | sort -u)
+  echo "не хватает зависимостей для сборки:" >&2
+  printf '  %s\n' "${MISSING[@]}" >&2
+  echo >&2
+  echo "  sudo apt install ${MISSING[*]}" >&2
+  exit 1
+fi
+
+# --- исходники ---------------------------------------------------------------
+
+if [ ! -d "$SRC/.git" ]; then
+  mkdir -p "$(dirname "$SRC")"
+  # Клонируем во временный каталог и переносим готовым: прерванный клон иначе
+  # оставит битое дерево, которое следующий запуск примет за кэш.
+  TMP="$SRC.tmp.$$"
+  rm -rf "$TMP"
+  say "клонирую $GIT_VERSION…"
+  CLONE_QUIET=(--quiet)
+  [ "$VERBOSE" = 1 ] && CLONE_QUIET=()
+  # advice.detachedHead: клон по тегу всегда встаёт на detached HEAD, и git
+  # печатает про это десять строк совета — здесь это чистый шум.
+  git -c advice.detachedHead=false clone --depth 1 --branch "$GIT_VERSION" \
+    "${CLONE_QUIET[@]}" "$UPSTREAM" "$TMP"
+  mv "$TMP" "$SRC"
+else
+  say "исходники из кэша: $SRC"
+fi
+
+# --- сборка ------------------------------------------------------------------
+
+JOBS="$(nproc)"
+TARGETS=(all)
+INSTALL_TARGETS=(install)
+if [ "$WITH_MAN" = 1 ]; then
+  TARGETS+=(man)
+  INSTALL_TARGETS+=(install-man)
+fi
+
+# prefix обязан совпадать в сборке и установке: он вшивается в бинарник как
+# exec-path, и при расхождении git не найдёт свои подкоманды.
+run_make() {
+  if [ "$VERBOSE" = 1 ]; then
+    make -C "$SRC" -j"$JOBS" prefix="$PREFIX" USE_ASCIIDOCTOR=1 "${MAKE_EXTRA[@]}" "$@"
+  else
+    if ! make -C "$SRC" -j"$JOBS" prefix="$PREFIX" USE_ASCIIDOCTOR=1 "${MAKE_EXTRA[@]}" "$@" >"$LOG" 2>&1; then
+      echo "make $* упал, последние строки $LOG:" >&2
+      tail -25 "$LOG" >&2
+      exit 1
+    fi
+  fi
+}
+
+MAN_NOTE=''
+[ "$WITH_MAN" = 1 ] && MAN_NOTE=', с man-страницами'
+if [ ${#MAKE_EXTRA[@]} -gt 0 ]; then
+  say "сборка без expat: push по dumb-http/WebDAV работать не будет (нужен libexpat1-dev)"
+fi
+say "собираю git $EXPECTED (-j$JOBS)$MAN_NOTE…"
+run_make "${TARGETS[@]}"
+say "устанавливаю в $PREFIX…"
+run_make "${INSTALL_TARGETS[@]}"
+
+# Сверяем, что собралось именно то, что заказывали: тег мог переехать, кэш —
+# устареть, а молча поставленная не та версия хуже, чем явная ошибка.
+BUILT="$("$PREFIX/bin/git" --version | awk '{print $3}')"
+if [ "$BUILT" != "$EXPECTED" ]; then
+  echo "ожидали git $EXPECTED, собрался $BUILT" >&2
+  exit 1
+fi
+
+link_and_verify

@@ -113,6 +113,20 @@ bundle exec whenever --clear-crontab
 - 03:00: `UpdatePropertyStatisticsJob`
 - 10:00: `PropertyValuationFollowUpJob`
 
+### git из исходников (опционально)
+```bash
+bin/build-git                 # пин-версия из шапки скрипта, вместе с man-страницами
+bin/build-git v2.56.0         # конкретный тег upstream
+bin/build-git --no-man        # без документации: снимает asciidoctor/xmlto/docbook
+```
+Ставит в `~/.local/git-<версия>`, симлинки — в `~/.local/bin` и `~/.local/share/man`;
+системный `/usr/bin/git` не трогает, откат — `rm -rf ~/.local/git-<версия>`.
+Пакеты скрипт не ставит: проверяет зависимости и печатает готовую `sudo apt install`.
+
+Зачем: у репозитория 18 worktree, а `git worktree`/`git maintenance` заметно
+менялись в свежих версиях; дистрибутивный git отстаёт (Debian 13 — 2.47), и
+обновлять его глобально на машине с продом нельзя.
+
 ### Переезд базы на bookworm — пересборка прод-БД
 
 С PR #42 (в main 09.09.26, мерж `c18ea20`) `Dockerfile.postgres` строится от
