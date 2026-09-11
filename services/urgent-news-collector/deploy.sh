@@ -18,43 +18,51 @@
 
 set -euo pipefail
 
-REF="${1:-main}"
-REPO="${VICTORY_REPO:-/opt/.openclaw/victory}"
-DEST="${CONVEYOR_HOME:-/opt/victory-conveyor}"
+# Тело обёрнуто в { } намеренно: скрипт выкатывает сам себя (deploy.sh лежит
+# в репозитории и приезжает вместе с остальными файлами). bash дочитывает файл
+# по смещению уже во время выполнения — перезапись на лету увела бы его в
+# середину новой версии. Фигурные скобки заставляют разобрать блок целиком
+# до первой команды.
+{
 
-case "$DEST" in
-  /opt/.openclaw/.openclaw/*)
-    echo "отказ: $DEST внутри архива openclaw — туда не пишем (решение 11.09.26)" >&2
-    exit 2 ;;
-esac
+  REF="${1:-main}"
+  REPO="${VICTORY_REPO:-/opt/.openclaw/victory}"
+  DEST="${CONVEYOR_HOME:-/opt/victory-conveyor}"
 
-[ -d "$REPO/.git" ] || { echo "не репозиторий: $REPO" >&2; exit 2; }
-git -C "$REPO" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
-  || { echo "нет такой ревизии: $REF" >&2; exit 2; }
+  case "$DEST" in
+    /opt/.openclaw/.openclaw/*)
+      echo "отказ: $DEST внутри архива openclaw — туда не пишем (решение 11.09.26)" >&2
+      exit 2 ;;
+  esac
 
-SHA="$(git -C "$REPO" rev-parse --short "$REF")"
-echo "→ выкатываю $REF ($SHA) из $REPO в $DEST"
+  [ -d "$REPO/.git" ] || { echo "не репозиторий: $REPO" >&2; exit 2; }
+  git -C "$REPO" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
+    || { echo "нет такой ревизии: $REF" >&2; exit 2; }
 
-mkdir -p "$DEST"/{logs,notifications,published}
+  SHA="$(git -C "$REPO" rev-parse --short "$REF")"
+  echo "→ выкатываю $REF ($SHA) из $REPO в $DEST"
 
-# Скрипты конвейера.
-git -C "$REPO" archive "$REF:services/urgent-news-collector" | tar x -C "$DEST"
-# Зеркало на сайт — живёт в соседнем сервисе, но деплоится рядом (MIRROR_SCRIPT).
-git -C "$REPO" archive "$REF:services/chat-host-cron" post_news_to_victory.sh | tar x -C "$DEST"
-chmod +x "$DEST/post_news_to_victory.sh" "$DEST/deploy.sh"
+  mkdir -p "$DEST"/{logs,notifications,published}
 
-# venv: создаём при первом деплое, дальше только доставляем зависимости.
-if [ ! -x "$DEST/.venv/bin/python3" ]; then
-  echo "→ создаю venv"
-  python3 -m venv "$DEST/.venv"
-fi
-"$DEST/.venv/bin/pip" install --quiet --upgrade pip
-"$DEST/.venv/bin/pip" install --quiet -r "$DEST/requirements.txt"
+  # Скрипты конвейера.
+  git -C "$REPO" archive "$REF:services/urgent-news-collector" | tar x -C "$DEST"
+  # Зеркало на сайт — живёт в соседнем сервисе, но деплоится рядом (MIRROR_SCRIPT).
+  git -C "$REPO" archive "$REF:services/chat-host-cron" post_news_to_victory.sh | tar x -C "$DEST"
+  chmod +x "$DEST/post_news_to_victory.sh" "$DEST/deploy.sh"
 
-if [ ! -f "$DEST/.env" ]; then
-  echo "⚠ нет $DEST/.env — скопируй .env.example и заполни, иначе конвейер не стартует"
-fi
+  # venv: создаём при первом деплое, дальше только доставляем зависимости.
+  if [ ! -x "$DEST/.venv/bin/python3" ]; then
+    echo "→ создаю venv"
+    python3 -m venv "$DEST/.venv"
+  fi
+  "$DEST/.venv/bin/pip" install --quiet --upgrade pip
+  "$DEST/.venv/bin/pip" install --quiet -r "$DEST/requirements.txt"
 
-echo "$SHA  $(date '+%d.%m.%y %H:%M')  $REF" >> "$DEST/deployed.log"
-echo "✓ готово. Ревизия: $SHA"
-"$DEST/.venv/bin/python3" -c "import feedparser, psycopg2, requests; print('✓ зависимости на месте')"
+  if [ ! -f "$DEST/.env" ]; then
+    echo "⚠ нет $DEST/.env — скопируй .env.example и заполни, иначе конвейер не стартует"
+  fi
+
+  echo "$SHA  $(date '+%d.%m.%y %H:%M')  $REF" >> "$DEST/deployed.log"
+  echo "✓ готово. Ревизия: $SHA"
+  "$DEST/.venv/bin/python3" -c "import feedparser, psycopg2, requests; print('✓ зависимости на месте')"
+}

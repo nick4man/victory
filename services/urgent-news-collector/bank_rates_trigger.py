@@ -32,9 +32,6 @@ import psycopg2
 import requests
 from psycopg2.extras import RealDictCursor
 
-# Боевой каталог конвейера. До 11.09.26 путь вёл в openclaw
-# (workspace-conveyor); openclaw переведён в архив, наружу больше не ходим.
-CONVEYOR_HOME = os.environ.get("CONVEYOR_HOME", "/opt/victory-conveyor")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(SCRIPT_DIR)
 
@@ -56,6 +53,10 @@ def _load_env_file(path: str) -> None:
 
 
 _load_env_file(os.path.join(SCRIPT_DIR, ".env"))
+
+# Боевой каталог конвейера. До 11.09.26 путь вёл в openclaw
+# (workspace-conveyor); openclaw переведён в архив, наружу больше не ходим.
+CONVEYOR_HOME = os.environ.get("CONVEYOR_HOME", "/opt/victory-conveyor")
 
 from content_db_utils import (  # noqa: E402
     _connect_news,
