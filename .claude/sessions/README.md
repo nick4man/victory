@@ -29,6 +29,12 @@ for s in victory chat seo upgrade registry; do echo "$s" > /home/q/victory-$s/.c
 echo main > /home/q/victory/.claude-session
 ```
 
+Пути worktree — **относительные** (с 10.09.26): `git worktree add` подхватывает
+`worktree.useRelativePaths` из общего `.git/config` и пишет относительные указатели сам,
+руками делать ничего не нужно. Требование — git ≥2.48 (в прод-контейнерах он старее, и
+git-команды внутри `/app` из-за этого не работают). Подробности, починка битых указателей и
+откат — `.claude/memory/techContext.md`, секция «Git — относительные пути worktree».
+
 Каждая сессия открывает свой terminal:
 
 ```bash
