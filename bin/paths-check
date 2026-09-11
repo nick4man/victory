@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Держит инвариант по путям: относительное внутри репозитория, абсолютное — где иначе никак.
+
+Правило записано в `.claude/memory/techContext.md`, секция «Где абсолютный путь
+обязателен», но проза сама себя не защищает. 10.09.26 остаток абсолютных путей
+попробовали «довести до одного вида» заменой `/home/q` → `~`. Тильду разворачивает
+только шелл, поэтому легли git-метаданные всех worktree, MCP-сервер `postgres`,
+deny-правило в `.claude/settings.json` и live-prod guard в `bin/rb` — четыре поломки
+из одной замены, и ни одна не проявилась ошибкой при правке.
+
+Проверка ловит оба направления дрейфа:
+  1. новый абсолютный `/home/q` в файле, которому он не положен;
+  2. тильда как путь там, где потребитель её не разворачивает (JSON, systemd,
+     nginx, env-файлы, крон-строки).
+
+Запуск: bin/paths-check    (нужен только python3 — проверка обязана работать и там,
+где Ruby нет)
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Файлы, которым абсолютный `/home/q` положен. Причины — по группам в
+# techContext.md: VDS (другая машина), файлы вне чекаута, потребители без cwd,
+# восстановление с нуля и sudo-шаги. Добавлять сюда — осознанное решение в диффе.
+ABSOLUTE_ALLOWED = {
+    '.claude/agents/traefik-vds-ops.md',
+    '.claude/docs/vds-infra-cheatsheet.md',
+    '.claude/memory/activeContext.md',
+    '.claude/memory/techContext.md',
+    '.claude/settings.json',
+    '.claude/skills/crowdsec-policy-management/SKILL.md',
+    '.claude/skills/traefik-config-authoring/SKILL.md',
+    '.mcp.json',
+    'CLAUDE.md',
+    'app/services/topnlab/client.rb',
+    'bin/backup',
+    'bin/paths-check',
+    'config/backup.env.example',
+    'config/nginx/viktory-realty.conf',
+    'config/schedule.rb',
+    'config/systemd/puma.service',
+    'deploy/systemd/victory-backup-daily.service',
+    'docs/runbooks/restore.md',
+    'docs/superpowers/plans/2026-08-09-backups.md',
+    'docs/superpowers/plans/2026-09-07-zhk-registry.md',
+    'docs/superpowers/specs/2026-08-09-backups-design.md',
+    'docs/topnlab-webhook-setup.md',
+    'services/zhk-registry/crontab.example',
+}
+
+# Потребители, которые читают строку буквально: ни cwd, ни разворачивания тильды.
+TILDE_FORBIDDEN = (
+    '.mcp.json',
+    '.claude/settings.json',
+    'config/backup.env.example',
+    'config/nginx/viktory-realty.conf',
+    'config/schedule.rb',
+    'services/zhk-registry/crontab.example',
+)
+TILDE_FORBIDDEN_SUFFIX = ('.service', '.timer')
+
+ABS_RX = re.compile(r'/home/q')
+# Тильда именно как путь: `~/что-то`. `~` в прозе и в регулярках не трогаем.
+TILDE_PATH_RX = re.compile(r'~/[A-Za-z0-9_.]')
+
+DOC = '.claude/memory/techContext.md, секция «Где абсолютный путь обязателен»'
+
+
+def tracked_files():
+    try:
+        out = subprocess.run(['git', '-C', ROOT, 'ls-files', '-z'],
+                             capture_output=True, check=True).stdout
+        return [p.decode('utf-8') for p in out.split(b'\0') if p]
+    except (OSError, subprocess.CalledProcessError):
+        found = []
+        for base, dirs, files in os.walk(ROOT):
+            dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', 'tmp')]
+            for name in files:
+                found.append(os.path.relpath(os.path.join(base, name), ROOT))
+        return found
+
+
+def tilde_forbidden(path):
+    return path in TILDE_FORBIDDEN or path.endswith(TILDE_FORBIDDEN_SUFFIX)
+
+
+def main():
+    errors = []
+    for path in tracked_files():
+        full = os.path.join(ROOT, path)
+        try:
+            with open(full, encoding='utf-8') as handle:
+                lines = handle.readlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+
+        for num, line in enumerate(lines, 1):
+            if ABS_RX.search(line) and path not in ABSOLUTE_ALLOWED:
+                errors.append(
+                    f'{path}:{num}: абсолютный /home/q в файле, которому он не положен.\n'
+                    f'    Внутри репозитория путь должен быть относительным либо\n'
+                    f'    вычисляться в рантайме (git rev-parse --show-toplevel,\n'
+                    f'    --git-common-dir). Если путь правда обязан быть абсолютным —\n'
+                    f'    добавь файл в ABSOLUTE_ALLOWED и объясни причину в {DOC}.')
+            if TILDE_PATH_RX.search(line) and tilde_forbidden(path):
+                errors.append(
+                    f'{path}:{num}: тильда как путь у потребителя, который её не\n'
+                    f'    разворачивает (JSON, systemd, nginx, env-файл или крон-строка).\n'
+                    f'    Здесь нужен абсолютный путь: {DOC}.')
+
+    if errors:
+        print('bin/paths-check: нарушения инварианта по путям\n')
+        for err in errors:
+            print(err + '\n')
+        print(f'Всего: {len(errors)}')
+        return 1
+
+    print('bin/paths-check: инвариант по путям соблюдён')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
