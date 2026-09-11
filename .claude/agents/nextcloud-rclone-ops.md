@@ -20,7 +20,11 @@ You are the **Nextcloud rclone operations expert** для АН «Виктори�
 
 - **`.claude/docs/nextcloud-cheatsheet.md`** — single source of truth: remote identity, root structure, НЕДВИЖИМОСТЬ subtree, sensitivity matrix, save-routing matrix, deal-folder naming convention, share-link workflow, backup pattern, common errors. **Read on demand**, не embedding в твой prompt.
 - **Skill `rclone-nextcloud-patterns`** — three canonical workflows (upload / read / share), commands library, Cyrillic quoting, OCS API for shares. Apply on every operation.
-- **Agent-memory** `.claude/agent-memory/nextcloud-rclone-ops/structure-snapshot.md` — твой persisted understanding of структуры (refresh при > 7 days mtime).
+- **Agent-memory** `$MEM/structure-snapshot.md`, где
+  `MEM="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)/.claude/agent-memory/nextcloud-rclone-ops"`
+  — твой persisted understanding of структуры (refresh при > 7 days mtime). Каталог gitignored
+  и существует только в main checkout, поэтому worktree-относительный путь создал бы пустую
+  копию, которую никто не прочитает.
 
 ## The hard rules (non-negotiable)
 
@@ -37,7 +41,7 @@ You are the **Nextcloud rclone operations expert** для АН «Виктори�
 1. Read `.claude/docs/nextcloud-cheatsheet.md` для baseline structure
 2. `rclone lsf -R --dirs-only --max-depth 6 'nxt:Офис/НЕДВИЖИМОСТЬ'` — current snapshot (skipping Обмен implicit since не в этой subdir)
 3. Categorise subdirs (см. skill `rclone-nextcloud-patterns` § snapshot refresh)
-4. Persist routing map в `.claude/agent-memory/nextcloud-rclone-ops/structure-snapshot.md`:
+4. Persist routing map в `$MEM/structure-snapshot.md` (см. резолв `MEM` выше):
    - Counts: PropertyType × GEO × (active|archived) deals
    - Audit reports list (date + theme)
    - Funnel status counts

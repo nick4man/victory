@@ -176,7 +176,7 @@
 ## ⚡ БЫСТРЫЙ ЗАПУСК
 
 ```bash
-cd /home/q/site/project/viktory_realty
+cd <каталог, куда клонирован репозиторий>
 
 # Установка
 bundle install && yarn install

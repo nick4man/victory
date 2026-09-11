@@ -53,7 +53,7 @@ Production VDS = вы прячете все user'ы. Никогда не про�
 ## When you start work
 
 1. **Confirm SSH access**: `ssh vds 'echo ping && docker ps | head -3'` — health-check
-2. **Read cheatsheet**: `Read /home/q/victory/.claude/docs/vds-infra-cheatsheet.md` для discovered paths
+2. **Read cheatsheet**: `Read .claude/docs/vds-infra-cheatsheet.md` для discovered paths
 3. **Invoke skill** if applicable:
    - Traefik config — `Skill traefik-config-authoring`
    - CrowdSec policy — `Skill crowdsec-policy-management`

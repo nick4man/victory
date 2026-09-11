@@ -112,7 +112,7 @@ yarn = "latest"
 **Статус:** 🔄 В процессе
 
 **Выполнено:**
-- ✅ Проект уже находится в `/home/q/site/project/viktory_realty`
+- ✅ Проект уже развёрнут в чекауте на сервере (legacy-путь до перехода на Docker)
 - ✅ mise.toml настроен
 - ✅ Ruby установлен через mise
 - ✅ .env.example существует
@@ -149,7 +149,7 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 echo 'eval "$(mise activate bash)"' >> ~/.bashrc
 
 # Установка Ruby через mise
-cd /home/q/site/project/viktory_realty
+cd <каталог, куда клонирован репозиторий>
 mise trust  # Доверить конфиг
 mise install  # Установить инструменты из mise.toml
 ```
@@ -229,7 +229,7 @@ ExecStart=/home/deploy/.local/bin/mise exec bundle exec sidekiq -C config/sideki
 **Статус:** ✅ Завершено
 
 **Выполнено:**
-- ✅ Проект находится в `/home/q/site/project/viktory_realty`
+- ✅ Проект развёрнут в чекауте на сервере (legacy-путь до перехода на Docker)
 - ✅ .env.production создан из .env.example
 - ✅ SECRET_KEY_BASE сгенерирован и добавлен
 - ✅ DEVISE_SECRET_KEY сгенерирован и добавлен

@@ -7,16 +7,16 @@ description: Use when working in parallel Claude Code sessions on the victory62 
 
 ## The setup
 
-Over `/home/q/victory` **4 parallel Claude Code сессии** работают. До 04.06.26 они делили одно working dir и регулярно бились checkout'ами друг друга — мы прожили эту боль (cross-session branch switches под committами). **Решение: git worktree per session**.
+Над одним репозиторием **4 parallel Claude Code сессии** работают. Пути worktree в таблице — **относительно main checkout** (они его соседи); абсолютные смотри в `git worktree list`. До 04.06.26 они делили одно working dir и регулярно бились checkout'ами друг друга — мы прожили эту боль (cross-session branch switches под committами). **Решение: git worktree per session**.
 
 | Session | Worktree path | Branch convention | Ruby | Tools |
 |---|---|---|---|---|
-| **victory** | `/home/q/victory-victory` | `dev/victory` или `claude/<task>` | **3.4.10** | `bin/rb` (rails/rspec/bundle) |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | **3.4.10** | curl, python3, `bin/rb` |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, `bin/rb` |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` или `test/...` | **3.4.10** | `bin/rb` + `RUBY_TARGET=` для проб |
+| **victory** | `../victory-victory` | `dev/victory` или `claude/<task>` | **3.4.10** | `bin/rb` (rails/rspec/bundle) |
+| **chat** | `../victory-chat` | `dev/chat` | **3.4.10** | curl, python3, `bin/rb` |
+| **seo** | `../victory-seo` | `dev/seo` | **3.4.10** | curl, lighthouse, `bin/rb` |
+| **upgrade** | `../victory-upgrade` | `dev/upgrade` или `test/...` | **3.4.10** | `bin/rb` + `RUBY_TARGET=` для проб |
 
-> 🚨 `/home/q/victory` — **main checkout, ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.4.10** (после Rails-8.1 EOL-апгрейда 08.08.26).
+> 🚨 **main checkout** (корень, из которого выросли все worktree) — **ТОЛЬКО deploy/merge**. Это **live-prod bind-mount** (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка мгновенно уходит на живой сайт. НЕ вести там активную разработку. Все 4 сессии на Ruby **3.4.10** (после Rails-8.1 EOL-апгрейда 08.08.26).
 
 ## Why worktree (vs shared working tree)
 
@@ -32,21 +32,22 @@ Over `/home/q/victory` **4 parallel Claude Code сессии** работают.
 ## Worktree setup (one-time, by victory session)
 
 ```bash
-cd /home/q/victory
-git worktree add /home/q/victory-victory  -b dev/victory  origin/main
-git worktree add /home/q/victory-chat     -b dev/chat     origin/main
-git worktree add /home/q/victory-seo      -b dev/seo      origin/main
-git worktree add /home/q/victory-upgrade  -b dev/upgrade  origin/main
+# из main checkout (пути ниже — относительно него; worktree ложатся соседями):
+git worktree add ../victory-victory  -b dev/victory  origin/main
+git worktree add ../victory-chat     -b dev/chat     origin/main
+git worktree add ../victory-seo      -b dev/seo      origin/main
+git worktree add ../victory-upgrade  -b dev/upgrade  origin/main
 git worktree list                  # подтвердить 5 checkout'ов (main + 4 сессии)
 # marker-файл идентичности в каждый worktree:
-for s in victory chat seo upgrade; do echo "$s" > /home/q/victory-$s/.claude-session; done
-echo main > /home/q/victory/.claude-session
+for s in victory chat seo upgrade; do echo "$s" > ../victory-$s/.claude-session; done
+echo main > .claude-session
 ```
 
 После setup каждая сессия открывает свой terminal и:
 
 ```bash
-cd /home/q/victory-chat        # identity берётся из .claude-session (marker-файл)
+# cd в свой worktree (например `victory-chat` — сосед main checkout; полный путь — `git worktree list`)
+# identity берётся из .claude-session (marker-файл)
 claude --resume chat           # session restart inside worktree
 ```
 
@@ -121,7 +122,7 @@ Gemfile.lock один на репо, поэтому два одновремен�
 
 ```
 ⛔ app/models/property.rb занят сессией chat
-   worktree: /home/q/victory-chat
+   worktree: <абсолютный путь worktree>   # хук печатает его из `git worktree list`
    с 08.08.26 21:14 (12 мин назад), task=extract concerns
    Снять: bin/lock-clean --release app/models/property.rb
    Обойти разово: CLAUDE_LOCK_BYPASS=1
@@ -235,8 +236,8 @@ head -50 .claude/memory/activeContext.md
 ## Anti-patterns
 
 - ❌ Запуск `claude` без `export CLAUDE_SESSION=*` — теряется session identity, inbox + hook не работают
-- ❌ Активная работа в `/home/q/victory` после worktree setup — это main checkout, reserved для merges/deploys
-- ❌ **Write-операции за пределами своего worktree** — развёрнутая формулировка в `.claude/docs/session-authority.md` («Свой worktree — своя территория»). Коротко: правки, git-команды и запуск — только внутри `/home/q/victory-<session>`; чужой worktree и main checkout — read-only диагностика
+- ❌ Активная работа в main checkout после worktree setup — он reserved для merges/deploys
+- ❌ **Write-операции за пределами своего worktree** — развёрнутая формулировка в `.claude/docs/session-authority.md` («Свой worktree — своя территория»). Коротко: правки, git-команды и запуск — только внутри `../victory-<session>`; чужой worktree и main checkout — read-only диагностика
 - ❌ Параллельно править один файл в двух worktree без cross-worktree lock check
 - ❌ `bundle install` в двух worktree одновременно — Gemfile.lock race
 - ❌ `bundle`/`rspec` напрямую на хосте — там нет нужного Ruby, только через `bin/rb`

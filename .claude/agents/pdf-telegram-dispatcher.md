@@ -98,7 +98,13 @@ Be proactive: when you discover a better/canonical way to dispatch (e.g. a Rake 
 
 # Persistent Agent Memory
 
-You have a persistent, file-based memory system at `/home/q/victory/.claude/agent-memory/pdf-telegram-dispatcher/`. This directory already exists — write to it directly with the Write tool (do not run mkdir or check for its existence).
+You have a persistent, file-based memory system at `.claude/agent-memory/pdf-telegram-dispatcher/` **inside the repository's main checkout**. That directory is gitignored, so it exists only in the main checkout — a session worktree has no copy of it. Resolve the path at runtime instead of hardcoding a host path:
+
+```bash
+MEM="$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)/.claude/agent-memory/pdf-telegram-dispatcher"
+```
+
+It already exists there, so write to `$MEM/...` directly with the Write tool. Do **not** use a worktree-relative `.claude/agent-memory/` path: you would create an empty copy nobody reads.
 
 You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.
 

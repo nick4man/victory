@@ -25,7 +25,7 @@ Expected: `HTTP/1.1 200 OK`
 - [ ] **Step 2: Smoke 10 baseline URLs**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 for url in / /properties /about /reviews /blog /cases /valuations/new /kupit/kvartira /kupit/kvartira/rayon/centr /sitemap-news.xml; do
   code=$(curl -sI -o /dev/null -w "%{http_code}" "http://localhost:3000$url")
   printf '  %-40s %s\n' "$url" "$code"
@@ -81,7 +81,7 @@ Capture metrics для each.
 - [ ] **Step 3: Create audit doc**
 
 ```bash
-mkdir -p /home/q/victory/.claude/docs/seo
+cd "$(git rev-parse --show-toplevel)" && mkdir -p .claude/docs/seo
 ```
 
 Write to `.claude/docs/seo/cwv-audit-2026-05-19.md` со следующей структурой:
@@ -115,7 +115,7 @@ Measured via Lighthouse 11 (Chrome DevTools MCP). Thresholds:
 - [ ] **Step 4: Commit audit doc**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add .claude/docs/seo/cwv-audit-2026-05-19.md
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "docs(seo): CWV audit 2026-05-19 — Lighthouse baseline + ranked fixes"
@@ -163,7 +163,7 @@ If got worse OR no change — revert, document in audit doc as "fix attempted, n
 - [ ] **Step 5: Commit fix**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add <modified-file>
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "perf(seo): CWV fix #1 — <metric> on <page> from <before> to <after>"
@@ -280,7 +280,7 @@ Expected: All examples pass, 0 failures.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add spec/models/article_spec.rb app/models/article.rb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(article): word_count + reading_time_minutes + iso_duration helpers"
@@ -341,7 +341,7 @@ Expected: All examples pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add spec/models/article_spec.rb app/models/article.rb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(article): keywords_for_seo — hashtags from metadata with category fallback"
@@ -357,7 +357,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 
 - [ ] **Step 1: Check whether BlogHelper exists**
 
-Run: `ls /home/q/victory/app/helpers/blog_helper.rb 2>&1`
+Run: `ls app/helpers/blog_helper.rb 2>&1`
 - If exists: read first 20 lines to understand existing module
 - If not: will create new file
 
@@ -462,7 +462,7 @@ puts article_author_schema(a2).inspect
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/helpers/blog_helper.rb
 git add spec/helpers/blog_helper_spec.rb 2>/dev/null || true
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
@@ -480,7 +480,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Read existing partial**
 
 ```bash
-cd /home/q/victory && head -60 app/views/shared/_jsonld_article.html.erb
+head -60 app/views/shared/_jsonld_article.html.erb
 ```
 
 Identify the JSON hash literal that builds the Article schema.
@@ -531,7 +531,7 @@ Expected: all blocks `OK`. No `INVALID`.
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/views/shared/_jsonld_article.html.erb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(seo): _jsonld_article — add wordCount, timeRequired, articleSection, keywords, author"
@@ -681,7 +681,7 @@ If `extractable=false` — that article's body doesn't have `<ol>` structure. Do
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add spec/services/seo/how_to_extractor_spec.rb app/services/seo/how_to_extractor.rb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(seo): HowToExtractor service — parse <ol> steps for Schema.org HowTo"
@@ -721,7 +721,7 @@ Write `app/views/shared/_jsonld_how_to.html.erb`:
 - [ ] **Step 2: Read blog/show.html.erb to find content_for :head block**
 
 ```bash
-cd /home/q/victory && grep -n 'content_for :head\|jsonld_article' app/views/blog/show.html.erb | head
+grep -n 'content_for :head\|jsonld_article' app/views/blog/show.html.erb | head
 ```
 
 Identify где rendered `jsonld_article` partial — там же добавляем HowTo render.
@@ -789,7 +789,7 @@ Expected: all `OK`.
 - [ ] **Step 7: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/views/shared/_jsonld_how_to.html.erb app/views/blog/show.html.erb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(seo): HowTo Schema for guides — accordion rich snippet in SERP"
@@ -805,7 +805,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Read current controller**
 
 ```bash
-cd /home/q/victory && cat app/controllers/blog_controller.rb
+cat app/controllers/blog_controller.rb
 ```
 
 Identify `#category` action (existing).
@@ -888,7 +888,7 @@ Expected: HTTP 302 redirect to /blog.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/controllers/blog_controller.rb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(blog): BlogController#category — CATEGORY_META + dedicated view render"
@@ -904,7 +904,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Read existing index.html.erb (для structure reuse)**
 
 ```bash
-cd /home/q/victory && cat app/views/blog/index.html.erb
+cat app/views/blog/index.html.erb
 ```
 
 Note structure: how breadcrumb rendered, how articles rendered (probably uses `_article_card` partial).
@@ -1025,7 +1025,7 @@ Expected: includes `@type=CollectionPage OK`. No INVALID.
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/views/blog/category.html.erb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(blog): /blog/category/:slug dedicated view — CollectionPage JSON-LD + nav-bar"
@@ -1041,7 +1041,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Read existing index.html.erb**
 
 ```bash
-cd /home/q/victory && cat app/views/blog/index.html.erb
+cat app/views/blog/index.html.erb
 ```
 
 Identify section/grid где articles rendered. Nav-bar добавляем перед grid.
@@ -1086,7 +1086,7 @@ aria-label="Категории блога"
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/views/blog/index.html.erb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(blog): category nav-bar on /blog index — internal linking discovery"
@@ -1102,7 +1102,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Read sitemap structure**
 
 ```bash
-cd /home/q/victory && grep -n 'blog_url\|articles_mod' app/views/sitemap/pages.xml.erb | head
+grep -n 'blog_url\|articles_mod' app/views/sitemap/pages.xml.erb | head
 ```
 
 Identify где `blog_url` entry — там же добавим category URLs (после).
@@ -1144,7 +1144,7 @@ Expected: 3-5 unique URLs.
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git add app/views/sitemap/pages.xml.erb
 GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
   git commit -m "feat(sitemap): /blog/category/:cat URLs with dynamic lastmod"
@@ -1159,7 +1159,7 @@ GIT_AUTHOR_NAME="Claude Code" GIT_AUTHOR_EMAIL="noreply@anthropic.com" \
 - [ ] **Step 1: Smoke 10 URLs final pass**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 for url in / /properties /about /reviews /blog /blog/category/guides /blog/category/news /cases /valuations/new /kupit/kvartira /sitemap-news.xml /sitemap-pages.xml; do
   code=$(curl -sI -o /dev/null -w "%{http_code}" "http://localhost:3000$url?n=$RANDOM")
   printf '  %-45s %s\n' "$url" "$code"
@@ -1221,7 +1221,7 @@ Expected: each submission successful, quota decrements; some categories may retu
 - [ ] **Step 5: Push to origin**
 
 ```bash
-cd /home/q/victory
+cd "$(git rev-parse --show-toplevel)"
 git push origin claude/currency-converter-app-9Ljw6 2>&1 | tail -3
 ```
 

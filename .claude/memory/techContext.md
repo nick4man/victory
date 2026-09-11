@@ -71,7 +71,7 @@
 
 Указатели worktree относительные с **обеих** сторон: `.git/worktrees/<id>/gitdir` →
 `../../../../victory-seo/.git`, а `<worktree>/.git` → `gitdir: ../victory/.git/worktrees/victory-seo`.
-Дерево `~/victory*` можно перенести целиком, не сломав ни один checkout.
+Дерево worktree можно перенести целиком, не сломав ни один checkout.
 
 Включено локально в `.git/config` main checkout (конфиг не коммитится):
 
@@ -123,9 +123,57 @@ git 2.39.5 в контейнерах продолжит отказываться
 
 История: 10.09.26 массовая замена `/home/q` → `~` по 51 файлу заехала и в git-метаданные.
 Тильду git не разворачивает, поэтому все 15 worktree разом стали `prunable`; тем же заходом
-были незаметно отключены две страховки — deny-правило `Edit(//home/q/victory/**)` в
-`.claude/settings.json` и live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
+были незаметно отключены две страховки — deny-правило на main checkout в
+`.claude/settings.json` (глоб сопоставляется буквально, `~` в нём не раскрывается) и
+live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
 Обе восстановлены в тот же день; секция описывает конфигурацию после починки.
+
+⚠️ «Относительное» ≠ тильда. Относительные пути уместны там, где есть cwd репозитория
+(доки, кросс-ссылки, команды из корня) или где корень вычисляется в рантайме
+(`git rev-parse --show-toplevel` / `--git-common-dir` — так сделано в `bin/rb`,
+`bin/prod-mark`, `.claude/hooks/lib/prod-state.sh`, `.claude/hooks/session-start.sh`).
+Что обязано остаться абсолютным — поимённо и с цифрами в таблице следующей секции,
+«Где абсолютный путь обязателен». Коротко: ни cwd, ни `$HOME` владельца чекаута тем
+потребителям недоступны. Плюс runbook'и прод-хоста ниже: путь прод-чекаута в них
+часть процедуры и совпадает с `APP_ROOT` в `/etc/victory-backup/backup.env`, откуда его
+читает `bin/backup` под root, поэтому «относительный» вариант рассинхронизировал бы их.
+(В самих юнитах `deploy/systemd/victory-backup-*` пути чекаута нет — `ExecStart` указывает
+на `/usr/local/bin/victory-backup`, копию скрипта.)
+
+## Где абсолютный путь обязателен (аудит 11.09.26)
+
+Пути внутри репозитория приведены к относительным: на коммите `af24d26` (им в `main`
+приехала секция выше) строк с `/home/q` было **247 в 47 файлах**, осталось **86 в 22** —
+то есть переведено 161. Счёт привязан к коммиту намеренно: `main` движется, и цифра «было»
+без точки отсчёта устаревает на следующем же мерже. Остаток
+**не недоделка**: у каждой строки нет точки отсчёта внутри репозитория. Проверено
+построчно, конвертируемых среди них нет. Пересчитать:
+
+```bash
+git grep -c '/home/q' | awk -F: '{s+=$2} END{print s}'
+```
+
+Поле `$2`, а не `$3`: без ref-а `git grep -c` печатает `файл:число`, с ref-ом —
+`ref:файл:число`. На этой ветке команда даёт **92**, а не 86: шесть путей цитирует сама
+эта секция.
+
+| Группа | Строк | Почему относительное невозможно |
+|---|---|---|
+| Другая машина — VDS через `ssh vds` | 24 | `/home/q/ubuntu_rep/traefik/…`, `…/crowdsec/…`. Репозитория там нет вообще; относительный путь резолвился бы от домашнего каталога ssh-логина |
+| Прод-хост: файлы вне чекаута и путь самого чекаута в runbook'ах | 21 | `db-baseline.txt`, `db-rollback.yml`, `document_pdf.md` (он же «выгрузка API Topnlab» — один артефакт): должны лежать снаружи, чтобы переживать `reset --hard`. Плюс `cd /home/q/victory` и `git -C /home/q/victory reset --hard` в процедурах деплоя и отката — там путь прод-чекаута сам часть процедуры |
+| Потребители без cwd | 19 | systemd `ExecStart=`/`WorkingDirectory=`, nginx `root`, exec-пути в `.mcp.json`, permission-глобы в `.claude/settings.json`, `APP_ROOT` в env под root, cron-строки |
+| Восстановление с нуля и `sudo` | 22 | `docs/runbooks/restore.md` начинается с `git clone … /home/q/victory` — относиться ещё не к чему; `sudo install`/`sudo cp` не наследуют cwd |
+
+🚨 **Не приводи этот остаток «к одному виду».** Тильда здесь не работает тем более: её
+разворачивает только шелл, а перечисленные потребители читают строку буквально. 10.09.26
+замена `/home/q` → `~` по 51 файлу положила git-метаданные всех 15 worktree, MCP-сервер
+`postgres`, deny-правило в `.claude/settings.json` и live-prod guard в `bin/rb` — разбор выше,
+в секции «Git — относительные пути worktree».
+
+Внутри репозитория корень вычисляется в рантайме, а не хардкодится: `git rev-parse
+--show-toplevel` для своего чекаута и `git rev-parse --git-common-dir` (его родитель) для main
+checkout. Сравнивая вычисленное с вычисленным, канонизируй обе стороны — `pwd -P`, не `pwd`:
+логический `pwd` вернёт путь через симлинк, и guard промахнётся.
 
 ## Команды
 
@@ -285,8 +333,8 @@ upsert в `properties`, а изменение `district` тянет за соб�
 sidekiq погашен шагом 4, база ещё на старом образе и старом glibc — ровно то
 состояние, с которым сравнивают. Три запроса — секунды, окно от них не вырастет.
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee /home/q/db-baseline.txt
 SELECT district, count(*) FROM properties
  WHERE district IS NOT NULL AND district <> ''
@@ -297,7 +345,8 @@ SELECT count(*) AS geo FROM properties
 SELECT count(*) AS embeddings FROM property_embeddings;
 SQL
 ```
-Файл держать вне `/home/q/victory` — в чекауте его снесёт первый же `git clean -fd`.
+Файл держать **вне чекаута** (отсюда абсолютный `/home/q/...`, а не `tmp/`) — внутри его
+снесёт первый же `git clean -fd`.
 Те же три запроса пойдут ещё внутри окна, сразу после шага 8, и должны дать те же
 числа: проверка сравнивает «до/после», а не угаданный порог.
 
@@ -321,8 +370,8 @@ SQL
 
 **6. Расширения. ТОЧКА НЕВОЗВРАТА.**
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d "$DB" <<'SQL'
 SELECT postgis_extensions_upgrade();
 ALTER EXTENSION vector UPDATE;
@@ -447,7 +496,7 @@ curl -sI https://victory62.org | head -1         # 200
 
 **10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
 ```bash
-sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup   # абсолютный: шаг отложенный, cwd из шага 3 уже не тот
 grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 ```
 Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая
@@ -487,7 +536,7 @@ YML
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
-⚠️ Файл оверрайда — **вне** `/home/q/victory`: в чекауте он ляжет untracked, и первый
+⚠️ Файл оверрайда — **вне чекаута** (отсюда абсолютный путь): внутри он ляжет untracked, и первый
 же `git clean -fd` снесёт откат. Путь абсолютный, `-f` его принимает.
 🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
 то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
@@ -564,7 +613,7 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36` — отсюда
   шаг 10 и запрет удалять теги `pg15-postgis35`/`pre-bookworm`, пока копия не
   синхронизирована. Daily-таймер (03:31 UTC) `verify` не гоняет.
-- **Соседний стек `victory-victory`** (`/home/q/victory-victory`, свой `pgdata`,
+- **Соседний стек `victory-victory`** (worktree `../victory-victory`, свой `pgdata`,
   свой compose-проект) тоже на `pg15-postgis35`. Это полноценный compose-стек, а не
   `bin/rb`, — `--nuke` к нему неприменим: ему нужна та же процедура либо явное
   решение оставить как есть.
@@ -577,7 +626,8 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
 
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
-Прод (`/home/q/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
+Прод (main checkout, на текущем прод-хосте `/home/q/victory`; compose-проект `victory`)
+монтирует код bind-mount'ом с
 code-reload, поэтому merge в main обновляет код сразу, а **гемы и рантайм — нет**:
 они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
 `victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
@@ -683,4 +733,4 @@ bin/prod-mark            # отметить в GitHub, что именно вы�
 - `~/.claude-shared/` — межсессионный обмен: `inbox/`, `events/`, `locks/`.
 - `.remember/logs/` — дневной журнал remember-плагина (лежит в main checkout).
 
-Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `/home/q/.claude/plugins/installed_plugins.json`.
+Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `installed_plugins.json` в пользовательском `~/.claude/plugins/` (вне репозитория).

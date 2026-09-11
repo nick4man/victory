@@ -460,7 +460,7 @@
 ### Установка:
 
 ```bash
-cd /home/q/site/project/viktory_realty
+cd <каталог, куда клонирован репозиторий>
 
 # 1. Установка зависимостей
 bundle install
