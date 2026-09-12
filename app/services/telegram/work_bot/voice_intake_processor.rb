@@ -4,7 +4,8 @@ module Telegram
   module WorkBot
     # Phase 7.2 — Pipeline для voice-сообщений от директора АН в DM боту:
     #
-    #   1. Авторизация: msg.chat.type=private + tg_user.can_voice_distribute?
+    #   1. Авторизация: msg.chat.type=private + tg_user.status=active
+    #      (распределение задач голосом по-прежнему только директор)
     #   2. VoiceTranscriber (Groq Whisper) → text + hallucination check + DLP
     #   3. TaskExtractor (Llm::OmniClient :analysis) → структурированные tasks
     #   4. TaskBatch.create! + parsed_payload
@@ -32,16 +33,13 @@ module Telegram
         tg_user = TelegramUser.find_by(tg_user_id: from_id)
 
         return refuse_unregistered(from_id) if tg_user.nil?
-        return refuse_non_director(tg_user) unless tg_user.can_voice_distribute?
+        # BOTTLENECK — голос принимаем от любого активного сотрудника: агент
+        # диктует отчёт о показе. Распределение задач по-прежнему только директор
+        # (см. #handle_task_batch, там же и проверка pending-пакета).
+        return refuse_inactive(tg_user) unless tg_user.status == 'active'
 
         file_id = @msg.dig('voice', 'file_id')
         return reply('⚠️ Не вижу file_id в voice payload — TG-баг?') if file_id.blank?
-
-        # Phase 13 Iter 43 — reject если у director уже есть pending TaskBatch.
-        # Иначе два неподтверждённых пакета в DM одновременно → confusion
-        # «какой preview мой»; race при approve неверного.
-        pending = TaskBatch.pending.where(created_by: tg_user).order(created_at: :desc).first
-        return refuse_pending_batch(pending) if pending
 
         process_voice(tg_user, file_id)
       rescue StandardError => e
@@ -65,12 +63,31 @@ module Telegram
         return low_confidence(transcription) if transcription.low_confidence?
 
         # Iter 59 — split: query (self-audit) vs task_batch (распределение).
-        # Раньше любой голос шёл через TaskExtractor — теперь вопросы про
-        # себя/отчёты роутятся в StaffChatResponder (tool-loop).
-        intent = Telegram::WorkBot::VoiceIntentBranch.call(transcription.text)
-        if intent == :query
-          return handle_query(tg_user, transcription)
+        # BOTTLENECK — третий интент: отчёт о показе. Агенту голосом доступен
+        # только он, поэтому классификатор для агента не вызываем: ошибочный
+        # «task_batch» от агента невозможен по построению.
+        #
+        # Осознанная цена (поднято ревью PR #66): случайное голосовое от агента —
+        # вопрос, заметка себе, нажатие в кармане — тоже уйдёт в извлечение и
+        # создаст неподтверждённый отчёт. Выход в одно касание: превью приходит с
+        # кнопкой ✖️ Отмена, а если лид не опознан, Intake не создаёт запись вовсе.
+        # Включать классификатор для агентов — значит открыть им и голосовой Q&A,
+        # то есть расширить роль, чего этот план не решал.
+        intent = tg_user.can_voice_distribute? ? Telegram::WorkBot::VoiceIntentBranch.call(transcription.text) : :show_report
+
+        case intent
+        when :query       then handle_query(tg_user, transcription)
+        when :show_report then handle_show_report(tg_user, transcription)
+        else                   handle_task_batch(tg_user, transcription)
         end
+      end
+
+      def handle_task_batch(tg_user, transcription)
+        # Phase 13 Iter 43 — reject если у director уже есть pending TaskBatch.
+        # Иначе два неподтверждённых пакета в DM одновременно → confusion
+        # «какой preview мой»; race при approve неверного.
+        pending = TaskBatch.pending.where(created_by: tg_user).order(created_at: :desc).first
+        return refuse_pending_batch(pending) if pending
 
         extraction = Telegram::WorkBot::TaskExtractor.call(
           transcript: transcription.raw['text'].to_s, # raw для LLM (PII нужны для names)
@@ -89,6 +106,27 @@ module Telegram
         # confirmer чтобы preview отобразился без задержки на upload.
         archive_voice_to_nc(tg_user, transcription.text, batch.id)
         :dispatched
+      end
+
+      # BOTTLENECK — отчёт о показе. Превью шлёт Intake; здесь только ошибки
+      # редактируем в «🎙 Слушаю…» и архивируем голос в NC (как query/task_batch).
+      def handle_show_report(tg_user, transcription)
+        result = Telegram::WorkBot::ShowReports::Intake.new(
+          reporter: tg_user,
+          transcript_raw: transcription.raw['text'].to_s,
+          transcript_redacted: transcription.text,
+          source: 'voice',
+          chat_id: @msg.dig('chat', 'id'),
+          client: @client
+        ).call
+        archive_voice_to_nc(tg_user, transcription.text, nil)
+        if result.ok
+          edit_ack('✅ Распознал — превью отчёта ниже, проверь и сохрани.')
+          return :show_report
+        end
+
+        edit_ack(result.message)
+        :show_report_failed
       end
 
       # Iter 59 — voice → query branch. Транскрипт уходит в StaffChatResponder
@@ -192,9 +230,8 @@ module Telegram
         :refused
       end
 
-      def refuse_non_director(_tg_user)
-        reply('🚫 Только директор АН распределяет задачи голосом. ' \
-              'Используй <code>/task @username dd.MM.yy &lt;текст&gt;</code> для одиночной.')
+      def refuse_inactive(_tg_user)
+        reply('🚫 Учётка неактивна — обратись к руководителю.')
         :refused
       end
 

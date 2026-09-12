@@ -19,7 +19,7 @@ module Telegram
       # Re-render card после того как async-задача насытила lead_ref
       # (PropertyValuationJob выдал estimate/range/PDF). Шлёт TG
       # editMessageText на anchor_message_id с обновлённым text. Кнопки
-      # routing остаются. Возвращает true/false.
+      # сегмента/стадий (keyboard_for_card) остаются. Возвращает true/false.
       def self.refresh!(lead_event, client: Telegram::Client.new)
         return false if lead_event.anchor_message_id.blank?
 
@@ -27,9 +27,12 @@ module Telegram
         topic_key = lead_event.anchor_topic_key
         client.edit_message_text(
           announcer.format_card_text,
-          chat_id: Telegram::TopicRegistry.chat_id,
+          # Карточка живёт в том чате, куда её отправили, — так её правят и
+          # AnchorMigrator, и LeadStageTransition, и LeadAssignment, и
+          # HashtagHandler. Чат из реестра здесь был единственным исключением.
+          chat_id: lead_event.tg_chat_id,
           message_id: lead_event.anchor_message_id,
-          reply_markup: announcer.send(:routing_keyboard_for, topic_key),
+          reply_markup: announcer.keyboard_for_card(topic_key),
           parse_mode: 'HTML'
         )
         true
@@ -80,6 +83,23 @@ module Telegram
         format_card
       end
 
+      # Клавиатура для перерисовки карточки из callback'ов (segment/stage/show_report).
+      # Маршрутизация и «Назначить/Спам» — как при публикации; плюс ряд сегментов,
+      # пока он не выбран, и ряд стадий, пока лид открыт.
+      #
+      # BOTTLENECK — topic_key приходит параметром, а не читается из
+      # @lead.anchor_topic_key. AnchorMigrator при переезде карточки в
+      # спец-топик вызывает repost_to(target) ДО того, как обновит
+      # anchor_topic_key в базе: на момент отрисовки лид ещё «в диспетчерской».
+      # Прочитали бы из модели — ряд кнопок маршрутизации уехал бы в #КВАРТИРЫ
+      # вместе с карточкой, и лид можно было бы маршрутизировать повторно.
+      def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+        rows = routing_keyboard_for(topic_key)[:inline_keyboard]
+        rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
+        rows << stage_row if @lead.open?
+        { inline_keyboard: rows }
+      end
+
       private
 
       def send_card(topic_key)
@@ -97,7 +117,7 @@ module Telegram
           format_card,
           chat_id: Telegram::TopicRegistry.chat_id,
           message_thread_id: thread_id, # nil для General — Telegram::Client опускает параметр
-          reply_markup: routing_keyboard_for(topic_key),
+          reply_markup: keyboard_for_card(topic_key),
           parse_mode: 'HTML'
         )
       end
@@ -132,6 +152,10 @@ module Telegram
                         end
         badge_line = [priority_badge, returning_badge, service_badge].compact.join(' · ')
         lines << badge_line if badge_line.present?
+        # BOTTLENECK — сегмент всегда виден: пустой сегмент должен раздражать.
+        lines << @lead.segment_label
+        shows = @lead.show_reports.status_confirmed.count
+        lines << "🏠 показов: #{shows}" if shows.positive?
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"
@@ -190,6 +214,13 @@ module Telegram
         return '' if phone.blank?
 
         ", #{escape(phone.to_s)}"
+      end
+
+      def stage_row
+        [
+          { text: '📅 Показ',   callback_data: "stage:#{@lead.id}:show" },
+          { text: '✍️ Договор', callback_data: "stage:#{@lead.id}:contract" }
+        ]
       end
 
       def routing_keyboard_for(topic_key)

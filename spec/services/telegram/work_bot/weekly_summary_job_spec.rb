@@ -21,6 +21,21 @@ RSpec.describe Telegram::WorkBot::WeeklySummaryJob do
       )
     end
 
+    # BOTTLENECK — блок воронки показов в той же сводке, что уже приходит.
+    it 'содержит блок показов с подтверждённым отчётом за прошлую неделю' do
+      agent = TelegramUser.create!(tg_user_id: 110_002, first_name: 'Ag', role: 'agent', status: 'active')
+      lead = LeadEvent.create!(lead_ref: create(:inquiry), source: 'tg_dm', current_stage: 'show',
+                               anchor_topic_key: 'apartments', tg_chat_id: -100_1, assigned_to: agent,
+                               segment: 'cold', first_show_at: 2.days.ago)
+      ShowReport.create!(lead_event: lead, conducted_by: agent, reported_by: agent, conducted_at: 2.days.ago,
+                         source: 'voice', status: 'confirmed', objections: ['кухня'])
+
+      described_class.new.perform
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_including('Показы за неделю: 1'), anything
+      )
+    end
+
     it 'возвращает :done' do
       expect(described_class.new.perform).to eq(:done)
     end

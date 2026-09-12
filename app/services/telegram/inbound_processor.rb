@@ -107,9 +107,10 @@ module Telegram
         return Telegram::ClientBot::TextIntakeProcessor.call(msg)
       end
 
-      # Phase 7.2 — voice от директора АН в DM боту → Voice → LLM extract →
-      # TaskBatch + preview с inline-кнопками подтверждения. Не блокирует
-      # дальнейший flow если не подходит (см. VoiceIntakeProcessor.applies?).
+      # Phase 7.2 — voice от активного сотрудника в DM боту. Директору — три
+      # интента (задачи / вопрос / отчёт о показе), остальным только отчёт о
+      # показе. Не блокирует дальнейший flow если не подходит (см.
+      # VoiceIntakeProcessor.applies? — там только voice + private, без роли).
       if Telegram::WorkBot::VoiceIntakeProcessor.applies?(msg)
         return Telegram::WorkBot::VoiceIntakeProcessor.new(msg).call
       end

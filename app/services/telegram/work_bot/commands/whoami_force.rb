@@ -14,6 +14,9 @@ module Telegram
       # Без `topnlab_user_id` — последующий /assign не сможет двигать CRM-stage,
       # но локальная карточка и якорь работают.
       class WhoamiForce < Base
+        # Пишет BotCommandLog сам, со своими полями — базовый аудит не дублируем.
+        self_audited
+
         manager_only
 
         def handle
