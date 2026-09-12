@@ -55,6 +55,30 @@ tg_polling:
   queue: scheduled
   description: "Fallback polling getUpdates когда TG → webhook не доходит (TELEGRAM_POLLING_MODE=true)"
 
+# ─────────────────────────────────────────────────────────────────────────
+# Phase 3 — SLA watchdogs work_bot.
+#
+# Обе задачи объявлялись ТОЛЬКО в config/schedule.rb, а тот никогда не
+# исполнялся: гема `whenever` в Gemfile нет, превращать файл в crontab было
+# нечем. Классы, PingService и обвязка quiet-hours при этом живые — не хватало
+# ровно строки расписания. Цена: эскалации не сработали ни разу (на 12.09.26 —
+# 81 lead_event, first_contact_at заполнен у нуля из них).
+#
+# Смещены на 2 минуты друг от друга, чтобы два скана не приходились на один тик.
+# ─────────────────────────────────────────────────────────────────────────
+
+sla_watchdog:
+  cron: "*/5 * * * *"      # every 5 minutes
+  class: "Telegram::WorkBot::Sla::WatchdogJob"
+  queue: scheduled
+  description: "Phase 3 — лиды без first_contact > 30 мин после assign → пинг в #ДИСПЕТЧЕРСКОЙ + DM назначенному. Дедуп per-lead 30 мин в PingService, quiet hours 21-07 в PingJob."
+
+sla_tasks_watchdog:
+  cron: "2-59/5 * * * *"   # every 5 minutes, offset +2 от sla_watchdog
+  class: "Telegram::WorkBot::Sla::TasksWatchdogJob"
+  queue: scheduled
+  description: "Phase 3 — Task.status_open с due_at < now → DM assignee «📌 Просрочена задача». Дедуп per-task 6 ч через last_pinged_at, quiet hours в TaskPingJob."
+
 task_batch_expiry:
   cron: "*/10 * * * *"     # every 10 minutes
   class: TaskBatchExpiryJob
@@ -138,3 +162,45 @@ owner_request:
   class: "OwnerRequestJob"
   queue: scheduled
   description: "Спрашивает у агента, кто собственник объекта, застрявшего до витрины (owner_user_id пуст). ПО ОДНОМУ объекту на агента за прогон: у топ-агента их 44, и рассылка пачкой привела бы к муту бота вместе со всеми заявками. Повторный вопрос по объекту — не раньше чем через 3 дня."
+
+# ─────────────────────────────────────────────────────────────────────────
+# НЕ поставлены в расписание — и почему.
+#
+# Шесть задач жили только в config/schedule.rb (whenever, гема нет, файл
+# никогда не исполнялся). Две уехали выше. Остальные четыре проверены и
+# сознательно оставлены без расписания — цифры сняты с прод-БД 12.09.26.
+#
+# SendViewingRemindersJob — не просто не запускалась, а упала бы на первом же
+#   тике: фильтрует по `preferred_date` и `reminder_email_sent`, а в
+#   `viewing_schedules` таких колонок нет (есть `scheduled_at` + `reminder_sent`).
+#   Промах шире джобы: те же мёртвые колонки читают валидации самой модели,
+#   пять методов ViewingMailer и форма `_viewing_schedule_modal`. Таблица пуста
+#   (0 строк) — значит и запись через сайт не проходит. Ставить в cron нечего,
+#   пока подсистема не починена целиком.
+#
+# UpdatePropertyStatisticsJob — расписание сделало бы хуже, чем его отсутствие.
+#   `properties.views_count` живой: инкрементится на каждом показе
+#   (Property#increment_views!) и упорядочивает публичную выдачу — scope
+#   `by_popularity`, RecommendationService, блок «популярное». Джоба
+#   пересчитывает его как `PropertyView.distinct.count(:user_id)`, а user_id
+#   заполнен у 1 просмотра из 522 (Devise отключён, посетители анонимны): она
+#   обнулила бы счётчик у 68 объектов и сложила сортировку витрины.
+#   `favorites_count` тем же путём (таблица favorites пуста). Единственный
+#   потребитель «правильных» значений — дашборд за Devise, который недоступен.
+#
+# rake sitemap:refresh — задачи не существует: ни гема `sitemap_generator`,
+#   ни lib/tasks/sitemap.rake. Sitemap отдаётся динамически (SitemapController,
+#   роуты sitemap.xml / -pages / -listings / -blog / -news). Нечего запускать.
+#
+# rake topnlab:stages:refresh — остаётся ручной. Задача перезаписывает
+#   config/topnlab_stages.yml, файл под git; в проде дерево — bind-mount
+#   ~/victory, поэтому еженедельный прогон пачкал бы рабочую копию и ломал
+#   ff-only pull (та же беда, что с db/structure.sql). Плюс секция `map:` не
+#   заполнена ни на одну стадию, так что свежий `discovered:` никуда не ведёт:
+#   задача по смыслу разовая, под ручное дозаполнение маппинга.
+#
+# PropertyValuationFollowUpJob (числилась в techContext.md тем же списком) —
+#   класс есть, колонок нет: `property_valuations.follow_up_email_sent` и
+#   `follow_up_email_sent_at` в схеме отсутствуют, джоба упала бы на первой же
+#   записи. 8 оценок всего, последняя 27.05.26. Расписания не заводим.
+# ─────────────────────────────────────────────────────────────────────────
