@@ -45,11 +45,14 @@ RSpec.describe 'config/sidekiq_cron.yml' do
   # расписании работать не может — ловим это здесь, а не в проде.
   it 'ни одна запланированная джоба не требует аргументов' do
     schedule.each do |name, entry|
+      # filter_map, а не select: Style/HashSlice принимает `parameters` за Hash
+      # и предлагает `slice(:req, :keyreq)`, а это Array пар — slice на нём
+      # означает срез по индексу. Заодно сразу получаем имена для сообщения.
       required = entry['class'].constantize.instance_method(:perform).parameters
-                               .select { |type, _| %i[req keyreq].include?(type) }
+                               .filter_map { |type, arg| arg if %i[req keyreq].include?(type) }
 
       expect(required).to be_empty,
-                          "#{name}: #{entry['class']}#perform требует #{required.map(&:last).join(', ')}"
+                          "#{name}: #{entry['class']}#perform требует #{required.join(', ')}"
     end
   end
 
