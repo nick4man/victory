@@ -23,6 +23,7 @@ commands:
   - { cmd: doc,          tier: staff,    group: false, desc: 'Документы по лиду (reply на якорь)' }
   - { cmd: segment,      tier: staff,    group: true,  desc: 'Сегмент покупателя: /segment наличные (reply на карточку)' }
   - { cmd: show,         tier: staff,    group: true,  desc: 'Отчёт о показе текстом: /show <lead_id> что сказали покупатели' }
+  - { cmd: objections,   tier: staff,    group: true,  desc: 'Возражения по объекту: /objections (reply на карточку)' }
   - { cmd: tutorial,     tier: staff,    group: false, desc: 'Интерактивное обучение боту по шагам' }
 
   # === Manager — pipeline-командование и onboarding сотрудников ===

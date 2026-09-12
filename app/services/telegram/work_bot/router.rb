@@ -37,6 +37,8 @@ module Telegram
         '/segment' => Commands::Segment,
         # BOTTLENECK — отчёт о показе текстом, когда голосовое неудобно.
         '/show' => Commands::Show,
+        # BOTTLENECK — сводка возражений по объекту к разговору о цене.
+        '/objections' => Commands::Objections,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,

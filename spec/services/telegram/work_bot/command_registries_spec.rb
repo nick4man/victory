@@ -8,9 +8,9 @@ require 'rails_helper'
 # в меню или не упомянута в справке — и ей не пользуются. Спека закрывает
 # только команды воронки показов: исторический дрейф по остальным не её дело.
 #
-# Список расширяется вместе с командами: /objections — Task 9, /bargain — Task 11.
+# Список расширяется вместе с командами: /bargain — Task 11.
 RSpec.describe 'реестры команд show-воронки' do
-  SHOW_COMMANDS = %w[segment show stage].freeze
+  SHOW_COMMANDS = %w[segment show stage objections].freeze
 
   let(:yaml_cmds) do
     YAML.load_file(Rails.root.join('config/telegram_bot_commands.yml'))
