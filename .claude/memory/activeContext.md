@@ -335,3 +335,15 @@ Smoke-test'ы прошли (synthetic OCR text + mocked Vision response). Изв
 Когда есть сомнения между двумя агентами — открой `delegation-map.md` § "Domain conflicts".
 
 **НЕ делегировать**: простые `git status`, тривиальные вопросы по коду, typo-фиксы, контекст уже в текущем разговоре.
+
+## Базовая линия показов (12.09.26)
+
+Ветки стеком: `claude/show-delegation` (A: данные, сегмент, стадии) → `claude/show-reports`
+(B: отчёт о показе, воронка, сводка) → `claude/show-routing` (C: фильтр, `/bargain`).
+Worktree — `/home/q/victory-shows`. План и инструкция:
+`docs/superpowers/plans/2026-09-11-show-delegation-telegram.md`,
+`.claude/docs/reglament/SHOWS-BASELINE.md`.
+
+Фаза: **сбор базовой линии, фильтр выключен** (`SHOW_ROUTING_ENABLED=false`). Две недели никто не меняет,
+кто ездит на показы; включение фильтра — решение руководителя при ≥14 днях и ≥20 подтверждённых
+`ShowReport`. Итоги снимать не раньше чем через две недели после деплоя A+B.
