@@ -11,10 +11,10 @@ Python-конвейер новостей внутри Rails-репозитори
 | Язык, зависимости | Python + `pip` + `venv`, пины в `requirements.txt`. Не bundler, не `mise.toml` (python там не объявлен) |
 | Стиль | двойные кавычки, type hints, `from __future__ import annotations` — противоположность `.rubocop.yml` |
 | Тесты | stdlib `unittest`. Ни pytest, ни rspec |
-| Расписание | системный crontab (`crontab.example`). **Не** `whenever` и не `config/schedule.rb` |
+| Расписание | системный crontab (`crontab.example`). **Не** Sidekiq-cron Rails-стороны |
 
-🚨 Не добавляй задачи этого сервиса в `config/schedule.rb`: `whenever --update-crontab`
-затрёт боевое расписание, написанное руками.
+🚨 Не добавляй задачи этого сервиса в расписание Rails (`config/sidekiq_cron.yml`):
+служба живёт вне Rails и запускается своим кроном, см. `crontab.example`.
 
 ## Запуск тестов
 

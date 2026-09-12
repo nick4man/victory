@@ -198,7 +198,7 @@ bin/lock-clean --all --force
 bin/lock-clean --release app/models/property.rb   # точечно, невзирая на возраст
 ```
 
-Плановая уборка почти не нужна: локи снимаются на коммите (`post-commit`), а протухшие удаляются автоматически при первой же попытке правки. `schedule.rb` с воскресным `bin/lock-clean --force` остаётся страховкой в main checkout.
+Плановая уборка почти не нужна: локи снимаются на коммите (`post-commit`), а протухшие удаляются автоматически при первой же попытке правки. Воскресный `bin/lock-clean --force` остаётся страховкой в main checkout — он живёт в системном crontab хоста (`crontab -e`), а не в репозитории.
 
 ## Routine commands
 

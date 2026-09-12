@@ -48,8 +48,9 @@ bin/rb --db bin/rails runner 'p ShowReport.status_confirmed.count, ShowReport.st
 
 - `LLM_CHAIN_STAFF_ANALYSIS` задан в проде. Без него `Llm::OmniClient` **молча** берёт цепочку `:chat` —
   извлечение отчёта из голоса деградирует без единой ошибки в логах.
-- `Sla::TasksWatchdogJob` реально гоняется (расписание живёт в `config/schedule.rb`, не в `sidekiq_cron.yml`) —
-  иначе обещание «напомним про собственника» не выполняется.
+- `Sla::TasksWatchdogJob` реально гоняется. 🚨 На 13.09.26 — **нет**: он был объявлен только в
+  `config/schedule.rb`, который никогда не исполнялся (гема `whenever` нет) и удалён. Нужна строка в
+  `config/sidekiq_cron.yml` (см. PR #64) — иначе обещание «напомним про собственника» не выполняется.
 - После деплоя — `bin/rails telegram:sync_commands`, иначе новые команды не появятся в «/»-меню.
 
 ## Самое рискованное допущение
