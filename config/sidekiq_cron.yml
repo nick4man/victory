@@ -65,13 +65,18 @@ tg_polling:
 # 81 lead_event, first_contact_at заполнен у нуля из них).
 #
 # Смещены на 2 минуты друг от друга, чтобы два скана не приходились на один тик.
+#
+# У WatchdogJob при этом появился BACKLOG_HORIZON: дедуп в PingService — нижняя
+# граница частоты, а не потолок числа напоминаний, поэтому без верхней границы
+# окна сторож принялся бы вечно пинговать лиды, зависшие ещё до включения
+# расписания. Подробности и цена вопроса — в шапке самой джобы.
 # ─────────────────────────────────────────────────────────────────────────
 
 sla_watchdog:
   cron: "*/5 * * * *"      # every 5 minutes
   class: "Telegram::WorkBot::Sla::WatchdogJob"
   queue: scheduled
-  description: "Phase 3 — лиды без first_contact > 30 мин после assign → пинг в #ДИСПЕТЧЕРСКОЙ + DM назначенному. Дедуп per-lead 30 мин в PingService, quiet hours 21-07 в PingJob."
+  description: "Phase 3 — лиды без first_contact в окне [24ч .. 30 мин] после assign → пинг в #ДИСПЕТЧЕРСКОЙ + DM назначенному. Дедуп per-lead 30 мин в PingService, quiet hours 21-07 в PingJob. Старше 24ч — брошенный лид, не спамим, только счётчик в лог."
 
 sla_tasks_watchdog:
   cron: "2-59/5 * * * *"   # every 5 minutes, offset +2 от sla_watchdog
