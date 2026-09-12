@@ -1282,7 +1282,11 @@ CREATE TABLE public.lead_events (
     routed_by_id bigint,
     search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('russian'::regconfig, ((((COALESCE((metadata ->> 'summary'::text), ''::text) || ' '::text) || COALESCE((metadata ->> 'name'::text), ''::text)) || ' '::text) || COALESCE(((metadata -> 'notes'::text))::text, ''::text)))) STORED,
     staff_test boolean DEFAULT false NOT NULL,
-    staff_test_matched_by character varying(64)
+    staff_test_matched_by character varying(64),
+    segment character varying(32),
+    property_id bigint,
+    first_show_at timestamp(6) without time zone,
+    contract_at timestamp(6) without time zone
 );
 
 
@@ -5176,6 +5180,13 @@ CREATE INDEX index_lead_events_on_current_stage ON public.lead_events USING btre
 
 
 --
+-- Name: index_lead_events_on_first_show_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_first_show_at ON public.lead_events USING btree (first_show_at);
+
+
+--
 -- Name: index_lead_events_on_lead_ref; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5183,10 +5194,31 @@ CREATE INDEX index_lead_events_on_lead_ref ON public.lead_events USING btree (le
 
 
 --
+-- Name: index_lead_events_on_property_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_property_id ON public.lead_events USING btree (property_id);
+
+
+--
+-- Name: index_lead_events_on_property_id_and_current_stage; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_property_id_and_current_stage ON public.lead_events USING btree (property_id, current_stage);
+
+
+--
 -- Name: index_lead_events_on_routed_by_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_lead_events_on_routed_by_id ON public.lead_events USING btree (routed_by_id);
+
+
+--
+-- Name: index_lead_events_on_segment; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_segment ON public.lead_events USING btree (segment);
 
 
 --
@@ -6976,6 +7008,14 @@ ALTER TABLE ONLY public.messages
 
 
 --
+-- Name: lead_events fk_rails_2029bf3907; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lead_events
+    ADD CONSTRAINT fk_rails_2029bf3907 FOREIGN KEY (property_id) REFERENCES public.properties(id);
+
+
+--
 -- Name: listing_consents fk_rails_23f767c955; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7502,6 +7542,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260911100000'),
 ('20260907120300'),
 ('20260907120200'),
 ('20260907120100'),

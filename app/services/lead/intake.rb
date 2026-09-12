@@ -71,6 +71,7 @@ module Lead
 
       lead = LeadEvent.create!(
         lead_ref:         ref,
+        property:         Lead::PropertyResolver.for_ref(ref),
         source:           @source,
         tg_chat_id:       Telegram::TopicRegistry.chat_id,
         anchor_topic_key: 'dispatcher',
