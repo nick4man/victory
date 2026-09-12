@@ -35,6 +35,8 @@ module Telegram
         '/stage' => Commands::Stage,
         # BOTTLENECK — сегмент покупателя текстом, дублёр кнопок SegmentKeyboard.
         '/segment' => Commands::Segment,
+        # BOTTLENECK — отчёт о показе текстом, когда голосовое неудобно.
+        '/show' => Commands::Show,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,
