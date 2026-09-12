@@ -39,6 +39,17 @@ RSpec.describe Telegram::WorkBot::Commands::Bargain do
     expect(entry['by']).to eq(agent.mention)
   end
 
+  # Находка ревью PR #67: в ответ на карточку «5200000» уходило в resolve_lead!
+  # как номер лида, и агент получал «Лид не найден» в худший возможный момент.
+  it 'в ответ на карточку голое число — это цена, а не номер лида' do
+    msg = { 'chat' => { 'id' => -100_1, 'type' => 'supergroup' }, 'from' => { 'id' => 111 },
+            'message_id' => 5, 'reply_to_message' => { 'message_id' => 900 }, 'text' => '/bargain 5200000' }
+    described_class.new(message: msg, args: '5200000', tg_user: agent, client: tg_client).send(:handle)
+
+    expect(tg_client).to have_received(:send_message).with(a_string_including('5 200 000'), hash_including(chat_id: 333))
+    expect(lead.reload.metadata['bargain_requests'].last['price']).to eq(5_200_000)
+  end
+
   it 'цена не распознана → формат' do
     run("#{lead.id} дорого")
     expect(tg_client).to have_received(:send_message).with(a_string_including('Формат'), anything)

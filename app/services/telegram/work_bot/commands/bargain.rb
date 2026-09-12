@@ -10,10 +10,23 @@ module Telegram
       # но подготовленного. Реактивное сообщение: quiet hours не применяются.
       class Bargain < Base
         def handle
-          lead = resolve_lead!
+          # BOTTLENECK — порядок важен. resolve_lead! выкусывает из @args первое
+          # положительное целое как номер лида, поэтому «/bargain 5200000» ответом
+          # на карточку читался как лид #5200000 и агент получал «Лид не найден»
+          # ровно в тот момент, ради которого команда и сделана — покупатель стоит
+          # в квартире (найдено ревью PR #67). Если это reply, лид берём из него, а
+          # аргументы целиком отдаём под цену.
+          # В reply аргументы не трогаем вообще; в личке resolve_lead! выкусывает
+          # номер лида, и под цену остаётся хвост.
+          lead, price_args = if message['reply_to_message'].present?
+                               [find_lead_via_reply, @args.to_s]
+                             else
+                               [resolve_lead!, nil]
+                             end
+          price_args ||= @args.to_s
           return reply(lead_not_found_hint('bargain 5,2 млн')) unless lead
 
-          price = Formatters::PriceParse.call(@args.to_s)
+          price = Formatters::PriceParse.call(price_args)
           if price.nil?
             return reply('Формат: <code>/bargain 5,2 млн</code> (reply на карточку) или ' \
                          '<code>/bargain &lt;lead_id&gt; 5200000</code> в личке.')
