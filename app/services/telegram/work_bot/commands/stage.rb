@@ -39,6 +39,10 @@ module Telegram
           result = Telegram::WorkBot::LeadStageTransition.new(lead, new_stage, actor: tg_user, client: client).call
           if result.success?
             reply("Лид ##{lead.id}: #{result.prev_stage} → <b>#{result.new_stage}</b> ✅")
+            # BOTTLENECK — показ без сегмента не попадёт в сравнение конверсий.
+            if new_stage == 'show' && lead.reload.segment.blank?
+              reply(SegmentKeyboard.prompt_text, reply_markup: SegmentKeyboard.for(lead))
+            end
           else
             reply("⚠️ #{result.message}")
           end

@@ -38,7 +38,9 @@ module Telegram
         # Листание уроков `/tutorial` и финальный экран.
         'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback',
         # BOTTLENECK — сегмент покупателя кнопкой под карточкой лида.
-        'segment' => 'Telegram::WorkBot::Callbacks::SegmentCallback'
+        'segment' => 'Telegram::WorkBot::Callbacks::SegmentCallback',
+        # BOTTLENECK — стадии «показ» и «договор» кнопкой под карточкой.
+        'stage' => 'Telegram::WorkBot::Callbacks::StageCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)
