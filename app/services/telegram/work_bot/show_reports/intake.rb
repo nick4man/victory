@@ -49,7 +49,20 @@ module Telegram
           return Result.new(ok: false, message: lead_hint(candidates)) if lead.nil?
 
           report = create_report(lead, extraction)
-          Confirmer.new(report: report, client: @client).call
+          begin
+            Confirmer.new(report: report, client: @client).call
+          rescue StandardError => e
+            # BOTTLENECK — превью несёт единственные кнопки «сохранить/отменить».
+            # Если оно не доставлено (сотрудник не открывал личку с ботом → 403,
+            # или любой сбой Telegram), pending-строка заблокировала бы все
+            # следующие отчёты на час, а нажать было бы нечего. Снимаем её сразу
+            # (найдено ревью PR #65).
+            report.update!(status: 'cancelled')
+            Rails.logger.warn("[ShowReports::Intake] превью не доставлено: #{e.class}: #{e.message}")
+            return Result.new(ok: false,
+                              message: '⚠️ Не смог прислать превью отчёта. Открой личку с ботом ' \
+                                       '(напиши ему любое сообщение) и пришли отчёт снова.')
+          end
           Result.new(ok: true, report: report)
         rescue StandardError => e
           Rails.logger.error("[ShowReports::Intake] #{e.class}: #{e.message}")

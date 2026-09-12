@@ -71,6 +71,13 @@ RSpec.describe ShowReport do
     expect(build_report(objections: ['Кухня ', nil, '', 'этаж']).objections_list).to eq(['кухня', 'этаж'])
   end
 
+  # Находка ревью PR #65: lead_events.show_reports был :nullify против NOT NULL.
+  it 'удаление лида уносит его отчёты, а не падает на NOT NULL' do
+    r = create_report!
+    expect { lead.destroy! }.to change(described_class.unscoped, :count).by(-1)
+    expect(described_class.unscoped.find_by(id: r.id)).to be_nil
+  end
+
   describe '#expire!' do
     it 'pending > часа снимается, confirmed не трогается' do
       stale = create_report!(created_at: 2.hours.ago)

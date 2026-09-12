@@ -100,8 +100,12 @@ module Kpi
       { no_shows_30d: no_shows, median_days_to_first_show: median(days), stuck: stuck }
     end
 
+    # В шапке сводки цифра стоит рядом с «показы за неделю», значит и считаться
+    # должна за неделю. Без границы она включала всю историю показов агентства
+    # (миграция бэкфиллит first_show_at из stage_history) и могла только расти
+    # (найдено ревью PR #65).
     def unreported_count
-      LeadEvent.real.where(first_show_at: ...24.hours.ago)
+      LeadEvent.real.where(first_show_at: @week.begin..24.hours.ago)
                .where.not(id: ShowReport.status_confirmed.select(:lead_event_id)).count
     end
 

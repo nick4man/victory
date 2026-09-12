@@ -44,6 +44,7 @@ module Telegram
           end
           return :already_done unless confirmed
 
+          clear_assigned_conductor!
           move_stage!
           post_to_topic
           send_owner_draft
@@ -59,6 +60,19 @@ module Telegram
 
         def owner_user
           @owner_user ||= @report.property&.owner_user
+        end
+
+        # BOTTLENECK — назначение «кто показывает» одноразовое: оно про конкретный
+        # показ. Без сброса каждый следующий отчёт по этому лиду приписывался бы
+        # тому же человеку, перебивая и LLM, и фактического рассказчика, — то есть
+        # врала бы сама ось эксперимента «сегмент × кто показывал» (найдено ревью).
+        def clear_assigned_conductor!
+          return if @lead.metadata['show_conductor_id'].blank?
+
+          @lead.update!(metadata: @lead.metadata.except('show_conductor_id', 'show_conductor_set_at',
+                                                        'show_conductor_set_by'))
+        rescue StandardError => e
+          Rails.logger.warn("[ShowReports::Finalizer#clear_assigned_conductor!] #{e.class}: #{e.message}")
         end
 
         def stamp_first_show!

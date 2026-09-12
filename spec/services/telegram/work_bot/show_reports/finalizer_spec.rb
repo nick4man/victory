@@ -88,6 +88,15 @@ RSpec.describe Telegram::WorkBot::ShowReports::Finalizer do
     expect(Task.where(lead_event: lead).count).to eq(1)
   end
 
+  # Находка ревью PR #65: назначенный показывающий не сбрасывался, и все
+  # следующие отчёты по лиду приписывались ему же.
+  it 'сбрасывает назначенного показывающего — следующий показ не приписывается ему' do
+    lead.update!(metadata: lead.metadata.merge('show_conductor_id' => director.id,
+                                               'show_conductor_set_by' => '@dir'))
+    finalize
+    expect(lead.reload.metadata).not_to include('show_conductor_id')
+  end
+
   describe '.feedback_due_at' do
     it 'показ днём → завтра 11:00 МСК' do
       expect(described_class.feedback_due_at(Time.zone.parse('2026-09-11 14:00')).in_time_zone('Europe/Moscow').hour).to eq(11)

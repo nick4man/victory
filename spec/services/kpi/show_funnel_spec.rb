@@ -54,6 +54,16 @@ RSpec.describe Kpi::ShowFunnel do
       expect(res.unreported).to eq(1)
     end
 
+    # Находка ревью PR #65: цифра стоит в шапке рядом с «показы за неделю»,
+    # а считалась по всей истории — включая бэкфилл из stage_history.
+    it '«без отчёта» считается за неделю, а не за всю историю' do
+      lead!(segment: 'cold', first_show_at: week.begin - 3.months)
+      l = lead!(segment: 'cold', first_show_at: week.begin + 1.day)
+      show!(l, by: agent, status: 'pending_confirm')
+
+      expect(described_class.new(week: week, cohort: cohort).call.unreported).to eq(1)
+    end
+
     it 'объекты: без показов 30 дней, медиана дней до первого показа, ≥3 показов без договора' do
       idle  = create(:property, :on_site, in_ad: true, deal_state: 'ad', published_at: 40.days.ago)
       quick = create(:property, :on_site, in_ad: true, deal_state: 'ad', published_at: week.begin - 10.days)

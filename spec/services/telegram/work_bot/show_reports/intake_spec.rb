@@ -65,6 +65,19 @@ RSpec.describe Telegram::WorkBot::ShowReports::Intake do
     expect(res.message).to include('неподтверждённый')
   end
 
+  # Находка ревью PR #65: pending-строка без доставленного превью блокировала
+  # все следующие отчёты на час, и нажать было нечего.
+  it 'превью не доставлено → отчёт снят, следующий отчёт не заблокирован' do
+    allow(extractor).to receive(:call).and_return(extraction)
+    allow(tg_client).to receive(:send_message).and_raise(Telegram::Client::Error, 'bot was blocked')
+
+    res = run
+    expect(res.ok).to be(false)
+    expect(res.message).to include('личку с ботом')
+    expect(ShowReport.status_pending_confirm.count).to eq(0)
+    expect(ShowReport.unscoped.last.status_cancelled?).to be(true)
+  end
+
   it 'ошибка extractor → ok:false, текст ошибки' do
     allow(extractor).to receive(:call).and_return(extraction(error: 'LLM down'))
     expect(run.message).to include('LLM down')
