@@ -48,18 +48,12 @@ module Telegram
         end
 
         def call
-          # Публичные команды не требуют регистрации — пропускаем все gates.
-          return handle if self.class.public_command?
-
-          return reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.') if tg_user.nil?
-          # Phase 13 Iter 41 — manager_or_director? включает legacy is_manager + директоров + admin.
-          # До фикса /assign и подобные блокировались для директора с role=director, is_manager=false.
-          return reply('🚫 Команда доступна только руководителям.') if self.class.manager_only? && !tg_user.manager_or_director?
-          return reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.') if self.class.director_only? && !tg_user.can_voice_distribute?
-
-          handle
+          outcome = dispatch
+          audit!(outcome)
+          outcome
         rescue StandardError => e
           Rails.logger.error("[WorkBot::Command #{self.class.name}] #{e.class}: #{e.message}")
+          audit!(:error, error_class: e.class.name, error_message: e.message)
           reply("⚠️ Ошибка: #{e.message}")
           :error
         end
@@ -148,6 +142,58 @@ module Telegram
         def lead_not_found_hint(cmd)
           "⚠️ Лид не найден. В group — reply на якорь лида. " \
             "В DM — укажи lead_id первым аргументом: <code>/#{cmd} 87 …</code>"
+        end
+
+        private
+
+        # Гейты вынесены из #call, чтобы исход был символом, а не возвратом
+        # reply (тот отдаёт хэш ответа Telegram — в result его писать нельзя).
+        def dispatch
+          return handle if self.class.public_command?
+
+          if tg_user.nil?
+            reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.')
+            return :denied_not_staff
+          end
+
+          # Phase 13 Iter 41 — manager_or_director? включает legacy is_manager +
+          # директоров + admin. До фикса /assign блокировался для директора с
+          # role=director, is_manager=false.
+          if self.class.manager_only? && !tg_user.manager_or_director?
+            reply('🚫 Команда доступна только руководителям.')
+            return :denied_manager
+          end
+
+          if self.class.director_only? && !tg_user.can_voice_distribute?
+            reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.')
+            return :denied_director
+          end
+
+          handle
+        end
+
+        # BOTTLENECK — до этого места текстовые команды не попадали в
+        # BotCommandLog вообще: писали только CallbacksRouter, два варианта
+        # /whoami и StaffChatResponder, хотя комментарий в модели обещает
+        # «unified bot-action stream». Для базовой линии показов это критично:
+        # /segment, /stage и /show — ручные отметки, по которым оценивают людей,
+        # а BOTTLENECK требует, чтобы ручной ввод был прослеживаем (там же —
+        # suspicious_flag на Task). Аудит здесь, а не в каждой команде, чтобы
+        # новая команда получала его по факту наследования.
+        def audit!(outcome, error_class: nil, error_message: nil)
+          tg_user_id = @message.is_a?(Hash) ? @message.dig('from', 'id') : nil
+          return if tg_user_id.blank?
+
+          BotCommandLog.create!(
+            tg_user_id:    tg_user_id,
+            command:       self.class.name.to_s.demodulize.underscore,
+            args:          @args.to_s.truncate(500),
+            result:        outcome.is_a?(Symbol) ? outcome.to_s : 'handled',
+            error_class:   error_class,
+            error_message: error_message.to_s.presence&.truncate(500)
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[WorkBot::Commands::Base#audit!] #{e.class}: #{e.message}")
         end
       end
     end
