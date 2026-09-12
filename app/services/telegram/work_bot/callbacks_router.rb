@@ -40,7 +40,9 @@ module Telegram
         # BOTTLENECK — сегмент покупателя кнопкой под карточкой лида.
         'segment' => 'Telegram::WorkBot::Callbacks::SegmentCallback',
         # BOTTLENECK — стадии «показ» и «договор» кнопкой под карточкой.
-        'stage' => 'Telegram::WorkBot::Callbacks::StageCallback'
+        'stage' => 'Telegram::WorkBot::Callbacks::StageCallback',
+        # BOTTLENECK — превью отчёта о показе и карточка «собственнику».
+        'show_report' => 'Telegram::WorkBot::Callbacks::ShowReportCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

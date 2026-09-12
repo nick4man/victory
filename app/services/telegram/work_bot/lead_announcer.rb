@@ -154,6 +154,8 @@ module Telegram
         lines << badge_line if badge_line.present?
         # BOTTLENECK — сегмент всегда виден: пустой сегмент должен раздражать.
         lines << @lead.segment_label
+        shows = @lead.show_reports.status_confirmed.count
+        lines << "🏠 показов: #{shows}" if shows.positive?
         lines << "#{stage_icon} <b>Новый лид</b> · #{escape(source_label)}"
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"
