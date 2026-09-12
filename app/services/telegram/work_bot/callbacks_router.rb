@@ -42,7 +42,10 @@ module Telegram
         # BOTTLENECK — стадии «показ» и «договор» кнопкой под карточкой.
         'stage' => 'Telegram::WorkBot::Callbacks::StageCallback',
         # BOTTLENECK — превью отчёта о показе и карточка «собственнику».
-        'show_report' => 'Telegram::WorkBot::Callbacks::ShowReportCallback'
+        'show_report' => 'Telegram::WorkBot::Callbacks::ShowReportCallback',
+        # BOTTLENECK — «кто поедет на показ». Тёмный код: кнопки появляются
+        # только при SHOW_ROUTING_ENABLED=true.
+        'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

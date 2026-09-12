@@ -23,6 +23,7 @@ module Telegram
           return ack("⚠️ #{result.message}", alert: true) unless result.success?
 
           nudge_segment(lead.reload) if stage == 'show' && lead.segment.blank?
+          propose_conductor(lead) if stage == 'show' && ShowRouting.enabled? && lead.segment.present?
           ack("#{result.prev_stage} → #{result.new_stage} ✅")
         end
 
@@ -38,6 +39,14 @@ module Telegram
           reply_in_topic(SegmentKeyboard.prompt_text, reply_markup: SegmentKeyboard.for(lead))
         rescue Telegram::Client::Error => e
           Rails.logger.warn("[StageCallback] segment nudge failed: #{e.message}")
+        end
+
+        # BOTTLENECK — фильтр «кто едет». Только при включённом флаге и известном сегменте.
+        def propose_conductor(lead)
+          rec = ShowRouting.recommend(lead)
+          reply_in_topic(ShowRouting.prompt_text(lead, rec), reply_markup: ShowRouting.keyboard(lead))
+        rescue Telegram::Client::Error => e
+          Rails.logger.warn("[StageCallback] routing prompt failed: #{e.message}")
         end
       end
     end

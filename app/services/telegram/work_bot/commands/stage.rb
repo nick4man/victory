@@ -43,9 +43,20 @@ module Telegram
             if new_stage == 'show' && lead.reload.segment.blank?
               reply(SegmentKeyboard.prompt_text, reply_markup: SegmentKeyboard.for(lead))
             end
+            propose_conductor(lead) if new_stage == 'show' && ShowRouting.enabled? && lead.segment.present?
           else
             reply("⚠️ #{result.message}")
           end
+        end
+
+        private
+
+        # BOTTLENECK — фильтр «кто едет». Только при включённом флаге и известном сегменте.
+        def propose_conductor(lead)
+          rec = ShowRouting.recommend(lead)
+          reply(ShowRouting.prompt_text(lead, rec), reply_markup: ShowRouting.keyboard(lead))
+        rescue Telegram::Client::Error => e
+          Rails.logger.warn("[Commands::Stage] routing prompt failed: #{e.message}")
         end
       end
     end

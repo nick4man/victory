@@ -34,6 +34,25 @@ RSpec.describe Telegram::WorkBot::Callbacks::StageCallback do
     )
   end
 
+  describe 'фильтр «кто едет» (тёмный код)' do
+    before { lead.update!(segment: 'cold') }
+
+    it 'при выключенном флаге рекомендации нет' do
+      stub_const('ENV', ENV.to_h.except('SHOW_ROUTING_ENABLED'))
+      run("stage:#{lead.id}:show")
+      expect(tg_client).not_to have_received(:send_message).with(a_string_including('Рекомендация'), anything)
+    end
+
+    it 'при включённом флаге приходит рекомендация с кнопками show_assign' do
+      stub_const('ENV', ENV.to_h.merge('SHOW_ROUTING_ENABLED' => 'true'))
+      run("stage:#{lead.id}:show")
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_including('Рекомендация'),
+        hash_including(reply_markup: hash_including(:inline_keyboard))
+      )
+    end
+  end
+
   it 'нуджа нет, если сегмент уже указан' do
     lead.update!(segment: 'cash')
     run("stage:#{lead.id}:show")
