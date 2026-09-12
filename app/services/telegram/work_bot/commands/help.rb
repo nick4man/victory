@@ -42,6 +42,8 @@ module Telegram
            'Сменить стадию: reply + <code>/stage показ</code> ИЛИ DM <code>/stage 87 показ</code>'],
           ['/note',         :manager,
            'Заметка в CRM: reply + <code>/note текст</code> ИЛИ DM <code>/note 87 текст</code>'],
+          ['/segment',      :staff,
+           'Сегмент покупателя: <code>/segment наличные</code> (наличные / ипотека одобрена / ипотека не одобрена / альтернатива / холодный)'],
           ['/doc',          :staff,
            'Документы (reply на якорь): <code>/doc passport+ snils?</code> или <code>/doc</code> для status'],
           ['/task',         :manager,

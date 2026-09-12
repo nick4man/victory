@@ -36,7 +36,9 @@ module Telegram
         # отправить приглашение на подписание.
         'owner' => 'Telegram::WorkBot::Callbacks::OwnerRequestCallback',
         # Листание уроков `/tutorial` и финальный экран.
-        'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback'
+        'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback',
+        # BOTTLENECK — сегмент покупателя кнопкой под карточкой лида.
+        'segment' => 'Telegram::WorkBot::Callbacks::SegmentCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

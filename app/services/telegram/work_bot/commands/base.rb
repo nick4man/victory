@@ -65,12 +65,15 @@ module Telegram
         end
 
         def reply(text, **opts)
+          # reply_markup пробрасывается осознанно: команда-дублёр кнопок
+          # (/segment без аргумента) присылает ту же клавиатуру, что карточка.
           client.send_message(
             text,
             chat_id: message.dig('chat', 'id'),
             reply_to_message_id: message['message_id'],
             message_thread_id: message['message_thread_id'],
-            parse_mode: opts.fetch(:parse_mode, 'HTML')
+            parse_mode: opts.fetch(:parse_mode, 'HTML'),
+            **opts.slice(:reply_markup)
           )
         end
 

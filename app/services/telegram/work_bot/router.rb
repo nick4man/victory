@@ -33,6 +33,8 @@ module Telegram
         '/route' => Commands::Route,
         '/assign' => Commands::Assign,
         '/stage' => Commands::Stage,
+        # BOTTLENECK — сегмент покупателя текстом, дублёр кнопок SegmentKeyboard.
+        '/segment' => Commands::Segment,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,

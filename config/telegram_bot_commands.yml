@@ -21,6 +21,7 @@ commands:
   - { cmd: cancel,       tier: staff,    group: true,  desc: 'Отменить задачу: /cancel <id> [причина]' }
   - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen <id>' }
   - { cmd: doc,          tier: staff,    group: false, desc: 'Документы по лиду (reply на якорь)' }
+  - { cmd: segment,      tier: staff,    group: true,  desc: 'Сегмент покупателя: /segment наличные (reply на карточку)' }
   - { cmd: tutorial,     tier: staff,    group: false, desc: 'Интерактивное обучение боту по шагам' }
 
   # === Manager — pipeline-командование и onboarding сотрудников ===
