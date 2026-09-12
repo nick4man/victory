@@ -43,7 +43,7 @@ RSpec.describe Telegram::WorkBot::Commands::Base do
 
     log = BotCommandLog.order(:created_at).last
     expect(log.tg_user_id).to eq(555)
-    expect(log.command).to eq('fake_ok')
+    expect(log.command).to eq('/fake_ok')
     expect(log.args).to eq('нал')
     expect(log.result).to eq('handled')
   end
@@ -88,6 +88,42 @@ RSpec.describe Telegram::WorkBot::Commands::Base do
     expect(log.result).to eq('error')
     expect(log.error_class).to eq('StandardError')
     expect(log.error_message).to eq('boom')
+  end
+
+  # Находка ревью PR #65: resolve_lead! выкусывает номер лида из @args, и в
+  # журнал попадал текст без той самой ссылки, ради которой журнал и нужен.
+  it 'пишет аргументы до того, как команда выкусила из них номер лида' do
+    klass = Class.new(described_class) do
+      def self.name
+        'Telegram::WorkBot::Commands::FakeEater'
+      end
+
+      def handle
+        @args = 'хвост без номера'
+        :handled
+      end
+    end
+
+    klass.new(message: msg, args: '42 кухня не понравилась', tg_user: agent, client: tg_client).call
+    expect(BotCommandLog.order(:created_at).last.args).to eq('42 кухня не понравилась')
+  end
+
+  it 'команда с self_audited не пишет вторую строку поверх своей' do
+    klass = Class.new(described_class) do
+      def self.name
+        'Telegram::WorkBot::Commands::FakeSelfAudited'
+      end
+
+      self_audited
+
+      def handle
+        :handled
+      end
+    end
+
+    expect {
+      klass.new(message: msg, args: '', tg_user: agent, client: tg_client).call
+    }.not_to change(BotCommandLog, :count)
   end
 
   it 'падение аудита не ломает команду' do

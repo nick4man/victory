@@ -15,6 +15,9 @@ module Telegram
       #
       # Если агент не сотрудник Topnlab (нет email в /getUsers) — отказ.
       class Whoami < Base
+        # Пишет BotCommandLog сам, со своими полями — базовый аудит не дублируем.
+        self_audited
+
         CODE_TTL = 15.minutes
         CACHE_PREFIX = 'workbot:whoami_code:'
 

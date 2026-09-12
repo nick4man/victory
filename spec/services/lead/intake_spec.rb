@@ -90,7 +90,7 @@ RSpec.describe Lead::Intake do
     before do
       allow_any_instance_of(Lead::Intake::TgDmSource)
         .to receive(:call)
-        .and_return([inquiry, { 'returning_client' => true, 'channel' => 'tg_dm' }])
+        .and_return([inquiry, { 'returning_client' => true, 'thread_to_existing_lead' => true, 'channel' => 'tg_dm' }])
     end
 
     it 'не создаёт второй LeadEvent и возвращает существующий' do
@@ -108,6 +108,27 @@ RSpec.describe Lead::Intake do
       described_class.call(source: 'tg_dm', payload: { text: 'ещё вопрос' },
                            announcer: fake_announcer_class)
       expect(fake_announcer_class.last).to be_nil
+    end
+
+    # Находки ревью PR #65: флаг returning_client перегружен (SiteSource ставит
+    # его знакомому клиенту просто для бейджа), и склейка не должна цепляться за
+    # закрытые лиды.
+    it 'returning_client без thread_to_existing_lead карточку не склеивает' do
+      allow_any_instance_of(Lead::Intake::SiteSource)
+        .to receive(:call).and_return([inquiry, { 'returning_client' => true }])
+      expect {
+        described_class.call(source: 'site_form', payload: { text: 'с сайта' },
+                             announcer: fake_announcer_class)
+      }.to change(LeadEvent, :count).by(1)
+      expect(fake_announcer_class.last).not_to be_nil
+    end
+
+    it 'закрытый лид не принимает дописку — появляется новая карточка' do
+      existing.update!(current_stage: 'closed_lost')
+      expect {
+        described_class.call(source: 'tg_dm', payload: { text: 'снова ищу' },
+                             announcer: fake_announcer_class)
+      }.to change(LeadEvent, :count).by(1)
     end
 
     it 'без существующей карточки ведёт себя как раньше — создаёт запись' do

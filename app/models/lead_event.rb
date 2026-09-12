@@ -114,6 +114,22 @@ class LeadEvent < ApplicationRecord
     SEGMENT_LABELS[segment] || SEGMENT_UNKNOWN_LABEL
   end
 
+  # BOTTLENECK — единственный путь смены сегмента: и кнопка (SegmentCallback),
+  # и команда /segment. Раньше команда просто писала поле: без записи в историю
+  # и без перерисовки карточки, из-за чего в диспетчерской оставался «сегмент не
+  # указан» и ряд кнопок, приглашающий поставить второй, конфликтующий сегмент
+  # (найдено ревью PR #65).
+  def apply_segment!(value, by:)
+    with_lock do
+      reload
+      history = append_history(key: 'segment_history',
+                               entry: { 'at' => Time.current.iso8601, 'from' => segment,
+                                        'to' => value, 'by' => by })
+      update!(segment: value, metadata: metadata.merge('segment_history' => history))
+    end
+    self
+  end
+
   # Telegram t.me deep-link to the current anchor message — для тизеров и SLA-пингов.
   # Два формата (см. Telegram client behavior):
   #   • Forum topic: t.me/c/<chat-без-100>/<thread_id>/<message_id>

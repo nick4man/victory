@@ -38,10 +38,14 @@ class AddShowFunnelFieldsToLeadEvents < ActiveRecord::Migration[8.1]
         AND EXISTS (SELECT 1 FROM properties p WHERE p.id = i.property_id)
     SQL
     # Бэкфилл дат из stage_history: первое появление 'to'=>'show' / 'contract'.
+    # timestamptz, а не timestamp: append_history пишет Time.current.iso8601, то
+    # есть со смещением (+03:00 при config.time_zone = 'Moscow'). ::timestamp
+    # отбросил бы смещение и дал местные стенные часы, которые Rails потом читает
+    # из UTC-колонки — сдвиг на три часа и переезд через сутки (найдено ревью).
     execute <<~SQL.squish
       UPDATE lead_events le SET first_show_at = sub.at
       FROM (
-        SELECT id, MIN((e->>'at')::timestamp) AS at
+        SELECT id, MIN((e->>'at')::timestamptz) AS at
         FROM lead_events, jsonb_array_elements(COALESCE(metadata->'stage_history', '[]'::jsonb)) e
         WHERE e->>'to' = 'show' GROUP BY id
       ) sub
@@ -50,7 +54,7 @@ class AddShowFunnelFieldsToLeadEvents < ActiveRecord::Migration[8.1]
     execute <<~SQL.squish
       UPDATE lead_events le SET contract_at = sub.at
       FROM (
-        SELECT id, MIN((e->>'at')::timestamp) AS at
+        SELECT id, MIN((e->>'at')::timestamptz) AS at
         FROM lead_events, jsonb_array_elements(COALESCE(metadata->'stage_history', '[]'::jsonb)) e
         WHERE e->>'to' = 'contract' GROUP BY id
       ) sub

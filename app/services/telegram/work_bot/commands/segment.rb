@@ -37,7 +37,8 @@ module Telegram
           return reply("Не понял сегмент. Доступно: <code>#{SEGMENT_MAP.keys.join(', ')}</code>") unless value
           return reply("🚫 Сегмент ставит assignee (#{lead.assigned_to&.mention || 'не назначен'}) или руководитель.") unless assignee_or_manager?(lead)
 
-          lead.update!(segment: value)
+          lead.apply_segment!(value, by: tg_user.mention)
+          LeadAnnouncer.refresh!(lead, client: client)
           reply("Лид ##{lead.id}: #{lead.segment_label} ✅")
         end
       end

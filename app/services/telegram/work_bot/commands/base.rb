@@ -33,6 +33,17 @@ module Telegram
             @public_command = val
           end
 
+          # BOTTLENECK — команда пишет BotCommandLog сама, со своими полями
+          # (Whoami / WhoamiForce). Базовый аудит тогда молчит, иначе на каждый
+          # вызов приходится две строки и adoption-метрика двоится.
+          def self_audited(val = true)
+            @self_audited = val
+          end
+
+          def self_audited?
+            @self_audited == true
+          end
+
           def public_command?
             @public_command == true
           end
@@ -48,12 +59,15 @@ module Telegram
         end
 
         def call
+          # Аргументы снимаем ДО dispatch: resolve_lead! выкусывает из @args
+          # номер лида, а в аудите нужна именно ссылка на лид (найдено ревью).
+          audited_args = @args.to_s
           outcome = dispatch
-          audit!(outcome)
+          audit!(outcome, args: audited_args)
           outcome
         rescue StandardError => e
           Rails.logger.error("[WorkBot::Command #{self.class.name}] #{e.class}: #{e.message}")
-          audit!(:error, error_class: e.class.name, error_message: e.message)
+          audit!(:error, args: audited_args, error_class: e.class.name, error_message: e.message)
           reply("⚠️ Ошибка: #{e.message}")
           :error
         end
@@ -183,20 +197,29 @@ module Telegram
         # а BOTTLENECK требует, чтобы ручной ввод был прослеживаем (там же —
         # suspicious_flag на Task). Аудит здесь, а не в каждой команде, чтобы
         # новая команда получала его по факту наследования.
-        def audit!(outcome, error_class: nil, error_message: nil)
+        def audit!(outcome, args:, error_class: nil, error_message: nil)
+          return if self.class.self_audited?
+
           tg_user_id = @message.is_a?(Hash) ? @message.dig('from', 'id') : nil
           return if tg_user_id.blank?
 
           BotCommandLog.create!(
             tg_user_id:    tg_user_id,
-            command:       self.class.name.to_s.demodulize.underscore,
-            args:          @args.to_s.truncate(500),
+            command:       command_key,
+            args:          args.truncate(500),
             result:        outcome.is_a?(Symbol) ? outcome.to_s : 'handled',
             error_class:   error_class,
             error_message: error_message.to_s.presence&.truncate(500)
           )
         rescue StandardError => e
           Rails.logger.warn("[WorkBot::Commands::Base#audit!] #{e.class}: #{e.message}")
+        end
+
+        # С ведущим слэшем — как пишет существующий Commands::Whoami#log_audit.
+        # Иначе одна и та же команда попадала бы в журнал под двумя ключами и
+        # ломала документированную метрику group(:command).count (найдено ревью).
+        def command_key
+          "/#{self.class.name.to_s.demodulize.underscore}"
         end
       end
     end

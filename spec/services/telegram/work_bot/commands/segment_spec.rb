@@ -29,6 +29,16 @@ RSpec.describe Telegram::WorkBot::Commands::Segment do
     expect(lead.reload.segment).to eq('cash')
   end
 
+  # Находка ревью PR #65: команда писала только поле — без истории и без
+  # перерисовки карточки, и в диспетчерской оставался «сегмент не указан».
+  it 'пишет segment_history и перерисовывает карточку, как кнопка' do
+    run("#{lead.id} наличные")
+    lead.reload
+    expect(lead.metadata['segment_history'].last).to include('to' => 'cash', 'by' => agent.mention)
+    expect(tg_client).to have_received(:edit_message_text)
+      .with(a_string_including('💵 Наличные'), hash_including(message_id: 9000))
+  end
+
   it 'без аргумента — показывает клавиатуру выбора, сегмент не меняет' do
     run(lead.id.to_s)
     expect(lead.reload.segment).to be_nil

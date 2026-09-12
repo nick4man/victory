@@ -27,7 +27,10 @@ module Telegram
         topic_key = lead_event.anchor_topic_key
         client.edit_message_text(
           announcer.format_card_text,
-          chat_id: Telegram::TopicRegistry.chat_id,
+          # Карточка живёт в том чате, куда её отправили, — так её правят и
+          # AnchorMigrator, и LeadStageTransition, и LeadAssignment, и
+          # HashtagHandler. Чат из реестра здесь был единственным исключением.
+          chat_id: lead_event.tg_chat_id,
           message_id: lead_event.anchor_message_id,
           reply_markup: announcer.keyboard_for_card(topic_key),
           parse_mode: 'HTML'
