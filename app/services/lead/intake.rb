@@ -51,6 +51,24 @@ module Lead
 
       ref, metadata = result
 
+      # BOTTLENECK — вернувшийся клиент дописывается в существующую карточку,
+      # а не плодит вторую. TgDmSource при cross-channel match уже дописал
+      # сообщение в metadata['client_history'] существующего LeadEvent и вернул
+      # returning_client: true; до этого гейта Intake всё равно создавал новую
+      # запись и публиковал второй анкор. Две карточки на одного клиента — это
+      # не только шум в диспетчерской: сегмент ставят на одной, показ пишут на
+      # другой, и лид уходит в матрицу «сегмент × кто показывал» как «не указан».
+      if metadata.is_a?(Hash) && metadata['returning_client'] == true
+        existing = LeadEvent.where(lead_ref_type: ref.class.name, lead_ref_id: ref.id)
+                            .order(created_at: :desc).first
+        if existing
+          Rails.logger.info(
+            "[Lead::Intake] #{@source} returning client → append to lead##{existing.id}, no new LeadEvent"
+          )
+          return Result.new(success: true, lead_event: existing, error: nil)
+        end
+      end
+
       lead = LeadEvent.create!(
         lead_ref:         ref,
         source:           @source,
