@@ -52,6 +52,7 @@ class LeadEvent < ApplicationRecord
   # has_many :show_reports объявляется вместе с самой моделью (Task 4): связь,
   # объявленная раньше таблицы, роняет любой destroy лида на NameError.
   belongs_to :property, optional: true
+  has_many :show_reports, dependent: :nullify
 
   # Phase 16.6 — semantic embedding (one-to-one). Опциональный — backfill
   # / async embed может быть pending.
