@@ -99,19 +99,9 @@ module Telegram
           @now
         end
 
-        # «5,2 млн» / «5 200 000» / «5.2млн» / 5200000 → Decimal или nil.
+        # Одна интерпретация цифры для голоса и для /bargain.
         def parse_price(raw)
-          return nil if raw.blank?
-          return raw.to_d if raw.is_a?(Numeric)
-
-          s = raw.to_s.downcase.gsub(/\s/, '').tr(',', '.')
-          millions = s.include?('млн')
-          num = s[/\d+(?:\.\d+)?/]
-          return nil if num.nil?
-
-          value = num.to_d
-          value *= 1_000_000 if millions
-          value.positive? ? value : nil
+          Formatters::PriceParse.call(raw)
         end
 
         def template_owner_message(outcome, objections)

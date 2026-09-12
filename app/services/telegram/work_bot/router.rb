@@ -39,6 +39,8 @@ module Telegram
         '/show' => Commands::Show,
         # BOTTLENECK — сводка возражений по объекту к разговору о цене.
         '/objections' => Commands::Objections,
+        # BOTTLENECK — торг на объекте: карточка руководителю до звонка.
+        '/bargain' => Commands::Bargain,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,

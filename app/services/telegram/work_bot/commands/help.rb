@@ -42,6 +42,8 @@ module Telegram
            'Сменить стадию: reply + <code>/stage показ</code> ИЛИ DM <code>/stage 87 показ</code>'],
           ['/note',         :manager,
            'Заметка в CRM: reply + <code>/note текст</code> ИЛИ DM <code>/note 87 текст</code>'],
+          ['/bargain',      :staff,
+           'Покупатель назвал цену — предупредить руководителя перед звонком: <code>/bargain 5,2 млн</code>'],
           ['/objections',   :staff,
            'Возражения по объекту: <code>/objections</code> reply на карточку — «7 показов · 5× кухня»'],
           ['/show',         :staff,
