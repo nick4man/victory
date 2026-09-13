@@ -99,7 +99,7 @@ RSpec.describe Telegram::WorkBot::Commands::Doc do
 
     it 'создаёт документы в состоянии «не запрошены» — запрос делает человек' do
       run('init')
-      expect(DocumentRequirement.pluck(:status).uniq).to eq(['not_requested'])
+      expect(DocumentRequirement.distinct.pluck(:status)).to eq(['not_requested'])
     end
 
     it 'повторный init не плодит дубли и честно говорит, сколько пропустил' do
