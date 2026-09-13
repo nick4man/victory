@@ -62,7 +62,8 @@ module Telegram
           current_lead = ::LeadEvent.find_by(id: ctx['lead'])
           return { text: '⚠️ Лид не найден — ничего не закрыто.' } unless current_lead
           unless current_lead.open?
-            return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт (#{current_lead.current_stage}) — "                            'пока шёл мастер, его закрыл кто-то другой. Ничего не изменено.' }
+            return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт (#{current_lead.current_stage}) — " \
+                           'пока шёл мастер, его закрыл кто-то другой. Ничего не изменено.' }
           end
 
           stage = ctx['outcome']
