@@ -22,8 +22,7 @@
 ### 1. Клонирование репозитория
 
 ```bash
-cd ~/site/project
-cd viktory_realty
+cd ~/victory
 ```
 
 ### 2. Установка Ruby gems

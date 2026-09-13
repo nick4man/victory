@@ -72,7 +72,7 @@ Main env: `TELEGRAM_BOT_TOKEN` (production bot), `TELEGRAM_STAFF_CHAT_ID = -1003
 
 1. Read `escalation_notifier.rb` — нынешняя логика (timeouts, who-gets-pinged)
 2. Decide: based on Inquiry stage transitions? On time-since-created? On unread messages?
-3. Trigger from a Sidekiq cron job (см. `schedule.rb` Whenever) или AASM callback
+3. Trigger from a Sidekiq cron job (см. `config/sidekiq_cron.yml`) или AASM callback
 4. Send through `Telegram::Client.new.send_message(chat_id:, text:)`
 
 ## Anti-patterns

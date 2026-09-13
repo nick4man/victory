@@ -163,15 +163,20 @@ bundle exec sidekiq -C config/sidekiq.yml
 ```
 Очереди по приоритету: `critical` → `mailers` → `default` → `scheduled` → `low_priority`.
 
-### Cron (Whenever)
-```bash
-bundle exec whenever --update-crontab
-bundle exec whenever --clear-crontab
-```
-Расписание:
-- ежечасно: `SendViewingRemindersJob`
-- 03:00: `UpdatePropertyStatisticsJob`
-- 10:00: `PropertyValuationFollowUpJob`
+### Cron
+
+Расписаний два, и оба **не** `whenever` — гема в `Gemfile` нет, а
+`config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
+
+- `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
+- системный crontab хоста — 5 записей, правится `crontab -e`: 4 через
+  `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и
+  `lock-clean`, который идёт прямо на хосте.
+
+🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
+них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
+упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит
+`views_count`. Разбор всех 19 записей — CLAUDE.md, секция «Планировщик один».
 
 ### Переезд базы на bookworm — пересборка прод-БД
 

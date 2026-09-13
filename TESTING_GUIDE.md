@@ -234,7 +234,7 @@ URL: ws://localhost:3000/cable
 ### 1. Подготовка окружения:
 
 ```bash
-cd ~/site/project/viktory_realty
+cd ~/victory
 
 # Установка зависимостей (если еще не установлено)
 bundle install

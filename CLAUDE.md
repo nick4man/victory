@@ -48,14 +48,37 @@ Rails-монолит. Четыре входа, и только первый — 
 - **LLM — free-first цепочка**, `Llm::OmniClient` (`DEFAULT_CHAINS[:chat]` / `[:analysis]`, платный Sonnet последний). Tool-calling — `app/services/chat_tools/` + `Llm::ToolRunner`. Перестановка модели вверх по цепочке = деньги, молча.
 - **Эмбеддинги** — pgvector + gem `neighbor`, таблицы `*_embedding`, наполняются `EmbedXxxJob`.
 
-### Два планировщика, и это не опечатка
+### Планировщик один, и он в репозитории
 
 | | Что |
 |---|---|
-| `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, SLA, cleanup). Время в MSK, зависит от `TZ` контейнера |
-| `config/schedule.rb` | whenever → системный crontab, ~17 записей |
+| `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, cleanup). Время в MSK, зависит от `TZ` контейнера |
+| системный crontab | 5 записей: 4 вида `cd /home/q/victory && /usr/bin/docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и `lock-clean`, который идёт прямо на хосте (`/home/q/victory/bin/lock-clean --force`). Живёт на хосте, **не** в репозитории — правится через `crontab -e` |
 
-Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd /home/q/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+Добавляя периодику, бери `sidekiq_cron.yml`: это единственное расписание,
+которое едет вместе с кодом.
+
+🚨 `config/schedule.rb` удалён 12.09.26. Он объявлял 19 записей и выглядел вторым
+планировщиком, но гема `whenever` в `Gemfile` нет — ни одна строка оттуда никогда
+не выполнялась. Разбор всех 19, чтобы не потерялся вместе с файлом:
+
+- **7 работают в другом месте** — `RefreshTopnlabStatsJob` (`sidekiq_cron.yml`),
+  Yandex.Webmaster ×3, `kpi:phase_a`, `lock-clean` (crontab хоста), бэкап
+  (`bin/backup` + systemd-таймер).
+- **3 рабочие, но без расписания** — `Telegram::WorkBot::Sla::WatchdogJob`,
+  `Sla::TasksWatchdogJob`, `topnlab:stages:refresh`. Включение SLA-сторожей — PR #64.
+- **2 существуют, но в текущем виде вредны** — `SendViewingRemindersJob` выбирает по
+  `preferred_date`/`reminder_email_sent`, а в `viewing_schedules` колонки
+  `scheduled_at`/`reminder_sent` (упадёт на первом прогоне);
+  `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по `PropertyView`,
+  а посетители анонимны (Devise выключен) — обнулит `views_count`. Сначала чинить.
+- **7 ссылаются на несуществующее** — классы `UserDigestJob`, `MarketAnalyticsUpdateJob`;
+  таски `db:sessions:trim`, `cache:clear_expired`, `sitemap:refresh` (sitemap строит
+  `SitemapController` на запросе); колонка `property_valuations.follow_up_email_sent`;
+  перевод `properties` в статус `expired`, которого в enum нет (`status` — integer).
+
+Возвращая любую из них — строка в `sidekiq_cron.yml`, а не воскрешение whenever,
+и только после проверки, что задача вообще отработает.
 
 ## Команды
 
