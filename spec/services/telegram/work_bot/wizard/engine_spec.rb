@@ -237,4 +237,118 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       expect(manager.reload.pending_action).to be_nil
     end
   end
+
+  describe 'закрытие лида' do
+    it 'агенту отказывает до первого вопроса и ничего не собирает' do
+      tap_callback("wiz:s:close:#{lead.id}", user: agent, chat_type: 'supergroup')
+
+      expect(last_text).to include('только руководителям')
+      expect(agent.reload.pending_action).to be_nil
+      expect(acks.last.first).to include('личке')
+    end
+
+    it 'проигрыш: исход и причина кнопками, подтверждение закрывает лид' do
+      tap_callback("wiz:s:close:#{lead.id}")
+      expect(last_text).to include("Чем закончился лид ##{lead.id}?")
+
+      press('Проиграно')
+      expect(last_text).to include('Причина отказа?')
+
+      press('Цена')
+      expect(last_text).to include('как «проиграно»').and include('причина: цена')
+
+      press('Закрыть лид')
+      lead.reload
+      expect(lead.current_stage).to eq('closed_lost')
+      expect(lead.metadata['close_reason']).to eq('цена')
+      expect(last_text).to include("Лид ##{lead.id} закрыт")
+      expect(manager.reload.pending_action).to be_nil
+    end
+
+    it 'выигрыш не спрашивает причину отказа' do
+      tap_callback("wiz:s:close:#{lead.id}")
+      press('Выиграно')
+
+      expect(last_text).to include('как «выиграно»')
+      press('Закрыть лид')
+      expect(lead.reload.current_stage).to eq('closed_won')
+      expect(lead.metadata['close_reason']).to be_nil
+    end
+
+    it '«Другое» открывает свободный ввод причины' do
+      tap_callback("wiz:s:close:#{lead.id}")
+      press('Проиграно')
+      press('Другое')
+
+      say('купил у застройщика напрямую')
+      expect(last_text).to include('причина: купил у застройщика напрямую')
+    end
+
+    it 'повторное нажатие подтверждения не закрывает лид второй раз' do
+      tap_callback("wiz:s:close:#{lead.id}")
+      press('Выиграно')
+      confirm = dms.last[:keyboard].flatten.find { |b| b[:text].include?('Закрыть лид') }[:callback_data]
+      tap_callback(confirm)
+
+      expect(Telegram::WorkBot::LeadClosure).not_to receive(:new)
+      tap_callback(confirm)
+      expect(acks.last.last).to be(true)
+    end
+  end
+
+  describe 'переоткрытие задачи' do
+    let!(:recent) do
+      ::Task.create!(assignee: agent, title: 'Позвонить Смирновой', status: 'done', kind: 'call',
+                     priority: 'normal', completed_at: 3.hours.ago, lead_event: lead)
+    end
+
+    it 'задача в окне 24 часа переоткрывается одной кнопкой' do
+      tap_callback('wiz:s:reopen', user: agent)
+      expect(last_text).to include('Какую задачу переоткрыть?')
+
+      press("##{recent.id}", user: agent)
+      expect(recent.reload.status).to eq('open')
+      expect(last_text).to include("Задача ##{recent.id} переоткрыта")
+    end
+
+    it 'за окном объясняет почему и предлагает новую задачу по тому же лиду' do
+      recent.update!(completed_at: 2.days.ago)
+      tap_callback('wiz:s:reopen', user: agent)
+      press("##{recent.id}", user: agent)
+
+      expect(recent.reload.status).to eq('done')
+      expect(last_text).to include('истекло')
+      expect(dms.last[:keyboard].flatten.map { |b| b[:callback_data] }).to include("wiz:s:task:#{lead.id}")
+    end
+
+    it 'чужую задачу агенту не переоткрыть — шаг повторяется с объяснением' do
+      stranger = TelegramUser.create!(tg_user_id: 97_103, tg_username: 'petr', first_name: 'Пётр',
+                                      role: 'agent', is_manager: false, status: 'active', dm_chat_id: 97_103)
+      tap_callback('wiz:s:reopen', user: stranger)
+      press('Ввести номер задачи', user: stranger)
+
+      say(recent.id.to_s, user: stranger)
+      expect(last_text).to include('переоткрыть может только исполнитель')
+      expect(recent.reload.status).to eq('done')
+    end
+  end
+
+  describe 'меню «Что сделать?»' do
+    it 'агенту не показывает закрытие лида, руководителю показывает' do
+      engine(agent).menu
+      expect(dms.last[:keyboard].flatten.map { |b| b[:text] }).not_to include('❌ Закрыть лид')
+
+      engine(manager).menu
+      expect(dms.last[:keyboard].flatten.map { |b| b[:text] }).to include('❌ Закрыть лид')
+    end
+  end
+
+  it 'все callback_data укладываются в лимит Telegram 64 байта' do
+    tap_callback('wiz:s:close')
+    press("##{lead.id}")
+    press('Проиграно')
+    dms.flat_map { |m| m[:keyboard].flatten }.each do |b|
+      expect(b[:callback_data].bytesize).to be <= 64
+    end
+  end
 end

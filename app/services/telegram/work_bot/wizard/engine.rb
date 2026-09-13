@@ -36,11 +36,13 @@ module Telegram
         TTL = 30.minutes
 
         FLOWS = {
-          'task' => 'Telegram::WorkBot::Wizard::TaskFlow'
+          'task' => 'Telegram::WorkBot::Wizard::TaskFlow',
+          'close' => 'Telegram::WorkBot::Wizard::CloseFlow',
+          'reopen' => 'Telegram::WorkBot::Wizard::ReopenFlow'
         }.freeze
 
         # Какой шаг получает id, пришедший с кнопкой на карточке.
-        SEED_STEP = { 'task' => 'lead' }.freeze
+        SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize

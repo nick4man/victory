@@ -13,8 +13,13 @@ module Telegram
           "<b>Что сделать?</b>\n<i>Меню собрано под твою роль — недоступных действий здесь нет.</i>"
         end
 
-        def keyboard(_tg_user)
-          [[{ text: '📅 Поставить задачу', callback_data: 'wiz:s:task' }]]
+        def keyboard(tg_user)
+          rows = [[
+            { text: '📅 Поставить задачу', callback_data: 'wiz:s:task' },
+            { text: '♻️ Переоткрыть задачу', callback_data: 'wiz:s:reopen' }
+          ]]
+          rows << [{ text: '❌ Закрыть лид', callback_data: 'wiz:s:close' }] if tg_user&.manager_or_director?
+          rows
         end
       end
     end
