@@ -580,6 +580,31 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `db/structure.sql` создаёт все семь расширений, — но `bin/backup verify` теперь
   проверяет `postgis` осмысленно.
 
+### Обычный деплой — `bin/deploy`
+
+Одна команда на прод-хосте из `~/victory` (ветка `main`):
+
+```bash
+bin/deploy --check   # план: коммиты, нужны ли миграции/рестарты/пересборка
+bin/deploy           # спросит и выкатит; --yes — без вопроса
+bin/deploy --rollback   # вернуть коммит, стоявший до последнего деплоя
+```
+
+Скрипт сам решает, что нужно по диффу `HEAD..origin/main`: sidekiq рестартует
+всегда (код не перечитывает), web — если тронуты `config/`, `lib/`, `db/`,
+`Gemfile`; `docker-compose.yml` — `up -d --no-deps web sidekiq` (restart
+конфиг не перечитывает); миграции — с бэкапом `bin/backup db` перед ними;
+изменения `Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint`
+включают процедуру пересборки из раздела ниже, старые образы остаются под
+тегом `:pre-<sha>` — по нему `--rollback` возвращает рантайм. После — проверки
+(health, сайт, sidekiq живёт 30с без перезапуска, миграции, ошибки загрузки в
+логах) и `bin/prod-mark`. Отказывается на грязном дереве, при разошедшейся
+`main` и при занятом `victory_bundle`. Автоотката нет — при проваленных
+проверках печатает команду отката. Лок — `.git/victory-deploy.lock`.
+
+Первый запуск, пока `bin/deploy` ещё нет в прод-чекауте:
+`git fetch origin main && bash <(git show origin/main:bin/deploy)`.
+
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
 Прод (`~/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
