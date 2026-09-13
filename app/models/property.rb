@@ -308,8 +308,14 @@ class Property < ApplicationRecord
   CRM_LIVE_STATES = %w[lead active ad prepayment deferred].freeze
   # Stages that must NOT appear in the public catalog regardless of ad flags:
   # `deferred` — пауза по инициативе клиента/агента, реклама может быть залипшей
+  # `prepayment` — задаток получен: звонки по объекту больше не нужны, а
+  #   рекламный бюджет площадок тратится впустую (регламент, Шаг 5)
   # `deal/archive/denied` — закрытые/отказные, защита от ручных вставок
-  EXCLUDED_FROM_CATALOG = %w[deferred deal archive denied].freeze
+  #
+  # Обычный путь сюда не доходит: `publish_if_ready!` архивирует объект, как
+  # только он уходит со стадии `ad`. Список ловит обход этого гейта —
+  # `force_publish` из админки держит status=active при любой стадии.
+  EXCLUDED_FROM_CATALOG = %w[deferred prepayment deal archive denied].freeze
 
   # `published` keeps website-moderated `status: :active`.
   # `in_advertising` is the public-catalog filter — Topnlab tracks two
