@@ -336,8 +336,6 @@ MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
     # Free fallbacks via omniroute (RPM-limited but non-zero quota).
     ("cloudflare", "@cf/meta/llama-3.3-70b-instruct-fp8-fast",                     30),
     ("omniroute",  "openrouter/google/gemini-2.0-flash-exp:free",                  45),
-    # Direct Gemini Pro (more expensive but reliable).
-    ("google",     "gemini-2.5-pro",                                               45),
     # PAID — last resort.
     ("openrouter", "anthropic/claude-sonnet-4",                                    60),
 ]
@@ -351,6 +349,8 @@ PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")
 #   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429
 #   openrouter/openai/gpt-oss-120b:free   — RPM 429
 #   cloudflare @cf/openai/gpt-oss-120b    — duplicate of llama-3.3 above
+# Removed 13.09.26:
+#   google/gemini-2.5-pro                 — HTTP 404 «no longer available to new users»
 # Документация прочих "битых":
 #   omniroute cerebras/qwen-3-235b-a22b-instruct-2507     — 429 rate limit
 #   omniroute openrouter/qwen/qwen3-coder:free            — timeout > 30s
