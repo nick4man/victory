@@ -341,12 +341,34 @@ MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
 ]
 PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")}
 
+# Бесплатные модели прямого OpenRouter — ТОЛЬКО для классификатора (13.09.26).
+# Отобраны прогоном промпта классификатора: ставка ЦБ → URGENT/KEY_RATE,
+# спорт → NOISE, 2–15 с; работают только с reasoning off (см.
+# _call_openai_compatible). Бывают 429 у поставщика и обрывы TLS — это запас,
+# а не основа. В генерацию постов их не пускать: на промпте срочного поста
+# nemotron мешал русский с английским («unanimously»), laguna выдумывала цифры
+# («инфляция 4,3%, ВВП 0,8%»). Короткий JSON-вердикт им по силам, публикация — нет.
+FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
+    ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",                       30),
+    ("openrouter", "poolside/laguna-s-2.1:free",                                   30),
+    ("openrouter", "poolside/laguna-xs-2.1:free",                                  30),
+]
+
+# Цепочка классификатора: бесплатные OpenRouter встают сразу после Google,
+# до мёртвых сейчас cloudflare/omniroute и до платного хвоста.
+_GOOGLE_HEAD = [step for step in MAIN_MODEL_CHAIN if step[0] == "google"]
+CLASSIFIER_CHAIN: list[tuple[str, str, int]] = (
+    _GOOGLE_HEAD
+    + FREE_CLASSIFIER_MODELS
+    + [step for step in MAIN_MODEL_CHAIN if step[0] != "google"]
+)
+
 # Removed from chain 2026-05-14 (rate-limited / dead):
 #   groq/llama-3.3-70b-versatile          — TPD exhausted, 8h+ cooldown
 #   groq/openai/gpt-oss-120b              — same Groq TPD
 #   openrouter/google/gemma-4-31b-it:free — RPM 429 spam
 #   openrouter/z-ai/glm-4.5-air:free      — RPM 429
-#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429
+#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429 (вернули 13.09.26 напрямую)
 #   openrouter/openai/gpt-oss-120b:free   — RPM 429
 #   cloudflare @cf/openai/gpt-oss-120b    — duplicate of llama-3.3 above
 # Removed 13.09.26:
@@ -522,6 +544,11 @@ def _call_openai_compatible(provider, model, messages, temperature, max_tokens, 
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if provider == "openrouter":
+        # Бесплатные nemotron-модели «рассуждают» по умолчанию: рассуждение
+        # съедает max_tokens, и content приходит пустым или обрезанным JSON.
+        # Нам нужен только ответ — и так быстрее в 2–10 раз.
+        payload["reasoning"] = {"enabled": False}
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     resp.encoding = "utf-8"
     if resp.status_code != 200:

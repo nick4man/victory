@@ -104,7 +104,7 @@ mkdir -p logs             # cron не создаёт каталог под ре�
 ## Проверка
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry -v     # 41 тест, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v     # 46 тестов, без сети и БД
 ```
 
 Тесты гейта релевантности и повторов классификации зависимостей не требуют — системного `python3`

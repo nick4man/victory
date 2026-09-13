@@ -19,7 +19,7 @@ Python-конвейер новостей внутри Rails-репозитори
 ## Запуск тестов
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry -v   # 41 тест, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 46 тестов, без сети и БД
 ```
 
 Только **из каталога сервиса**: импорты плоские (`from urgent_relevance import ...`),
@@ -91,6 +91,13 @@ python3 -m unittest test_urgent_relevance test_classify_retry -v   # 41 тест
 - **Порядок `MAIN_MODEL_CHAIN`** (`pipeline_utils.py`): сначала бесплатные, платный
   `anthropic/claude-sonnet-4` последний и помечен в `PAID_MODELS`. Подняв его выше, ты включишь
   платную модель на кроне каждые 15 минут, молча.
+- **Две цепочки, а не одна** (с 13.09.26). Классификатор (`urgent_collector`) идёт по
+  `CLASSIFIER_CHAIN` — это `MAIN_MODEL_CHAIN` плюс бесплатные модели прямого OpenRouter
+  (`FREE_CLASSIFIER_MODELS`) сразу после Google. Посты и дайджест идут по `MAIN_MODEL_CHAIN`
+  без них: на промпте поста бесплатные модели мешали русский с английским и выдумывали
+  цифры. Не переноси их в `MAIN_MODEL_CHAIN` — `test_model_chains` это проверяет.
+  Бесплатным моделям OpenRouter нужен `reasoning: {enabled: false}`, иначе рассуждение
+  съедает `max_tokens` и ответ приходит пустым.
 - **`URGENT_COLLECTOR_MODEL` / `URGENT_TRIGGER_MODEL` / `OMNIROUTE_MODEL` в `.env`.**
   Это не «добавить модель», а схлопнуть всю цепочку в один маршрут без фолбэка
   (`urgent_collector.py:303`). 07.09.26 туда прописали `cc/claude-sonnet-4-5`, у

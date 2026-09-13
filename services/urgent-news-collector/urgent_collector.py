@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from classify_retry import GIVE_UP_AFTER_HOURS, ChainBreaker, RetryLedger, retry_key
-from pipeline_utils import complete_with_fallbacks, conveyor_home
+from pipeline_utils import CLASSIFIER_CHAIN, complete_with_fallbacks, conveyor_home
 from urgent_relevance import KNOWN_EVENT_TYPES, gate_urgent
 
 # feedparser использует urllib без таймаута; без socket-defaults один медленный
@@ -294,7 +294,7 @@ class ClassifierUnavailable(RuntimeError):
 
 def analyze_news_item(headline: str, summary: str,
                        source_name: str = "Unknown", source_weight: str = "medium") -> NewsAnalysisResult:
-    """Classify via fallback chain (см. pipeline_utils.MAIN_MODEL_CHAIN).
+    """Classify via fallback chain (см. pipeline_utils.CLASSIFIER_CHAIN).
 
     source_weight ∈ {high, medium, low} — hint классификатору о доверии к источнику.
     """
@@ -304,7 +304,7 @@ def analyze_news_item(headline: str, summary: str,
         source_name=source_name,
         source_weight=source_weight,
     )
-    chain_override = None
+    chain_override = CLASSIFIER_CHAIN
     if URGENT_COLLECTOR_MODEL_OVERRIDE:
         chain_override = [("omniroute", URGENT_COLLECTOR_MODEL_OVERRIDE, 60)]
     try:
@@ -314,7 +314,11 @@ def analyze_news_item(headline: str, summary: str,
             max_tokens=400,
             parse_fn=_parse_classifier_json,
             chain=chain_override,
-            overall_deadline_s=90.0,
+            # 150, а не 90: три шага Google по 30 с таймаута съедали весь
+            # бюджет, и зависший Google не пускал к бесплатным моделям OpenRouter.
+            # 150 гарантирует попытку всех трёх; два сбоя подряд всё равно
+            # останавливают прогон (classify_retry), так что худший прогон — ~5 мин.
+            overall_deadline_s=150.0,
         )
         data = _parse_classifier_json(raw)
         tier = (data.get("relevance_tier") or "NOISE").upper()
