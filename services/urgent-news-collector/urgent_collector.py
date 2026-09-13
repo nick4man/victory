@@ -10,7 +10,8 @@ import psycopg2
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-from pipeline_utils import complete_with_fallbacks
+from classify_retry import GIVE_UP_AFTER_HOURS, ChainBreaker, RetryLedger, retry_key
+from pipeline_utils import complete_with_fallbacks, conveyor_home
 from urgent_relevance import KNOWN_EVENT_TYPES, gate_urgent
 
 # feedparser использует urllib без таймаута; без socket-defaults один медленный
@@ -287,6 +288,10 @@ def _parse_classifier_json(raw: str) -> dict:
     return data
 
 
+class ClassifierUnavailable(RuntimeError):
+    """Цепочка моделей не дала разбираемого ответа."""
+
+
 def analyze_news_item(headline: str, summary: str,
                        source_name: str = "Unknown", source_weight: str = "medium") -> NewsAnalysisResult:
     """Classify via fallback chain (см. pipeline_utils.MAIN_MODEL_CHAIN).
@@ -328,16 +333,26 @@ def analyze_news_item(headline: str, summary: str,
             reasoning=str(data.get("reasoning", ""))[:500],
         )
     except Exception as e:
-        logger.error(f"Error analyzing news item '{headline}': {e}")
-        # При ошибке относим в NOISE (безопасный дефолт — точно не публикуем как URGENT,
-        # и не засоряем DB сырыми failure-row'ами).
-        return NewsAnalysisResult(
-            relevance_tier="NOISE", event_type="NONE", audience_fit="UNKNOWN",
-            reasoning=f"classifier_error: {e}",
-        )
+        # Не NOISE: строка в urgent_events навсегда закрыла бы новость для
+        # повторной классификации. Решение, ждать или сдаваться, — в process_feed.
+        raise ClassifierUnavailable(str(e)) from e
 
-def process_feed(source: dict, conn):
-    """Fetch and process a single RSS feed."""
+
+def _classifier_error_result(error: Exception) -> NewsAnalysisResult:
+    # Безопасный дефолт: точно не публикуем как URGENT.
+    return NewsAnalysisResult(
+        relevance_tier="NOISE", event_type="NONE", audience_fit="UNKNOWN",
+        reasoning=f"classifier_error: {error}",
+    )
+
+
+def process_feed(source: dict, conn, ledger: RetryLedger, breaker: ChainBreaker):
+    """Fetch and process a single RSS feed.
+
+    Новость, на которой упала цепочка, не пишется и ждёт следующего прогона
+    (см. classify_retry). После BREAKER_THRESHOLD сбоев подряд лента бросается:
+    main() увидит breaker.tripped и не пойдёт в остальные.
+    """
     logger.info(f"Fetching feed: {source['name']}")
     
     try:
@@ -348,6 +363,9 @@ def process_feed(source: dict, conn):
             # Continue processing as feedparser often recovers partial data
             
         for entry in feed.entries[:ENTRY_LIMIT_PER_SOURCE]:
+            if breaker.tripped:
+                return
+
             headline = getattr(entry, 'title', '')
             summary = getattr(entry, 'summary', '')
             # NULL, а не '': ON CONFLICT (source_url) WHERE source_url IS NOT NULL
@@ -366,11 +384,28 @@ def process_feed(source: dict, conn):
                 continue
 
             logger.debug(f"Analyzing: {headline}")
-            analysis = analyze_news_item(
-                headline, summary,
-                source_name=source["name"],
-                source_weight=source.get("weight", "medium"),
-            )
+            key = retry_key(link, headline)
+            try:
+                analysis = analyze_news_item(
+                    headline, summary,
+                    source_name=source["name"],
+                    source_weight=source.get("weight", "medium"),
+                )
+            except ClassifierUnavailable as e:
+                breaker.failure()
+                if not ledger.record_failure(key, datetime.now()):
+                    logger.warning(f"Classifier unavailable, retry next run: {headline[:80]} ({e})")
+                    continue
+                logger.error(
+                    f"Classifier unavailable for {GIVE_UP_AFTER_HOURS}h, giving up → NOISE: "
+                    f"{headline[:80]} ({e})"
+                )
+                analysis = _classifier_error_result(e)
+                # Дальше already_seen увидит строку NOISE — ждать больше нечего.
+                ledger.forget(key)
+            else:
+                breaker.success()
+                ledger.forget(key)
 
             details = (
                 f"Source: {source['name']}\nLink: {link or '—'}\nSummary: {summary}\n\n"
@@ -440,10 +475,26 @@ def main():
         logger.error("Exiting due to database connection failure.")
         return
 
+    ledger = RetryLedger(os.path.join(conveyor_home(), "state", "classifier_pending.json")).load()
+    ledger.prune(datetime.now())
+    breaker = ChainBreaker()
+
     # Process all configured feeds
-    for source in RSS_SOURCES:
-        process_feed(source, conn)
-        
+    try:
+        for source in RSS_SOURCES:
+            process_feed(source, conn, ledger, breaker)
+            if breaker.tripped:
+                logger.error(
+                    f"LLM chain down ({breaker.consecutive} failures in a row) — "
+                    f"stopping run; {ledger.pending()} item(s) wait for the next one"
+                )
+                break
+    finally:
+        try:
+            ledger.save()
+        except OSError as e:
+            logger.error(f"Failed to save classifier retry ledger: {e}")
+
     # Cleanup
     if conn:
         conn.close()

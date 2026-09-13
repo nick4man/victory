@@ -31,12 +31,12 @@ repatriate_by: —
 
 11.09.26 архивом объявлен и каталог: `/opt/.openclaw/.openclaw/**` — только
 чтение. Боевой каталог теперь `/opt/victory-conveyor`, наполняется `deploy.sh`
-(`git archive` из main). `sync-check.sh` отключён вместе с режимом `--deploy`:
+(`git fetch` + `git archive` из `origin/main`). `sync-check.sh` отключён вместе с режимом `--deploy`:
 выкладывать в архив больше некуда. Запрет продублирован в
 `.claude/settings.json` (`permissions.deny`).
 
 Боевой каталог держит то, чего нет в git и что деплой не трогает: `.env`
-(секреты), `logs/`, `notifications/`, `published/`, `.venv/`.
+(секреты), `logs/`, `notifications/`, `published/`, `state/`, `.venv/`.
 
 ## Зеркало на сайт — чужое
 

@@ -19,14 +19,14 @@ Python-конвейер новостей внутри Rails-репозитори
 ## Запуск тестов
 
 ```bash
-python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry -v   # 41 тест, без сети и БД
 ```
 
 Только **из каталога сервиса**: импорты плоские (`from urgent_relevance import ...`),
 модули находят друг друга как соседи. Из корня репозитория не сработает.
 
 `.venv` в репозитории нет — тесты гоняются системным `python3`, потому что
-`urgent_relevance` не тянет ничего кроме `re`. Виртуалка с `requirements.txt` нужна только
+`urgent_relevance` и `classify_retry` не тянут ничего кроме stdlib. Виртуалка с `requirements.txt` нужна только
 для самого конвейера (`urgent_collector` / `urgent_trigger`: feedparser, psycopg2, requests).
 
 ## Две чужие БД
@@ -46,7 +46,8 @@ python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сет�
 боевой     /opt/victory-conveyor/            ← крон запускает отсюда
 ```
 
-Выкатка — только `./deploy.sh` (`git archive` из `main`). Правки прямо в боевом
+Выкатка — только `./deploy.sh` (`git fetch` + `git archive` из `origin/main`; локальный
+`main` в main checkout сам не двигается и отстаёт). Правки прямо в боевом
 каталоге затрёт следующий деплой.
 
 История в два шага. 07.09.26 (#40) архивом объявили **репозиторий** openclaw, а
@@ -87,7 +88,7 @@ python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сет�
   тишины и ~31 потерянного события.
 - **`URGENT_ELIGIBLE_TYPES` — ровно пять типов.** `MACRO_ECONOMICS` и `FX_RATE` исключены по
   замеру: 84 срочные публикации за 30 дней против 14.
-- **Порядок `MAIN_MODEL_CHAIN`** (`pipeline_utils.py:292`): сначала бесплатные, платный
+- **Порядок `MAIN_MODEL_CHAIN`** (`pipeline_utils.py`): сначала бесплатные, платный
   `anthropic/claude-sonnet-4` последний и помечен в `PAID_MODELS`. Подняв его выше, ты включишь
   платную модель на кроне каждые 15 минут, молча.
 - **`URGENT_COLLECTOR_MODEL` / `URGENT_TRIGGER_MODEL` / `OMNIROUTE_MODEL` в `.env`.**
@@ -96,6 +97,13 @@ python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сет�
   которого в omniroute нет кредов — конвейер встал на 4 дня, 1950 новостей ушли
   в `NOISE` без классификации, и переклассифицировать их уже нельзя
   (`already_seen` режет по `source_url`).
+- **Сбой классификатора ≠ NOISE** (с 13.09.26, `classify_retry.py`). Новость, на
+  которой упала цепочка, не пишется в `urgent_events` и ждёт следующего прогона;
+  `state/classifier_pending.json` в боевом каталоге помнит время первого сбоя. В
+  NOISE по-старому она уходит только через 6 ч — страховка от «ядовитой» записи,
+  которая гоняла бы цепочку с платным хвостом вечно. Два сбоя подряд останавливают
+  весь прогон, чтобы не жечь квоту на остальные новости. Вернёшь запись в NOISE
+  при ошибке — повторишь потерю 1950 новостей 07.09.26.
 
 ## Контракт с Rails
 

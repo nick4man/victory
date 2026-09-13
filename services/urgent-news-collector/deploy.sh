@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Деплой конвейера новостей: git-репозиторий victory → боевой каталог.
 #
-#   ./deploy.sh              выкатить main (по умолчанию)
+#   ./deploy.sh              выкатить origin/main (по умолчанию, после git fetch)
 #   ./deploy.sh <ref>        выкатить конкретную ветку/тег/коммит
 #
 # Переменные:
 #   VICTORY_REPO    где лежит репозиторий           (по умолчанию /opt/.openclaw/victory)
 #   CONVEYOR_HOME   куда выкатывать                 (по умолчанию /opt/victory-conveyor)
 #
-# Что НЕ трогается: .env, logs/, notifications/, published/, .venv/.
+# Что НЕ трогается: .env, logs/, notifications/, published/, state/, .venv/.
 # Удалённые из репозитория файлы в боевом каталоге не подчищаются —
 # смотри вывод в конце и убирай руками.
 #
@@ -25,7 +25,10 @@ set -euo pipefail
 # до первой команды.
 {
 
-  REF="${1:-main}"
+  # По умолчанию origin/main, а не main: $REPO — main checkout, его локальная
+  # ветка сама не двигается и отставала на 75 коммитов (13.09.26). Деплой без
+  # аргументов брал ревизию до переезда конвейера и падал на git archive.
+  REF="${1:-origin/main}"
   REPO="${VICTORY_REPO:-/opt/.openclaw/victory}"
   DEST="${CONVEYOR_HOME:-/opt/victory-conveyor}"
 
@@ -35,14 +38,27 @@ set -euo pipefail
       exit 2 ;;
   esac
 
-  [ -d "$REPO/.git" ] || { echo "не репозиторий: $REPO" >&2; exit 2; }
+  [ -e "$REPO/.git" ] || { echo "не репозиторий: $REPO" >&2; exit 2; }
+
+  # fetch трогает только refs в .git, рабочее дерево main checkout не меняет.
+  # Без аргументов fetch обязателен: устаревший origin/main хуже, чем отказ.
+  # С явной ревизией — нет: откат на уже известный коммит должен работать и
+  # без сети, когда он нужнее всего.
+  echo "→ git fetch origin"
+  if ! git -C "$REPO" fetch --quiet origin; then
+    if [ $# -eq 0 ]; then
+      echo "git fetch не прошёл — не выкатываю устаревший origin/main" >&2
+      exit 2
+    fi
+    echo "⚠ git fetch не прошёл — выкатываю $REF из того, что уже есть локально" >&2
+  fi
   git -C "$REPO" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
     || { echo "нет такой ревизии: $REF" >&2; exit 2; }
 
   SHA="$(git -C "$REPO" rev-parse --short "$REF")"
   echo "→ выкатываю $REF ($SHA) из $REPO в $DEST"
 
-  mkdir -p "$DEST"/{logs,notifications,published}
+  mkdir -p "$DEST"/{logs,notifications,published,state}
 
   # Скрипты конвейера.
   git -C "$REPO" archive "$REF:services/urgent-news-collector" | tar x -C "$DEST"
