@@ -2,21 +2,18 @@
 
 require 'rails_helper'
 
-# 🔴 ВНИМАНИЕ: часть примеров ниже КРАСНАЯ на текущем main — и это находка,
-# а не поломка спеки.
-#
-# Commands::Reassign#handle вызывает `new_assignee.status_active?`, но у
+# Регрессия, которую эта спека поймала (исправлено 13.09.26, PR #81):
+# Commands::Reassign#handle вызывал `new_assignee.status_active?`, но у
 # TelegramUser нет такого предиката: `status` там — обычная строковая колонка
-# с `validates :status, inclusion:`, enum только у `role`. Идиома перенесена с
-# модели Task, где `status` действительно enum с `prefix: true`.
+# с `validates :status, inclusion:`, enum только у `role`. Идиома была перенесена
+# с модели Task, где `status` действительно enum с `prefix: true`.
 #
-# Следствие: любой успешный путь /reassign падает в NoMethodError, его глотает
-# rescue в Commands::Base, пользователь получает «⚠️ Ошибка: undefined method…»,
-# а в BotCommandLog ложится result='error'. Команда не работала ни разу с момента
-# появления (Phase 11 Iter 23) — именно потому, что спеки на неё не было.
+# Любой успешный путь /reassign падал в NoMethodError, его глотал rescue в
+# Commands::Base, в BotCommandLog ложилось result='error'. Команда не работала
+# с момента появления (Phase 11 Iter 23) — потому что спеки на неё не было.
 #
-# Фикс: `new_assignee.status == 'active'` (или завести enum :status в модели —
-# но это заденет STATUSES, scope :active и валидацию, это отдельное решение).
+# Сейчас проверка — `new_assignee.status == 'active'`. Завести enum :status в
+# модели — отдельное решение: заденет STATUSES, scope :active и валидацию.
 RSpec.describe Telegram::WorkBot::Commands::Reassign do
   let(:sent) { [] }
   let(:dms) { [] }
