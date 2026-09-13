@@ -40,6 +40,8 @@ module Telegram
            '(или <code>/assign 87</code> → picker)'],
           ['/stage',        :manager,
            'Сменить стадию: reply + <code>/stage показ</code> ИЛИ DM <code>/stage 87 показ</code>'],
+          ['/unstage',      :manager,
+           'Откатить последнюю смену стадии: <code>/unstage</code> reply на карточку (если нажали не ту)'],
           ['/note',         :manager,
            'Заметка в CRM: reply + <code>/note текст</code> ИЛИ DM <code>/note 87 текст</code>'],
           ['/bargain',      :staff,

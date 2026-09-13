@@ -8,7 +8,8 @@
 #           (BotCommandScopeAllGroupChats)
 #   desc  — короткое описание для меню (≤256 chars, рекомендую ≤80)
 #
-# Лимит TG: 100 команд per scope per language_code. У нас 21, запас огромный.
+# Лимит TG: 100 команд per scope per language_code. Число здесь не пишем — оно
+# протухает при каждой новой команде; потолок сторожит command_registries_spec.
 
 commands:
   # === Public — доступны всем (включая незарегистрированных) ===
@@ -31,6 +32,7 @@ commands:
   - { cmd: assign,       tier: manager,  group: true,  desc: 'Назначить агента (reply на якорь)' }
   - { cmd: route,        tier: manager,  group: true,  desc: 'Маршрутизировать лид в спец-топик' }
   - { cmd: stage,        tier: manager,  group: true,  desc: 'Сменить стадию лида' }
+  - { cmd: unstage,      tier: manager,  group: true,  desc: 'Откатить последнюю смену стадии (reply на карточку)' }
   - { cmd: note,         tier: manager,  group: true,  desc: 'Заметка в CRM (reply на якорь)' }
   - { cmd: lead,         tier: manager,  group: true,  desc: 'Создать лид вручную' }
   - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close выиграно|проиграно' }
