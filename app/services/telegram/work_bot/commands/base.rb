@@ -157,10 +157,14 @@ module Telegram
 
         # Команда без аргументов — легаси-вход в мастер. Мастер идёт в личке;
         # в группе вызвавшему отвечаем, куда смотреть, иначе кажется, что бот
-        # промолчал. seed — известный заранее объект (лид из reply на якорь).
+        # промолчал. seed — известный заранее объект (лид из reply на якорь);
+        # seed_id — номер, набранный руками, даже если по нему ничего не нашлось:
+        # тогда проверка мастера на входе ответит «не найден», а не молча
+        # покажет список последних лидов.
         # @return [Symbol] исход Wizard::Engine#start
-        def open_wizard(flow_key, seed_record = nil)
-          seed = seed_record ? { Wizard::Engine::SEED_STEP.fetch(flow_key) => seed_record.id.to_s } : {}
+        def open_wizard(flow_key, seed_record = nil, seed_id: nil)
+          id = seed_record&.id || seed_id
+          seed = id ? { Wizard::Engine::SEED_STEP.fetch(flow_key) => id.to_s } : {}
           outcome = Wizard::Engine.new(tg_user: tg_user, client: client).start(flow_key, seed: seed)
           if outcome == :dm_unavailable
             reply('⚠️ Не могу написать тебе в личку. Открой чат с ботом, нажми «Start» и повтори команду.')

@@ -17,8 +17,9 @@ module Telegram
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id ЕСЛИ 1-й arg число.
           # После resolve_lead! @args = «dd.MM.yy <текст>» (как и было в group).
+          typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
-          return open_wizard('task', lead) if @args.blank?
+          return open_wizard('task', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('task 15.05.26 текст')) unless lead
 
           parts = @args.to_s.strip.split(/\s+/, 2)

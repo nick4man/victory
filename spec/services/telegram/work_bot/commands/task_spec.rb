@@ -108,6 +108,12 @@ RSpec.describe Telegram::WorkBot::Commands::Task do
       expect(state.dig('data', 'ctx', 'lead')).to eq(lead.id.to_s)
     end
 
+    it 'несуществующий номер лида не теряется молча — мастер отвечает «не найден»' do
+      run('999999', message: dm_message('/task'))
+      expect(sent.join(' ')).to include('Лид #999999 не найден')
+      expect(manager.reload.pending_action).to be_nil
+    end
+
     it 'в личке только номер лида — тоже мастер, а не ошибка формата' do
       run(lead.id.to_s, message: dm_message('/task'))
       expect(sent.join(' ')).to include('До какого числа?')

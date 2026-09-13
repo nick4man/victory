@@ -26,8 +26,9 @@ module Telegram
 
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id из @args если есть.
+          typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
-          return open_wizard('close', lead) if @args.blank?
+          return open_wizard('close', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('close выиграно')) unless lead
 
           outcome_key, reason = parse_args
