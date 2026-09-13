@@ -45,7 +45,12 @@ module Telegram
           new_assignee = TelegramUser.find_by_username(username)
           return reply("⚠️ Сотрудник <code>#{escape_html(username)}</code> не найден.") if new_assignee.nil?
 
-          unless new_assignee.status_active? && new_assignee.assignable?
+          # `status` у TelegramUser — строковая колонка с inclusion-валидацией,
+          # а не enum (enum там только `role`), поэтому предиката status_active?
+          # не существует: идиома была перенесена с модели Task, где `status`
+          # действительно enum с prefix. NoMethodError глотал rescue в
+          # Commands::Base, и команда отвечала «⚠️ Ошибка» вместо передачи задачи.
+          unless new_assignee.status == 'active' && new_assignee.assignable?
             return reply("🚫 #{new_assignee.mention} не доступен для назначения " \
                          "(status=#{new_assignee.status}, assignable=#{new_assignee.assignable}).")
           end
