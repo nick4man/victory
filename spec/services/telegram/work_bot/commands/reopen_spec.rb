@@ -116,8 +116,16 @@ RSpec.describe Telegram::WorkBot::Commands::Reopen do
       expect(sent.join).to include('и так в работе')
     end
 
-    it 'без id отвечает подсказкой по формату' do
+    # Команда без аргументов больше не отвечает форматом: печатать id не нужно,
+    # задача выбирается кнопкой из списка недавно закрытых.
+    it 'без id открывает мастер со списком недавно закрытых задач' do
       run('')
+      expect(dms.join).to include('Какую задачу переоткрыть?')
+      expect(agent.reload.pending_action&.dig('type')).to eq('wizard')
+    end
+
+    it 'на нечисловой id отвечает подсказкой по формату' do
+      run('abc')
       expect(sent.join).to include('/reopen 42')
     end
 

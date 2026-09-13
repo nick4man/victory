@@ -92,6 +92,13 @@ module Telegram
         return rt
       end
 
+      # Ответ на текстовый шаг мастера (дата, заголовок задачи, номер лида).
+      # Та же причина, что выше: без перехвата текст ушёл бы в LLM-Q&A.
+      # Команды не перехватываем — сотрудник, передумав, пишет /команду.
+      if (rt = workbot_wizard_text(msg))
+        return rt
+      end
+
       # A6 Phase 1 — client photo intake (DM + photo array).
       # Клиент фотографирует паспорт/ИНН/ЕГРН в личке — направляем в pipeline.
       # Проверяем ДО WorkBot flow: клиентские DM не должны попадать в staff-bot логику.
@@ -321,6 +328,26 @@ module Telegram
     rescue StandardError => e
       Rails.logger.warn("[InboundProcessor#workbot_photo_text_continuation] #{e.class}: #{e.message}")
       nil
+    end
+
+    # @return [Symbol, nil] :handled если текст ушёл в активный мастер; nil — не наш кейс.
+    def workbot_wizard_text(msg)
+      return nil unless msg.dig('chat', 'type') == 'private'
+      # Правка старого сообщения — не ответ на текущий шаг: иначе исправленная
+      # опечатка в дате молча легла бы заголовком задачи.
+      return nil if @update['message'].nil?
+
+      text = msg['text'].to_s.strip
+      return nil if text.empty? || text.start_with?('/')
+
+      tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
+      return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+
+      Telegram::WorkBot::Wizard::Engine.new(tg_user: tg_user).text(text)
+    rescue StandardError => e
+      # Текст предназначался мастеру — дальше по конвейеру (LLM-Q&A) его не пускаем.
+      Rails.logger.warn("[InboundProcessor#workbot_wizard_text] #{e.class}: #{e.message}")
+      :error
     end
   end
 end

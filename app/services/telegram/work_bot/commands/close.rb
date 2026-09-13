@@ -9,6 +9,9 @@ module Telegram
       #
       # Manager-only: проигранный лид требует подтверждения руководителя
       # (предотвращает быстрое закрытие агентом без эскалации).
+      #
+      # Без исхода (`/close`, `/close 87`, reply `/close`) открывает мастер в
+      # личке: исход и причина выбираются кнопками. См. Wizard::CloseFlow.
       class Close < Base
         manager_only
 
@@ -23,7 +26,9 @@ module Telegram
 
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id из @args если есть.
+          typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
+          return open_wizard('close', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('close выиграно')) unless lead
 
           outcome_key, reason = parse_args
@@ -32,19 +37,14 @@ module Telegram
             return reply('Формат: <code>/close выиграно</code> или <code>/close &lt;lead_id&gt; проиграно причина:цена</code>')
           end
 
-          # Записать причину в metadata до перехода (чтобы карточка перерисовалась с этой инфой)
-          persist_reason_to_metadata!(lead, reason) if reason.present?
-
-          result = Telegram::WorkBot::LeadStageTransition.new(lead, new_stage, actor: tg_user, client: client).call
+          result = Telegram::WorkBot::LeadClosure.new(lead, new_stage, actor: tg_user, reason: reason, client: client).call
           unless result.success?
             return reply("⚠️ #{result.message}")
           end
 
-          push_close_note(lead, new_stage, reason)
-
           icon = new_stage == 'closed_won' ? '✅' : '❌'
           msg  = "#{icon} Лид ##{lead.id} закрыт: <b>#{new_stage}</b>"
-          msg += " (#{reason})" if reason.present?
+          msg += " (#{escape_html(reason)})" if reason.present?
           reply(msg)
         end
 
@@ -53,28 +53,6 @@ module Telegram
         def parse_args
           parts = @args.to_s.strip.split(/\s+/, 2)
           [parts[0], parts[1].to_s.sub(/\A(причина|reason)\s*:\s*/i, '').presence]
-        end
-
-        def persist_reason_to_metadata!(lead, reason)
-          lead.update!(metadata: lead.metadata.merge('close_reason' => reason))
-        end
-
-        def push_close_note(lead, new_stage, reason)
-          crm_id = lead.lead_ref.try(:crm_id)
-          return if crm_id.blank?
-
-          icon = new_stage == 'closed_won' ? '✅' : '❌'
-          note = "#{icon} Закрыто (#{new_stage}) #{tg_user.mention}"
-          note += " · причина: #{reason}" if reason.present?
-
-          Topnlab::Client.new.set_note(
-            id: crm_id.to_i,
-            type: 'order',
-            note: note,
-            user_id: tg_user.topnlab_user_id || ENV.fetch('TOPNLAB_FALLBACK_USER_ID', nil)
-          )
-        rescue StandardError => e
-          Rails.logger.warn("[Commands::Close] set_note failed: #{e.class}: #{e.message}")
         end
       end
     end

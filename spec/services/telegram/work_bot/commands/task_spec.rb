@@ -98,6 +98,31 @@ RSpec.describe Telegram::WorkBot::Commands::Task do
     end
   end
 
+  describe 'без аргументов — мастер в личке' do
+    it 'reply на якорь без даты и текста открывает мастер с уже известным лидом' do
+      expect { run('', message: group_message('/task')) }.not_to change(::Task, :count)
+
+      expect(sent.join(' ')).to include('Мастер открыт в личке').and include('До какого числа?')
+      state = manager.reload.pending_action
+      expect(state['type']).to eq('wizard')
+      expect(state.dig('data', 'ctx', 'lead')).to eq(lead.id.to_s)
+    end
+
+    it 'несуществующий номер лида не теряется молча — мастер отвечает «не найден»' do
+      run('999999', message: dm_message('/task'))
+      expect(sent.join(' ')).to include('Лид #999999 не найден')
+      expect(manager.reload.pending_action).to be_nil
+    end
+
+    it 'в личке только номер лида — тоже мастер, а не ошибка формата' do
+      run(lead.id.to_s, message: dm_message('/task'))
+      expect(sent.join(' ')).to include('До какого числа?')
+      # «Формат:» с двоеточием — ответ-ошибка команды; в подсказке мастера
+      # слово «Формат» есть законно.
+      expect(sent.join(' ')).not_to include('Формат:')
+    end
+  end
+
   describe 'границы' do
     it 'без лида (ни reply, ни lead_id) отвечает подсказкой' do
       expect { run('15.05.26 текст', message: dm_message('/task …')) }
