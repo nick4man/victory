@@ -16,13 +16,20 @@ module Lead
   #   * валидирует входные данные
   #   * создаёт LeadEvent
   #   * вызывает Telegram::WorkBot::LeadAnnouncer (синхронно — пока не Sidekiq)
-  #   * возвращает Hash {success: bool, lead_event: LeadEvent|nil, error: str|nil}
+  #   * возвращает Result {success: bool, lead_event: LeadEvent|nil, error: str|nil, threaded: bool}
   class Intake
     SUPPORTED_SOURCES = %w[site_form site_valuation site_mortgage tg_dm manual crm_webhook].freeze
 
-    Result = Struct.new(:success, :lead_event, :error, keyword_init: true) do
+    # threaded — заявка дописана в уже открытую карточку, а не создала новую.
+    # Метаданные возвращённого lead_event в этом случае принадлежат ПЕРВОЙ
+    # заявке клиента: признак «вернулся» по ним не прочитать, только отсюда.
+    Result = Struct.new(:success, :lead_event, :error, :threaded, keyword_init: true) do
       def success?
         success == true
+      end
+
+      def threaded?
+        threaded == true
       end
     end
 
@@ -74,7 +81,7 @@ module Lead
           Rails.logger.info(
             "[Lead::Intake] #{@source} returning client → append to lead##{existing.id}, no new LeadEvent"
           )
-          return Result.new(success: true, lead_event: existing, error: nil)
+          return Result.new(success: true, lead_event: existing, error: nil, threaded: true)
         end
       end
 
