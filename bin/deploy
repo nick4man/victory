@@ -80,10 +80,14 @@ confirm() {
 [ -d "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR (переопределить — VICTORY_PROD_DIR)"
 command -v "$DOCKER" >/dev/null || die "Не найден docker: $DOCKER"
 
-# Лок внутри .git, а не в /tmp: в sticky-/tmp с fs.protected_regular файл,
-# созданный одним пользователем (после `sudo bin/deploy`), другой не откроет.
+# Под root не запускаемся: git на чужом чекауте упрётся в «dubious ownership»,
+# а файлы, созданные по пути (лок, объекты .git), станут root-овыми и
+# заблокируют следующий обычный запуск. Бэкап, если ему нужен root, — отдельно.
+[ "$(id -u)" -ne 0 ] || [ "${DEPLOY_ALLOW_ROOT:-0}" = 1 ] \
+  || die "Не запускай под sudo/root — от владельца чекаута ($PROD_DIR). Если бэкапу нужен root: sudo bin/backup db, затем bin/deploy --skip-backup"
+
 LOCK_FILE="${DEPLOY_LOCK:-$PROD_DIR/.git/victory-deploy.lock}"
-exec 9>>"$LOCK_FILE" || die "Не открывается лок $LOCK_FILE — создан другим пользователем? Удали его."
+exec 9>>"$LOCK_FILE" || die "Не открывается лок $LOCK_FILE — создан другим пользователем (root?). Удали его."
 flock -n 9 || die "Деплой уже идёт (лок $LOCK_FILE)"
 
 BRANCH=$(git_ symbolic-ref --quiet --short HEAD || echo '(detached)')
@@ -126,29 +130,45 @@ require_free_bundle_volume() {
   die "volume $BUNDLE_VOLUME держат контейнеры выше — удали их (docker rm -f …) и повтори. Ничего не тронуто."
 }
 
+# Порядок и volume rm — из techContext.md: volume victory_bundle перекрывает
+# гемы образа, без его пересоздания новый рантайм не увидит ни одного гема.
+#
+# Вызывать ТОЛЬКО отдельной командой, не `swap || …` и не в `if`: слева от
+# `||` bash отключает set -e внутри функции, и падение любого шага тихо
+# превратится в «ошибку» вызывающего с неверным текстом. Поэтому каждый шаг
+# сам проверяет себя и сам говорит, в каком состоянии остался прод.
+# Держателей volume вызывающий проверяет ДО этой функции.
 swap_containers_with_new_bundle() {
-  # Порядок и volume rm — из techContext.md: volume victory_bundle перекрывает
-  # гемы образа, без его пересоздания новый рантайм не увидит ни одного гема.
-  #
-  # Держателей проверяем ещё раз прямо перед stop (с предполёта мог появиться
-  # новый): если volume rm упадёт после rm -f, прод останется без web и sidekiq.
-  local holders
-  holders=$(bundle_volume_holders)
-  if [ -n "$holders" ]; then
-    printf '%s\n' "$holders" >&2
-    return 10
-  fi
+  local manual="docker compose rm -f web sidekiq; docker volume rm $BUNDLE_VOLUME; docker compose up -d --no-deps web sidekiq"
 
-  compose stop web sidekiq
-  compose rm -f web sidekiq
-  if ! "$DOCKER" volume rm "$BUNDLE_VOLUME" >/dev/null; then
-    die "САЙТ ЛЕЖИТ: web и sidekiq удалены, а volume $BUNDLE_VOLUME не удалился.
+  compose stop web sidekiq \
+    || die "docker compose stop не прошёл — web/sidekiq могут быть частично остановлены. Проверь: docker compose ps. Довести свап вручную: $manual"
+  compose rm -f web sidekiq \
+    || die "САЙТ МОЖЕТ ЛЕЖАТЬ: web/sidekiq остановлены, rm не прошёл. Вручную: $manual"
+  "$DOCKER" volume rm "$BUNDLE_VOLUME" >/dev/null \
+    || die "САЙТ ЛЕЖИТ: web и sidekiq удалены, а volume $BUNDLE_VOLUME не удалился.
    Освободи его (docker ps -a --filter volume=$BUNDLE_VOLUME) и подними:
    docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
-  fi
   # --no-deps: иначе compose пересоздаст db/redis, если их конфиг разошёлся с
   # запущенным (например, неприменённая смена образа Postgres).
-  compose up -d --no-deps web sidekiq
+  compose up -d --no-deps web sidekiq \
+    || die "САЙТ ЛЕЖИТ: web и sidekiq удалены, volume пересоздаётся, но up не прошёл (ошибка выше).
+   Исправь причину и подними: docker compose up -d --no-deps web sidekiq"
+  return 0
+}
+
+# Сколько последних pre-<sha> образов держать для отката. Каждый — несколько
+# ГБ, и без чистки диск прода растёт с каждой сменой гемов.
+KEEP_RUNTIME_TAGS="${KEEP_RUNTIME_TAGS:-3}"
+
+prune_runtime_tags() {
+  local tag
+  # image ls отдаёт новые первыми; всё после первых N — лишнее.
+  for tag in $("$DOCKER" image ls victory-web --format '{{.Tag}}' | grep -E '^pre-[0-9a-f]{7,}$' \
+               | tail -n +"$((KEEP_RUNTIME_TAGS + 1))" || true); do
+    "$DOCKER" rmi "victory-web:$tag" "victory-sidekiq:$tag" >/dev/null 2>&1 \
+      && log "удалён старый образ отката :$tag" || true
+  done
 }
 
 # Образы с рантаймом, подходящим к дереву `target`: тег pre-<sha>, где между
@@ -306,11 +326,14 @@ if [ "$MODE" = 'rollback' ]; then
   SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
   if [ -n "$RB_TAG" ]; then
+    # Держателей — последний раз ДО reset: после него откатываться «повторно»
+    # скрипт уже не сможет (CUR станет равен TARGET).
+    require_free_bundle_volume
     tag_current_images "$CUR"    # чтобы можно было вернуться вперёд без сборки
     git_ reset --hard "$TARGET"
     "$DOCKER" tag "victory-web:$RB_TAG" victory-web
     "$DOCKER" tag "victory-sidekiq:$RB_TAG" victory-sidekiq
-    swap_containers_with_new_bundle || die "volume $BUNDLE_VOLUME держат контейнеры выше — останови их. Дерево уже на ${TARGET:0:7}, контейнеры ещё на старом рантайме: не перезапускай их до повторного отката."
+    swap_containers_with_new_bundle
   else
     git_ reset --hard "$TARGET"
     if matches "$RB_CHANGED" "$COMPOSE_RX"; then
@@ -383,7 +406,7 @@ confirm 'Выкатываем?'
 if [ "$MIGRATE" -eq 1 ] && [ "$SKIP_BACKUP" -eq 0 ]; then
   step 'Бэкап БД перед миграциями'
   "$PROD_DIR/bin/backup" db \
-    || die 'Бэкап не удался — выкатка остановлена, прод не тронут. Нужен sudo? Или --skip-backup, если бэкап свежий.'
+    || die 'Бэкап не удался — выкатка остановлена, прод не тронут. Если нужен root: sudo bin/backup db, затем bin/deploy --skip-backup.'
 fi
 
 # --- Выкатка ------------------------------------------------------------------
@@ -417,8 +440,15 @@ if [ "$REBUILD" -eq 1 ]; then
   # (OOM, ребут) вернёт web, который не загрузится.
   ff_to_new
   compose build web sidekiq || abort_rebuild 'Сборка упала.'
+  # Сборка идёт минутами — за это время volume мог занять новый контейнер.
+  # Проверяем сейчас, пока контейнеры ещё не тронуты и откатить всё можно.
+  holders=$(bundle_volume_holders)
+  if [ -n "$holders" ]; then
+    printf '%s\n' "$holders" >&2
+    abort_rebuild "volume $BUNDLE_VOLUME заняли контейнеры выше, пока шла сборка — удали их и повтори."
+  fi
   step 'Свап контейнеров (entrypoint web сам сделает db:prepare)'
-  swap_containers_with_new_bundle || abort_rebuild "volume $BUNDLE_VOLUME заняли контейнеры выше, пока шла сборка — удали их и повтори."
+  swap_containers_with_new_bundle
 else
   step 'Обновляю код'
   ff_to_new
@@ -451,9 +481,19 @@ fi
 # --- Проверки и отметка -------------------------------------------------------
 
 if ! verify "$SINCE"; then
-  die "Выкатка ${NEW:0:7} прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
+  if [ "$OLD" != "$NEW" ]; then
+    die "Выкатка ${NEW:0:7} прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
    Откат: bin/deploy --rollback   (вернёт ${OLD:0:7})"
+  fi
+  # --rebuild без новых коммитов: коммит тот же, --rollback тут не поможет —
+  # вернуть можно только прежние образы.
+  die "Пересборка прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
+   Вернуть прежние образы:
+   docker tag victory-web:pre-${OLD:0:7} victory-web && docker tag victory-sidekiq:pre-${OLD:0:7} victory-sidekiq
+   затем: docker compose rm -sf web sidekiq && docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
 fi
+
+prune_runtime_tags
 
 step 'Отметка в GitHub'
 "$PROD_DIR/bin/prod-mark" || warn 'bin/prod-mark не записал отметку — разберись и запусти вручную'
