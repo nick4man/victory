@@ -55,7 +55,7 @@ Rails-монолит. Четыре входа, и только первый — 
 | `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, SLA, cleanup). Время в MSK, зависит от `TZ` контейнера |
 | `config/schedule.rb` | whenever → системный crontab, ~17 записей |
 
-Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd ~/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а последняя строка `schedule.rb` зашита на `cd /home/q/victory` — путь, которого больше нет. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
 
 ## Команды
 
