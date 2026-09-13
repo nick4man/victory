@@ -9,6 +9,9 @@ module Telegram
       #
       # Manager-only: проигранный лид требует подтверждения руководителя
       # (предотвращает быстрое закрытие агентом без эскалации).
+      #
+      # Без исхода (`/close`, `/close 87`, reply `/close`) открывает мастер в
+      # личке: исход и причина выбираются кнопками. См. Wizard::CloseFlow.
       class Close < Base
         manager_only
 
@@ -24,6 +27,7 @@ module Telegram
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id из @args если есть.
           lead = resolve_lead!
+          return open_wizard('close', lead) if @args.blank?
           return reply(lead_not_found_hint('close выиграно')) unless lead
 
           outcome_key, reason = parse_args

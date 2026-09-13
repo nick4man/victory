@@ -346,6 +346,20 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
     end
   end
 
+  describe 'карточка лида' do
+    def card_callbacks(record)
+      Telegram::WorkBot::LeadAnnouncer.new(record, client: tg_client)
+                                      .keyboard_for_card('apartments')[:inline_keyboard].flatten.pluck(:callback_data)
+    end
+
+    it 'на открытом лиде несёт кнопки мастеров с lead_id внутри, на закрытом — нет' do
+      expect(card_callbacks(lead)).to include("wiz:s:task:#{lead.id}", "wiz:s:close:#{lead.id}")
+
+      lead.update!(current_stage: 'closed_won')
+      expect(card_callbacks(lead).grep(/\Awiz:/)).to be_empty
+    end
+  end
+
   describe 'меню «Что сделать?»' do
     it 'агенту не показывает закрытие лида, руководителю показывает' do
       engine(agent).menu

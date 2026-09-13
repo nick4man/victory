@@ -18,9 +18,10 @@ commands:
   - { cmd: start,        tier: public,   group: false, desc: 'Активировать DM-нотификации от бота' }
 
   # === Staff — для зарегистрированных сотрудников ===
+  - { cmd: menu,         tier: staff,    group: false, desc: 'Что сделать? — задача, закрытие, переоткрытие кнопками' }
   - { cmd: done,         tier: staff,    group: true,  desc: 'Выполнить задачу: /done <id>' }
   - { cmd: cancel,       tier: staff,    group: true,  desc: 'Отменить задачу: /cancel <id> [причина]' }
-  - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen <id>' }
+  - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen — выбор из списка' }
   - { cmd: doc,          tier: staff,    group: false, desc: 'Документы по лиду (reply на якорь)' }
   - { cmd: segment,      tier: staff,    group: true,  desc: 'Сегмент покупателя: /segment наличные (reply на карточку)' }
   - { cmd: show,         tier: staff,    group: true,  desc: 'Отчёт о показе текстом: /show <lead_id> что сказали покупатели' }
@@ -35,8 +36,8 @@ commands:
   - { cmd: unstage,      tier: manager,  group: true,  desc: 'Откатить последнюю смену стадии (reply на карточку)' }
   - { cmd: note,         tier: manager,  group: true,  desc: 'Заметка в CRM (reply на якорь)' }
   - { cmd: lead,         tier: manager,  group: true,  desc: 'Создать лид вручную' }
-  - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close выиграно|проиграно' }
-  - { cmd: task,         tier: manager,  group: true,  desc: 'Задача с дедлайном: /task dd.MM.yy текст' }
+  - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close — исход и причина кнопками' }
+  - { cmd: task,         tier: manager,  group: true,  desc: 'Задача с дедлайном: /task — мастер в личке' }
   - { cmd: reassign,     tier: manager,  group: false, desc: 'Передать задачу: /reassign <id> @user' }
   - { cmd: promote,      tier: manager,  group: false, desc: 'Активировать сотрудника' }
   - { cmd: demote,       tier: manager,  group: false, desc: 'Снять manager-привилегии' }

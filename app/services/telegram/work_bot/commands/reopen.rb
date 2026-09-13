@@ -10,10 +10,15 @@ module Telegram
       # Зачем: до этого фикса ошибочные /done или /cancel требовали SQL —
       # манагерская ошибка задерживала клиента (закрытая задача → исчезла
       # из digest → никто не вспомнил).
+      #
+      # Без id открывает мастер в личке: задача выбирается из списка недавно
+      # закрытых, время закрытия видно на кнопке. См. Wizard::ReopenFlow.
       class Reopen < Base
         REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
 
         def handle
+          return open_wizard('reopen') if args.blank?
+
           task_id = args.split(/\s+/).first.to_i
           return reply('Формат: <code>/reopen 42</code> — где 42 это task_id.') if task_id.zero?
 

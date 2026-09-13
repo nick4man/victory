@@ -9,11 +9,16 @@ module Telegram
       # по типу lead_ref.crm_id: для Inquiry/BuyerOrder → 'order'.
       #
       # Формат даты — строго dd.MM.yy (см. Formatters::DateFormat).
+      #
+      # Без даты и текста (`/task`, `/task 87`, reply `/task`) команда не
+      # отвечает форматом, а открывает мастер в личке — аргументы печатать
+      # не нужно. См. Wizard::TaskFlow.
       class Task < Base
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id ЕСЛИ 1-й arg число.
           # После resolve_lead! @args = «dd.MM.yy <текст>» (как и было в group).
           lead = resolve_lead!
+          return open_wizard('task', lead) if @args.blank?
           return reply(lead_not_found_hint('task 15.05.26 текст')) unless lead
 
           parts = @args.to_s.strip.split(/\s+/, 2)
