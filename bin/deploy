@@ -9,7 +9,7 @@
 #   3. бэкап БД    — только если едут миграции;
 #   4. выкатка     — обычная (ff + миграции + рестарты) или с пересборкой образов,
 #                    если поменялись Gemfile/Dockerfile/.ruby-version;
-#   5. проверки    — health, сайт, sidekiq, миграции, ошибки загрузки в логах;
+#   5. проверки    — health, сайт, sidekiq не падает, миграции, ошибки загрузки;
 #   6. отметка     — bin/prod-mark (ветка `prod` + тег deploy/<дата>).
 #
 # Почему рестарты вообще нужны при code-reload: web (RAILS_ENV=development)
@@ -36,9 +36,9 @@ PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 SITE_URL="${SITE_URL:-https://victory62.org}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health/database}"
-LOCK_FILE="${DEPLOY_LOCK:-/tmp/victory-deploy.lock}"
-PREV_REF='refs/deploy/prev'           # локальный ref, не пушится
-IMG_TAG='pre-deploy'
+SIDEKIQ_SETTLE="${SIDEKIQ_SETTLE:-30}"   # сколько секунд sidekiq должен прожить без падения
+PREV_REF='refs/deploy/prev'              # локальный ref, не пушится
+BUNDLE_VOLUME='victory_bundle'
 
 MODE='deploy'; YES=0; FORCE_REBUILD=0; SKIP_BACKUP=0; ROLLBACK_TO=''
 
@@ -50,7 +50,7 @@ while [ $# -gt 0 ]; do
     --skip-backup)     SKIP_BACKUP=1; shift ;;
     --rollback)        MODE='rollback'; shift
                        if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then ROLLBACK_TO="$1"; shift; fi ;;
-    -h|--help)         sed -n '2,33p' "$0"; exit 0 ;;
+    -h|--help)         sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "Неизвестный флаг: $1 (см. --help)" >&2; exit 2 ;;
   esac
 done
@@ -73,15 +73,16 @@ confirm() {
   case "$answer" in y|Y|yes|да|Да) return 0 ;; *) die 'Отменено.' ;; esac
 }
 
-# --- Лок: два деплоя подряд из двух терминалов поломают свап контейнеров ----
+# --- Предполёт и лок ----------------------------------------------------------
 
-exec 9>"$LOCK_FILE"
-flock -n 9 || die "Деплой уже идёт (лок $LOCK_FILE)"
-
-# --- Предполёт ---------------------------------------------------------------
-
-[ -e "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR (переопределить — VICTORY_PROD_DIR)"
+[ -d "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR (переопределить — VICTORY_PROD_DIR)"
 command -v "$DOCKER" >/dev/null || die "Не найден docker: $DOCKER"
+
+# Лок внутри .git, а не в /tmp: в sticky-/tmp с fs.protected_regular файл,
+# созданный одним пользователем (после `sudo bin/deploy`), другой не откроет.
+LOCK_FILE="${DEPLOY_LOCK:-$PROD_DIR/.git/victory-deploy.lock}"
+exec 9>>"$LOCK_FILE" || die "Не открывается лок $LOCK_FILE — создан другим пользователем? Удали его."
+flock -n 9 || die "Деплой уже идёт (лок $LOCK_FILE)"
 
 BRANCH=$(git_ symbolic-ref --quiet --short HEAD || echo '(detached)')
 [ "$BRANCH" = 'main' ] || die "Прод-чекаут на ветке '$BRANCH', а выкатываем только main"
@@ -94,24 +95,86 @@ if [ -n "$DIRTY" ]; then
   die 'В прод-чекауте незакоммиченные правки (выше). Разберись с ними до деплоя.'
 fi
 
-# Какие файлы между двумя коммитами требуют чего-то сверх ff.
-needs_rebuild() { git_ diff --name-only "$1" "$2" | grep -qE '^(Gemfile|Gemfile\.lock|Dockerfile|\.ruby-version|bin/docker-entrypoint)$'; }
-has_migrations() { git_ diff --name-only "$1" "$2" | grep -qE '^db/(migrate/|schema\.rb|structure\.sql)'; }
-needs_web_restart() { git_ diff --name-only "$1" "$2" | grep -qE '^(config/|lib/|db/|Gemfile)'; }
+# --- Классификация изменений --------------------------------------------------
+# Список файлов берётся ОДИН раз в переменную и матчится here-string'ом.
+# Не `git diff | grep -q`: grep -q выходит на первом совпадении, git ловит
+# SIGPIPE, и под pipefail «совпало» превращается в «не совпало» — ровно на
+# больших диффах, где Gemfile или db/migrate стоят в начале списка.
+
+RUNTIME_RX='^(Gemfile|Gemfile\.lock|Dockerfile|\.ruby-version|bin/docker-entrypoint)$'
+MIGRATION_RX='^db/(migrate/|schema\.rb|structure\.sql)'
+WEB_RESTART_RX='^(config/|lib/|db/|Gemfile)'
+COMPOSE_RX='^docker-compose\.yml$'
+
+changed_files() { git_ diff --name-only "$1" "$2"; }
+matches() { grep -E "$2" >/dev/null <<<"$1"; }
+
+# Контейнеры, кроме web/sidekiq, которые держат bundle-volume (например,
+# забытый `docker compose run`). С ними volume rm не пройдёт.
+bundle_volume_holders() {
+  "$DOCKER" ps -a --filter "volume=$BUNDLE_VOLUME" --format '{{.Names}}' \
+    | grep -vE '^victory-(web|sidekiq)-[0-9]+$' || true
+}
+
+require_free_bundle_volume() {
+  local holders
+  holders=$(bundle_volume_holders)
+  [ -z "$holders" ] && return 0
+  printf '%s\n' "$holders" >&2
+  die "volume $BUNDLE_VOLUME держат контейнеры выше — удали их (docker rm -f …) и повтори. Ничего не тронуто."
+}
 
 swap_containers_with_new_bundle() {
   # Порядок и volume rm — из techContext.md: volume victory_bundle перекрывает
   # гемы образа, без его пересоздания новый рантайм не увидит ни одного гема.
+  #
+  # Держателей проверяем ещё раз прямо перед stop (с предполёта мог появиться
+  # новый): если volume rm упадёт после rm -f, прод останется без web и sidekiq.
+  local holders
+  holders=$(bundle_volume_holders)
+  if [ -n "$holders" ]; then
+    printf '%s\n' "$holders" >&2
+    return 10
+  fi
+
   compose stop web sidekiq
   compose rm -f web sidekiq
-  "$DOCKER" volume rm victory_bundle >/dev/null
-  compose up -d web sidekiq
+  if ! "$DOCKER" volume rm "$BUNDLE_VOLUME" >/dev/null; then
+    die "САЙТ ЛЕЖИТ: web и sidekiq удалены, а volume $BUNDLE_VOLUME не удалился.
+   Освободи его (docker ps -a --filter volume=$BUNDLE_VOLUME) и подними:
+   docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
+  fi
+  # --no-deps: иначе compose пересоздаст db/redis, если их конфиг разошёлся с
+  # запущенным (например, неприменённая смена образа Postgres).
+  compose up -d --no-deps web sidekiq
+}
+
+# Образы с рантаймом, подходящим к дереву `target`: тег pre-<sha>, где между
+# <sha> и target не менялся ни один runtime-файл. Печатает тег или ничего.
+find_runtime_tag() {
+  local target="$1" tag sha
+  for tag in $("$DOCKER" image ls victory-web --format '{{.Tag}}' | grep -E '^pre-[0-9a-f]{7,}$' || true); do
+    sha=${tag#pre-}
+    git_ cat-file -e "$sha^{commit}" 2>/dev/null || continue
+    "$DOCKER" image inspect "victory-sidekiq:$tag" >/dev/null 2>&1 || continue
+    if ! matches "$(changed_files "$sha" "$target")" "$RUNTIME_RX"; then
+      printf '%s\n' "$tag"
+      return 0
+    fi
+  done
+  return 0
+}
+
+tag_current_images() {
+  local tag="pre-${1:0:7}"
+  "$DOCKER" tag victory-web "victory-web:$tag"
+  "$DOCKER" tag victory-sidekiq "victory-sidekiq:$tag"
 }
 
 wait_healthy() {
   local i
   for i in $(seq 1 60); do
-    if curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null | grep -q '"ok"'; then
+    if curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null | grep '"ok"' >/dev/null; then
       log "web отвечает ($HEALTH_URL) через ~$((i * 3))с"
       return 0
     fi
@@ -120,9 +183,18 @@ wait_healthy() {
   return 1
 }
 
+sidekiq_state() {
+  local id
+  id=$(compose ps -q sidekiq 2>/dev/null || true)
+  [ -n "$id" ] || { echo 'absent'; return 0; }
+  "$DOCKER" inspect -f '{{.State.Running}} {{.State.StartedAt}} {{.RestartCount}}' "$id" 2>/dev/null || echo 'absent'
+}
+
 verify() {
   step 'Проверки'
-  local failed=0 since="$1"
+  local failed=0 since="$1" started sk_before
+  started=$(date +%s)
+  sk_before=$(sidekiq_state)
 
   wait_healthy || { warn "web не ответил на $HEALTH_URL за 3 минуты"; failed=1; }
 
@@ -133,17 +205,11 @@ verify() {
     *) warn "$SITE_URL → $code"; failed=1 ;;
   esac
 
-  if compose ps --status running --services | grep -qx sidekiq; then
-    log 'sidekiq запущен'
-  else
-    warn 'sidekiq не в состоянии running'; failed=1
-  fi
-
   # Пустой вывод = команда не отработала; считать это «всё применено» нельзя.
   local status pending
   status=$(compose exec -T web bundle exec rails db:migrate:status 2>/dev/null || true)
-  pending=$(printf '%s\n' "$status" | grep -cE '^\s*down\s' || true)
-  if ! printf '%s\n' "$status" | grep -qE '^\s*(up|down)\s'; then
+  pending=$(grep -cE '^\s*down\s' <<<"$status" || true)
+  if ! grep -E '^\s*(up|down)\s' >/dev/null <<<"$status"; then
     warn 'Не удалось получить db:migrate:status'; failed=1
   elif [ "$pending" -gt 0 ]; then
     warn "Непримененных миграций: $pending"; failed=1
@@ -151,12 +217,29 @@ verify() {
     log 'миграции применены'
   fi
 
-  # Ошибки загрузки кода — то, что code-reload превращает в 500 на первом же запросе.
+  # Один снимок `ps` сразу после рестарта покажет running и у падающего в цикле
+  # контейнера. Поэтому: sidekiq должен прожить SIDEKIQ_SETTLE секунд, не
+  # перезапустившись (тот же StartedAt и RestartCount).
+  local waited=$(( $(date +%s) - started ))
+  [ "$waited" -lt "$SIDEKIQ_SETTLE" ] && sleep $(( SIDEKIQ_SETTLE - waited ))
+  local sk_after
+  sk_after=$(sidekiq_state)
+  if [ "${sk_after%% *}" != 'true' ]; then
+    warn "sidekiq не работает ($sk_after)"; failed=1
+  elif [ "$sk_after" != "$sk_before" ]; then
+    warn "sidekiq перезапускался во время проверки ($sk_before → $sk_after) — падает на старте"; failed=1
+  else
+    log "sidekiq работает стабильно ${SIDEKIQ_SETTLE}с+"
+  fi
+
+  # Только ошибки ЗАГРУЗКИ. NameError/NoMethodError из обычных запросов и
+  # старых джобов dev-лог пишет постоянно — ловить их значит валить каждый деплой.
   local errors
   errors=$(compose logs --since "$since" web sidekiq 2>&1 \
-    | grep -E 'LoadError|NameError|SyntaxError|NoMethodError|Zeitwerk::|Bundler::|FATAL' | tail -5 || true)
+    | grep -E 'Bundler::|Zeitwerk::|RubyVersionMismatch|SyntaxError|LoadError|PG::ConnectionBad|Redis::CannotConnectError' \
+    | tail -5 || true)
   if [ -n "$errors" ]; then
-    warn 'В логах после выкатки есть ошибки:'
+    warn 'В логах после выкатки есть ошибки загрузки:'
     printf '%s\n' "$errors" >&2
     failed=1
   else
@@ -177,24 +260,41 @@ if [ "$MODE" = 'rollback' ]; then
   fi
   [ "$TARGET" != "$CUR" ] || die 'Прод уже на этом коммите.'
 
+  RB_CHANGED=$(changed_files "$TARGET" "$CUR")
+
   step "Откат ${CUR:0:7} → ${TARGET:0:7}"
   git_ log --oneline "$TARGET..$CUR" | sed 's/^/  откатывается: /'
-  if has_migrations "$TARGET" "$CUR"; then
+  if matches "$RB_CHANGED" "$MIGRATION_RX"; then
     warn 'В откатываемом диапазоне есть миграции. Схема БД НЕ откатится сама:'
     warn 'сначала `docker compose exec web bin/rails db:rollback STEP=<n>`, либо восстановление из бэкапа.'
+  fi
+
+  # Образы ищем ДО reset: дерево старого коммита при новом рантайме — это
+  # RubyVersionMismatch на любом следующем рестарте контейнера.
+  RB_TAG=''
+  if matches "$RB_CHANGED" "$RUNTIME_RX"; then
+    RB_TAG=$(find_runtime_tag "$TARGET")
+    [ -n "$RB_TAG" ] || die "Откат меняет рантайм, но образов под ${TARGET:0:7} нет (victory-web/victory-sidekiq:pre-*).
+   Ничего не тронуто. Собрать вручную: git reset --hard ${TARGET:0:7}, затем сборка и свап
+   из techContext.md «Деплой смены Ruby/Rails» (bin/deploy --rebuild не годится — он выкатит origin/main)."
+    log "рантайм для отката: образы :$RB_TAG"
+    require_free_bundle_volume
   fi
   confirm 'Откатываем?'
 
   SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-  git_ reset --hard "$TARGET"
 
-  if needs_rebuild "$TARGET" "$CUR"; then
-    "$DOCKER" image inspect "victory-web:$IMG_TAG" >/dev/null 2>&1 \
-      || die "Откат рантайма нужен, но образа victory-web:$IMG_TAG нет. Дерево уже на ${TARGET:0:7} — пересобери: docker compose build web sidekiq, затем свап из techContext.md"
-    "$DOCKER" tag "victory-web:$IMG_TAG" victory-web
-    "$DOCKER" tag "victory-sidekiq:$IMG_TAG" victory-sidekiq
-    swap_containers_with_new_bundle
+  if [ -n "$RB_TAG" ]; then
+    tag_current_images "$CUR"    # чтобы можно было вернуться вперёд без сборки
+    git_ reset --hard "$TARGET"
+    "$DOCKER" tag "victory-web:$RB_TAG" victory-web
+    "$DOCKER" tag "victory-sidekiq:$RB_TAG" victory-sidekiq
+    swap_containers_with_new_bundle || die "volume $BUNDLE_VOLUME держат контейнеры выше — останови их. Дерево уже на ${TARGET:0:7}, контейнеры ещё на старом рантайме: не перезапускай их до повторного отката."
   else
+    git_ reset --hard "$TARGET"
+    if matches "$RB_CHANGED" "$COMPOSE_RX"; then
+      compose up -d --no-deps web sidekiq
+    fi
     compose restart web sidekiq
   fi
 
@@ -229,12 +329,12 @@ if ! git_ merge-base --is-ancestor "$OLD" "$NEW"; then
   die 'Убедись, что эти коммиты не потеряются, затем выровняй: git reset --hard origin/main'
 fi
 
-REBUILD=$FORCE_REBUILD; MIGRATE=0; RESTART_WEB=0
-if [ "$OLD" != "$NEW" ]; then
-  needs_rebuild "$OLD" "$NEW" && REBUILD=1
-  has_migrations "$OLD" "$NEW" && MIGRATE=1
-  needs_web_restart "$OLD" "$NEW" && RESTART_WEB=1
-fi
+CHANGED=$(changed_files "$OLD" "$NEW")
+REBUILD=$FORCE_REBUILD; MIGRATE=0; RESTART_WEB=0; RECREATE=0
+matches "$CHANGED" "$RUNTIME_RX"     && REBUILD=1
+matches "$CHANGED" "$MIGRATION_RX"   && MIGRATE=1
+matches "$CHANGED" "$WEB_RESTART_RX" && RESTART_WEB=1
+matches "$CHANGED" "$COMPOSE_RX"     && RECREATE=1
 
 yn() { [ "$1" -eq 1 ] && echo 'да' || echo 'нет'; }
 
@@ -242,11 +342,12 @@ step "План: ${OLD:0:7} → ${NEW:0:7}"
 git_ log --oneline --no-merges "$OLD..$NEW" | sed 's/^/  /'
 cat <<EOF
 
-  Коммитов:            $(git_ rev-list --count "$OLD..$NEW")
-  Пересборка образов:  $(yn "$REBUILD")$([ "$REBUILD" -eq 1 ] && echo '  (даунтайм ~30-60с)')
-  Миграции:            $(yn "$MIGRATE")$([ "$MIGRATE" -eq 1 ] && [ "$SKIP_BACKUP" -eq 0 ] && echo '  (перед ними — bin/backup db)')
-  Рестарт web:         $(yn $(( RESTART_WEB || REBUILD )))
-  Рестарт sidekiq:     да (он не перечитывает код)
+  Коммитов:               $(git_ rev-list --count "$OLD..$NEW")
+  Пересборка образов:     $(yn "$REBUILD")$([ "$REBUILD" -eq 1 ] && echo '  (даунтайм ~30-60с)')
+  Миграции:               $(yn "$MIGRATE")$([ "$MIGRATE" -eq 1 ] && [ "$SKIP_BACKUP" -eq 0 ] && echo '  (перед ними — bin/backup db)')
+  Пересоздать контейнеры: $(yn "$RECREATE")$([ "$RECREATE" -eq 1 ] && echo '  (менялся docker-compose.yml)')
+  Рестарт web:            $(yn $(( RESTART_WEB || REBUILD || RECREATE )))
+  Рестарт sidekiq:        да (он не перечитывает код)
 EOF
 
 if [ "$MODE" = 'check' ]; then
@@ -266,33 +367,57 @@ fi
 
 # --- Выкатка ------------------------------------------------------------------
 
-git_ update-ref "$PREV_REF" "$OLD"
 SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+PREV_BEFORE=$(git_ rev-parse --verify --quiet "$PREV_REF" || true)
+
+ff_to_new() {
+  git_ merge --ff-only --quiet "$NEW" || die "fast-forward на ${NEW:0:7} не прошёл (неотслеживаемые файлы на пути?). Прод не тронут."
+  # Точку отката пишем только после реального сдвига: иначе --rollback
+  # потеряет настоящий предыдущий коммит.
+  [ "$OLD" = "$NEW" ] || git_ update-ref "$PREV_REF" "$OLD"
+}
+
+# Вернуть всё, что успела поменять пересборка до свапа: дерево, точку отката
+# (прежнюю, а не пустую) и теги образов.
+abort_rebuild() {
+  git_ reset --hard --quiet "$OLD"
+  if [ -n "$PREV_BEFORE" ]; then git_ update-ref "$PREV_REF" "$PREV_BEFORE"; else git_ update-ref -d "$PREV_REF" 2>/dev/null || true; fi
+  "$DOCKER" tag "victory-web:pre-${OLD:0:7}" victory-web
+  "$DOCKER" tag "victory-sidekiq:pre-${OLD:0:7}" victory-sidekiq
+  die "$1 Дерево, точка отката и теги образов возвращены на ${OLD:0:7}, контейнеры не тронуты."
+}
 
 if [ "$REBUILD" -eq 1 ]; then
+  require_free_bundle_volume
   step 'Пересборка образов'
-  "$DOCKER" tag victory-web "victory-web:$IMG_TAG"
-  "$DOCKER" tag victory-sidekiq "victory-sidekiq:$IMG_TAG"
+  tag_current_images "$OLD"
   # Сборку из НОВОГО дерева и свап — подряд, без пауз: между ними Gemfile в
   # bind-mount уже не совпадает с рантаймом, и любой рестарт контейнера
   # (OOM, ребут) вернёт web, который не загрузится.
-  git_ merge --ff-only --quiet "$NEW"
-  compose build web sidekiq || {
-    git_ reset --hard "$OLD"
-    die "Сборка упала — дерево возвращено на ${OLD:0:7}, контейнеры не тронуты."
-  }
+  ff_to_new
+  compose build web sidekiq || abort_rebuild 'Сборка упала.'
   step 'Свап контейнеров (entrypoint web сам сделает db:prepare)'
-  swap_containers_with_new_bundle
+  swap_containers_with_new_bundle || abort_rebuild "volume $BUNDLE_VOLUME заняли контейнеры выше, пока шла сборка — удали их и повтори."
 else
   step 'Обновляю код'
-  git_ merge --ff-only --quiet "$NEW"
+  ff_to_new
 
   if [ "$MIGRATE" -eq 1 ]; then
     step 'Миграции'
+    # Код уже на новом коммите, а dev-режим с pending-миграциями отдаёт 500 на
+    # каждый запрос — поэтому падение здесь = лежащий сайт, а не «разберись».
     compose exec -T web bundle exec rails db:migrate \
-      || die "Миграция упала. Код уже на ${NEW:0:7}. Разберись с ошибкой выше или откати: bin/deploy --rollback"
+      || die "МИГРАЦИЯ УПАЛА — САЙТ ОТДАЁТ 500 (код ${NEW:0:7} ждёт непримененную миграцию).
+   Сначала вернуть сайт: bin/deploy --rollback --yes   (→ ${OLD:0:7})
+   Потом разбираться с ошибкой выше."
   fi
 
+  if [ "$RECREATE" -eq 1 ]; then
+    step 'Пересоздаю web и sidekiq (новый docker-compose.yml)'
+    # up -d пересоздаёт только сервис с изменившимся конфигом — рестарт web
+    # ниже всё равно нужен, если тронут config/.
+    compose up -d --no-deps web sidekiq
+  fi
   if [ "$RESTART_WEB" -eq 1 ]; then
     step 'Рестарт web'
     compose restart web
@@ -313,4 +438,4 @@ step 'Отметка в GitHub'
 
 printf '\n'
 log "✓ Выкачено: ${NEW:0:7} $(git_ log -1 --format=%s "$NEW")"
-log "  Откат при необходимости: bin/deploy --rollback  (→ ${OLD:0:7})"
+[ "$OLD" = "$NEW" ] || log "  Откат при необходимости: bin/deploy --rollback  (→ ${OLD:0:7})"

@@ -592,12 +592,15 @@ bin/deploy --rollback   # вернуть коммит, стоявший до п�
 
 Скрипт сам решает, что нужно по диффу `HEAD..origin/main`: sidekiq рестартует
 всегда (код не перечитывает), web — если тронуты `config/`, `lib/`, `db/`,
-`Gemfile`; миграции — с бэкапом `bin/backup db` перед ними; изменения
-`Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint` включают
-процедуру пересборки из раздела ниже. После — проверки (health, сайт, sidekiq,
-миграции, ошибки загрузки в логах) и `bin/prod-mark`. Отказывается работать на
-грязном дереве и при разошедшейся `main`. Автоотката нет — при проваленных
-проверках печатает команду отката.
+`Gemfile`; `docker-compose.yml` — `up -d --no-deps web sidekiq` (restart
+конфиг не перечитывает); миграции — с бэкапом `bin/backup db` перед ними;
+изменения `Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint`
+включают процедуру пересборки из раздела ниже, старые образы остаются под
+тегом `:pre-<sha>` — по нему `--rollback` возвращает рантайм. После — проверки
+(health, сайт, sidekiq живёт 30с без перезапуска, миграции, ошибки загрузки в
+логах) и `bin/prod-mark`. Отказывается на грязном дереве, при разошедшейся
+`main` и при занятом `victory_bundle`. Автоотката нет — при проваленных
+проверках печатает команду отката. Лок — `.git/victory-deploy.lock`.
 
 Первый запуск, пока `bin/deploy` ещё нет в прод-чекауте:
 `git fetch origin main && bash <(git show origin/main:bin/deploy)`.
