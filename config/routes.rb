@@ -154,6 +154,10 @@ Rails.application.routes.draw do
     get '/:type/:rooms-komnatnaya', to: 'landings#show', as: :buy_rooms_landing,     constraints: { type: LANDING_TYPE_RX, rooms: /[1-4]/ }
     get '/:type/studiya',           to: 'landings#show', as: :buy_studio_landing,    constraints: { type: LANDING_TYPE_RX }, defaults: { rooms: 'studiya' }
   end
+  # Back-compat: с 13.05.26 ссылка «Коммерческая» в шапке вела на `/kupit/commerce`,
+  # а `commerce` не входит в LANDING_TYPE_RX — 404 на каждой странице сайта.
+  # URL уже известен поисковикам, 301 передаёт вес на живой лендинг.
+  get '/kupit/commerce', to: redirect('/kupit/kommercheskaya', status: 301)
   scope path: '/snyat', defaults: { intent: 'rent' } do
     get '/:type',                   to: 'landings#show', as: :rent_landing,          constraints: { type: LANDING_TYPE_RX }
     get '/:type/rayon/:district',   to: 'landings#show', as: :rent_district_landing, constraints: { type: LANDING_TYPE_RX, district: %r{[a-z0-9-]+} }
