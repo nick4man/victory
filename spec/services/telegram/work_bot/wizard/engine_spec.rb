@@ -192,6 +192,43 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       expect(state['step']).to eq('assignee')
     end
 
+    it 'два параллельных нажатия на последнюю кнопку создают одну задачу' do
+      tap_callback("wiz:s:task:#{lead.id}")
+      press('Завтра')
+      say('Позвонить')
+      last = dms.last[:keyboard].flatten.find { |b| b[:text].include?('ответственный по лиду') }[:callback_data]
+
+      # Оба апдейта успели прочитать одно и то же состояние до того, как
+      # первый его снял, — как при двойном тапе, разобранном параллельно.
+      snapshot = manager.reload.pending_action
+      allow(manager).to receive(:pending_action).and_return(snapshot)
+
+      expect do
+        tap_callback(last)
+        tap_callback(last)
+      end.to change(::Task, :count).by(1)
+    end
+
+    it 'лид, закрытый пока шёл мастер, задачу не получает' do
+      tap_callback("wiz:s:task:#{lead.id}")
+      press('Завтра')
+      lead.update!(assigned_to: nil, current_stage: 'closed_lost')
+
+      expect { say('Позвонить') }.not_to change(::Task, :count)
+      expect(last_text).to include('уже закрыт — задача не создана')
+    end
+
+    it 'сбой финального действия отвечает сотруднику, а не молчит' do
+      lead.update!(assigned_to: nil)
+      allow(Telegram::WorkBot::LeadTaskCreator).to receive(:new).and_raise(ActiveRecord::StatementInvalid, 'boom')
+      tap_callback("wiz:s:task:#{lead.id}")
+      press('Завтра')
+
+      expect(say('Позвонить')).to eq(:handled)
+      expect(last_text).to include('завершился с ошибкой').and include('boom')
+      expect(manager.reload.pending_action).to be_nil
+    end
+
     it 'закрытый лид с карточки отсекается до первого вопроса' do
       lead.update!(current_stage: 'closed_lost')
       tap_callback("wiz:s:task:#{lead.id}")

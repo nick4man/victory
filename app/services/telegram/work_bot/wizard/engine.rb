@@ -188,7 +188,7 @@ module Telegram
         # @return [Boolean] удалось ли отправить сообщение
         def render_next(flow, state)
           step = flow.steps.find { |s| !state['ctx'].key?(s.id) && !flow.skip?(s) }
-          return finish(flow) unless step
+          return finish(flow, state) unless step
 
           state['step'] = step.id
           state['options'] = option_values(step)
@@ -199,12 +199,35 @@ module Telegram
           true
         end
 
-        def finish(flow)
-          tg_user.clear_pending_action!
-          result = flow.finish
-          keyboard = Array(result[:keyboard]) + [menu_row]
-          send_dm(result[:text], keyboard: keyboard)
+        def finish(flow, state)
+          # Второй параллельный апдейт (двойной тап, повтор вебхука) проиграл
+          # захват состояния — действие уже выполняет первый.
+          return true unless claim_state!(state)
+
+          result = begin
+            flow.finish
+          rescue StandardError => e
+            Rails.logger.error("[Wizard::Engine#finish] #{flow.class.key}: #{e.class}: #{e.message}")
+            { text: "⚠️ «#{flow.class.title}» завершился с ошибкой: #{escape_html(e.message.to_s.truncate(150))}
+"                     '<i>Проверь, применилось ли действие, прежде чем повторять.</i>' }
+          end
+          send_dm(result[:text], keyboard: Array(result[:keyboard]) + [menu_row])
           true
+        end
+
+        # Атомарно снимает состояние, если оно всё ещё на этом шаге этого
+        # мастера. Читать pending_action и потом очищать нельзя: апдейты
+        # Telegram обрабатываются параллельно, и оба нажатия на последнюю
+        # кнопку успели бы прочитать одно и то же состояние — два действия.
+        # @return [Boolean] true — финал выполняет этот вызов
+        def claim_state!(state)
+          claimed = ::TelegramUser.where(id: tg_user.id)
+                                  .where("dm_pending_action->>'type' = ?", STATE_TYPE)
+                                  .where("dm_pending_action->'data'->>'flow' = ?", state['flow'])
+                                  .where("dm_pending_action->'data'->>'step' = ?", state['step'])
+                                  .update_all(dm_pending_action: {})
+          tg_user.dm_pending_action = {}
+          claimed == 1
         end
 
         def option_values(step)

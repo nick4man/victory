@@ -55,6 +55,16 @@ RSpec.describe Telegram::InboundProcessor do
       expect(described_class.new(text_update('Позвонить клиенту')).call).to eq(:handled)
     end
 
+    it 'правку старого сообщения ответом на текущий шаг не считает' do
+      update = text_update('15.09.26')
+      update['edited_message'] = update.delete('message')
+      expect(Telegram::WorkBot::Wizard::Engine).not_to receive(:new)
+      allow(Telegram::WorkBot::Router).to receive(:new)
+        .and_return(instance_double(Telegram::WorkBot::Router, call: :handled))
+
+      described_class.new(update).call
+    end
+
     it 'команду не перехватывает — передумавший сотрудник пишет /команду' do
       expect(Telegram::WorkBot::Wizard::Engine).not_to receive(:new)
       allow(Telegram::WorkBot::Router).to receive(:new)

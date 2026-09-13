@@ -54,7 +54,11 @@ module Telegram
         end
 
         def finish
-          current_lead = ::LeadEvent.find(ctx['lead'])
+          # За 30 минут жизни мастера лид могли закрыть или удалить.
+          current_lead = ::LeadEvent.find_by(id: ctx['lead'])
+          return { text: '⚠️ Лид не найден — задача не создана.' } unless current_lead
+          return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт — задача не создана." } unless current_lead.open?
+
           due_date = Formatters::DateFormat.parse(ctx['due'])
           assignee = ctx['assignee'].present? ? ::TelegramUser.find_by(id: ctx['assignee']) : nil
 
