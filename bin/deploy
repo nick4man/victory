@@ -161,11 +161,14 @@ swap_containers_with_new_bundle() {
 # ГБ, и без чистки диск прода растёт с каждой сменой гемов.
 KEEP_RUNTIME_TAGS="${KEEP_RUNTIME_TAGS:-3}"
 
+# $1 — тег, который удалять нельзя ни при каком порядке: образ отката для
+# только что завершённого деплоя. image ls сортирует по дате СБОРКИ образа, а
+# не тега: после отката на старый образ и повторной пересборки свежий pre-<sha>
+# может висеть на самом старом образе и попасть под нож.
 prune_runtime_tags() {
-  local tag
-  # image ls отдаёт новые первыми; всё после первых N — лишнее.
+  local keep="$1" tag
   for tag in $("$DOCKER" image ls victory-web --format '{{.Tag}}' | grep -E '^pre-[0-9a-f]{7,}$' \
-               | tail -n +"$((KEEP_RUNTIME_TAGS + 1))" || true); do
+               | grep -vx "$keep" | tail -n +"$KEEP_RUNTIME_TAGS" || true); do
     "$DOCKER" rmi "victory-web:$tag" "victory-sidekiq:$tag" >/dev/null 2>&1 \
       && log "удалён старый образ отката :$tag" || true
   done
@@ -342,13 +345,13 @@ if [ "$MODE" = 'rollback' ]; then
     compose restart web sidekiq
   fi
 
-  if verify "$SINCE"; then
-    restore_structure_sql
-    "$PROD_DIR/bin/prod-mark" --force || warn 'bin/prod-mark не записал отметку — запусти вручную'
-    log "✓ Откат на ${TARGET:0:7} завершён"
-  else
-    die 'Откат выполнен, но проверки не прошли — смотри логи: docker compose logs --tail=200 web sidekiq'
-  fi
+  VERIFY_OK=1
+  verify "$SINCE" || VERIFY_OK=0
+  restore_structure_sql    # до любого выхода — см. комментарий у выкатки
+  [ "$VERIFY_OK" -eq 1 ] \
+    || die 'Откат выполнен, но проверки не прошли — смотри логи: docker compose logs --tail=200 web sidekiq'
+  "$PROD_DIR/bin/prod-mark" --force || warn 'bin/prod-mark не записал отметку — запусти вручную'
+  log "✓ Откат на ${TARGET:0:7} завершён"
   exit 0
 fi
 
@@ -481,7 +484,15 @@ fi
 
 # --- Проверки и отметка -------------------------------------------------------
 
-if ! verify "$SINCE"; then
+VERIFY_OK=1
+verify "$SINCE" || VERIFY_OK=0
+# До любого выхода, в том числе по проваленным проверкам: при пересборке и
+# рестарте web миграции гоняет entrypoint (db:prepare), structure.sql
+# переписывается там — и грязное дерево не пустило бы рекомендованный ниже
+# `bin/deploy --rollback` дальше предполёта.
+restore_structure_sql
+
+if [ "$VERIFY_OK" -eq 0 ]; then
   if [ "$OLD" != "$NEW" ]; then
     die "Выкатка ${NEW:0:7} прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
    Откат: bin/deploy --rollback   (вернёт ${OLD:0:7})"
@@ -494,10 +505,7 @@ if ! verify "$SINCE"; then
    затем: docker compose rm -sf web sidekiq && docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
 fi
 
-prune_runtime_tags
-# Ещё раз и на всех путях: при пересборке и рестарте web миграции гоняет
-# entrypoint (db:prepare), и structure.sql переписывается уже там.
-restore_structure_sql
+prune_runtime_tags "pre-${OLD:0:7}"
 
 step 'Отметка в GitHub'
 "$PROD_DIR/bin/prod-mark" || warn 'bin/prod-mark не записал отметку — разберись и запусти вручную'
