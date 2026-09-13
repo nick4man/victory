@@ -94,7 +94,7 @@ Rails-монолит. Четыре входа, и только первый — 
 Работает прямо здесь — только Python-сервис:
 
 ```bash
-cd services/urgent-news-collector && python3 -m unittest test_urgent_relevance test_classify_retry -v   # 41 тест, без сети и БД
+cd services/urgent-news-collector && python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 46 тестов, без сети и БД
 ```
 
 Остальное — там, где есть Ruby (CI гоняет только первый блок):
