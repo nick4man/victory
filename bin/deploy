@@ -40,11 +40,13 @@ SIDEKIQ_SETTLE="${SIDEKIQ_SETTLE:-30}"   # сколько секунд sidekiq �
 PREV_REF='refs/deploy/prev'              # локальный ref, не пушится
 BUNDLE_VOLUME='victory_bundle'
 
-MODE='deploy'; YES=0; FORCE_REBUILD=0; SKIP_BACKUP=0; ROLLBACK_TO=''
+MODE='deploy'; CHECK=0; YES=0; FORCE_REBUILD=0; SKIP_BACKUP=0; ROLLBACK_TO=''
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --check|--dry-run) MODE='check'; shift ;;
+    # --check — флаг, а не режим: пока он писал в MODE, `--check --rollback`
+    # делал настоящий откат, а `--rollback <sha> --check` молча терял откат.
+    --check|--dry-run) CHECK=1; shift ;;
     --yes|-y)          YES=1; shift ;;
     --rebuild)         FORCE_REBUILD=1; shift ;;
     --skip-backup)     SKIP_BACKUP=1; shift ;;
@@ -171,6 +173,21 @@ tag_current_images() {
   "$DOCKER" tag victory-sidekiq "victory-sidekiq:$tag"
 }
 
+# RAILS_ENV на проде — development, а dump_schema_after_migration выключен
+# только для production? (config/application.rb) при schema_format = :sql.
+# Значит db:migrate перепишет db/structure.sql прямо в bind-mount: дерево
+# станет грязным, bin/prod-mark откажется ставить отметку, а следующий деплой
+# упадёт в предполёте «незакоммиченные правки» без внятной причины. Файл —
+# артефакт дампа и приезжает в git вместе с миграцией, поэтому возвращаем его.
+restore_structure_sql() {
+  git_ diff --quiet -- db/structure.sql && return 0
+  warn 'db:migrate переписал db/structure.sql (RAILS_ENV=development):'
+  git_ --no-pager diff --stat -- db/structure.sql >&2
+  git_ checkout -- db/structure.sql
+  warn "Файл возвращён к версии из git — дерево прод-чекаута должно остаться чистым.
+   Если расхождение не косметическое, проверь, что structure.sql закоммичен вместе с миграцией."
+}
+
 wait_healthy() {
   local i
   for i in $(seq 1 60); do
@@ -280,6 +297,10 @@ if [ "$MODE" = 'rollback' ]; then
     log "рантайм для отката: образы :$RB_TAG"
     require_free_bundle_volume
   fi
+  if [ "$CHECK" -eq 1 ]; then
+    printf '\n(--check: ничего не изменено)\n'
+    exit 0
+  fi
   confirm 'Откатываем?'
 
   SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -350,7 +371,7 @@ cat <<EOF
   Рестарт sidekiq:        да (он не перечитывает код)
 EOF
 
-if [ "$MODE" = 'check' ]; then
+if [ "$CHECK" -eq 1 ]; then
   printf '\n(--check: ничего не изменено)\n'
   exit 0
 fi
@@ -410,6 +431,7 @@ else
       || die "МИГРАЦИЯ УПАЛА — САЙТ ОТДАЁТ 500 (код ${NEW:0:7} ждёт непримененную миграцию).
    Сначала вернуть сайт: bin/deploy --rollback --yes   (→ ${OLD:0:7})
    Потом разбираться с ошибкой выше."
+    restore_structure_sql
   fi
 
   if [ "$RECREATE" -eq 1 ]; then
