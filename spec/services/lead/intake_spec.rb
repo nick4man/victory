@@ -102,6 +102,7 @@ RSpec.describe Lead::Intake do
 
       expect(result).to be_success
       expect(result.lead_event).to eq(existing)
+      expect(result).to be_threaded
     end
 
     it 'не публикует вторую карточку' do
@@ -125,10 +126,12 @@ RSpec.describe Lead::Intake do
 
     it 'закрытый лид не принимает дописку — появляется новая карточка' do
       existing.update!(current_stage: 'closed_lost')
+      result = nil
       expect {
-        described_class.call(source: 'tg_dm', payload: { text: 'снова ищу' },
-                             announcer: fake_announcer_class)
+        result = described_class.call(source: 'tg_dm', payload: { text: 'снова ищу' },
+                                      announcer: fake_announcer_class)
       }.to change(LeadEvent, :count).by(1)
+      expect(result).not_to be_threaded
     end
 
     it 'без существующей карточки ведёт себя как раньше — создаёт запись' do
