@@ -38,7 +38,9 @@ module Telegram
         end
 
         def finish
-          task = ::Task.find(ctx['task'])
+          task = ::Task.find_by(id: ctx['task'])
+          return { text: '⚠️ Задача не найдена — возможно, её удалили.' } unless task
+
           result = TaskReopen.new(task, actor: tg_user, client: client).call
 
           case result.status

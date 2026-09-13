@@ -275,6 +275,19 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       expect(lead.metadata['close_reason']).to be_nil
     end
 
+    it 'лид, закрытый другим руководителем до подтверждения, не перезакрывается' do
+      tap_callback("wiz:s:close:#{lead.id}")
+      press('Проиграно')
+      press('Цена')
+      lead.update!(current_stage: 'closed_won')
+
+      press('Закрыть лид')
+      lead.reload
+      expect(lead.current_stage).to eq('closed_won')
+      expect(lead.metadata['close_reason']).to be_nil
+      expect(last_text).to include('закрыл кто-то другой')
+    end
+
     it '«Другое» открывает свободный ввод причины' do
       tap_callback("wiz:s:close:#{lead.id}")
       press('Проиграно')

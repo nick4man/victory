@@ -56,7 +56,15 @@ module Telegram
         end
 
         def finish
-          current_lead = ::LeadEvent.find(ctx['lead'])
+          # Между выбором лида и подтверждением до 30 минут: другой руководитель
+          # мог закрыть лид. LeadStageTransition пропускает closed_won → closed_lost,
+          # поэтому проверяем здесь, до записи причины.
+          current_lead = ::LeadEvent.find_by(id: ctx['lead'])
+          return { text: '⚠️ Лид не найден — ничего не закрыто.' } unless current_lead
+          unless current_lead.open?
+            return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт (#{current_lead.current_stage}) — "                            'пока шёл мастер, его закрыл кто-то другой. Ничего не изменено.' }
+          end
+
           stage = ctx['outcome']
           reason = stage == 'closed_lost' ? ctx['reason'] : nil
 
