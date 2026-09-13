@@ -208,8 +208,8 @@ module Telegram
             flow.finish
           rescue StandardError => e
             Rails.logger.error("[Wizard::Engine#finish] #{flow.class.key}: #{e.class}: #{e.message}")
-            { text: "⚠️ «#{flow.class.title}» завершился с ошибкой: #{escape_html(e.message.to_s.truncate(150))}
-"                     '<i>Проверь, применилось ли действие, прежде чем повторять.</i>' }
+            { text: "⚠️ «#{flow.class.title}» завершился с ошибкой: #{escape_html(e.message.to_s.truncate(150))}\n" \
+                    '<i>Проверь, применилось ли действие, прежде чем повторять.</i>' }
           end
           send_dm(result[:text], keyboard: Array(result[:keyboard]) + [menu_row])
           true
