@@ -41,10 +41,17 @@ set -euo pipefail
   [ -e "$REPO/.git" ] || { echo "не репозиторий: $REPO" >&2; exit 2; }
 
   # fetch трогает только refs в .git, рабочее дерево main checkout не меняет.
-  # Без сети выкатывать нечего: устаревший origin/main хуже, чем отказ.
+  # Без аргументов fetch обязателен: устаревший origin/main хуже, чем отказ.
+  # С явной ревизией — нет: откат на уже известный коммит должен работать и
+  # без сети, когда он нужнее всего.
   echo "→ git fetch origin"
-  git -C "$REPO" fetch --quiet origin \
-    || { echo "git fetch не прошёл — не выкатываю устаревшую ревизию" >&2; exit 2; }
+  if ! git -C "$REPO" fetch --quiet origin; then
+    if [ $# -eq 0 ]; then
+      echo "git fetch не прошёл — не выкатываю устаревший origin/main" >&2
+      exit 2
+    fi
+    echo "⚠ git fetch не прошёл — выкатываю $REF из того, что уже есть локально" >&2
+  fi
   git -C "$REPO" rev-parse --verify --quiet "$REF^{commit}" >/dev/null \
     || { echo "нет такой ревизии: $REF" >&2; exit 2; }
 
