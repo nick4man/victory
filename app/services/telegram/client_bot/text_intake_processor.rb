@@ -122,13 +122,16 @@ module Telegram
           return :skipped
         end
 
-        confirm_intake_to_client(result.lead_event, classification)
+        confirm_intake_to_client(result, classification)
         :announced
       end
 
-      def confirm_intake_to_client(lead_event, classification)
-        meta = lead_event.metadata || {}
-        text = if meta['returning_client']
+      def confirm_intake_to_client(result, classification)
+        # Склеенная заявка (threaded) возвращает карточку ПЕРВОГО обращения —
+        # её returning_client почти всегда false. Флаг из metadata остаётся для
+        # случая, когда прежний лид закрыт и Intake завёл новую карточку.
+        meta = result.lead_event.metadata || {}
+        text = if result.threaded? || meta['returning_client']
                  "👋 Спасибо, что вернулись! Передал агенту — он скоро ответит."
                else
                  reply_text_for(classification.intent)

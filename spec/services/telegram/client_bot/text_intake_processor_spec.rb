@@ -14,9 +14,9 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
     }
   end
 
-  def intake_result(metadata: {}, success: true, lead_event: :default, error: nil)
+  def intake_result(metadata: {}, success: true, lead_event: :default, error: nil, threaded: nil)
     event = lead_event == :default ? instance_double('LeadEvent', metadata: metadata) : lead_event
-    ::Lead::Intake::Result.new(success: success, lead_event: event, error: error)
+    ::Lead::Intake::Result.new(success: success, lead_event: event, error: error, threaded: threaded)
   end
 
   describe '.applies?' do
@@ -152,7 +152,7 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
       end
     end
 
-    context 'returning client (metadata returning_client=true)' do
+    context 'returning client, прежний лид закрыт — новая карточка с returning_client=true' do
       before do
         stub_intent(intent: 'inquiry', confidence: 0.9)
         allow(::Lead::Intake).to receive(:call).and_return(
@@ -165,6 +165,25 @@ RSpec.describe Telegram::ClientBot::TextIntakeProcessor do
         expect(tg_client).to have_received(:send_message).with(
           a_string_matching(/Спасибо, что вернулись/), anything
         )
+      end
+    end
+
+    # Так Intake отвечает на повторное сообщение при ОТКРЫТОМ лиде: отдаёт
+    # карточку первого обращения, где returning_client=false.
+    context 'returning client, заявка дописана в открытую карточку (threaded)' do
+      before do
+        stub_intent(intent: 'inquiry', confidence: 0.9)
+        allow(::Lead::Intake).to receive(:call).and_return(
+          intake_result(metadata: { 'returning_client' => false }, threaded: true)
+        )
+      end
+
+      it 'reply «Спасибо, что вернулись!», а не «Заявка принята»' do
+        described_class.new(base_msg, client: tg_client).call
+        expect(tg_client).to have_received(:send_message).with(
+          a_string_matching(/Спасибо, что вернулись/), anything
+        )
+        expect(tg_client).not_to have_received(:send_message).with(a_string_matching(/Заявка принята/), anything)
       end
     end
 

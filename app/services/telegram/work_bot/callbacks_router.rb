@@ -36,7 +36,16 @@ module Telegram
         # отправить приглашение на подписание.
         'owner' => 'Telegram::WorkBot::Callbacks::OwnerRequestCallback',
         # Листание уроков `/tutorial` и финальный экран.
-        'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback'
+        'tutorial' => 'Telegram::WorkBot::Callbacks::TutorialCallback',
+        # BOTTLENECK — сегмент покупателя кнопкой под карточкой лида.
+        'segment' => 'Telegram::WorkBot::Callbacks::SegmentCallback',
+        # BOTTLENECK — стадии «показ» и «договор» кнопкой под карточкой.
+        'stage' => 'Telegram::WorkBot::Callbacks::StageCallback',
+        # BOTTLENECK — превью отчёта о показе и карточка «собственнику».
+        'show_report' => 'Telegram::WorkBot::Callbacks::ShowReportCallback',
+        # BOTTLENECK — «кто поедет на показ». Тёмный код: кнопки появляются
+        # только при SHOW_ROUTING_ENABLED=true.
+        'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

@@ -72,7 +72,17 @@ module Telegram
           lines << "💸 Расход LLM: #{cost}"
         end
 
+        lines << show_funnel_block(now_range)
+
         lines.join("\n")
+      end
+
+      # BOTTLENECK — воронка показов. Падение расчёта не должно ронять всю сводку.
+      def show_funnel_block(range)
+        "\n#{Kpi::ShowFunnel.new(week: range).render_html}"
+      rescue StandardError => e
+        Rails.logger.warn("[WeeklySummaryJob#show_funnel_block] #{e.class}: #{e.message}")
+        "\n🏠 Показы: расчёт недоступен (#{e.class})"
       end
 
       def compute(range)

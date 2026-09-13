@@ -147,6 +147,12 @@ module Lead
           'intent_confidence' => payload[:intent_confidence],
           'intent_reasoning' => payload[:intent_reasoning],
           'returning_client' => returning_client,
+          # BOTTLENECK — отдельный флаг «склей с существующей карточкой».
+          # returning_client перегружен: SiteSource ставит его просто чтобы
+          # пометить знакомого клиента тёплым бейджем, ничего не склеивая.
+          # Гейт в Lead::Intake должен срабатывать только там, где адаптер
+          # действительно дописал сообщение в существующий LeadEvent.
+          'thread_to_existing_lead' => (true if returning_client),
           'match_strategy' => match_strategy,
           'match_confidence' => match_confidence,
           'priority' => returning_client ? 'high' : 'normal'

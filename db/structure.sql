@@ -1282,7 +1282,11 @@ CREATE TABLE public.lead_events (
     routed_by_id bigint,
     search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('russian'::regconfig, ((((COALESCE((metadata ->> 'summary'::text), ''::text) || ' '::text) || COALESCE((metadata ->> 'name'::text), ''::text)) || ' '::text) || COALESCE(((metadata -> 'notes'::text))::text, ''::text)))) STORED,
     staff_test boolean DEFAULT false NOT NULL,
-    staff_test_matched_by character varying(64)
+    staff_test_matched_by character varying(64),
+    segment character varying(32),
+    property_id bigint,
+    first_show_at timestamp(6) without time zone,
+    contract_at timestamp(6) without time zone
 );
 
 
@@ -2392,6 +2396,56 @@ ALTER SEQUENCE public.service_types_id_seq OWNED BY public.service_types.id;
 
 
 --
+-- Name: show_reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.show_reports (
+    id bigint NOT NULL,
+    lead_event_id bigint NOT NULL,
+    property_id bigint,
+    conducted_by_id bigint NOT NULL,
+    reported_by_id bigint NOT NULL,
+    conducted_at timestamp(6) without time zone NOT NULL,
+    outcome character varying DEFAULT 'thinking'::character varying NOT NULL,
+    objections jsonb DEFAULT '[]'::jsonb NOT NULL,
+    offered_price numeric(15,2),
+    next_step character varying,
+    transcript_redacted text,
+    owner_message text,
+    owner_notified_at timestamp(6) without time zone,
+    owner_notified_via character varying,
+    feedback_task_id bigint,
+    source character varying NOT NULL,
+    status character varying DEFAULT 'pending_confirm'::character varying NOT NULL,
+    preview_message_id bigint,
+    preview_chat_id bigint,
+    uncertainties jsonb DEFAULT '[]'::jsonb NOT NULL,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: show_reports_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.show_reports_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: show_reports_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.show_reports_id_seq OWNED BY public.show_reports.id;
+
+
+--
 -- Name: staff_metrics; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3463,6 +3517,13 @@ ALTER TABLE ONLY public.service_types ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: show_reports id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports ALTER COLUMN id SET DEFAULT nextval('public.show_reports_id_seq'::regclass);
+
+
+--
 -- Name: staff_metrics id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3990,6 +4051,14 @@ ALTER TABLE ONLY public.service_types
 
 
 --
+-- Name: show_reports show_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports
+    ADD CONSTRAINT show_reports_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: staff_metrics staff_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4298,6 +4367,13 @@ CREATE INDEX idx_property_embeddings_cosine ON public.property_embeddings USING 
 --
 
 CREATE UNIQUE INDEX idx_property_valuations_audit_engine_id_unique ON public.property_valuations USING btree (audit_engine_id) WHERE (audit_engine_id IS NOT NULL);
+
+
+--
+-- Name: idx_show_reports_pending_by_reporter; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_show_reports_pending_by_reporter ON public.show_reports USING btree (reported_by_id) WHERE ((status)::text = 'pending_confirm'::text);
 
 
 --
@@ -5176,6 +5252,13 @@ CREATE INDEX index_lead_events_on_current_stage ON public.lead_events USING btre
 
 
 --
+-- Name: index_lead_events_on_first_show_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_first_show_at ON public.lead_events USING btree (first_show_at);
+
+
+--
 -- Name: index_lead_events_on_lead_ref; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5183,10 +5266,31 @@ CREATE INDEX index_lead_events_on_lead_ref ON public.lead_events USING btree (le
 
 
 --
+-- Name: index_lead_events_on_property_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_property_id ON public.lead_events USING btree (property_id);
+
+
+--
+-- Name: index_lead_events_on_property_id_and_current_stage; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_property_id_and_current_stage ON public.lead_events USING btree (property_id, current_stage);
+
+
+--
 -- Name: index_lead_events_on_routed_by_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_lead_events_on_routed_by_id ON public.lead_events USING btree (routed_by_id);
+
+
+--
+-- Name: index_lead_events_on_segment; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_segment ON public.lead_events USING btree (segment);
 
 
 --
@@ -6380,6 +6484,55 @@ CREATE UNIQUE INDEX index_service_types_on_slug ON public.service_types USING bt
 
 
 --
+-- Name: index_show_reports_on_conducted_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_conducted_by_id ON public.show_reports USING btree (conducted_by_id);
+
+
+--
+-- Name: index_show_reports_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_deleted_at ON public.show_reports USING btree (deleted_at);
+
+
+--
+-- Name: index_show_reports_on_lead_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_lead_event_id ON public.show_reports USING btree (lead_event_id);
+
+
+--
+-- Name: index_show_reports_on_property_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_property_id ON public.show_reports USING btree (property_id);
+
+
+--
+-- Name: index_show_reports_on_property_id_and_conducted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_property_id_and_conducted_at ON public.show_reports USING btree (property_id, conducted_at);
+
+
+--
+-- Name: index_show_reports_on_reported_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_reported_by_id ON public.show_reports USING btree (reported_by_id);
+
+
+--
+-- Name: index_show_reports_on_status_and_conducted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_show_reports_on_status_and_conducted_at ON public.show_reports USING btree (status, conducted_at);
+
+
+--
 -- Name: index_staff_metrics_on_date; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6928,11 +7081,27 @@ ALTER TABLE ONLY public.case_studies
 
 
 --
+-- Name: show_reports fk_rails_0c1ca0dff3; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports
+    ADD CONSTRAINT fk_rails_0c1ca0dff3 FOREIGN KEY (conducted_by_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: viewing_schedules fk_rails_0c2935312d; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.viewing_schedules
     ADD CONSTRAINT fk_rails_0c2935312d FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: show_reports fk_rails_0c7a135a74; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports
+    ADD CONSTRAINT fk_rails_0c7a135a74 FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -6973,6 +7142,14 @@ ALTER TABLE ONLY public.inquiries
 
 ALTER TABLE ONLY public.messages
     ADD CONSTRAINT fk_rails_1b38f09558 FOREIGN KEY (property_id) REFERENCES public.properties(id);
+
+
+--
+-- Name: lead_events fk_rails_2029bf3907; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.lead_events
+    ADD CONSTRAINT fk_rails_2029bf3907 FOREIGN KEY (property_id) REFERENCES public.properties(id);
 
 
 --
@@ -7144,6 +7321,14 @@ ALTER TABLE ONLY public.viewing_schedules
 
 
 --
+-- Name: show_reports fk_rails_6c517e9b00; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports
+    ADD CONSTRAINT fk_rails_6c517e9b00 FOREIGN KEY (reported_by_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: chat_messages fk_rails_6ede0d6992; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7165,6 +7350,14 @@ ALTER TABLE ONLY public.reviews
 
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT fk_rails_7c15d62a0a FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: show_reports fk_rails_7d81fe10e3; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.show_reports
+    ADD CONSTRAINT fk_rails_7d81fe10e3 FOREIGN KEY (lead_event_id) REFERENCES public.lead_events(id);
 
 
 --
@@ -7502,6 +7695,8 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260911100100'),
+('20260911100000'),
 ('20260907120300'),
 ('20260907120200'),
 ('20260907120100'),
