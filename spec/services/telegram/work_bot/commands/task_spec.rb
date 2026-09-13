@@ -111,7 +111,9 @@ RSpec.describe Telegram::WorkBot::Commands::Task do
     it 'в личке только номер лида — тоже мастер, а не ошибка формата' do
       run(lead.id.to_s, message: dm_message('/task'))
       expect(sent.join(' ')).to include('До какого числа?')
-      expect(sent.join(' ')).not_to include('Формат')
+      # «Формат:» с двоеточием — ответ-ошибка команды; в подсказке мастера
+      # слово «Формат» есть законно.
+      expect(sent.join(' ')).not_to include('Формат:')
     end
   end
 
