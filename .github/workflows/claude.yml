@@ -1,73 +1,50 @@
 name: Claude Code
 
-# Runs only when a human explicitly calls @claude in an issue / PR comment,
-# a PR review, a review comment, or a newly opened issue.
 on:
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  pull_request_review:
-    types: [submitted]
   issues:
     types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
 
-# Second guard next to the action's own mention detection — skips the runner
-# entirely (and therefore the checkout) for the 99% of comments without @claude.
 jobs:
   claude:
-    name: Claude Code
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
-
-    # Least privilege: read the code/PR/issue, write back only as comments.
-    # actions:read — так бот видит логи красного CI (mcp__github_ci__*),
-    # а не гадает о причине падения по названию джобы.
     permissions:
       contents: read
-      pull-requests: write
-      issues: write
-      actions: read
+      pull-requests: read
+      issues: read
       id-token: write
-
-    # One Claude run per issue/PR at a time; do NOT cancel a run in flight —
-    # a half-finished comment thread is worse than a queued one.
-    concurrency:
-      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
-      cancel-in-progress: false
-
+      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
-          # Shallow is enough — the action fetches more history if it needs it.
           fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          # Subscription token, generated locally via `claude setup-token`.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
-          # Доступ к статусам/логам workflow-прогонов. Требует actions:read выше.
+          # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
 
-          # Один комментарий на прогон вместо цепочки — тред остаётся читаемым.
-          use_sticky_comment: true
+          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
+          # prompt: 'Update the pull request description to include a summary of changes.'
 
-          # Лимиты. --max-turns — потолок на runaway-прогон: подписочный токен
-          # тратится реальными деньгами, а зациклившийся бот уходит в них молча.
-          # Bash по умолчанию запрещён; открыты только read-only разведочные
-          # команды. Ruby/Postgres в раннере НЕТ — bundle exec тут не выполнится,
-          # линтеры и спеки гоняет отдельный workflow «Lint & security».
-          claude_args: |
-            --model claude-opus-5
-            --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
-            --append-system-prompt "Отвечай по-русски. main — это прод с автодеплоем: никогда не пушь в main, работу оформляй веткой claude/* и pull request. В раннере нет Ruby, Postgres и docker — bundle exec, rspec и rubocop здесь выполнить нельзя; не утверждай, что прогнал тесты или линтеры, их гоняет отдельный workflow «Lint & security» на PR. Не редактируй .env, credentials и db/structure.sql вручную и никогда не выводи содержимое секретов в комментарии. Конвенции проекта смотри в CLAUDE.md: soft-delete через deleted_at, enum позиционным синтаксисом с prefix, даты в формате dd.MM.yy."
+          # Optional: Add claude_args to customize behavior and configuration
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://code.claude.com/docs/en/cli-reference for available options
+          # claude_args: '--allowed-tools Bash(gh pr *)'
+
