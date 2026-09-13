@@ -343,6 +343,7 @@ if [ "$MODE" = 'rollback' ]; then
   fi
 
   if verify "$SINCE"; then
+    restore_structure_sql
     "$PROD_DIR/bin/prod-mark" --force || warn 'bin/prod-mark не записал отметку — запусти вручную'
     log "✓ Откат на ${TARGET:0:7} завершён"
   else
@@ -494,6 +495,9 @@ if ! verify "$SINCE"; then
 fi
 
 prune_runtime_tags
+# Ещё раз и на всех путях: при пересборке и рестарте web миграции гоняет
+# entrypoint (db:prepare), и structure.sql переписывается уже там.
+restore_structure_sql
 
 step 'Отметка в GitHub'
 "$PROD_DIR/bin/prod-mark" || warn 'bin/prod-mark не записал отметку — разберись и запусти вручную'
