@@ -96,7 +96,7 @@ ssh vds 'docker exec crowdsec kill -HUP 1'   # SIGHUP — reload без restart
 
 ## Bouncer plugin params (Traefik middleware)
 
-Текущая конфигурация — в `/home/q/ubuntu_rep/traefik/config/config.yml`, middleware `crowdsec`. Tuning matrix:
+Текущая конфигурация — в `~/ubuntu_rep/traefik/config/config.yml`, middleware `crowdsec`. Tuning matrix:
 
 | Param | Current | Trade-off |
 |---|---|---|
@@ -126,7 +126,7 @@ ssh vds 'docker exec crowdsec cscli decisions add --ip <IP> \
 
 ### 2. Persistent acquisition whitelist
 
-В `/home/q/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/parsers/s02-enrich/whitelists.yaml`:
+В `~/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/parsers/s02-enrich/whitelists.yaml`:
 
 ```yaml
 name: crowdsecurity/whitelists
@@ -161,7 +161,7 @@ whitelist:
 
 ## AppSec — WAF tuning
 
-AppSec работает inline (synchronous check). Custom rules: `/etc/crowdsec/appsec-rules/` внутри container, mapped из `/home/q/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/`.
+AppSec работает inline (synchronous check). Custom rules: `/etc/crowdsec/appsec-rules/` внутри container, mapped из `~/ubuntu_rep/crowdsec/crowdsec+plugin/crowdsec/config/`.
 
 ### Enable / disable rule set
 

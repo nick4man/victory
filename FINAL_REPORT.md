@@ -460,7 +460,7 @@
 ### Установка:
 
 ```bash
-cd /home/q/site/project/viktory_realty
+cd ~/site/project/viktory_realty
 
 # 1. Установка зависимостей
 bundle install

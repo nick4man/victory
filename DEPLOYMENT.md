@@ -77,7 +77,7 @@ mise --version
 
 ```bash
 # Перейти в директорию проекта
-cd /home/q/site/project/viktory_realty
+cd ~/site/project/viktory_realty
 
 # Установить Ruby 3.2.2 (mise автоматически прочитает mise.toml)
 mise install ruby@3.2.2

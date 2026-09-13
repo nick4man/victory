@@ -15,6 +15,7 @@ Rails 8.1.3.1 / Ruby 3.4.10 / PostgreSQL 15+ + PostGIS + pgvector. Russian-langu
 - `.claude/repo-index.md` — компактный индекс «файл → классы» (~5k токенов, читай первым).
 - `.claude/repo-map.md` — полный сигнатурный дамп (~190k токенов, on-demand для глубокого ныряния).
 - Обновить оба: `bundle exec rake repo:map`.
+- `.claude/docs/reglament/` — бизнес-регламенты агентства (Шаги 1–5 сделки) + ревью расхождений с кодом; сквозной разбор и проект исполняющей среды — `DESIGN.md` там же. Не код, но именно оттуда растут требования к work-bot, Task/SLA и Nextcloud-путям.
 
 ⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`, шесть `DEPLOYMENT*.md`, …) — исторический шум, местами полугодовой давности. Источник правды — `.claude/memory/`.
 
@@ -175,7 +176,7 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 ## Branch discipline (main = prod)
 
-- **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут `/home/q/victory` обновляют руками, и 07.09.26 он отставал на 33 коммита. Процедура — `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». **Никаких direct push to main.**
+- **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут `~/victory` обновляют руками, и 07.09.26 он отставал на 33 коммита. Процедура — `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
 - **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
 

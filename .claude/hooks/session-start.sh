@@ -182,11 +182,11 @@ EOF
 if [ "$SESSION_ID" = "main" ]; then
   cat <<'WARN'
 
-🚨  MAIN CHECKOUT (/home/q/victory) — this is the LIVE-PROD bind-mount
+🚨  MAIN CHECKOUT (~/victory) — this is the LIVE-PROD bind-mount
    (victory-web-1 mounts it at /app in RAILS_ENV=development with code-reload,
    so edits here hit the live site instantly). Reserved for deploy/merge ONLY —
    do NOT do active development here. Work in your session worktree
-   (/home/q/victory-<session>). See .claude/sessions/README.md
+   (~/victory-<session>). See .claude/sessions/README.md
 WARN
 elif [ "$SESSION_ID" = "unknown" ]; then
   cat <<'WARN'
@@ -205,7 +205,7 @@ if [ -n "$CLAUDE_SESSION" ] && [ -n "$MARKER_SESSION" ] && [ "$CLAUDE_SESSION" !
 
 ⚠️  SESSION/WORKTREE MISMATCH: CLAUDE_SESSION=$CLAUDE_SESSION but this worktree's
    marker is '$MARKER_SESSION' ($WORKTREE_PATH). You may have launched the
-   '$CLAUDE_SESSION' session in the wrong worktree. Expected: /home/q/victory-$CLAUDE_SESSION
+   '$CLAUDE_SESSION' session in the wrong worktree. Expected: ~/victory-$CLAUDE_SESSION
 WARN
 fi
 

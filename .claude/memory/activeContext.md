@@ -38,12 +38,12 @@ override через `export CLAUDE_SESSION`.
 
 | Session | Worktree | Ветка | Назначение |
 |---|---|---|---|
-| **victory** | `/home/q/victory-victory` | feature-ветки | Rails-код, миграции, RSpec, runner |
-| **chat** | `/home/q/victory-chat` | `dev/chat` | site-chatbot, `chat_tools/*`, prompts |
-| **seo** | `/home/q/victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
-| **upgrade** | `/home/q/victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
+| **victory** | `~/victory-victory` | feature-ветки | Rails-код, миграции, RSpec, runner |
+| **chat** | `~/victory-chat` | `dev/chat` | site-chatbot, `chat_tools/*`, prompts |
+| **seo** | `~/victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
+| **upgrade** | `~/victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
 
-🚨 `/home/q/victory` — main checkout и **живой прод-bind-mount** (`victory-web-1`
+🚨 `~/victory` — main checkout и **живой прод-bind-mount** (`victory-web-1`
 → `/app`, code-reload). Правка там уходит на сайт мгновенно. Только deploy/merge.
 
 Границы: write/edit/git — **только внутри своего worktree**. Чужие worktree и
@@ -80,7 +80,7 @@ main checkout — read-only диагностика.
   или устойчивый ноль).
 - **Крон:** `services/zhk-registry/crontab.example`, ставится в
   пользовательский `crontab -e` на хосте прода из main-чекаута
-  (`/home/q/victory`), не из сессионного worktree.
+  (`~/victory`), не из сессионного worktree.
 - **Диагностика отказа:** `DRY_RUN=1 .venv/bin/python3 run.py` гоняет
   источники без единого похода на вебхук — первое, что запускать, если
   Telegram прислал «молчат: <источник>». Дальше — обновить фикстуру
@@ -316,7 +316,7 @@ Smoke-test'ы прошли (synthetic OCR text + mocked Vision response). Изв
 
 ## Артефакты и ссылки
 
-- TZ для этой фазы (если есть): `TZ_VICTORY62_NEWS_CROSSLINK.md` в `/home/q/`
+- TZ для этой фазы (если есть): `TZ_VICTORY62_NEWS_CROSSLINK.md` в `~/`
 - TG dev/owner чат: `TELEGRAM_STAFF_CHAT_ID = -1003937910508` (можно слать тестовые артефакты)
 - Прод: https://victory62.org
 - repo-map.md: `.claude/repo-map.md` — пересборка через `rake repo:map` (см. `lib/tasks/repo_map.rake`)

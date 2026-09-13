@@ -176,7 +176,7 @@
 ## ⚡ БЫСТРЫЙ ЗАПУСК
 
 ```bash
-cd /home/q/site/project/viktory_realty
+cd ~/site/project/viktory_realty
 
 # Установка
 bundle install && yarn install

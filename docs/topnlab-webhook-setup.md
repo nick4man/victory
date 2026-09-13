@@ -2,7 +2,7 @@
 
 Topnlab отправляет уведомления о создании/редактировании карточек на наш сервер.
 Регистрировать URL нужно **один раз вручную** в кабинете Topnlab — публичного API
-для этого нет (см. `/home/q/document_pdf.md`, секция «Получать id карточек объектов,
+для этого нет (см. `~/document_pdf.md`, секция «Получать id карточек объектов,
 заявок и услуг, которые были созданы и/или отредактированы в Topnlab»).
 
 ## Что регистрируется
@@ -56,4 +56,4 @@ Endpoint: `POST https://victory62.org/webhooks/topnlab`
 - Контроллер: `app/controllers/webhooks/topnlab_controller.rb`
 - Job: `app/jobs/topnlab_property_import_job.rb`
 - Cron-sync (резервный путь): `app/jobs/topnlab_sync_job.rb` (каждые 30 мин)
-- Документация API: `/home/q/document_pdf.md`
+- Документация API: `~/document_pdf.md`
