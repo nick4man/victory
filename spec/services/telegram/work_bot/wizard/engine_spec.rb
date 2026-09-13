@@ -15,8 +15,7 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       dms << { text: text, keyboard: opts.dig(:reply_markup, :inline_keyboard) || [], chat_id: opts[:chat_id] }
       { 'message_id' => 1000 + dms.size }
     end
-    allow(client).to receive(:edit_message_reply_markup).and_return(true)
-    allow(client).to receive(:edit_message_text).and_return({ 'message_id' => 1 })
+    allow(client).to receive_messages(edit_message_reply_markup: true, edit_message_text: { 'message_id' => 1 })
     allow(client).to receive(:answer_callback_query) { |_id, text: nil, show_alert: false| acks << [text, show_alert] }
     client
   end
