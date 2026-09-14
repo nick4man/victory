@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ни заявка, ни объект не попадают в CRM Topnlab без пути «контакт с клиентом → дозаполнение карточки → машинная проверка → модерация директором → выгрузка», одинакового для лидов с сайта и карточек из Telegram, с правами сотрудника, унаследованными из его должности в CRM.
+**Goal:** Ни заявка, ни объект не попадают в CRM Topnlab без пути «контакт с клиентом → дозаполнение карточки → машинная проверка → модерация директором → выгрузка», одинакового для лидов с сайта и карточек из Telegram, с правами сотрудника, унаследованными из его должности в CRM, — и весь путь проверяется до выкатки в песочнице тестового бота.
 
-**Architecture:** Новая модель `CrmCard` (+ журнал `CrmCardTransition`) с машиной статусов, все переходы которой живут в одном сервисе `CrmCards::Workflow`. Права — `CrmCards::Permissions`: должность и статус учётки из CRM (`users.crm_role_id`/`crm_status`, ночной `TopnlabStaffSyncJob`) через таблицу `config/crm_permissions.yml`. Поля карточки и их нормализация — `CrmCards::Schema` + `FieldValue`, проверка — `CrmCards::Checker`. Интерфейс — существующие мастера `Wizard::Engine` в личке и кнопка под карточкой лида. Заявка выгружается джобом через `Topnlab::Client#import_client` с атомарным захватом статуса; объект — вручную по «паспорту» до появления шлюза.
+**Architecture:** Новая модель `CrmCard` (+ журнал `CrmCardTransition`) с машиной статусов, все переходы которой живут в одном сервисе `CrmCards::Workflow`. Права — `CrmCards::Permissions`: должность и статус учётки из CRM (`users.crm_role_id`/`crm_status`, ночной `TopnlabStaffSyncJob`) через таблицу `config/crm_permissions.yml`. Поля карточки и их нормализация — `CrmCards::Schema` + `FieldValue`, проверка — `CrmCards::Checker`. Интерфейс — существующие мастера `Wizard::Engine` в личке и кнопка под карточкой лида. Заявка выгружается джобом через `Topnlab::Client#import_client` с атомарным захватом статуса; объект — вручную по «паспорту» до появления шлюза. Тестовый бот (`TELEGRAM_TEST_BOT_TOKEN`) — тот же код в контексте `Telegram::BotContext`: свой вебхук, только личка, карточки с флагом `sandbox`, выгрузка без записи в CRM.
 
 **Tech Stack:** Rails 8.1.3.1 / Ruby 3.4.10 / PostgreSQL 15 (`db/structure.sql`), ActiveJob на Sidekiq, Telegram Bot API через `Telegram::Client`, `Topnlab::Client` (публичный API), RSpec + WebMock + FactoryBot.
 
@@ -14,7 +14,8 @@
 
 - **Worktree:** код пишется в новом worktree `~/victory-crm-cards` на ветке `claude/crm-card-moderation` (`git -C ~/victory worktree add ~/victory-crm-cards -b claude/crm-card-moderation main`). `~/victory` — live-prod bind-mount, туда не писать; чужие worktree — только чтение.
 - **Ruby только через `bin/rb`:** `bin/rb --db bundle exec rspec <path>`, `bin/rb bundle exec rubocop -a <paths>`. Перед первым прогоном `bin/rb --seed-bundle` и `bin/rb --db bin/rails db:prepare`. Не докладывать «зелёное», не прогнав там, где Ruby есть.
-- **Стек PR** по правилам `gh-stack` (CLAUDE.md): A «данные и права» (Tasks 1–4) → B «конвейер» (Tasks 5–8) → C «Telegram: заявки» (Tasks 9–12) → D «объекты» (Tasks 13–15). Task 16 — запуск, без кода. `/code-review <PR#>` на каждый PR после зелёного CI.
+- **Стек PR** по правилам `gh-stack` (CLAUDE.md): A «данные и права» (Tasks 1–4) → B «конвейер» (Tasks 5–8) → C «Telegram: заявки» (Tasks 9–12) → D «объекты» (Tasks 13–15) → E «песочница» (Tasks 16–19). Task 20 — запуск, без кода. `/code-review <PR#>` на каждый PR после зелёного CI.
+- **Тестовый бот — песочница на боевой базе.** Никакой записи в Topnlab из тестового контекста; только тестовые лиды (`staff_test`); только личка (`Telegram::Client::GroupChatForbidden`); права без учётки в CRM — только через `TELEGRAM_TEST_CAPABILITIES` и только в тестовом контексте.
 - Каждый `.rb` — `# frozen_string_literal: true`, одинарные кавычки, комментарии по-русски и про «почему», а не «что».
 - Enum'ы — только `prefix: true`, русский перевод значения в комментарии рядом (правило 2 CLAUDE.md).
 - Soft-delete на `CrmCard`: `deleted_at` + `scope :not_deleted` + `default_scope { not_deleted }`. `CrmCardTransition` — журнал только на добавление, soft-delete не нужен (обоснование в модели).
@@ -83,6 +84,20 @@
 | `app/services/telegram/work_bot/wizard/crm_object_card_flow.rb` | мастер нового объекта |
 | `app/services/telegram/work_bot/wizard/menu.rb` | «🏠 Новый объект в CRM» по праву `create_object` |
 | `app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb` | «Внесено в CRM» + номер карточки |
+
+**Стек E — песочница: тестовый бот**
+
+| Файл | Ответственность |
+|---|---|
+| `app/services/telegram/bot_context.rb` | какой бот обрабатывает апдейт; токен; перенос в джобы |
+| `app/services/telegram/client.rb`, `config/initializers/sidekiq.rb` | токен из контекста; тестовый бот не пишет в группы |
+| `db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb`, `app/models/telegram_webhook_ack.rb` | дедупликация `update_id` в пределах бота |
+| `app/controllers/webhooks/telegram_test_controller.rb`, `config/routes.rb` | вебхук тестового бота с обязательным секретом |
+| `app/jobs/telegram/inbound_processor_job.rb`, `app/services/telegram/inbound_processor.rb` | обработка в контексте бота; тестовый — только личка и сотрудники |
+| `lib/tasks/telegram_webhook.rake`, `tg-webhook-relay/src/index.js` | `setup_test`; путь `/test` в relay |
+| `db/migrate/20260914120200_add_sandbox_to_crm_cards.rb`, `app/services/crm_cards/sandbox_exporter.rb` | карточки песочницы и выгрузка без CRM |
+| `app/services/crm_cards/permissions.rb`, `workflow.rb`, `checker.rb` | права по `TELEGRAM_TEST_CAPABILITIES`; карточка живёт в своём боте; только тестовые лиды |
+| `app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb`, `crm_test_lead_flow.rb`, `menu.rb` | карточка заявки из лички; тестовый лид |
 
 Спеки зеркалят пути под `spec/`.
 
@@ -3888,7 +3903,7 @@ git add app/services/telegram/work_bot/commands/cards.rb app/services/telegram/w
 git commit -m "feat(work_bot): /cards — карточки CRM и очередь модерации в личке"
 ```
 
-> **Конец стека C.** PR «Telegram: заявки» → CI → `/code-review` → правки. С этого PR заявки с сайта могут доходить до CRM — выкатывать только после Task 16, шаги 1–3.
+> **Конец стека C.** PR «Telegram: заявки» → CI → `/code-review` → правки. С этого PR заявки с сайта могут доходить до CRM — выкатывать в прод только вместе со стеком E и по Task 20.
 
 ---
 
@@ -4488,47 +4503,1441 @@ git commit -m "feat(work_bot): ручное внесение одобренно�
 
 ---
 
-## Task 16: Запуск — данные прав, выкатка, проверка на живом
+## Стек E — песочница: тестовый бот
 
-Кода нет; каждый шаг — действие человека или команда на прод-хосте. Выполняет руководитель вместе с исполнителем. Порядок обязателен: без шагов 1–3 конвейер честно откажет «модераторов нет», а заявки с сайта так и не дойдут до CRM.
+Тестовый бот (`TELEGRAM_TEST_BOT_TOKEN`) нужен, чтобы пройти весь путь карточки до выкатки на рабочего бота. Решения руководителя от 14.09.26:
+
+- **только личка** — в рабочую группу бот не добавляется;
+- **песочница** — одобрение не пишет в Topnlab: заявка получает номер `TEST-<id>`;
+- **только тестовые лиды** — `LeadEvent.staff_test`, заведённые в тестовом боте; реальные лиды песочница не трогает, их «одна карточка на лид» не занимается;
+- **@nick4man без учётки в CRM проверяет в песочнице** — права для перечисленных в `TELEGRAM_TEST_CAPABILITIES` Telegram-аккаунтов; в рабочем боте список не читается.
+
+### Task 16: Контекст бота — чей токен и куда можно писать
+
+**Files:**
+- Create: `app/services/telegram/bot_context.rb`
+- Modify: `app/services/telegram/client.rb` (`#initialize`, `#api_call`, `#send_document`, новый `GroupChatForbidden`)
+- Modify: `config/initializers/sidekiq.rb`
+- Test: `spec/services/telegram/bot_context_spec.rb`
+
+**Interfaces:**
+- Produces: `Telegram::BotContext` (`ActiveSupport::CurrentAttributes`): `.bot → 'main'|'test'|nil`, `.test? → Boolean`, `.token → String|nil`, `.within(name) { … }` (`ArgumentError` на неизвестном имени), `BOTS = %w[main test]`.
+- Produces: `Telegram::Client.new` без аргумента берёт токен из `BotContext`; `Telegram::Client::GroupChatForbidden < Error` — тестовый бот, отправляющий в чат с отрицательным id.
+- Produces: контекст переносится во все Sidekiq-джобы, поставленные внутри него.
+
+- [ ] **Step 1: Спека (красная)**
+
+Создать `spec/services/telegram/bot_context_spec.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe Telegram::BotContext do
+  before do
+    stub_const('ENV', ENV.to_h.merge('TELEGRAM_BOT_TOKEN' => 'main-token', 'TELEGRAM_TEST_BOT_TOKEN' => 'test-token'))
+  end
+
+  def stub_send(token)
+    stub_request(:post, "https://api.telegram.org/bot#{token}/sendMessage")
+      .to_return(body: { ok: true, result: { message_id: 7 } }.to_json)
+  end
+
+  it 'вне контекста клиент говорит от основного бота' do
+    request = stub_send('main-token')
+
+    Telegram::Client.new.send_message('привет', chat_id: 111)
+
+    expect(request).to have_been_requested
+  end
+
+  it 'внутри тестового контекста — от тестового, и контекст не протекает наружу' do
+    request = stub_send('test-token')
+
+    described_class.within('test') { Telegram::Client.new.send_message('привет', chat_id: 111) }
+
+    expect(request).to have_been_requested
+    expect(described_class.test?).to be(false)
+  end
+
+  it 'тестовый бот не пишет в группы — отказ до запроса в Telegram' do
+    described_class.within('test') do
+      expect { Telegram::Client.new.send_message('в группу', chat_id: -1_003_779_115_845) }
+        .to raise_error(Telegram::Client::GroupChatForbidden)
+    end
+
+    expect(a_request(:post, /api\.telegram\.org/)).not_to have_been_made
+  end
+
+  it 'основной бот в группы пишет как раньше' do
+    request = stub_send('main-token')
+
+    Telegram::Client.new.send_message('в группу', chat_id: -1_003_779_115_845)
+
+    expect(request).to have_been_requested
+  end
+
+  it 'неизвестный бот — ошибка, а не тихий откат на основной' do
+    expect { described_class.within('prod') { nil } }.to raise_error(ArgumentError, /prod/)
+  end
+
+  it 'токен тестового бота не задан — клиент не создаётся' do
+    stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_BOT_TOKEN' => nil))
+
+    described_class.within('test') do
+      expect { Telegram::Client.new }.to raise_error(Telegram::Client::Error, /TELEGRAM_TEST_BOT_TOKEN/)
+    end
+  end
+
+  it 'Sidekiq переносит контекст в джобы' do
+    expect(Sidekiq.default_configuration.client_middleware.exists?(Sidekiq::CurrentAttributes::Save)).to be(true)
+  end
+end
+```
+
+- [ ] **Step 2: Прогнать — падает**
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram/bot_context_spec.rb`
+Expected: FAIL — `NameError: uninitialized constant Telegram::BotContext`.
+
+- [ ] **Step 3: Контекст**
+
+Создать `app/services/telegram/bot_context.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+module Telegram
+  # Какой бот обрабатывает текущий апдейт: основной (@anvictorybot) или
+  # тестовый (TELEGRAM_TEST_BOT_TOKEN — песочница карточек CRM, только личка).
+  #
+  # Контекст выставляет вход (Telegram::InboundProcessorJob), а Sidekiq
+  # переносит его во все джобы, поставленные внутри (config/initializers/
+  # sidekiq.rb). Поэтому ~70 мест `Telegram::Client.new` не трогаются:
+  # токен выбирается здесь, и ответ уходит от того бота, которому писали.
+  class BotContext < ActiveSupport::CurrentAttributes
+    BOTS = %w[main test].freeze
+
+    attribute :bot
+
+    def self.test?
+      bot.to_s == 'test'
+    end
+
+    def self.token
+      test? ? ENV.fetch('TELEGRAM_TEST_BOT_TOKEN', nil) : ENV.fetch('TELEGRAM_BOT_TOKEN', nil)
+    end
+
+    # Неизвестное имя — ошибка, а не откат на основной бот: песочница,
+    # говорящая голосом рабочего бота, хуже падения.
+    def self.within(name, &)
+      raise ArgumentError, "Неизвестный Telegram-бот: #{name.inspect}" unless BOTS.include?(name.to_s)
+
+      set(bot: name.to_s, &)
+    end
+  end
+end
+```
+
+- [ ] **Step 4: Клиент**
+
+В `app/services/telegram/client.rb` заменить:
+
+```ruby
+    class Error < StandardError; end
+
+    BASE = 'https://api.telegram.org'
+
+    def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
+      raise Error, 'TELEGRAM_BOT_TOKEN not set' if token.blank?
+
+      @token = token
+    end
+```
+
+на:
+
+```ruby
+    class Error < StandardError; end
+    # Тестовый бот попытался написать в группу или канал.
+    class GroupChatForbidden < Error; end
+
+    BASE = 'https://api.telegram.org'
+
+    def initialize(token: Telegram::BotContext.token)
+      if token.blank?
+        raise Error, "#{Telegram::BotContext.test? ? 'TELEGRAM_TEST_BOT_TOKEN' : 'TELEGRAM_BOT_TOKEN'} not set"
+      end
+
+      @token = token
+      @test_bot = token == ENV['TELEGRAM_TEST_BOT_TOKEN']
+    end
+```
+
+Там же в `#api_call` заменить первую строку тела:
+
+```ruby
+    def api_call(method, body = {}, retried: false)
+      uri = URI("#{BASE}/bot#{@token}/#{method}")
+```
+
+на:
+
+```ruby
+    def api_call(method, body = {}, retried: false)
+      guard_private_chat!(body[:chat_id]) if body.key?(:chat_id)
+      uri = URI("#{BASE}/bot#{@token}/#{method}")
+```
+
+В `#send_document` заменить:
+
+```ruby
+      uri = URI("#{BASE}/bot#{@token}/sendDocument")
+```
+
+на:
+
+```ruby
+      guard_private_chat!(chat_id)
+      uri = URI("#{BASE}/bot#{@token}/sendDocument")
+```
+
+И добавить приватный метод перед `#api_call`:
+
+```ruby
+    # Тестовый бот работает только в личке. Проверка здесь, а не у вызывающих:
+    # в группу пишут десятки мест (карточки лидов, дайджесты, эскалации), и
+    # любое из них, сработав внутри песочницы, иначе попыталось бы писать туда.
+    def guard_private_chat!(chat_id)
+      return unless @test_bot && chat_id.to_i.negative?
+
+      raise GroupChatForbidden, "тестовый бот не пишет в группы (chat_id=#{chat_id})"
+    end
+```
+
+- [ ] **Step 5: Перенос контекста в джобы**
+
+В начало `config/initializers/sidekiq.rb`, сразу после `# frozen_string_literal: true`, добавить:
+
+```ruby
+
+require 'sidekiq/middleware/current_attributes'
+
+# Джобы, поставленные внутри апдейта тестового бота (уведомления, выгрузка
+# карточки), отвечают его токеном, а не токеном рабочего бота.
+Sidekiq::CurrentAttributes.persist('Telegram::BotContext')
+```
+
+- [ ] **Step 6: Прогнать — зелёная, соседи целы**
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram/bot_context_spec.rb`
+Expected: `7 examples, 0 failures`.
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram spec/requests/webhooks`
+Expected: 0 failures — без контекста токен прежний.
+
+- [ ] **Step 7: Линт и коммит**
+
+Run: `bin/rb bundle exec rubocop -a app/services/telegram/bot_context.rb app/services/telegram/client.rb config/initializers/sidekiq.rb spec/services/telegram/bot_context_spec.rb`
+
+```bash
+git add app/services/telegram/bot_context.rb app/services/telegram/client.rb config/initializers/sidekiq.rb \
+        spec/services/telegram/bot_context_spec.rb
+git commit -m "feat(telegram): контекст бота — токен тестового бота и запрет писать в группы"
+```
+
+### Task 17: Вход тестового бота
+
+**Files:**
+- Create: `db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb`
+- Modify: `app/models/telegram_webhook_ack.rb`
+- Create: `app/controllers/webhooks/telegram_test_controller.rb`
+- Modify: `config/routes.rb`
+- Modify: `app/jobs/telegram/inbound_processor_job.rb`
+- Modify: `app/services/telegram/inbound_processor.rb` (`#call`, `#duplicate_update?`, новый `#sandbox_update?`)
+- Modify: `lib/tasks/telegram_webhook.rake` (задача `setup_test`)
+- Modify: `tg-webhook-relay/src/index.js`
+- Test: `spec/requests/webhooks/telegram_test_spec.rb`
+- Test: `spec/services/telegram/inbound_processor_sandbox_spec.rb`
+
+**Interfaces:**
+- Consumes: `Telegram::BotContext` (Task 16).
+- Produces: `POST /webhooks/telegram_test` (секрет `TELEGRAM_TEST_WEBHOOK_SECRET` обязателен); `Telegram::InboundProcessorJob#perform(payload, bot = 'main')`; `TelegramWebhookAck#bot`; rake `telegram:webhook:setup_test`; relay: путь `/test` → `/webhooks/telegram_test`.
+
+- [ ] **Step 1: Спеки (красные)**
+
+Создать `spec/requests/webhooks/telegram_test_spec.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe 'Webhooks::TelegramTest', type: :request do
+  let(:payload) do
+    { 'update_id' => 1,
+      'message' => { 'chat' => { 'id' => 111, 'type' => 'private' }, 'from' => { 'id' => 111 }, 'text' => '/cards' } }
+  end
+
+  before do
+    stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_BOT_TOKEN' => 'test-token', 'TELEGRAM_TEST_WEBHOOK_SECRET' => 's3cret'))
+    allow(Telegram::InboundProcessorJob).to receive(:perform_async)
+  end
+
+  def post_update(secret)
+    post '/webhooks/telegram_test', params: payload.to_json,
+                                    headers: { 'CONTENT_TYPE' => 'application/json',
+                                               'X-Telegram-Bot-Api-Secret-Token' => secret }
+  end
+
+  it 'верный секрет — апдейт уходит в обработку от имени тестового бота' do
+    post_update('s3cret')
+
+    expect(response).to have_http_status(:ok)
+    expect(Telegram::InboundProcessorJob).to have_received(:perform_async).with(payload, 'test')
+  end
+
+  it 'неверный или пустой секрет — 403 без обработки' do
+    post_update('wrong')
+    expect(response).to have_http_status(:forbidden)
+
+    post_update('')
+    expect(response).to have_http_status(:forbidden)
+    expect(Telegram::InboundProcessorJob).not_to have_received(:perform_async)
+  end
+
+  it 'секрет не настроен — вход закрыт, а не открыт' do
+    stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_BOT_TOKEN' => 'test-token', 'TELEGRAM_TEST_WEBHOOK_SECRET' => nil))
+
+    post_update('')
+
+    expect(response).to have_http_status(:forbidden)
+  end
+end
+```
+
+Создать `spec/services/telegram/inbound_processor_sandbox_spec.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe Telegram::InboundProcessor, 'тестовый бот' do
+  let!(:staff) { TelegramUser.create!(tg_user_id: 99_001, status: 'active', dm_chat_id: 99_001) }
+  let(:router) { instance_double(Telegram::WorkBot::CallbacksRouter, call: :handled) }
+
+  before { allow(Telegram::WorkBot::CallbacksRouter).to receive(:new).and_return(router) }
+
+  def callback_update(update_id, chat_type: 'private', from: staff.tg_user_id)
+    { 'update_id' => update_id,
+      'callback_query' => { 'id' => 'cb', 'data' => 'wiz:menu', 'from' => { 'id' => from },
+                            'message' => { 'message_id' => 1, 'chat' => { 'id' => from, 'type' => chat_type } } } }
+  end
+
+  def process(update, bot)
+    Telegram::BotContext.within(bot) { described_class.new(update).call }
+  end
+
+  it 'одинаковый update_id у двух ботов — не повтор; у одного бота — повтор' do
+    expect(process(callback_update(500), 'main')).to eq(:handled)
+    expect(process(callback_update(500), 'test')).to eq(:handled)
+    expect(process(callback_update(500), 'test')).to eq(:duplicate)
+  end
+
+  it 'тестовый бот игнорирует группы и незнакомых' do
+    expect(process(callback_update(501, chat_type: 'supergroup'), 'test')).to eq(:ignored)
+    expect(process(callback_update(502, from: 42), 'test')).to eq(:ignored)
+    expect(router).not_to have_received(:call)
+  end
+
+  it 'джоб обрабатывает апдейт в контексте переданного бота' do
+    seen = nil
+    allow(described_class).to receive(:new) do
+      seen = Telegram::BotContext.bot
+      instance_double(described_class, call: :ok)
+    end
+
+    Telegram::InboundProcessorJob.new.perform({ 'update_id' => 1 }, 'test')
+
+    expect(seen).to eq('test')
+  end
+end
+```
+
+- [ ] **Step 2: Прогнать — падают**
+
+Run: `bin/rb --db bundle exec rspec spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb`
+Expected: FAIL — нет маршрута; второй апдейт с тем же `update_id` отброшен как `:duplicate`.
+
+- [ ] **Step 3: Дедупликация в пределах бота**
+
+Создать `db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+# Нумерация update_id у каждого Telegram-бота своя. С тестовым ботом одно и
+# то же число придёт от двух ботов, и общий уникальный индекс отбросил бы
+# апдейт второго как «повтор» — молча. Дедупликация — в пределах бота.
+class AddBotToTelegramWebhookAcks < ActiveRecord::Migration[8.1]
+  def change
+    add_column :telegram_webhook_acks, :bot, :string, null: false, default: 'main'
+    remove_index :telegram_webhook_acks, :update_id, unique: true
+    add_index :telegram_webhook_acks, %i[bot update_id], unique: true
+  end
+end
+```
+
+Run: `bin/rb --db bin/rails db:migrate`
+
+В `app/models/telegram_webhook_ack.rb` заменить:
+
+```ruby
+  validates :update_id,    presence: true, uniqueness: true
+```
+
+на:
+
+```ruby
+  validates :update_id,    presence: true, uniqueness: { scope: :bot }
+  validates :bot,          inclusion: { in: Telegram::BotContext::BOTS }
+```
+
+В `app/services/telegram/inbound_processor.rb` в `#duplicate_update?` заменить:
+
+```ruby
+      TelegramWebhookAck.create!(update_id: update_id, processed_at: Time.current)
+```
+
+на:
+
+```ruby
+      TelegramWebhookAck.create!(update_id: update_id, bot: Telegram::BotContext.bot || 'main',
+                                 processed_at: Time.current)
+```
+
+- [ ] **Step 4: Только личка и только сотрудники**
+
+В `app/services/telegram/inbound_processor.rb` в `#call` заменить:
+
+```ruby
+      return :duplicate if duplicate_update?
+```
+
+на:
+
+```ruby
+      return :duplicate if duplicate_update?
+      # Тестовый бот — песочница карточек CRM: личка и только сотрудники.
+      # Клиентский бот, группы и реакции он не обслуживает.
+      return :ignored if Telegram::BotContext.test? && !sandbox_update?
+```
+
+И добавить приватный метод сразу после `#duplicate_update?`:
+
+```ruby
+    def sandbox_update?
+      callback = @update['callback_query']
+      source = callback || @update['message'] || @update['edited_message']
+      return false unless source
+
+      chat = callback ? source.dig('message', 'chat') : source['chat']
+      return false unless chat&.dig('type') == 'private'
+
+      TelegramUser.active.exists?(tg_user_id: source.dig('from', 'id'))
+    end
+```
+
+В `app/jobs/telegram/inbound_processor_job.rb` заменить:
+
+```ruby
+    def perform(payload_json)
+      payload = payload_json.is_a?(Hash) ? payload_json : JSON.parse(payload_json.to_s)
+      Telegram::InboundProcessor.new(payload).call
+```
+
+на:
+
+```ruby
+    # bot — чей вебхук принял апдейт ('main' | 'test'). Параметр со значением
+    # по умолчанию: джобы, уже лежащие в очереди с одним аргументом, работают.
+    def perform(payload_json, bot = 'main')
+      payload = payload_json.is_a?(Hash) ? payload_json : JSON.parse(payload_json.to_s)
+      Telegram::BotContext.within(bot) { Telegram::InboundProcessor.new(payload).call }
+```
+
+- [ ] **Step 5: Контроллер и маршрут**
+
+Создать `app/controllers/webhooks/telegram_test_controller.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+module Webhooks
+  # Вебхук тестового бота (TELEGRAM_TEST_BOT_TOKEN) — песочница карточек CRM.
+  #
+  # В отличие от основного вебхука, секрет обязателен без «переходного»
+  # пропуска: вход новый, совместимость сохранять не с чем. Пустой ENV —
+  # вход закрыт (CLAUDE.md: вебхук при пустом секрете отказывает).
+  class TelegramTestController < ApplicationController
+    skip_before_action :verify_authenticity_token, raise: false
+
+    def create
+      return head(:forbidden) unless authorized?
+
+      Telegram::InboundProcessorJob.perform_async(JSON.parse(request.raw_post), 'test')
+      head :ok
+    rescue JSON::ParserError
+      head :ok # Telegram повторяет не-2xx; битое тело повторять незачем
+    end
+
+    private
+
+    def authorized?
+      expected = ENV['TELEGRAM_TEST_WEBHOOK_SECRET'].to_s
+      return false if expected.blank? || ENV['TELEGRAM_TEST_BOT_TOKEN'].blank?
+
+      ActiveSupport::SecurityUtils.secure_compare(expected, request.headers['X-Telegram-Bot-Api-Secret-Token'].to_s)
+    end
+  end
+end
+```
+
+В `config/routes.rb` заменить:
+
+```ruby
+    # Telegram
+    post 'telegram', to: 'telegram#create'
+```
+
+на:
+
+```ruby
+    # Telegram
+    post 'telegram', to: 'telegram#create'
+    # Тестовый бот: песочница карточек CRM, только личка.
+    post 'telegram_test', to: 'telegram_test#create'
+```
+
+- [ ] **Step 6: Регистрация вебхука и relay**
+
+В `lib/tasks/telegram_webhook.rake` перед `desc 'Show current webhook info …'` добавить:
+
+```ruby
+    desc 'Webhook тестового бота (песочница карточек CRM): только message и callback_query.'
+    task setup_test: :environment do
+      url = ENV.fetch('TELEGRAM_TEST_WEBHOOK_URL')
+      secret = ENV.fetch('TELEGRAM_TEST_WEBHOOK_SECRET')
+      result = Telegram::BotContext.within('test') do
+        Telegram::Client.new.set_webhook(url, secret_token: secret, allowed_updates: %w[message callback_query],
+                                              drop_pending_updates: true)
+      end
+      puts "setWebhook (test) result: #{result.inspect}"
+    end
+
+```
+
+В `tg-webhook-relay/src/index.js` заменить:
+
+```js
+const UPSTREAM_URL = 'https://victory62.org/webhooks/telegram';
+```
+
+на:
+
+```js
+const UPSTREAM_URL = 'https://victory62.org/webhooks/telegram';
+// Тестовый бот (песочница карточек CRM): setWebhook на <worker>/test.
+const TEST_UPSTREAM_URL = 'https://victory62.org/webhooks/telegram_test';
+```
+
+И заменить блок проверки секрета:
+
+```js
+    // Опциональная проверка secret token от Telegram (если CF secret выставлен)
+    if (env.TELEGRAM_WEBHOOK_SECRET) {
+      const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+      if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
+        return new Response('forbidden', { status: 403 });
+      }
+    }
+```
+
+на:
+
+```js
+    const isTest = new URL(request.url).pathname === '/test';
+    const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (isTest) {
+      // Для тестового бота секрет обязателен: вход новый, open mode не нужен.
+      if (!env.TELEGRAM_TEST_WEBHOOK_SECRET || got !== env.TELEGRAM_TEST_WEBHOOK_SECRET) {
+        return new Response('forbidden', { status: 403 });
+      }
+    } else if (env.TELEGRAM_WEBHOOK_SECRET && got !== env.TELEGRAM_WEBHOOK_SECRET) {
+      // Опциональная проверка secret token основного бота (если CF secret выставлен)
+      return new Response('forbidden', { status: 403 });
+    }
+```
+
+и в `fetch(UPSTREAM_URL, {` заменить `UPSTREAM_URL` на `isTest ? TEST_UPSTREAM_URL : UPSTREAM_URL`.
+
+- [ ] **Step 7: Прогнать — зелёные**
+
+Run: `bin/rb --db bundle exec rspec spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb spec/requests/webhooks spec/services/telegram`
+Expected: 0 failures (новые — `6 examples`).
+
+- [ ] **Step 8: Линт и коммит**
+
+Run: `bin/rb bundle exec rubocop -a app/controllers/webhooks/telegram_test_controller.rb app/jobs/telegram/inbound_processor_job.rb app/services/telegram/inbound_processor.rb app/models/telegram_webhook_ack.rb db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb lib/tasks/telegram_webhook.rake config/routes.rb spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb`
+
+```bash
+git add db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb db/structure.sql app/models/telegram_webhook_ack.rb \
+        app/controllers/webhooks/telegram_test_controller.rb config/routes.rb app/jobs/telegram/inbound_processor_job.rb \
+        app/services/telegram/inbound_processor.rb lib/tasks/telegram_webhook.rake tg-webhook-relay/src/index.js \
+        spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb
+git commit -m "feat(telegram): вход тестового бота — свой вебхук, дедупликация по боту, только личка"
+```
+
+### Task 18: Песочница карточек
+
+**Files:**
+- Create: `db/migrate/20260914120200_add_sandbox_to_crm_cards.rb`
+- Create: `app/services/crm_cards/sandbox_exporter.rb`
+- Modify: `app/models/crm_card.rb` (скоуп `in_current_bot`)
+- Modify: `app/services/crm_cards/permissions.rb` (`.sandbox_capabilities`, `#call`, `.moderators`)
+- Modify: `app/services/crm_cards/workflow.rb`
+- Modify: `app/services/crm_cards/checker.rb` (`#lead_rules`)
+- Modify: `app/jobs/crm_cards/export_job.rb`
+- Modify: `app/services/telegram/work_bot/wizard/crm_card_support.rb` (`#card`)
+- Modify: `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` (`#handle`)
+- Modify: `app/services/telegram/work_bot/commands/cards.rb` (`#sections`, `#own_cards`, `#export_problems`)
+- Test: `spec/services/crm_cards/sandbox_spec.rb`
+
+**Interfaces:**
+- Consumes: `Telegram::BotContext` (Task 16); всё из стеков A–D.
+- Produces: `crm_cards.sandbox` (Boolean) — ставится при создании по `BotContext.test?`; `CrmCard.in_current_bot`; `CrmCards::SandboxExporter#call(card) → LeadExporter::Outcome` с `crm_id: "TEST-<id>"`; `Permissions.sandbox_capabilities → Hash{String => Array<String>}` (только в тестовом контексте; ENV `TELEGRAM_TEST_CAPABILITIES`, JSON `{"<tg_user_id>": ["create_lead", "create_object", "moderate"]}`).
+- Правило: карточка живёт в боте, где её завели; из другого бота её не видно и не изменить.
+
+- [ ] **Step 1: Спека (красная)**
+
+Создать `spec/services/crm_cards/sandbox_spec.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe 'песочница карточек CRM (тестовый бот)' do
+  let(:notifier) do
+    instance_double(CrmCards::Notifier, submitted: nil, returned: nil, approved: nil, exported: nil, export_failed: nil)
+  end
+  let(:workflow) { CrmCards::Workflow.new(notifier: notifier) }
+
+  before { stub_crm_positions }
+
+  let!(:agent)    { crm_staff(tg_user_id: 99_101, username: 'irina') }
+  let!(:director) { crm_staff(tg_user_id: 99_102, username: 'oksana', position: '89884', role: 'director') }
+  let!(:nick) { TelegramUser.create!(tg_user_id: 99_103, tg_username: 'nick', status: 'active', dm_chat_id: 99_103) }
+  let(:test_lead) do
+    LeadEvent.create!(lead_ref: agent, source: 'manual', current_stage: 'first_contact', first_contact_at: 1.hour.ago,
+                      anchor_topic_key: 'dispatcher', tg_chat_id: agent.dm_chat_id, assigned_to: agent, staff_test: true)
+  end
+  let(:real_lead) do
+    LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'first_contact',
+                      first_contact_at: 1.hour.ago, anchor_topic_key: 'apartments', tg_chat_id: -100_1, assigned_to: agent)
+  end
+  let(:values) do
+    { 'name' => 'Тест', 'phone' => '79101234567', 'action' => 'sale', 'object_type' => 'flat',
+      'comment' => 'Проверка песочницы: весь путь без записи в CRM' }
+  end
+
+  def in_test(&)
+    Telegram::BotContext.within('test', &)
+  end
+
+  describe 'права' do
+    before do
+      stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_CAPABILITIES' => { '99103' => %w[create_lead moderate] }.to_json))
+    end
+
+    it 'список из ENV действует только в тестовом боте' do
+      expect(CrmCards::Permissions.for(nick).can?(:moderate)).to be(false)
+      in_test { expect(CrmCards::Permissions.for(nick).can?(:moderate)).to be(true) }
+    end
+
+    it 'в песочнице модераторы — и по CRM, и по списку' do
+      in_test { expect(CrmCards::Permissions.moderators).to contain_exactly(director, nick) }
+      expect(CrmCards::Permissions.moderators).to eq([director])
+    end
+  end
+
+  it 'в тестовом боте карточку по реальному лиду не завести' do
+    in_test do
+      expect(workflow.upsert_lead_card!(lead: real_lead, actor: agent, values: values).error).to include('тестовым лидам')
+    end
+    expect(CrmCard.unscoped.count).to eq(0)
+  end
+
+  it 'весь путь в песочнице: TEST-номер, в Topnlab ни одного вызова' do
+    allow(Topnlab::Client).to receive(:new)
+
+    card = in_test { workflow.upsert_lead_card!(lead: test_lead, actor: agent, values: values).card }
+    expect(card).to be_sandbox
+    expect(card.check_passed?).to be(true)
+
+    in_test do
+      workflow.submit!(card, actor: agent)
+      workflow.approve!(card.reload, actor: director)
+    end
+    CrmCards::ExportJob.perform_now(card.id)
+
+    expect(card.reload).to have_attributes(status: 'exported', crm_id: "TEST-#{card.id}")
+    expect(Topnlab::Client).not_to have_received(:new)
+  end
+
+  it 'карточка живёт в своём боте' do
+    card = in_test { workflow.upsert_lead_card!(lead: test_lead, actor: agent, values: values).card }
+
+    expect(CrmCard.in_current_bot).not_to include(card)
+    expect(workflow.update_fields!(card, { 'name' => 'Другое' }, actor: agent).error).to include('тестового бота')
+    in_test { expect(CrmCard.in_current_bot).to include(card) }
+  end
+
+  it 'машинная проверка песочницы не пропускает реальный лид, даже если карточка уже есть' do
+    card = CrmCard.create!(kind: 'lead', author: agent, lead_event: real_lead, sandbox: true, payload: values)
+
+    expect(CrmCards::Checker.call(card).map { |e| e['message'] }).to include('В песочнице — только тестовые лиды.')
+  end
+
+  it 'джоб выгрузки ставит контекст по карточке, а не по очереди' do
+    card = CrmCard.create!(kind: 'lead', author: agent, lead_event: test_lead, sandbox: true, status: 'approved')
+    seen = nil
+    allow(CrmCards::Workflow).to receive(:new) do
+      seen = Telegram::BotContext.bot
+      instance_double(CrmCards::Workflow, export!: nil)
+    end
+
+    CrmCards::ExportJob.perform_now(card.id)
+
+    expect(seen).to eq('test')
+  end
+end
+```
+
+- [ ] **Step 2: Прогнать — падает**
+
+Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/sandbox_spec.rb`
+Expected: FAIL — `unknown attribute 'sandbox'`.
+
+- [ ] **Step 3: Миграция и модель**
+
+Создать `db/migrate/20260914120200_add_sandbox_to_crm_cards.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+# Песочница тестового бота работает на боевой базе. Флаг отделяет её
+# карточки от рабочих: их не видно в рабочем боте и наоборот, а выгрузка
+# песочницы не пишет в Topnlab.
+class AddSandboxToCrmCards < ActiveRecord::Migration[8.1]
+  def change
+    add_column :crm_cards, :sandbox, :boolean, null: false, default: false
+    add_index :crm_cards, %i[sandbox status]
+  end
+end
+```
+
+Run: `bin/rb --db bin/rails db:migrate`
+
+В `app/models/crm_card.rb` заменить:
+
+```ruby
+  scope :not_deleted, -> { where(deleted_at: nil) }
+  default_scope { not_deleted }
+```
+
+на:
+
+```ruby
+  scope :not_deleted, -> { where(deleted_at: nil) }
+  default_scope { not_deleted }
+
+  # Карточки бота, который обрабатывает текущий апдейт: песочница видит
+  # только свои, рабочий бот — только рабочие.
+  scope :in_current_bot, -> { where(sandbox: Telegram::BotContext.test?) }
+```
+
+- [ ] **Step 4: Выгрузка песочницы**
+
+Создать `app/services/crm_cards/sandbox_exporter.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+module CrmCards
+  # Выгрузка в песочнице тестового бота: в Topnlab ничего не пишется.
+  # Номер «TEST-<id>» не спутать с настоящим ни в карточке, ни в журнале.
+  class SandboxExporter
+    def call(card)
+      LeadExporter::Outcome.new(crm_id: "TEST-#{card.id}", warning: 'песочница: в CRM ничего не записано')
+    end
+  end
+end
+```
+
+- [ ] **Step 5: Права песочницы**
+
+В `app/services/crm_cards/permissions.rb` заменить:
+
+```ruby
+    # @return [Array<TelegramUser>]
+    def self.moderators
+      ::TelegramUser.active.where.not(topnlab_user_id: nil).order(:id).select { |staff| self.for(staff).can?(:moderate) }
+    end
+```
+
+на:
+
+```ruby
+    # @return [Array<TelegramUser>]
+    def self.moderators
+      scope = ::TelegramUser.active.where.not(topnlab_user_id: nil)
+      sandbox_ids = sandbox_capabilities.keys.map(&:to_i)
+      scope = scope.or(::TelegramUser.active.where(tg_user_id: sandbox_ids)) if sandbox_ids.any?
+      scope.order(:id).select { |staff| self.for(staff).can?(:moderate) }
+    end
+
+    # Только тестовый бот: права по списку TELEGRAM_TEST_CAPABILITIES —
+    # JSON { "<tg_user_id>": ["create_lead", ...] } — для тех, кто проверяет
+    # песочницу без учётки в CRM. В рабочем боте список не читается вовсе.
+    # @return [Hash{String => Array<String>}]
+    def self.sandbox_capabilities
+      return {} unless Telegram::BotContext.test?
+
+      JSON.parse(ENV.fetch('TELEGRAM_TEST_CAPABILITIES', '{}')).transform_keys(&:to_s)
+    rescue JSON::ParserError
+      Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не JSON, список игнорирую')
+      {}
+    end
+```
+
+Там же в `#call` заменить:
+
+```ruby
+      return deny('Аккаунт в боте не активен.') unless @tg_user.status == 'active'
+```
+
+на:
+
+```ruby
+      return deny('Аккаунт в боте не активен.') unless @tg_user.status == 'active'
+
+      sandbox = self.class.sandbox_capabilities[@tg_user.tg_user_id.to_s]
+      if sandbox
+        return Result.new(capabilities: Array(sandbox).map(&:to_s) & CAPABILITIES, crm_user: nil,
+                          position_title: 'песочница (TELEGRAM_TEST_CAPABILITIES)', denial: nil)
+      end
+```
+
+- [ ] **Step 6: Workflow — бот карточки, тестовые лиды, выгрузка**
+
+В `app/services/crm_cards/workflow.rb`:
+
+1. В `#upsert_lead_card!` заменить:
+
+```ruby
+      return deny('Твоей должности в CRM не выдано право заводить заявки.') unless perms.can?(:create_lead)
+
+      card = CrmCard.kind_lead.find_or_initialize_by(lead_event_id: lead.id)
+```
+
+на:
+
+```ruby
+      return deny('Твоей должности в CRM не выдано право заводить заявки.') unless perms.can?(:create_lead)
+      if Telegram::BotContext.test? && !lead.staff_test?
+        return deny('В тестовом боте карточки заводятся только по тестовым лидам.')
+      end
+
+      card = CrmCard.kind_lead.find_or_initialize_by(lead_event_id: lead.id)
+```
+
+2. В `#save_values` заменить:
+
+```ruby
+        card.author = actor if card.new_record? || taking_over?(card, actor)
+```
+
+на:
+
+```ruby
+        card.author = actor if card.new_record? || taking_over?(card, actor)
+        card.sandbox = Telegram::BotContext.test? if card.new_record?
+```
+
+3. В `#can_edit?` заменить:
+
+```ruby
+    def can_edit?(card, actor, perms = Permissions.for(actor))
+      return false if perms.denial
+```
+
+на:
+
+```ruby
+    def can_edit?(card, actor, perms = Permissions.for(actor))
+      return false if perms.denial || wrong_bot(card)
+```
+
+4. В `#edit_denial` заменить:
+
+```ruby
+    def edit_denial(card, perms)
+      return perms.denial if perms.denial
+```
+
+на:
+
+```ruby
+    def edit_denial(card, perms)
+      return perms.denial if perms.denial
+      return wrong_bot(card) if wrong_bot(card)
+```
+
+5. В `#return_for_rework!`, `#approve!` и `#retry_export!` первой строкой внутри `card.with_lock do` добавить:
+
+```ruby
+        next deny(wrong_bot(card)) if wrong_bot(card)
+```
+
+6. В `#export!` заменить:
+
+```ruby
+        outcome = exporter.call(card)
+```
+
+на:
+
+```ruby
+        outcome = (card.sandbox? ? SandboxExporter.new : exporter).call(card)
+```
+
+7. В `#record_export!` заменить:
+
+```ruby
+        next deny('Номер карточки в CRM — только цифры.') unless digits.match?(/\A\d{1,12}\z/)
+```
+
+на:
+
+```ruby
+        number = card.sandbox? ? /\A(TEST-)?\d{1,12}\z/ : /\A\d{1,12}\z/
+        next deny('Номер карточки в CRM — только цифры.') unless digits.match?(number)
+```
+
+8. В `#sync_lead_ref!` первой строкой добавить:
+
+```ruby
+      return if card.sandbox?
+```
+
+9. Добавить приватный метод перед `#taking_over?`:
+
+```ruby
+    # Карточка живёт в боте, где её завели: песочница не трогает рабочие
+    # карточки, рабочий бот — тестовые. export! проверку не проходит: джоб
+    # выставляет контекст по самой карточке (ExportJob).
+    def wrong_bot(card)
+      return nil if card.sandbox? == Telegram::BotContext.test?
+
+      card.sandbox? ? 'Это карточка из тестового бота — открой её там.' : 'Это рабочая карточка — в тестовом боте её не трогаем.'
+    end
+```
+
+- [ ] **Step 7: Проверка, джоб и точки входа**
+
+В `app/services/crm_cards/checker.rb` в `#lead_rules` заменить:
+
+```ruby
+      errors << ['lead', 'Тестовая заявка сотрудника — в CRM не выгружается.'] if lead.staff_test?
+```
+
+на:
+
+```ruby
+      if @card.sandbox?
+        errors << ['lead', 'В песочнице — только тестовые лиды.'] unless lead.staff_test?
+      elsif lead.staff_test?
+        errors << ['lead', 'Тестовая заявка сотрудника — в CRM не выгружается.']
+      end
+```
+
+В `app/jobs/crm_cards/export_job.rb` заменить:
+
+```ruby
+      Workflow.new.export!(card)
+```
+
+на:
+
+```ruby
+      # Контекст — по карточке, а не по тому, что донёс Sidekiq: уведомления
+      # о выгрузке песочницы обязаны прийти от тестового бота.
+      Telegram::BotContext.within(card.sandbox? ? 'test' : 'main') { Workflow.new.export!(card) }
+```
+
+В `app/services/telegram/work_bot/wizard/crm_card_support.rb` в `#card` заменить:
+
+```ruby
+          @card = ctx['card'].to_s.match?(/\A\d+\z/) ? ::CrmCard.find_by(id: ctx['card']) : nil
+```
+
+на:
+
+```ruby
+          @card = ctx['card'].to_s.match?(/\A\d+\z/) ? ::CrmCard.in_current_bot.find_by(id: ctx['card']) : nil
+```
+
+В `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` в `#handle` заменить:
+
+```ruby
+          card = ::CrmCard.find_by(id: @args[0].to_s[/\A\d+\z/])
+```
+
+на:
+
+```ruby
+          card = ::CrmCard.in_current_bot.find_by(id: @args[0].to_s[/\A\d+\z/])
+```
+
+В `app/services/telegram/work_bot/commands/cards.rb` заменить `::CrmCard.status_pending_review.order(:submitted_at)` на `::CrmCard.in_current_bot.status_pending_review.order(:submitted_at)`, в `#own_cards` — `::CrmCard.includes(:lead_event)` на `::CrmCard.in_current_bot.includes(:lead_event)`, в `#export_problems` — `::CrmCard.where(status: %w[export_failed exporting approved])` на `::CrmCard.in_current_bot.where(status: %w[export_failed exporting approved])`.
+
+- [ ] **Step 8: Прогнать — зелёные**
+
+Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/sandbox_spec.rb`
+Expected: `7 examples, 0 failures`.
+
+Run: `bin/rb --db bundle exec rspec spec/models/crm_card_spec.rb spec/services/crm_cards spec/jobs/crm_cards spec/services/telegram/work_bot`
+Expected: 0 failures — вне тестового контекста `in_current_bot` = рабочие карточки, поведение стеков A–D не меняется.
+
+- [ ] **Step 9: Линт и коммит**
+
+Run: `bin/rb bundle exec rubocop -a db/migrate/20260914120200_add_sandbox_to_crm_cards.rb app/models/crm_card.rb app/services/crm_cards app/jobs/crm_cards app/services/telegram/work_bot/wizard/crm_card_support.rb app/services/telegram/work_bot/callbacks/crm_card_callback.rb app/services/telegram/work_bot/commands/cards.rb spec/services/crm_cards/sandbox_spec.rb`
+
+```bash
+git add db/migrate/20260914120200_add_sandbox_to_crm_cards.rb db/structure.sql app/models/crm_card.rb \
+        app/services/crm_cards app/jobs/crm_cards/export_job.rb \
+        app/services/telegram/work_bot/wizard/crm_card_support.rb \
+        app/services/telegram/work_bot/callbacks/crm_card_callback.rb \
+        app/services/telegram/work_bot/commands/cards.rb spec/services/crm_cards/sandbox_spec.rb
+git commit -m "feat(crm_cards): песочница тестового бота — свои карточки, TEST-выгрузка, права для проверяющих"
+```
+
+### Task 19: Вход из лички — карточка заявки по списку лидов и тестовый лид
+
+Кнопка «📋 Карточка CRM» живёт под лидом в группе, а тестового бота там нет. Вход из лички нужен и рабочему боту — агенту удобнее открыть карточку из меню, чем искать лид в топике.
+
+**Files:**
+- Modify: `app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb` (шаг выбора лида, `#gate`)
+- Create: `app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb`
+- Modify: `app/services/telegram/work_bot/wizard/engine.rb` (`FLOWS`)
+- Modify: `app/services/telegram/work_bot/wizard/menu.rb`
+- Test: `spec/services/telegram/work_bot/wizard/crm_dm_entry_spec.rb`
+
+**Interfaces:**
+- Consumes: `CrmLeadCardFlow` (Task 9), `BotContext` (Task 16), песочница (Task 18).
+- Produces: `wiz:s:crm_lead` без id — начинает с выбора лида (в рабочем боте — открытые реальные лиды, в тестовом — только тестовые; у не-модератора — только свои); мастер `crm_test_lead` (только тестовый бот): имя → телефон → подтверждение → тестовый лид, назначенный на себя, со стадией «первый контакт». Меню: «📋 Карточка заявки» (`create_lead`), «🧪 Тестовый лид» (тестовый бот + `create_lead`).
+
+- [ ] **Step 1: Спека (красная)**
+
+Создать `spec/services/telegram/work_bot/wizard/crm_dm_entry_spec.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe 'карточка заявки из лички и тестовый лид' do
+  include_context 'wizard DM harness'
+
+  before { stub_crm_positions }
+
+  let!(:agent) { crm_staff(tg_user_id: 99_201, username: 'irina') }
+  let!(:real_lead) do
+    LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'first_contact',
+                      first_contact_at: 1.hour.ago, anchor_topic_key: 'apartments', tg_chat_id: -100_1,
+                      assigned_to: agent, metadata: { 'name' => 'Анна Реальная' })
+  end
+  let!(:test_lead) do
+    LeadEvent.create!(lead_ref: agent, source: 'manual', current_stage: 'first_contact', first_contact_at: 1.hour.ago,
+                      anchor_topic_key: 'dispatcher', tg_chat_id: agent.dm_chat_id, assigned_to: agent, staff_test: true,
+                      metadata: { 'name' => 'Тест Тестович' })
+  end
+
+  def labels
+    dms.last[:keyboard].flatten.map { |b| b[:text] }
+  end
+
+  it 'в рабочем боте: из меню — список своих реальных лидов, выбор ведёт к полям' do
+    tap_callback('wiz:s:crm_lead', user: agent)
+
+    expect(last_text).to include('По какому лиду карточка?')
+    expect(labels.join).to include('Анна').and(satisfy { |t| !t.include?('Тест Тестович') })
+
+    press('Анна', user: agent)
+    expect(last_text).to include('Телефон?') # имя пришло с лидом, телефона в нём нет
+  end
+
+  it 'в тестовом боте: в списке только тестовые лиды' do
+    Telegram::BotContext.within('test') { tap_callback('wiz:s:crm_lead', user: agent) }
+
+    expect(labels.join).to include('Тест').and(satisfy { |t| !t.include?('Анна') })
+  end
+
+  it 'тестовый лид: создаётся без Inquiry и без сообщений в группу, назначен на себя' do
+    Telegram::BotContext.within('test') do
+      tap_callback('wiz:s:crm_test_lead', user: agent)
+      say('Пётр Проверкин', user: agent)
+      say('+7 910 555-00-11', user: agent)
+      expect { press('Создать', user: agent) }.to change(LeadEvent.where(staff_test: true), :count).by(1)
+    end
+
+    lead = LeadEvent.order(:id).last
+    expect(lead).to have_attributes(assigned_to_id: agent.id, current_stage: 'first_contact', source: 'manual')
+    expect(lead.metadata).to include('name' => 'Пётр Проверкин', 'phone' => '79105550011', 'sandbox' => true)
+    expect(dms.map { |m| m[:chat_id] }).to all(eq(agent.dm_chat_id))
+    expect(last_callbacks).to include("wiz:s:crm_lead:#{lead.id}")
+  end
+
+  it 'тестовый лид в рабочем боте не заводится' do
+    tap_callback('wiz:s:crm_test_lead', user: agent)
+
+    expect(last_text).to include('только в тестовом боте')
+  end
+
+  it 'меню: «Карточка заявки» везде, «Тестовый лид» — только в тестовом боте' do
+    main = Telegram::WorkBot::Wizard::Menu.keyboard(agent).flatten.map { |b| b[:text] }
+    test = Telegram::BotContext.within('test') { Telegram::WorkBot::Wizard::Menu.keyboard(agent).flatten.map { |b| b[:text] } }
+
+    expect(main).to include('📋 Карточка заявки').and(satisfy { |t| !t.include?('🧪 Тестовый лид') })
+    expect(test).to include('📋 Карточка заявки', '🧪 Тестовый лид')
+  end
+end
+```
+
+- [ ] **Step 2: Прогнать — падает**
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram/work_bot/wizard/crm_dm_entry_spec.rb`
+Expected: FAIL — мастер без id отказывает «открывают кнопкой под лидом», `crm_test_lead` неизвестен.
+
+- [ ] **Step 3: Выбор лида в мастере заявки**
+
+В `app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb` заменить:
+
+```ruby
+        def steps
+          ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
+```
+
+на:
+
+```ruby
+        CANDIDATES_LIMIT = 8
+
+        def steps
+          [lead_step] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
+```
+
+Заменить весь `#gate`:
+
+```ruby
+        def gate
+          return '⚠️ Карточку заявки открывают кнопкой «📋 Карточка CRM» под лидом.' unless lead
+          return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
+          return '🚫 Твоей должности в CRM не выдано право заводить заявки.' unless permissions.can?(:create_lead)
+
+          unless lead.assigned_to_id == tg_user.id || permissions.can?(:moderate)
+            responsible = lead.assigned_to&.mention || 'пока никто не назначен'
+            return "🚫 Карточку заполняет ответственный по лиду: #{escape_html(responsible)}."
+          end
+          if existing && !::CrmCard::AUTHOR_EDITABLE.include?(existing.status)
+            return "ℹ️ Карточка ##{existing.id} по этому лиду — #{::CrmCard::STATUS_LABELS[existing.status]}. " \
+                   'Открой её через /cards.'
+          end
+
+          nil
+        end
+```
+
+на:
+
+```ruby
+        def gate
+          return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
+          return '🚫 Твоей должности в CRM не выдано право заводить заявки.' unless permissions.can?(:create_lead)
+          return nil if ctx['lead'].blank? # лид выберут первым шагом
+          return "⚠️ Лид ##{escape_html(ctx['lead'])} не найден." unless lead
+
+          lead_refusal(lead)
+        end
+```
+
+В `#accept` заменить:
+
+```ruby
+        def accept(step, value, manual: false)
+          field = ::CrmCards::Schema.field('lead', step.id)
+```
+
+на:
+
+```ruby
+        def accept(step, value, manual: false)
+          return accept_lead(value) if step.id == 'lead'
+
+          field = ::CrmCards::Schema.field('lead', step.id)
+```
+
+И в `private` сразу после `private` добавить:
+
+```ruby
+        # Из лички лида выбирают списком: свои открытые (модератору — все),
+        # в тестовом боте — только тестовые, без уже отправленной карточки.
+        def lead_step
+          Flow::Step.new(id: 'lead', kind: :choice, per_row: 1,
+                         prompt: candidates.any? ? 'По какому лиду карточка?' : 'По какому лиду карточка? Подходящих лидов нет.',
+                         hint: 'В списке — открытые лиды без отправленной карточки.',
+                         options: candidates.map { |l| [lead_label(l), l.id.to_s] })
+        end
+
+        def candidates
+          @candidates ||= begin
+            scope = ::LeadEvent.open.where(staff_test: ::Telegram::BotContext.test?).order(updated_at: :desc)
+            scope = scope.where(assigned_to: tg_user) unless permissions.can?(:moderate)
+            scope.limit(CANDIDATES_LIMIT * 2).to_a.reject { |l| lead_refusal(l) }.first(CANDIDATES_LIMIT)
+          end
+        end
+
+        def accept_lead(value)
+          found = value.to_s.match?(/\A\d+\z/) ? ::LeadEvent.find_by(id: value) : nil
+          return [nil, 'Лид не найден — выбери из списка.'] unless found
+
+          refusal = lead_refusal(found)
+          refusal ? [nil, refusal] : [found.id.to_s, nil]
+        end
+
+        def lead_refusal(target)
+          if ::Telegram::BotContext.test? && !target.staff_test?
+            return '🚫 В тестовом боте карточки заводятся только по тестовым лидам.'
+          end
+          unless target.assigned_to_id == tg_user.id || permissions.can?(:moderate)
+            responsible = target.assigned_to&.mention || 'пока никто не назначен'
+            return "🚫 Карточку заполняет ответственный по лиду: #{escape_html(responsible)}."
+          end
+
+          card = ::CrmCard.kind_lead.find_by(lead_event_id: target.id)
+          return nil if card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status)
+
+          "ℹ️ Карточка ##{card.id} по этому лиду — #{::CrmCard::STATUS_LABELS[card.status]}. Открой её через /cards."
+        end
+
+        def lead_label(target)
+          name = target.metadata.to_h['name'].to_s.split.first
+          ["##{target.id}", name, target.lead_ref.try(:title).to_s.truncate(30)].compact_blank.join(' · ')
+        end
+```
+
+- [ ] **Step 4: Тестовый лид**
+
+Создать `app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb`:
+
+```ruby
+# frozen_string_literal: true
+
+module Telegram
+  module WorkBot
+    module Wizard
+      # «Тестовый лид» — только в тестовом боте. Лид сразу назначен на
+      # проверяющего и стоит на «первом контакте», чтобы весь путь карточки
+      # проходился за минуту.
+      #
+      # lead_ref — сам проверяющий (TelegramUser), а не Inquiry: создание
+      # Inquiry рассылает письма админам и публикует лид в рабочую группу.
+      # staff_test: true исключает лид из метрик (LeadEvent.real) и
+      # не даёт ему попасть в CRM из рабочего бота (CrmCards::Checker).
+      class CrmTestLeadFlow < Flow
+        include CrmCardSupport
+
+        flow 'crm_test_lead', 'Тестовый лид'
+
+        def steps
+          [
+            field_step(::CrmCards::Schema.field('lead', 'name'), prompt: 'Имя тестового клиента?'),
+            field_step(::CrmCards::Schema.field('lead', 'phone'), prompt: 'Телефон тестового клиента?'),
+            Flow::Step.new(id: 'confirm', kind: :confirm, prompt: 'Создать тестовый лид и назначить на себя?',
+                           confirm_label: '🧪 Создать')
+          ]
+        end
+
+        def gate
+          return '🚫 Тестовые лиды заводятся только в тестовом боте.' unless ::Telegram::BotContext.test?
+          return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
+          return '🚫 Твоей должности не выдано право заводить заявки.' unless permissions.can?(:create_lead)
+
+          nil
+        end
+
+        def accept(step, value, manual: false)
+          field = ::CrmCards::Schema.field('lead', step.id)
+          field ? accept_field(field, value) : [value, nil]
+        end
+
+        def finish
+          lead = ::LeadEvent.create!(
+            lead_ref: tg_user, source: 'manual', current_stage: 'first_contact', first_contact_at: Time.current,
+            anchor_topic_key: 'dispatcher', tg_chat_id: tg_user.dm_chat_id || tg_user.tg_user_id,
+            assigned_to: tg_user, assigned_at: Time.current, staff_test: true,
+            metadata: { 'name' => ctx['name'], 'phone' => ctx['phone'], 'sandbox' => true }
+          )
+          { text: "🧪 Тестовый лид ##{lead.id} создан и назначен на тебя.",
+            keyboard: [[{ text: '📋 Карточка заявки', callback_data: "wiz:s:crm_lead:#{lead.id}" }]] }
+        end
+      end
+    end
+  end
+end
+```
+
+- [ ] **Step 5: Регистрация и меню**
+
+В `app/services/telegram/work_bot/wizard/engine.rb` заменить:
+
+```ruby
+          'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow'
+        }.freeze
+```
+
+на:
+
+```ruby
+          'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
+          'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
+        }.freeze
+```
+
+В `app/services/telegram/work_bot/wizard/menu.rb` заменить:
+
+```ruby
+          # Право на объекты — из должности в CRM, а не из роли в боте.
+          if tg_user && ::CrmCards::Permissions.for(tg_user).can?(:create_object)
+            rows << [{ text: '🏠 Новый объект в CRM', callback_data: 'wiz:s:crm_object' }]
+          end
+          rows
+```
+
+на:
+
+```ruby
+          # Права на карточки — из должности в CRM, а не из роли в боте.
+          perms = tg_user && ::CrmCards::Permissions.for(tg_user)
+          if perms&.can?(:create_lead)
+            rows << [{ text: '📋 Карточка заявки', callback_data: 'wiz:s:crm_lead' }]
+            rows << [{ text: '🧪 Тестовый лид', callback_data: 'wiz:s:crm_test_lead' }] if ::Telegram::BotContext.test?
+          end
+          rows << [{ text: '🏠 Новый объект в CRM', callback_data: 'wiz:s:crm_object' }] if perms&.can?(:create_object)
+          rows
+```
+
+- [ ] **Step 6: Прогнать — зелёные, прежние мастера целы**
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram/work_bot/wizard`
+Expected: 0 failures (новая спека — `5 examples`; `crm_lead_card_flow_spec` — прежние 5 зелёные: отказы по правам, ответственному и статусу карточки срабатывают для лида с кнопки так же, как раньше).
+
+Run: `bin/rb --db bundle exec rspec spec/models spec/services/crm_cards spec/jobs spec/services/telegram spec/services/lead spec/requests/webhooks`
+Run: `bin/rb bundle exec rubocop --parallel` и `bin/rb bundle exec brakeman --exit-on-warn --quiet --format text`
+Expected: всё зелёное.
+
+- [ ] **Step 7: Коммит**
+
+```bash
+git add app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb \
+        app/services/telegram/work_bot/wizard/engine.rb app/services/telegram/work_bot/wizard/menu.rb \
+        spec/services/telegram/work_bot/wizard/crm_dm_entry_spec.rb
+git commit -m "feat(work_bot): карточка заявки из лички по списку лидов и тестовый лид в песочнице"
+```
+
+> **Конец стека E.** PR «песочница» → CI → `/code-review` → правки.
+
+---
+
+## Task 20: Запуск — привязки, песочница, рабочий бот
+
+Кода нет; каждый шаг — действие человека или команда на прод-хосте. Порядок обязателен.
 
 - [ ] **Step 1: Утвердить таблицу должностей**
 
-Руководитель смотрит `config/crm_permissions.yml` (spec §10, п. 1): Ген. директор — всё; Агент — заявки и объекты; Стажёр — только заявки; Конструктор, Аудитор, Юрист — ничего. Правки — отдельным PR до выкатки.
+Руководитель смотрит `config/crm_permissions.yml` (spec §10): Ген. директор — всё; Агент — заявки и объекты; Стажёр — только заявки; Конструктор, Аудитор, Юрист — ничего. Правки — отдельным PR до выкатки.
 
-- [ ] **Step 2: Выкатить стеки A–D**
+- [ ] **Step 2: Починить привязки — можно до выкатки**
 
-Процедура — `.claude/memory/techContext.md`, раздел про деплой. В стеке A есть миграция: после обновления кода на прод-хосте — `/usr/bin/docker compose exec -T web bin/rails db:migrate`, затем `git checkout -- db/structure.sql` (прод-база переписывает файл, см. auto-memory «Прод-БД: 5 расширений против 7»). Перезапуск `web` и `sidekiq`.
+`/whoami` уже работает в проде и от нового кода не зависит. Сейчас привязка влияет только на автора заметок в CRM (`/note`, закрытие, спам) — после починки они подписываются правильной учёткой.
 
-- [ ] **Step 3: Починить привязки и проверить права**
+Данные 14.09.26 (spec §8) и что делать:
 
-Run (прод-хост, только чтение): `/usr/bin/docker compose exec -T web bin/rails crm_cards:permissions`
-Expected до починки (данные 14.09.26, spec §8): «⚠️ Модераторов нет»; один директор бота — «нет прав: Нет привязки к CRM»; второй — «CRM: Конструктор → нет прав»; сотрудник, привязанный к учётке «Юрист», — тоже «нет прав: Нет привязки к CRM» (у него пуст `telegram_users.topnlab_user_id`, а эта проверка идёт первой).
+1. **@oks07victory** — обе связи на **182453 «Конструктор»**, а «Генеральный директор» — **183004**, ни к кому не привязан.
+   - Оксана в личке рабочему боту: `/whoami <email учётки 183004>`, код из письма. Это меняет `telegram_users.topnlab_user_id`.
+   - Вторую связь `users.telegram_user_id` `/whoami` не трогает — перенести с подтверждения руководителя на прод-хосте:
+     `/usr/bin/docker compose exec -T web bin/rails runner 'tg = TelegramUser.find_by!(tg_username: "oks07victory"); User.unscoped.find_by!(crm_user_id: 182453).update_column(:telegram_user_id, nil); User.unscoped.find_by!(crm_user_id: 183004).update_column(:telegram_user_id, tg.id)'`
+   - Без переноса права не выдадутся: «Телеграм привязан к двум разным учёткам CRM». Побочный эффект переноса: рассылки «мои объекты» у Оксаны пойдут по объектам 183004.
+2. **@ewceq** — `topnlab_user_id` пуст, `users.telegram_user_id` → **182986 «Юрист»**, учётка заблокирована; у него 2 открытых лида. Руководитель выбирает:
+   - работает под «Юристом» — разблокировать в Topnlab, дождаться ночной синхронизации (или запустить `TopnlabStaffSyncJob`), затем `/whoami <email 182986>`;
+   - переходит на другую учётку — снять старую связь: `/usr/bin/docker compose exec -T web bin/rails runner 'User.unscoped.find_by!(crm_user_id: 182986).update_column(:telegram_user_id, nil)'`, затем `/whoami <email новой учётки>`.
+3. **@nick4man** — учётки в CRM нет; в рабочем боте прав на карточки не будет, в песочнице — через `TELEGRAM_TEST_CAPABILITIES` (Step 4).
 
-Действия:
-1. Директор, чья учётка в CRM — «Генеральный директор», пишет боту в личку `/whoami <email этой учётки>` и вводит код из письма.
-2. Сотрудник с учёткой «Юрист». Связей две: `users.telegram_user_id` уже указывает на заблокированную учётку «Юрист», а `/whoami` заполняет только `telegram_users.topnlab_user_id` — вторую связь не трогает, и `LinkStaffCallback` уже привязанных не перепривязывает. Руководитель выбирает:
-   - **сотрудник работает под учёткой «Юрист»** — разблокировать её в Topnlab, дождаться ночной синхронизации (или запустить `TopnlabStaffSyncJob` вручную), затем сотрудник делает `/whoami <email учётки «Юрист»>`: обе связи указывают на одну учётку;
-   - **сотрудник переходит на другую учётку** — с подтверждения руководителя снять старую связь на прод-хосте: `/usr/bin/docker compose exec -T web bin/rails runner 'User.unscoped.find_by!(crm_user_id: <id учётки «Юрист»>).update_column(:telegram_user_id, nil)'`, затем сотрудник делает `/whoami <email новой учётки>`. Без снятия связи отчёт покажет «Телеграм привязан к двум разным учёткам CRM».
-3. Повторить команду отчёта.
+- [ ] **Step 3: Выкатить стеки A–E**
 
-Expected после: строка `Модераторы: @…` с директором; у агентов — `create_lead, create_object`; предупреждений о расхождении названий нет или они осознанно приняты.
+Процедура — `.claude/memory/techContext.md`, раздел про деплой. Миграций три (`crm_cards`, `telegram_webhook_acks.bot`, `crm_cards.sandbox`): после обновления кода — `/usr/bin/docker compose exec -T web bin/rails db:migrate`, затем `git checkout -- db/structure.sql` (прод-база переписывает файл, см. auto-memory «Прод-БД: 5 расширений против 7»). Перезапуск `web` и `sidekiq`.
 
-- [ ] **Step 4: Проверка на живом — заявка без выгрузки**
+- [ ] **Step 4: Поднять тестового бота**
 
-1. Взять реальный свежий лид с сайта, назначенный агенту; агент после звонка — `/stage контакт`.
-2. Агент: кнопка «📋 Карточка CRM» под лидом → мастер в личке → «💾 Сохранить и проверить» → «📤 На модерацию».
-   Expected: у директора в личке карточка с кнопками «Изменить поле / На доработку / Одобрить»; под лидом в группе — «⏳ На модерации · CRM», без телефона.
-3. Директор: «↩️ На доработку» с комментарием. Expected: агенту пришёл комментарий, кнопка под лидом — «↩️ Карточка CRM: доработать».
-4. Агент дорабатывает и отправляет снова; директор — «✅ Одобрить и выгрузить».
-   Expected: в течение минуты карточка «🟢 В CRM #<номер>», в Topnlab — заявка с ответственным-агентом; у `Inquiry` лида заполнен `crm_id`.
-   Если пришло предупреждение «ответственный не назначен» — поставить ответственного в CRM руками и проверить email агента в `/whoami`.
+1. В прод-`.env` (кроме уже заданного `TELEGRAM_TEST_BOT_TOKEN`):
+   - `TELEGRAM_TEST_WEBHOOK_SECRET` — случайная строка (`openssl rand -hex 32`);
+   - `TELEGRAM_TEST_WEBHOOK_URL=https://<воркер relay>.workers.dev/test`;
+   - `TELEGRAM_TEST_CAPABILITIES={"<tg_user_id nick4man>":["create_lead","create_object","moderate"]}`.
+   Перезапуск `web` и `sidekiq`.
+2. Relay: из `tg-webhook-relay/` — `wrangler secret put TELEGRAM_TEST_WEBHOOK_SECRET` (то же значение) и `wrangler deploy`. Проверить, что основной бот жив: `bin/rails telegram:webhook:info` → `pending_update_count` не растёт.
+3. `/usr/bin/docker compose exec -T web bin/rails telegram:webhook:setup_test` → `setWebhook (test) result: true`.
+4. Каждый проверяющий открывает тестового бота и жмёт «Start» — без этого бот не может написать первым.
 
-- [ ] **Step 5: Проверка на живом — объект**
+- [ ] **Step 5: Проверить права**
 
-Агент: «☰ Что сделать?» → «🏠 Новый объект в CRM» → мастер → на модерацию; директор одобряет; агент вносит объект в Topnlab по «паспорту» и отмечает номер через «📥 Внесено в CRM».
-Expected: карточка «🟢 В CRM #<номер>»; через вебхук Topnlab объект появляется в каталоге сайта (`TopnlabPropertyImportJob`).
+Run: `/usr/bin/docker compose exec -T web bin/rails crm_cards:permissions`
+Expected: `Модераторы: @oks07victory`; @IrinLegaeva и @sinitsina_nadezhda — `create_lead, create_object`; @ewceq — по выбранному в Step 2; @nick4man — «нет прав: Нет привязки к CRM» (это отчёт рабочего бота; в песочнице у него права из `TELEGRAM_TEST_CAPABILITIES`).
 
-- [ ] **Step 6: Документация**
+- [ ] **Step 6: Прогон в песочнице**
 
-Обновить `.claude/memory/progress.md` (что в проде) и `.claude/memory/activeContext.md` (фокус) одним PR: конвейер карточек CRM включён, модератор(ы), таблица должностей утверждена <дата dd.MM.yy>.
+Всё — в личке с тестовым ботом.
+
+1. Агент: «☰ Что сделать?» (`/menu`) → «🧪 Тестовый лид» → имя, телефон → «🧪 Создать» → «📋 Карточка заявки» → заполнить → «💾 Сохранить и проверить» → «📤 На модерацию».
+   Expected: у модератора (Оксана и/или @nick4man) в личке **тестового** бота карточка с кнопками решения; в рабочей группе ничего не появилось.
+2. Модератор: «↩️ На доработку» с комментарием → агент получает комментарий, дорабатывает, отправляет снова → модератор «✅ Одобрить и выгрузить».
+   Expected: через минуту «🟢 В CRM TEST-<id>» и «песочница: в CRM ничего не записано»; в Topnlab новой заявки **нет**.
+3. Агент: «🏠 Новый объект в CRM» → мастер → на модерацию → одобрение → «📥 Внесено в CRM» с любыми цифрами.
+   Expected: «🟢 В CRM <номер>»; в Topnlab ничего не создано (в песочнице объект вносить не нужно).
+4. Проверка изоляции: в рабочем боте `/cards` у агента — ни одной тестовой карточки; в тестовом боте реальный лид в списке «📋 Карточка заявки» не появляется.
+
+После прогона закрыть тестовые лиды:
+`/usr/bin/docker compose exec -T web bin/rails runner 'LeadEvent.open.where(staff_test: true).find_each { |l| l.update_columns(current_stage: "closed_lost", closed_at: Time.current) if l.metadata.to_h["sandbox"] == true }'`
+
+- [ ] **Step 7: Первая настоящая заявка в рабочем боте**
+
+1. Реальный свежий лид с сайта, назначенный агенту; агент после звонка — `/stage контакт`.
+2. Агент: кнопка «📋 Карточка CRM» под лидом (или «📋 Карточка заявки» в меню) → заполнить → на модерацию.
+   Expected: под лидом в группе — «⏳ На модерации · CRM», без телефона; у Оксаны карточка в личке рабочего бота.
+3. Оксана одобряет. Expected: «🟢 В CRM #<номер>», в Topnlab заявка с ответственным-агентом, у `Inquiry` лида заполнен `crm_id`. Предупреждение «ответственный не назначен» — поставить в CRM руками и проверить email агента в `/whoami`.
+
+- [ ] **Step 8: Документация**
+
+Обновить `.claude/memory/progress.md` (что в проде) и `.claude/memory/activeContext.md` (фокус) одним PR: конвейер карточек CRM включён, тестовый бот и его ENV, модераторы, таблица должностей утверждена <дата dd.MM.yy>.
