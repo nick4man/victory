@@ -100,7 +100,7 @@
 - Test: `spec/models/crm_card_spec.rb`
 
 **Interfaces:**
-- Produces: `CrmCard` — `kind` (`lead`|`object`), `status` (`draft`|`needs_rework`|`pending_review`|`approved`|`exporting`|`exported`|`export_failed`), `export_mode` (`api`|`manual`), `payload` (jsonb Hash, ключи-строки), `check_errors` (jsonb Array `[{ 'field' =>, 'message' => }]`), `checked_at`, `submitted_at`, `reviewed_at`, `crm_id` (String), `exported_at`, `export_error` (Text), `lead_event`, `author` (`TelegramUser`), `reviewer` (`TelegramUser`), `transitions`. Константы `CrmCard::AUTHOR_EDITABLE = %w[draft needs_rework]`, `CrmCard::EXPORT_STALE_AFTER = 15.minutes`, `CrmCard::STATUS_LABELS` (Hash статус → «эмодзи Название»). Методы `#check_passed?`, `#export_stale?`, `#last_rework_comment`.
+- Produces: `CrmCard` — `kind` (`lead`|`object`), `status` (`draft`|`needs_rework`|`pending_review`|`approved`|`exporting`|`exported`|`export_failed`), `export_mode` (`api`|`manual`), `payload` (jsonb Hash, ключи-строки), `check_errors` (jsonb Array `[{ 'field' =>, 'message' => }]`), `checked_at`, `submitted_at`, `reviewed_at`, `crm_id` (String), `exported_at`, `export_error` (Text), `lead_event`, `author` (`TelegramUser`), `reviewer` (`TelegramUser`), `transitions`. Константы `CrmCard::AUTHOR_EDITABLE = %w[draft needs_rework]`, `CrmCard::EXPORT_STALE_AFTER = 15.minutes`, `CrmCard::STATUS_LABELS` (Hash статус → «эмодзи Название»). Методы `#check_passed?`, `#export_stale?` (заявка в `exporting` или `approved` дольше 15 минут), `#last_rework_comment`, `#responsible → TelegramUser` (у заявки — текущий ответственный по лиду, иначе автор; у объекта — автор).
 - Produces: `CrmCardTransition` — `crm_card`, `from_status`, `to_status`, `actor` (`TelegramUser`, nil — система), `comment`, `created_at`.
 
 - [ ] **Step 1: Спека (красная)**
@@ -162,12 +162,31 @@ RSpec.describe CrmCard do
     expect(card.check_passed?).to be(false)
   end
 
-  it 'export_stale? — выгрузка, висящая дольше 15 минут' do
+  it 'export_stale? — заявка застряла в выгрузке или в одобрении дольше 15 минут' do
     card = described_class.create!(kind: 'lead', author: author, status: 'exporting')
     expect(card.export_stale?).to be(false)
 
     card.update_columns(updated_at: 16.minutes.ago)
     expect(card.export_stale?).to be(true)
+
+    card.update_columns(status: 'approved')
+    expect(card.reload.export_stale?).to be(true)
+
+    object = described_class.create!(kind: 'object', author: author, status: 'approved')
+    object.update_columns(updated_at: 1.day.ago)
+    expect(object.export_stale?).to be(false) # объект вносят вручную — «застрять» ему негде
+  end
+
+  it 'responsible — у заявки текущий ответственный по лиду, у объекта — автор' do
+    petr = TelegramUser.create!(tg_user_id: 98_002, tg_username: 'petr', status: 'active')
+    lead = lead_event
+    card = described_class.create!(kind: 'lead', author: author, lead_event: lead)
+    expect(card.responsible).to eq(author)
+
+    lead.update!(assigned_to: petr)
+    expect(card.reload.responsible).to eq(petr)
+
+    expect(described_class.create!(kind: 'object', author: author).responsible).to eq(author)
   end
 
   it 'журнал упорядочен по времени, последний комментарий возврата доступен' do
@@ -317,8 +336,19 @@ class CrmCard < ApplicationRecord
     checked_at.present? && check_errors.blank?
   end
 
+  # Заявка, застрявшая дольше EXPORT_STALE_AFTER: процесс упал между
+  # захватом статуса и ответом CRM (exporting) или джоб не встал в очередь
+  # после одобрения (approved). Модератору нужна кнопка повтора, иначе
+  # такую карточку не сдвинуть ничем.
   def export_stale?
-    status_exporting? && updated_at < EXPORT_STALE_AFTER.ago
+    kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
+  end
+
+  # Кто отвечает за карточку сейчас. У заявки — текущий ответственный по
+  # лиду: его назначают /assign, и он же станет ответственным в CRM, даже
+  # если карточку заполнял предыдущий. У объекта — автор.
+  def responsible
+    (kind_lead? && lead_event&.assigned_to) || author
   end
 
   def last_rework_comment
@@ -347,7 +377,7 @@ end
 - [ ] **Step 5: Прогнать — зелёная**
 
 Run: `bin/rb --db bundle exec rspec spec/models/crm_card_spec.rb`
-Expected: `8 examples, 0 failures`.
+Expected: `9 examples, 0 failures`.
 
 - [ ] **Step 6: Линт и коммит**
 
@@ -1205,7 +1235,7 @@ RSpec.describe CrmCards::LeadExporter do
   end
   let(:exporter) { described_class.new(topnlab: topnlab) }
 
-  it 'создаёт заявку и назначает автора карточки ответственным' do
+  it 'создаёт заявку и назначает ответственного по карточке' do
     allow(topnlab).to receive(:import_client).and_return({ 'status' => 'ok', 'insertedId' => 4455 })
     allow(topnlab).to receive(:transfer_client).and_return({ 'status' => 'ok' })
 
@@ -1240,6 +1270,16 @@ RSpec.describe CrmCards::LeadExporter do
 
     expect(outcome.crm_id).to eq('4455')
     expect(outcome.warning).to include('ответственный не назначен')
+  end
+
+  it 'лид переназначили после отправки — ответственным в CRM становится текущий назначенный' do
+    petr = TelegramUser.create!(tg_user_id: 98_402, tg_username: 'petr', status: 'active', email: 'petr@victory.test')
+    lead.update!(assigned_to: petr)
+    allow(topnlab).to receive_messages(import_client: { 'status' => 'ok', 'insertedId' => 4455 }, transfer_client: {})
+
+    exporter.call(card)
+
+    expect(topnlab).to have_received(:transfer_client).with(order_id: 4455, email: 'petr@victory.test')
   end
 
   it 'у автора нет email — предупреждение без вызова transfer_client' do
@@ -1290,8 +1330,9 @@ module CrmCards
   # Одобренная заявка → CRM через публичный API. Единственный вызов
   # import_client в приложении (single_write_path_spec).
   #
-  # Ответственный в CRM — автор карточки: «под кем создали, тот и отвечает»
-  # (ТЗ плагина topnlab-crm, §3.1).
+  # Ответственный в CRM — тот, кто отвечает за карточку сейчас
+  # (CrmCard#responsible): лид могли переназначить между отправкой на
+  # модерацию и одобрением, и заявка обязана уйти к новому ответственному.
   class LeadExporter
     Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
 
@@ -1311,7 +1352,7 @@ module CrmCards
       crm_id = response['insertedId'].to_s
       raise Topnlab::Client::Error, 'importClient ответил ok без insertedId' if crm_id.blank?
 
-      Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.author))
+      Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible))
     end
 
     private
@@ -1339,7 +1380,7 @@ end
 - [ ] **Step 4: Прогнать — зелёные**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/lead_exporter_spec.rb spec/services/crm_cards/single_write_path_spec.rb`
-Expected: `6 examples, 0 failures`.
+Expected: `7 examples, 0 failures`.
 
 - [ ] **Step 5: Линт и коммит**
 
@@ -1395,7 +1436,7 @@ RSpec.describe CrmCards::CardView do
 
     expect(text).to include("карточка ##{card.id}", "лид ##{lead.id}", 'Имя клиента: Анна &lt;b&gt;',
                             'Телефон: +7 910 123-45-67', 'Что нужно клиенту: Продажа / покупка',
-                            '✅ пройдена', 'Автор: @irina')
+                            '✅ пройдена', 'Ответственный: @irina')
     expect(text).not_to include('ID объекта в CRM')
   end
 
@@ -1452,6 +1493,22 @@ RSpec.describe CrmCards::CardView do
     expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
   end
 
+  it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do
+    card.update!(status: 'approved')
+    card.update_columns(updated_at: 20.minutes.ago)
+
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
+    expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
+  end
+
+  it 'лид переназначили — кнопки правки у нового ответственного, у прежнего автора — нет' do
+    petr = crm_staff(tg_user_id: 98_504, username: 'petr')
+    lead.update!(assigned_to: petr)
+
+    expect(callbacks(described_class.render(card, viewer: petr))).to include("wiz:s:crm_edit:#{card.id}")
+    expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
+  end
+
   it 'сотрудник без прав видит карточку без кнопок' do
     auditor = crm_staff(tg_user_id: 98_503, position: '40')
 
@@ -1494,7 +1551,7 @@ module CrmCards
     def text(card)
       lines = [header(card),
                "Статус: #{CrmCard::STATUS_LABELS[card.status]}",
-               "Автор: #{escape(card.author.mention)} · обновлена #{Formatters::DateFormat.fmt_dt(card.updated_at)}",
+               "Ответственный: #{escape(card.responsible.mention)} · обновлена #{Formatters::DateFormat.fmt_dt(card.updated_at)}",
                '']
       Schema.for(card.kind).each do |field|
         value = card.payload[field.key]
@@ -1522,14 +1579,22 @@ module CrmCards
       return [] if perms.denial
 
       moderator = perms.can?(:moderate)
-      author = card.author_id == viewer.id
+      owner = card.responsible&.id == viewer.id
       case card.status
-      when 'draft', 'needs_rework' then author_rows(card) if author || moderator
+      when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
       when 'pending_review' then moderator_rows(card) if moderator
-      when 'approved' then [[button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")]] if card.kind_object? && (author || moderator)
+      when 'approved' then approved_rows(card, owner, moderator)
       when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale?
       when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead?
       end || []
+    end
+
+    # Объект вносит в CRM ответственный; заявка, не ушедшая в выгрузку за
+    # 15 минут (джоб не встал в очередь), — повторяется модератором.
+    def approved_rows(card, owner, moderator)
+      return [[button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")]] if card.kind_object? && (owner || moderator)
+
+      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale?
     end
 
     def author_rows(card)
@@ -1563,7 +1628,9 @@ module CrmCards
       when 'needs_rework'
         ['', "↩️ <b>Вернули на доработку</b> #{escape(card.reviewer&.mention)}: #{escape(card.last_rework_comment)}"]
       when 'approved'
-        card.kind_object? ? ['', MANUAL_EXPORT_HINT] : []
+        return ['', MANUAL_EXPORT_HINT] if card.kind_object?
+
+        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
       when 'exporting'
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
       when 'exported'
@@ -1606,7 +1673,7 @@ end
 - [ ] **Step 4: Прогнать — зелёная**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/card_view_spec.rb`
-Expected: `9 examples, 0 failures`.
+Expected: `11 examples, 0 failures`.
 
 - [ ] **Step 5: Линт и коммит**
 
@@ -1746,16 +1813,16 @@ module CrmCards
     end
 
     def submitted(card, moderators:)
-      delivered = moderators.count { |moderator| deliver(moderator, "📥 <b>На модерацию</b> от #{escape(card.author.mention)}", card) }
+      delivered = moderators.count { |moderator| deliver(moderator, "📥 <b>На модерацию</b> от #{escape(card.responsible.mention)}", card) }
       if delivered.zero?
-        dm(card.author, '⚠️ Карточка на модерации, но ни одному модератору не удалось написать в личку. ' \
+        dm(card.responsible, '⚠️ Карточка на модерации, но ни одному модератору не удалось написать в личку. ' \
                         'Пусть директор откроет чат с ботом, нажмёт «Start» и наберёт /cards.')
       end
       refresh_lead_anchor(card)
     end
 
     def returned(card, comment:)
-      deliver(card.author, "↩️ <b>Карточка ##{card.id} вернулась на доработку</b>: #{escape(comment)}", card)
+      deliver(card.responsible, "↩️ <b>Карточка ##{card.id} вернулась на доработку</b>: #{escape(comment)}", card)
       refresh_lead_anchor(card)
     end
 
@@ -1765,20 +1832,20 @@ module CrmCards
                else
                  "✅ <b>Объект одобрен</b> #{escape(card.reviewer&.mention)} — внеси его в CRM и отметь номер карточки."
                end
-      deliver(card.author, header, card)
+      deliver(card.responsible, header, card)
       refresh_lead_anchor(card)
     end
 
     def exported(card, warning: nil)
       text = "🟢 <b>Карточка ##{card.id} в CRM:</b> #{escape(card.crm_id)}"
       text += "\n⚠️ #{escape(warning)}" if warning.present?
-      [card.author, card.reviewer].compact.uniq(&:id).each { |user| dm(user, text) }
+      [card.responsible, card.reviewer].compact.uniq(&:id).each { |user| dm(user, text) }
       refresh_lead_anchor(card)
     end
 
     def export_failed(card)
       Permissions.moderators.each { |moderator| deliver(moderator, "⚠️ <b>Выгрузка карточки ##{card.id} не удалась</b>", card) }
-      dm(card.author, "⚠️ Выгрузка карточки ##{card.id} в CRM не удалась — у модератора кнопка повтора.")
+      dm(card.responsible, "⚠️ Выгрузка карточки ##{card.id} в CRM не удалась — у модератора кнопка повтора.")
       refresh_lead_anchor(card)
     end
 
@@ -1846,7 +1913,7 @@ git commit -m "feat(crm_cards): уведомления участникам мо
 **Interfaces:**
 - Consumes: `Permissions` (Task 2), `Schema`, `Checker` (Task 4), `LeadExporter` (Task 5), `Notifier` (Task 7).
 - Produces: `CrmCards::Workflow.new(notifier: nil, exporter: nil)`; `Workflow::Result` (`Struct`: `ok`, `card`, `error`; `#ok?`). Методы, каждый `→ Result`:
-  - `#upsert_lead_card!(lead:, actor:, values:)` — создать/дополнить карточку заявки по лиду; ответственный по лиду перенимает черновик;
+  - `#upsert_lead_card!(lead:, actor:, values:)` — создать/дополнить карточку заявки по лиду; править и отправлять заявку может только `card.responsible` (текущий ответственный по лиду) или модератор, и при его действии он становится автором;
   - `#create_object_card!(actor:, values:)` — новая карточка объекта;
   - `#update_fields!(card, values, actor:)` — `values` Hash ключ → нормализованное значение; `nil` удаляет поле;
   - `#submit!(card, actor:)`, `#return_for_rework!(card, actor:, comment:)`, `#approve!(card, actor:)`;
@@ -1930,6 +1997,16 @@ RSpec.describe CrmCards::Workflow do
       petr = crm_staff(tg_user_id: 98_705, username: 'petr')
 
       expect(workflow.update_fields!(card, { 'name' => 'Пётр' }, actor: petr).error).to include('ведёт @irina')
+    end
+
+    it 'автор, у которого забрали лид, карточку больше не отправляет — отправляет новый ответственный' do
+      card = filled_card
+      petr = crm_staff(tg_user_id: 98_706, username: 'petr')
+      lead.update!(assigned_to: petr)
+
+      expect(workflow.submit!(card, actor: agent).error).to include('ведёт @petr')
+      expect(workflow.submit!(card.reload, actor: petr)).to be_ok
+      expect(card.reload.author).to eq(petr)
     end
   end
 
@@ -2038,6 +2115,12 @@ RSpec.describe CrmCards::Workflow do
       expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
       expect(card.reload).to be_status_approved
     end
+
+    it 'одобренная заявка без выгрузки дольше 15 минут — модератор запускает её снова' do
+      card.update_columns(updated_at: 20.minutes.ago)
+
+      expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+    end
   end
 end
 ```
@@ -2107,7 +2190,7 @@ module CrmCards
       return deny('Твоей должности в CRM не выдано право заводить заявки.') unless perms.can?(:create_lead)
 
       card = CrmCard.kind_lead.find_or_initialize_by(lead_event_id: lead.id)
-      save_values(card, values, actor: actor, perms: perms, take_over: lead.assigned_to_id == actor.id)
+      save_values(card, values, actor: actor, perms: perms)
     rescue ActiveRecord::RecordNotUnique
       deny('Карточку по этому лиду только что создал другой сотрудник — открой её кнопкой ещё раз.')
     end
@@ -2128,6 +2211,7 @@ module CrmCards
       moderators = []
       result = card.with_lock do
         perms = Permissions.for(actor)
+        card.author = actor if taking_over?(card, actor)
         next deny(edit_denial(card, perms)) unless CrmCard::AUTHOR_EDITABLE.include?(card.status) && can_edit?(card, actor, perms)
 
         refresh_check(card)
@@ -2211,7 +2295,7 @@ module CrmCards
 
         if mode == 'manual'
           perms = Permissions.for(actor)
-          allowed = perms.denial.nil? && (card.author_id == actor.id || perms.can?(:moderate))
+          allowed = perms.denial.nil? && (card.responsible&.id == actor.id || perms.can?(:moderate))
           next deny(perms.denial || 'Отметить внесение в CRM может автор карточки или модератор.') unless allowed
           next deny("Карточка не ждёт ручного внесения (#{label(card)}).") unless card.kind_object? && card.status_approved?
         else
@@ -2247,7 +2331,7 @@ module CrmCards
       return false unless CrmCard::AUTHOR_EDITABLE.include?(card.status)
       return true if perms.can?(:moderate)
 
-      perms.can?("create_#{card.kind}") && (card.new_record? || card.author_id == actor.id)
+      perms.can?("create_#{card.kind}") && (card.new_record? || card.responsible&.id == actor.id)
     end
 
     def edit_denial(card, perms)
@@ -2256,17 +2340,16 @@ module CrmCards
       return "Карточка уже в статусе «#{label(card)}» — править нечего." unless CrmCard::AUTHOR_EDITABLE.include?(card.status)
       return "Твоей должности в CRM не выдано право заводить #{card.kind_lead? ? 'заявки' : 'объекты'}." unless perms.can?("create_#{card.kind}")
 
-      "Карточку ведёт #{card.author.mention}."
+      "Карточку ведёт #{card.responsible.mention}."
     end
 
     private
 
-    # take_over — ответственный по лиду перенимает черновик: он и станет
-    # ответственным за заявку в CRM. Автор назначается внутри блокировки:
-    # with_lock перечитывает строку и стёр бы несохранённое присваивание.
-    def save_values(card, values, actor:, perms:, take_over: false)
+    # Автор назначается внутри блокировки: with_lock перечитывает строку и
+    # стёр бы несохранённое присваивание.
+    def save_values(card, values, actor:, perms:)
       apply = lambda do
-        card.author = actor if card.new_record? || (take_over && CrmCard::AUTHOR_EDITABLE.include?(card.status))
+        card.author = actor if card.new_record? || taking_over?(card, actor)
         next deny(edit_denial(card, perms)) unless can_edit?(card, actor, perms)
 
         allowed = Schema.for(card.kind).map(&:key)
@@ -2276,6 +2359,12 @@ module CrmCards
         ok(card)
       end
       card.persisted? ? card.with_lock(&apply) : apply.call
+    end
+
+    # Новый ответственный по лиду перенимает черновик заявки: автором в
+    # журнале становится тот, кто её действительно дорабатывал и отправил.
+    def taking_over?(card, actor)
+      card.kind_lead? && card.lead_event&.assigned_to_id == actor.id && CrmCard::AUTHOR_EDITABLE.include?(card.status)
     end
 
     def refresh_check(card)
@@ -2380,7 +2469,7 @@ end
 - [ ] **Step 5: Прогнать — зелёные**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/workflow_spec.rb spec/jobs/crm_cards/export_job_spec.rb`
-Expected: `19 examples, 0 failures`.
+Expected: `21 examples, 0 failures`.
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards spec/models/crm_card_spec.rb`
 Expected: весь стек A+B зелёный.
@@ -3371,7 +3460,7 @@ module Telegram
         end
 
         def viewer?(card)
-          card.author_id == tg_user.id ||
+          card.author_id == tg_user.id || card.responsible&.id == tg_user.id ||
             card.lead_event&.assigned_to_id == tg_user.id ||
             ::CrmCards::Permissions.for(tg_user).can?(:moderate)
         end
@@ -3452,7 +3541,7 @@ module Telegram
           result = workflow.return_for_rework!(card, actor: tg_user, comment: ctx['comment'])
           return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
 
-          { text: "↩️ Карточка ##{card.id} возвращена: #{escape_html(card.author.mention)} получил комментарий." }
+          { text: "↩️ Карточка ##{card.id} возвращена: #{escape_html(card.responsible.mention)} получил комментарий." }
         end
       end
     end
@@ -3493,7 +3582,7 @@ module Telegram
           done = if card.kind_lead?
                    'выгрузка в CRM запущена, итог придёт сообщением'
                  else
-                   "объект внесёт в CRM вручную #{escape_html(card.author.mention)}"
+                   "объект внесёт в CRM вручную #{escape_html(card.responsible.mention)}"
                  end
           { text: "✅ Карточка ##{card.id} одобрена: #{done}." }
         end
@@ -3502,9 +3591,9 @@ module Telegram
 
         def confirm_prompt
           return '' unless card
-          return "Одобрить объект ##{card.id}?\nВ CRM его внесёт вручную #{escape_html(card.author.mention)}." if card.kind_object?
+          return "Одобрить объект ##{card.id}?\nВ CRM его внесёт вручную #{escape_html(card.responsible.mention)}." if card.kind_object?
 
-          "Одобрить заявку ##{card.id} и выгрузить в CRM?\nОтветственным в CRM станет #{escape_html(card.author.mention)}."
+          "Одобрить заявку ##{card.id} и выгрузить в CRM?\nОтветственным в CRM станет #{escape_html(card.responsible.mention)}."
         end
       end
     end
@@ -3630,6 +3719,15 @@ RSpec.describe Telegram::WorkBot::Commands::Cards do
     expect(sent.last[:keyboard].flatten.map { |b| b[:callback_data] }).to eq(["crm_card:#{draft.id}:view"])
   end
 
+  it 'одобренный объект ждёт внесения — виден ответственному, пока номер не отмечен' do
+    approved = CrmCard.create!(kind: 'object', author: agent, status: 'approved', payload: { 'owner_name' => 'Глеб' })
+
+    run(agent)
+
+    expect(sent.last[:text]).to include('Глеб')
+    expect(sent.last[:keyboard].flatten.map { |b| b[:callback_data] }).to include("crm_card:#{approved.id}:view")
+  end
+
   it 'модератору — ещё очередь модерации и сбои выгрузки' do
     run(director)
 
@@ -3692,13 +3790,30 @@ module Telegram
         private
 
         def sections(perms)
-          list = [['📝 Мои черновики и возвраты',
-                   ::CrmCard.where(author: tg_user, status: ::CrmCard::AUTHOR_EDITABLE).order(updated_at: :desc)]]
+          list = [['📝 Мои черновики, возвраты и объекты к внесению', own_cards]]
           if perms.can?(:moderate)
-            list << ['⏳ На модерации', ::CrmCard.status_pending_review.order(:submitted_at)]
-            list << ['⚠️ Сбои выгрузки', ::CrmCard.where(status: %w[export_failed exporting]).order(:updated_at)]
+            list << ['⏳ На модерации', ::CrmCard.status_pending_review.order(:submitted_at).limit(LIMIT).to_a]
+            list << ['⚠️ Сбои выгрузки', export_problems]
           end
-          list.map { |title, scope| [title, scope.limit(LIMIT).to_a] }
+          list
+        end
+
+        # «Мои» — по CrmCard#responsible, а не по author_id: заявку ведёт
+        # текущий ответственный по лиду. Одобренный объект остаётся в списке,
+        # пока ответственный не отметит номер карточки в CRM.
+        def own_cards
+          ::CrmCard.includes(:lead_event).where(status: ::CrmCard::AUTHOR_EDITABLE + ['approved'])
+                   .order(updated_at: :desc).to_a
+                   .select { |c| c.responsible&.id == tg_user.id && (!c.status_approved? || c.kind_object?) }
+                   .first(LIMIT)
+        end
+
+        # Застрявшее одобрение (джоб не встал в очередь) — тоже сбой: иначе
+        # такую заявку не найти ни в одном списке.
+        def export_problems
+          ::CrmCard.where(status: %w[export_failed exporting approved]).order(:updated_at).to_a
+                   .select { |c| c.status_export_failed? || c.export_stale? }
+                   .first(LIMIT)
         end
 
         def line_for(card)
@@ -4291,7 +4406,7 @@ module Telegram
         def gate
           return '⚠️ Карточка не найдена.' unless card
           return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
-          unless card.author_id == tg_user.id || permissions.can?(:moderate)
+          unless card.responsible&.id == tg_user.id || permissions.can?(:moderate)
             return '🚫 Отметить внесение в CRM может автор карточки или модератор.'
           end
           unless card.kind_object? && card.status_approved?
@@ -4388,11 +4503,13 @@ git commit -m "feat(work_bot): ручное внесение одобренно�
 - [ ] **Step 3: Починить привязки и проверить права**
 
 Run (прод-хост, только чтение): `/usr/bin/docker compose exec -T web bin/rails crm_cards:permissions`
-Expected до починки (данные 14.09.26, spec §8): «⚠️ Модераторов нет»; один директор бота — «нет прав: Нет привязки к CRM»; второй — «CRM: Конструктор → нет прав»; один сотрудник — «двум разным учёткам» или «не активна (blocked)».
+Expected до починки (данные 14.09.26, spec §8): «⚠️ Модераторов нет»; один директор бота — «нет прав: Нет привязки к CRM»; второй — «CRM: Конструктор → нет прав»; сотрудник, привязанный к учётке «Юрист», — тоже «нет прав: Нет привязки к CRM» (у него пуст `telegram_users.topnlab_user_id`, а эта проверка идёт первой).
 
 Действия:
 1. Директор, чья учётка в CRM — «Генеральный директор», пишет боту в личку `/whoami <email этой учётки>` и вводит код из письма.
-2. Сотрудник, привязанный к заблокированной учётке «Юрист», — руководитель решает: разблокировать в CRM или перепривязать через `/whoami` к действующей учётке.
+2. Сотрудник с учёткой «Юрист». Связей две: `users.telegram_user_id` уже указывает на заблокированную учётку «Юрист», а `/whoami` заполняет только `telegram_users.topnlab_user_id` — вторую связь не трогает, и `LinkStaffCallback` уже привязанных не перепривязывает. Руководитель выбирает:
+   - **сотрудник работает под учёткой «Юрист»** — разблокировать её в Topnlab, дождаться ночной синхронизации (или запустить `TopnlabStaffSyncJob` вручную), затем сотрудник делает `/whoami <email учётки «Юрист»>`: обе связи указывают на одну учётку;
+   - **сотрудник переходит на другую учётку** — с подтверждения руководителя снять старую связь на прод-хосте: `/usr/bin/docker compose exec -T web bin/rails runner 'User.unscoped.find_by!(crm_user_id: <id учётки «Юрист»>).update_column(:telegram_user_id, nil)'`, затем сотрудник делает `/whoami <email новой учётки>`. Без снятия связи отчёт покажет «Телеграм привязан к двум разным учёткам CRM».
 3. Повторить команду отчёта.
 
 Expected после: строка `Модераторы: @…` с директором; у агентов — `create_lead, create_object`; предупреждений о расхождении названий нет или они осознанно приняты.
