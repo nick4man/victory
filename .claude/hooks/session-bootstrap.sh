@@ -134,6 +134,12 @@ if [ -x "$PGBIN/initdb" ] && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/p
       || { fail 'initdb не прошёл:'; tail -10 "$SCRATCH/initdb.log"; }
   fi
 
+  # Лог сервера обязан лежать внутри PGDATA, а не в scratch: scratch создан
+  # под root с правами 755, и `su postgres` в него не пишет — pg_ctl тогда
+  # падает ещё до запуска, а причину узнать неоткуда (первый прогон уткнулся
+  # ровно в это: «cannot open pg.log»).
+  PGLOG="$PGDATA/startup.log"
+
   if su postgres -c "$PGBIN/pg_isready -q -h 127.0.0.1 -p 5432" 2>/dev/null; then
     log 'PostgreSQL уже поднят'
     PG_OK=1
@@ -141,12 +147,26 @@ if [ -x "$PGBIN/initdb" ] && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/p
     log 'поднимаю PostgreSQL'
     # fsync=off — база одноразовая, живёт внутри сессии; без этого
     # DatabaseCleaner упирается в statement_timeout на TRUNCATE сотен таблиц.
-    su postgres -c "$PGBIN/pg_ctl -D '$PGDATA' -l '$SCRATCH/pg.log' -w -t 60 \
+    if su postgres -c "$PGBIN/pg_ctl -D '$PGDATA' -l '$PGLOG' -w -t 60 \
       -o '-p 5432 -h 127.0.0.1 -c fsync=off -c synchronous_commit=off -c full_page_writes=off' start" \
-      > "$SCRATCH/pg-ctl.log" 2>&1 \
-      && PG_OK=1 \
-      || { fail 'PostgreSQL не поднялся:'; tail -10 "$SCRATCH/pg.log"; }
+      > "$SCRATCH/pg-ctl.log" 2>&1; then
+      PG_OK=1
+    else
+      fail 'PostgreSQL не поднялся:'
+      tail -10 "$SCRATCH/pg-ctl.log" 2>/dev/null
+      tail -15 "$PGLOG" 2>/dev/null
+    fi
   fi
+fi
+
+# Тестовая база: создаём здесь, а не полагаемся на db:test:prepare — тот
+# подключается к ней же и на пустом кластере спотыкается о её отсутствие.
+if [ "$PG_OK" = 1 ]; then
+  su postgres -c "$PGBIN/psql -h 127.0.0.1 -p 5432 -U postgres -tAc \
+    \"SELECT 1 FROM pg_database WHERE datname='viktory_realty_test'\"" 2>/dev/null \
+    | grep -q 1 \
+    || su postgres -c "$PGBIN/createdb -h 127.0.0.1 -p 5432 -U postgres viktory_realty_test" \
+         >/dev/null 2>&1
 fi
 
 # ── 4. Redis ────────────────────────────────────────────────────────────────
