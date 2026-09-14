@@ -6147,20 +6147,21 @@ git commit -m "feat(work_bot): карточка заявки из лички п�
 
 Руководитель смотрит `config/crm_permissions.yml` (spec §10): Ген. директор — всё; Агент — заявки и объекты; Стажёр — только заявки; Конструктор, Аудитор, Юрист — ничего. Правки — отдельным PR до выкатки.
 
-- [ ] **Step 2: Починить привязки — можно до выкатки**
+- [x] **Step 2: Починить привязки — можно до выкатки**
 
 `/whoami` уже работает в проде и от нового кода не зависит. Сейчас привязка влияет только на автора заметок в CRM (`/note`, закрытие, спам) — после починки они подписываются правильной учёткой.
 
 Данные 14.09.26 (spec §8) и что делать:
 
-1. **@oks07victory** — обе связи на **182453 «Конструктор»**, а «Генеральный директор» — **183004**, ни к кому не привязан.
-   - Оксана в личке рабочему боту: `/whoami <email учётки 183004>`, код из письма. Это меняет `telegram_users.topnlab_user_id`.
-   - Вторую связь `users.telegram_user_id` `/whoami` не трогает — перенести с подтверждения руководителя на прод-хосте:
-     `/usr/bin/docker compose exec -T web bin/rails runner 'tg = TelegramUser.find_by!(tg_username: "oks07victory"); User.unscoped.find_by!(crm_user_id: 182453).update_column(:telegram_user_id, nil); User.unscoped.find_by!(crm_user_id: 183004).update_column(:telegram_user_id, tg.id)'`
-   - Без переноса права не выдадутся: «Телеграм привязан к двум разным учёткам CRM». Побочный эффект переноса: рассылки «мои объекты» у Оксаны пойдут по объектам 183004.
-2. **@ewceq** — `topnlab_user_id` пуст, `users.telegram_user_id` → **182986 «Юрист»**, учётка заблокирована; у него 2 открытых лида. Руководитель выбирает:
-   - работает под «Юристом» — разблокировать в Topnlab, дождаться ночной синхронизации (или запустить `TopnlabStaffSyncJob`), затем `/whoami <email 182986>`;
-   - переходит на другую учётку — снять старую связь: `/usr/bin/docker compose exec -T web bin/rails runner 'User.unscoped.find_by!(crm_user_id: 182986).update_column(:telegram_user_id, nil)'`, затем `/whoami <email новой учётки>`.
+**Выполнено 15.09.26** по решению руководителя (одной транзакцией на прод-хосте, с проверкой исходных связей):
+
+1. **@oks07victory** — Приходько Оксана Викторовна, директор: `topnlab_user_id` 182453 «Конструктор» → **183004 «Генеральный директор»**, email в боте — на email учётки 183004, `users.telegram_user_id` перенесён с 182453 на 183004.
+2. **@ewceq** — стажёр: `topnlab_user_id` пусто → **303601 «Стажер»** (единственная активная учётка с его именем), email — на email учётки 303601, `users.telegram_user_id` перенесён с заблокированной 182986 «Юрист» на 303601.
+
+Проверено после записи: у всех активных сотрудников с учёткой в CRM обе связи указывают на одну учётку, email совпадает с CRM.
+
+Изменилось сразу, ещё до выкатки конвейера: назначения лидов и заметки в CRM идут на 183004 и 303601; `OwnerRequestJob` спрашивает собственников по объектам этих учёток (у 183004 — 41, у 303601 — 6).
+
 3. **@nick4man** — учётки в CRM нет; в рабочем боте прав на карточки не будет, в песочнице — через `TELEGRAM_TEST_CAPABILITIES` (Step 4).
 
 - [ ] **Step 3: Выкатить стеки A–E**
@@ -6181,7 +6182,7 @@ git commit -m "feat(work_bot): карточка заявки из лички п�
 - [ ] **Step 5: Проверить права**
 
 Run: `/usr/bin/docker compose exec -T web bin/rails crm_cards:permissions`
-Expected: `Модераторы: @oks07victory`; @IrinLegaeva и @sinitsina_nadezhda — `create_lead, create_object`; @ewceq — по выбранному в Step 2; @nick4man — «нет прав: Нет привязки к CRM» (это отчёт рабочего бота; в песочнице у него права из `TELEGRAM_TEST_CAPABILITIES`).
+Expected: `Модераторы: @oks07victory` (CRM: Генеральный директор); @IrinLegaeva и @sinitsina_nadezhda — `create_lead, create_object`; @ewceq — CRM: Стажер → `create_lead`; @nick4man — «нет прав: Нет привязки к CRM» (это отчёт рабочего бота; в песочнице у него права из `TELEGRAM_TEST_CAPABILITIES`).
 
 - [ ] **Step 6: Прогон в песочнице**
 
