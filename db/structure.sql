@@ -705,6 +705,85 @@ ALTER SEQUENCE public.conversations_id_seq OWNED BY public.conversations.id;
 
 
 --
+-- Name: crm_card_transitions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_card_transitions (
+    id bigint NOT NULL,
+    crm_card_id bigint NOT NULL,
+    from_status character varying NOT NULL,
+    to_status character varying NOT NULL,
+    actor_id bigint,
+    comment text,
+    created_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: crm_card_transitions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.crm_card_transitions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crm_card_transitions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.crm_card_transitions_id_seq OWNED BY public.crm_card_transitions.id;
+
+
+--
+-- Name: crm_cards; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_cards (
+    id bigint NOT NULL,
+    kind character varying NOT NULL,
+    status character varying DEFAULT 'draft'::character varying NOT NULL,
+    lead_event_id bigint,
+    author_id bigint NOT NULL,
+    reviewer_id bigint,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    check_errors jsonb DEFAULT '[]'::jsonb NOT NULL,
+    checked_at timestamp(6) without time zone,
+    submitted_at timestamp(6) without time zone,
+    reviewed_at timestamp(6) without time zone,
+    export_mode character varying,
+    crm_id character varying,
+    exported_at timestamp(6) without time zone,
+    export_error text,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: crm_cards_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.crm_cards_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crm_cards_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.crm_cards_id_seq OWNED BY public.crm_cards.id;
+
+
+--
 -- Name: crm_reports; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3272,6 +3351,20 @@ ALTER TABLE ONLY public.conversations ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: crm_card_transitions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_transitions ALTER COLUMN id SET DEFAULT nextval('public.crm_card_transitions_id_seq'::regclass);
+
+
+--
+-- Name: crm_cards id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards ALTER COLUMN id SET DEFAULT nextval('public.crm_cards_id_seq'::regclass);
+
+
+--
 -- Name: crm_reports id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3763,6 +3856,22 @@ ALTER TABLE ONLY public.conversations
 
 
 --
+-- Name: crm_card_transitions crm_card_transitions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_transitions
+    ADD CONSTRAINT crm_card_transitions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_cards crm_cards_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT crm_cards_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: crm_reports crm_reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4213,6 +4322,13 @@ CREATE INDEX idx_client_documents_nc_path ON public.client_documents USING btree
 --
 
 CREATE UNIQUE INDEX idx_client_documents_tg_intake_unique ON public.client_documents USING btree (tg_chat_id, tg_message_id) WHERE ((tg_chat_id IS NOT NULL) AND (tg_message_id IS NOT NULL));
+
+
+--
+-- Name: idx_crm_cards_one_per_lead; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_crm_cards_one_per_lead ON public.crm_cards USING btree (lead_event_id, kind) WHERE ((deleted_at IS NULL) AND (lead_event_id IS NOT NULL));
 
 
 --
@@ -4794,6 +4910,55 @@ CREATE INDEX index_conversations_on_user_id ON public.conversations USING btree 
 --
 
 CREATE INDEX index_conversations_on_visitor_token ON public.conversations USING btree (visitor_token);
+
+
+--
+-- Name: index_crm_card_transitions_on_actor_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_transitions_on_actor_id ON public.crm_card_transitions USING btree (actor_id);
+
+
+--
+-- Name: index_crm_card_transitions_on_crm_card_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_transitions_on_crm_card_id ON public.crm_card_transitions USING btree (crm_card_id);
+
+
+--
+-- Name: index_crm_cards_on_author_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_author_id ON public.crm_cards USING btree (author_id);
+
+
+--
+-- Name: index_crm_cards_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_deleted_at ON public.crm_cards USING btree (deleted_at);
+
+
+--
+-- Name: index_crm_cards_on_lead_event_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_lead_event_id ON public.crm_cards USING btree (lead_event_id);
+
+
+--
+-- Name: index_crm_cards_on_reviewer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_reviewer_id ON public.crm_cards USING btree (reviewer_id);
+
+
+--
+-- Name: index_crm_cards_on_status_and_submitted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_status_and_submitted_at ON public.crm_cards USING btree (status, submitted_at);
 
 
 --
@@ -7193,6 +7358,14 @@ ALTER TABLE ONLY public.inquiries
 
 
 --
+-- Name: crm_card_transitions fk_rails_343208d3fe; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_transitions
+    ADD CONSTRAINT fk_rails_343208d3fe FOREIGN KEY (actor_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: price_histories fk_rails_3590d68c77; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7246,6 +7419,14 @@ ALTER TABLE ONLY public.conversations
 
 ALTER TABLE ONLY public.phone_stop_lists
     ADD CONSTRAINT fk_rails_47c41b9e0c FOREIGN KEY (added_by_user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: crm_cards fk_rails_491a382374; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT fk_rails_491a382374 FOREIGN KEY (reviewer_id) REFERENCES public.telegram_users(id);
 
 
 --
@@ -7457,6 +7638,14 @@ ALTER TABLE ONLY public.referrals
 
 
 --
+-- Name: crm_card_transitions fk_rails_aba3930169; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_transitions
+    ADD CONSTRAINT fk_rails_aba3930169 FOREIGN KEY (crm_card_id) REFERENCES public.crm_cards(id);
+
+
+--
 -- Name: favorites fk_rails_ac406bc263; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7569,6 +7758,14 @@ ALTER TABLE ONLY public.reviews
 
 
 --
+-- Name: crm_cards fk_rails_cefab3debd; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT fk_rails_cefab3debd FOREIGN KEY (author_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: reviews fk_rails_d0c68ab778; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7649,6 +7846,14 @@ ALTER TABLE ONLY public.properties
 
 
 --
+-- Name: crm_cards fk_rails_e59f1c7b1d; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT fk_rails_e59f1c7b1d FOREIGN KEY (lead_event_id) REFERENCES public.lead_events(id);
+
+
+--
 -- Name: articles fk_rails_e74ce85cbc; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7695,6 +7900,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260914120000'),
 ('20260911100100'),
 ('20260911100000'),
 ('20260907120300'),
