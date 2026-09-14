@@ -15,7 +15,7 @@
 - **Worktree:** код пишется в новом worktree `~/victory-crm-cards` на ветке `claude/crm-card-moderation` (`git -C ~/victory worktree add ~/victory-crm-cards -b claude/crm-card-moderation main`). `~/victory` — live-prod bind-mount, туда не писать; чужие worktree — только чтение.
 - **Ruby только через `bin/rb`:** `bin/rb --db bundle exec rspec <path>`, `bin/rb bundle exec rubocop -a <paths>`. Перед первым прогоном `bin/rb --seed-bundle` и `bin/rb --db bin/rails db:prepare`. Не докладывать «зелёное», не прогнав там, где Ruby есть.
 - **Стек PR** по правилам `gh-stack` (CLAUDE.md): A «данные и права» (Tasks 1–4) → B «конвейер» (Tasks 5–8) → C «Telegram: заявки» (Tasks 9–12) → D «объекты» (Tasks 13–15) → E «песочница» (Tasks 16–19). Task 20 — запуск, без кода. `/code-review <PR#>` на каждый PR после зелёного CI.
-- **Тестовый бот — песочница на боевой базе.** Никакой записи в Topnlab из тестового контекста; только тестовые лиды (`staff_test`); только личка (`Telegram::Client::GroupChatForbidden`); права без учётки в CRM — только через `TELEGRAM_TEST_CAPABILITIES` и только в тестовом контексте.
+- **Тестовый бот — песочница на боевой базе.** Никакой записи в Topnlab из тестового контекста; только тестовые лиды (`metadata['sandbox']`, не эвристический `staff_test`); только личка (`Telegram::Client::GroupChatForbidden`) и только входы карточек CRM; права без учётки в CRM — только через `TELEGRAM_TEST_CAPABILITIES` и только в тестовом контексте; контекст бота не переносится в джобы автоматически.
 - Каждый `.rb` — `# frozen_string_literal: true`, одинарные кавычки, комментарии по-русски и про «почему», а не «что».
 - Enum'ы — только `prefix: true`, русский перевод значения в комментарии рядом (правило 2 CLAUDE.md).
 - Soft-delete на `CrmCard`: `deleted_at` + `scope :not_deleted` + `default_scope { not_deleted }`. `CrmCardTransition` — журнал только на добавление, soft-delete не нужен (обоснование в модели).
@@ -89,11 +89,11 @@
 
 | Файл | Ответственность |
 |---|---|
-| `app/services/telegram/bot_context.rb` | какой бот обрабатывает апдейт; токен; перенос в джобы |
-| `app/services/telegram/client.rb`, `config/initializers/sidekiq.rb` | токен из контекста; тестовый бот не пишет в группы |
+| `app/services/telegram/bot_context.rb` | какой бот обрабатывает апдейт; токен |
+| `app/services/telegram/client.rb` | токен из контекста; тестовый бот не пишет в группы |
 | `db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb`, `app/models/telegram_webhook_ack.rb` | дедупликация `update_id` в пределах бота |
 | `app/controllers/webhooks/telegram_test_controller.rb`, `config/routes.rb` | вебхук тестового бота с обязательным секретом |
-| `app/jobs/telegram/inbound_processor_job.rb`, `app/services/telegram/inbound_processor.rb` | обработка в контексте бота; тестовый — только личка и сотрудники |
+| `app/jobs/telegram/inbound_processor_job.rb`, `app/services/telegram/inbound_processor.rb`, `app/services/telegram/work_bot/wizard/engine.rb` | обработка в контексте бота; тестовый — только личка, сотрудники и входы карточек CRM; мастер помнит своего бота |
 | `lib/tasks/telegram_webhook.rake`, `tg-webhook-relay/src/index.js` | `setup_test`; путь `/test` в relay |
 | `db/migrate/20260914120200_add_sandbox_to_crm_cards.rb`, `app/services/crm_cards/sandbox_exporter.rb` | карточки песочницы и выгрузка без CRM |
 | `app/services/crm_cards/permissions.rb`, `workflow.rb`, `checker.rb` | права по `TELEGRAM_TEST_CAPABILITIES`; карточка живёт в своём боте; только тестовые лиды |
@@ -961,12 +961,18 @@ RSpec.describe CrmCards::Checker do
     expect(check(valid_payload)).to eq([])
   end
 
-  it 'неназначенный, закрытый и тестовый лиды' do
-    lead.update!(assigned_to: nil, current_stage: 'closed_lost', staff_test: true)
+  it 'неназначенный и закрытый лиды' do
+    lead.update!(assigned_to: nil, current_stage: 'closed_lost')
 
     expect(check(valid_payload).map { |e| e['message'] }).to include(
-      a_string_including('никому не назначен'), a_string_including('Лид закрыт'), a_string_including('Тестовая')
+      a_string_including('никому не назначен'), a_string_including('Лид закрыт')
     )
+  end
+
+  it 'пометка staff_test не блокирует: её ставит эвристика, в том числе клиенту с именем сотрудника' do
+    lead.update!(staff_test: true, staff_test_matched_by: 'name_staff_first')
+
+    expect(check(valid_payload)).to eq([])
   end
 
   it 'клиент уже в CRM — вторую заявку не пропускает' do
@@ -1173,8 +1179,11 @@ module CrmCards
       lead = @card.lead_event
       return [['lead', 'Карточка не привязана к лиду.']] unless lead
 
+      # staff_test здесь намеренно не проверяется: его ставит эвристика
+      # StaffSubmissionDetector, в том числе клиенту, чьё имя совпало с именем
+      # сотрудника («Ирина»). Запрет по нему навсегда закрыл бы такому клиенту
+      # дорогу в CRM — модератор видит пометку в карточке (CardView) и решает сам.
       errors = []
-      errors << ['lead', 'Тестовая заявка сотрудника — в CRM не выгружается.'] if lead.staff_test?
       errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
       errors << ['lead', 'Лид никому не назначен — сначала назначь ответственного.'] unless lead.assigned?
       if lead.first_contact_at.nil? && lead.current_stage == 'new'
@@ -1195,7 +1204,7 @@ end
 - [ ] **Step 6: Прогнать — зелёные**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/field_value_spec.rb spec/services/crm_cards/checker_spec.rb`
-Expected: `17 examples, 0 failures`.
+Expected: `18 examples, 0 failures`.
 
 - [ ] **Step 7: Линт и коммит**
 
@@ -1524,6 +1533,15 @@ RSpec.describe CrmCards::CardView do
     expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
   end
 
+  it 'лид с пометкой «возможно, сотрудник» — предупреждение модератору, но не запрет' do
+    lead.update!(staff_test: true, staff_test_matched_by: 'name_staff_first')
+
+    view = described_class.render(card, viewer: agent)
+
+    expect(view[:text]).to include('возможная заявка сотрудника', 'name_staff_first')
+    expect(callbacks(view)).to include("crm_card:#{card.id}:submit")
+  end
+
   it 'сотрудник без прав видит карточку без кнопок' do
     auditor = crm_staff(tg_user_id: 98_503, position: '40')
 
@@ -1575,6 +1593,7 @@ module CrmCards
         lines << "#{field.label}: #{value.nil? ? '—' : escape(plain_value(field, value))}"
       end
       lines << ''
+      lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
       lines.concat(status_lines(card))
       lines.join("\n")
@@ -1628,6 +1647,18 @@ module CrmCards
     def header(card)
       title = "📋 <b>#{KIND_TITLES[card.kind]} · карточка ##{card.id}</b>"
       card.lead_event_id ? "#{title} · лид ##{card.lead_event_id}" : title
+    end
+
+    # Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
+    # сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
+    # по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
+    # явно (metadata['sandbox']) и предупреждения не получают.
+    def staff_test_lines(card)
+      lead = card.lead_event
+      return [] unless lead&.staff_test? && lead.metadata.to_h['sandbox'] != true
+
+      ["⚠️ Лид помечен как возможная заявка сотрудника (#{escape(lead.staff_test_matched_by)}) — " \
+       'проверь, настоящий ли это клиент.']
     end
 
     def check_lines(card)
@@ -1688,7 +1719,7 @@ end
 - [ ] **Step 4: Прогнать — зелёная**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/card_view_spec.rb`
-Expected: `11 examples, 0 failures`.
+Expected: `12 examples, 0 failures`.
 
 - [ ] **Step 5: Линт и коммит**
 
@@ -4116,7 +4147,7 @@ Expected: FAIL — `KeyError: key not found: "object"`.
 - [ ] **Step 5: Прогнать — зелёные, заявка не задета**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/checker_object_spec.rb spec/services/crm_cards/checker_spec.rb`
-Expected: `17 examples, 0 failures`.
+Expected: `18 examples, 0 failures`.
 
 - [ ] **Step 6: Линт и коммит**
 
@@ -4509,7 +4540,8 @@ git commit -m "feat(work_bot): ручное внесение одобренно�
 
 - **только личка** — в рабочую группу бот не добавляется;
 - **песочница** — одобрение не пишет в Topnlab: заявка получает номер `TEST-<id>`;
-- **только тестовые лиды** — `LeadEvent.staff_test`, заведённые в тестовом боте; реальные лиды песочница не трогает, их «одна карточка на лид» не занимается;
+- **только тестовые лиды** — заведённые мастером «🧪 Тестовый лид» и помеченные `metadata['sandbox'] = true`. Не по `staff_test`: этот флаг ставит эвристика, в том числе настоящему клиенту с именем сотрудника. Реальные лиды песочница не трогает, тестовые не трогает рабочий бот;
+- **тестовый бот обслуживает только карточки CRM** — меню, `/cards`, мастера `crm_*`, кнопки `crm_card:`; прочие команды рабочего бота (`/assign`, `/close`, задачи, голосовые) работают на боевых данных и в песочницу не пускаются;
 - **@nick4man без учётки в CRM проверяет в песочнице** — права для перечисленных в `TELEGRAM_TEST_CAPABILITIES` Telegram-аккаунтов; в рабочем боте список не читается.
 
 ### Task 16: Контекст бота — чей токен и куда можно писать
@@ -4517,13 +4549,12 @@ git commit -m "feat(work_bot): ручное внесение одобренно�
 **Files:**
 - Create: `app/services/telegram/bot_context.rb`
 - Modify: `app/services/telegram/client.rb` (`#initialize`, `#api_call`, `#send_document`, новый `GroupChatForbidden`)
-- Modify: `config/initializers/sidekiq.rb`
 - Test: `spec/services/telegram/bot_context_spec.rb`
 
 **Interfaces:**
 - Produces: `Telegram::BotContext` (`ActiveSupport::CurrentAttributes`): `.bot → 'main'|'test'|nil`, `.test? → Boolean`, `.token → String|nil`, `.within(name) { … }` (`ArgumentError` на неизвестном имени), `BOTS = %w[main test]`.
 - Produces: `Telegram::Client.new` без аргумента берёт токен из `BotContext`; `Telegram::Client::GroupChatForbidden < Error` — тестовый бот, отправляющий в чат с отрицательным id.
-- Produces: контекст переносится во все Sidekiq-джобы, поставленные внутри него.
+- Контекст **не** переносится в Sidekiq-джобы автоматически: джоб, который должен говорить от тестового бота, выставляет контекст сам по данным (`CrmCards::ExportJob` — по `card.sandbox?`, Task 18). Иначе любой побочный джоб апдейта песочницы (например, `DispatcherDigestRefreshJob` из `Task#after_commit`) унёс бы `bot=test` и молча не обновил рабочую группу.
 
 - [ ] **Step 1: Спека (красная)**
 
@@ -4590,8 +4621,9 @@ RSpec.describe Telegram::BotContext do
     end
   end
 
-  it 'Sidekiq переносит контекст в джобы' do
-    expect(Sidekiq.default_configuration.client_middleware.exists?(Sidekiq::CurrentAttributes::Save)).to be(true)
+  it 'джобы по умолчанию работают от основного бота — контекст сам не переносится' do
+    middleware = Sidekiq.default_configuration.client_middleware.entries.map { |entry| entry.klass.to_s }
+    expect(middleware).not_to include(a_string_including('CurrentAttributes'))
   end
 end
 ```
@@ -4612,10 +4644,13 @@ module Telegram
   # Какой бот обрабатывает текущий апдейт: основной (@anvictorybot) или
   # тестовый (TELEGRAM_TEST_BOT_TOKEN — песочница карточек CRM, только личка).
   #
-  # Контекст выставляет вход (Telegram::InboundProcessorJob), а Sidekiq
-  # переносит его во все джобы, поставленные внутри (config/initializers/
-  # sidekiq.rb). Поэтому ~70 мест `Telegram::Client.new` не трогаются:
+  # Контекст выставляет вход (Telegram::InboundProcessorJob) на время
+  # обработки апдейта, поэтому ~70 мест `Telegram::Client.new` не трогаются:
   # токен выбирается здесь, и ответ уходит от того бота, которому писали.
+  #
+  # В Sidekiq-джобы контекст сам не переносится — намеренно: побочный джоб
+  # песочницы с bot=test молча не обновил бы рабочую группу. Джоб, которому
+  # нужен тестовый бот, выставляет контекст по данным (CrmCards::ExportJob).
   class BotContext < ActiveSupport::CurrentAttributes
     BOTS = %w[main test].freeze
 
@@ -4716,20 +4751,7 @@ end
     end
 ```
 
-- [ ] **Step 5: Перенос контекста в джобы**
-
-В начало `config/initializers/sidekiq.rb`, сразу после `# frozen_string_literal: true`, добавить:
-
-```ruby
-
-require 'sidekiq/middleware/current_attributes'
-
-# Джобы, поставленные внутри апдейта тестового бота (уведомления, выгрузка
-# карточки), отвечают его токеном, а не токеном рабочего бота.
-Sidekiq::CurrentAttributes.persist('Telegram::BotContext')
-```
-
-- [ ] **Step 6: Прогнать — зелёная, соседи целы**
+- [ ] **Step 5: Прогнать — зелёная, соседи целы**
 
 Run: `bin/rb --db bundle exec rspec spec/services/telegram/bot_context_spec.rb`
 Expected: `7 examples, 0 failures`.
@@ -4737,12 +4759,12 @@ Expected: `7 examples, 0 failures`.
 Run: `bin/rb --db bundle exec rspec spec/services/telegram spec/requests/webhooks`
 Expected: 0 failures — без контекста токен прежний.
 
-- [ ] **Step 7: Линт и коммит**
+- [ ] **Step 6: Линт и коммит**
 
-Run: `bin/rb bundle exec rubocop -a app/services/telegram/bot_context.rb app/services/telegram/client.rb config/initializers/sidekiq.rb spec/services/telegram/bot_context_spec.rb`
+Run: `bin/rb bundle exec rubocop -a app/services/telegram/bot_context.rb app/services/telegram/client.rb spec/services/telegram/bot_context_spec.rb`
 
 ```bash
-git add app/services/telegram/bot_context.rb app/services/telegram/client.rb config/initializers/sidekiq.rb \
+git add app/services/telegram/bot_context.rb app/services/telegram/client.rb \
         spec/services/telegram/bot_context_spec.rb
 git commit -m "feat(telegram): контекст бота — токен тестового бота и запрет писать в группы"
 ```
@@ -4757,6 +4779,8 @@ git commit -m "feat(telegram): контекст бота — токен тест
 - Modify: `app/jobs/telegram/inbound_processor_job.rb`
 - Modify: `app/services/telegram/inbound_processor.rb` (`#call`, `#duplicate_update?`, новый `#sandbox_update?`)
 - Modify: `lib/tasks/telegram_webhook.rake` (задача `setup_test`)
+- Modify: `app/services/telegram/work_bot/wizard/engine.rb` (`.active?`, `#start`, `#text`, `#current_state` — состояние мастера привязано к боту)
+- Test: `spec/services/telegram/work_bot/wizard/engine_bot_spec.rb`
 - Modify: `tg-webhook-relay/src/index.js`
 - Test: `spec/requests/webhooks/telegram_test_spec.rb`
 - Test: `spec/services/telegram/inbound_processor_sandbox_spec.rb`
@@ -4852,6 +4876,18 @@ RSpec.describe Telegram::InboundProcessor, 'тестовый бот' do
     expect(router).not_to have_received(:call)
   end
 
+  it 'тестовый бот не пускает команды и кнопки рабочего бота на боевые данные' do
+    task_button = callback_update(503)
+    task_button['callback_query']['data'] = 'task:17:done'
+    assign = { 'update_id' => 504,
+               'message' => { 'message_id' => 5, 'text' => '/assign 12 @irina', 'from' => { 'id' => staff.tg_user_id },
+                              'chat' => { 'id' => staff.tg_user_id, 'type' => 'private' } } }
+
+    expect(process(task_button, 'test')).to eq(:ignored)
+    expect(process(assign, 'test')).to eq(:ignored)
+    expect(router).not_to have_received(:call)
+  end
+
   it 'джоб обрабатывает апдейт в контексте переданного бота' do
     seen = nil
     allow(described_class).to receive(:new) do
@@ -4938,6 +4974,12 @@ Run: `bin/rb --db bin/rails db:migrate`
 И добавить приватный метод сразу после `#duplicate_update?`:
 
 ```ruby
+    # Тестовый бот обслуживает только карточки CRM: меню, /cards, мастера
+    # crm_* и кнопки crm_card:. Остальное в рабочем боте работает на боевых
+    # данных (/assign, /close, задачи, голосовые) — в песочницу не пускаем.
+    SANDBOX_CALLBACK_RX = /\A(crm_card:|wiz:[spmb]:crm_|wiz:x\z|wiz:menu\z)/
+    SANDBOX_COMMANDS = %w[/start /help /menu /cards].freeze
+
     def sandbox_update?
       callback = @update['callback_query']
       source = callback || @update['message'] || @update['edited_message']
@@ -4946,7 +4988,17 @@ Run: `bin/rb --db bin/rails db:migrate`
       chat = callback ? source.dig('message', 'chat') : source['chat']
       return false unless chat&.dig('type') == 'private'
 
-      TelegramUser.active.exists?(tg_user_id: source.dig('from', 'id'))
+      staff = TelegramUser.active.find_by(tg_user_id: source.dig('from', 'id'))
+      return false unless staff
+      return callback['data'].to_s.match?(SANDBOX_CALLBACK_RX) if callback
+
+      text = source['text'].to_s.strip
+      return SANDBOX_COMMANDS.include?(text.split(/[\s@]/).first.to_s.downcase) if text.start_with?('/')
+
+      # Свободный текст — только ответ на шаг мастера карточки.
+      state = staff.pending_action
+      state&.dig('type') == Telegram::WorkBot::Wizard::Engine::STATE_TYPE &&
+        state.dig('data', 'flow').to_s.start_with?('crm_')
     end
 ```
 
@@ -5083,21 +5135,171 @@ const TEST_UPSTREAM_URL = 'https://victory62.org/webhooks/telegram_test';
 
 и в `fetch(UPSTREAM_URL, {` заменить `UPSTREAM_URL` на `isTest ? TEST_UPSTREAM_URL : UPSTREAM_URL`.
 
-- [ ] **Step 7: Прогнать — зелёные**
+- [ ] **Step 7: Мастер помнит своего бота**
 
-Run: `bin/rb --db bundle exec rspec spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb spec/requests/webhooks spec/services/telegram`
-Expected: 0 failures (новые — `6 examples`).
+Состояние мастера одно на сотрудника (`telegram_users.dm_pending_action`), а ботов теперь два. Без привязки текст, написанный в рабочий бот, ушёл бы ответом в мастер, начатый в тестовом, — и дальше мастер шёл бы от имени рабочего бота; а старт мастера в одном боте молча затирал бы незаконченный в другом.
 
-- [ ] **Step 8: Линт и коммит**
+Создать `spec/services/telegram/work_bot/wizard/engine_bot_spec.rb`:
 
-Run: `bin/rb bundle exec rubocop -a app/controllers/webhooks/telegram_test_controller.rb app/jobs/telegram/inbound_processor_job.rb app/services/telegram/inbound_processor.rb app/models/telegram_webhook_ack.rb db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb lib/tasks/telegram_webhook.rake config/routes.rb spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb`
+```ruby
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe Telegram::WorkBot::Wizard::Engine, 'мастер помнит своего бота' do
+  include_context 'wizard DM harness'
+
+  before { allow(DispatcherDigestRefreshJob).to receive(:perform_async) }
+
+  let!(:director) do
+    TelegramUser.create!(tg_user_id: 99_301, tg_username: 'oksana', role: 'director', is_manager: true,
+                         status: 'active', dm_chat_id: 99_301)
+  end
+  let!(:lead) do
+    LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                      anchor_topic_key: 'apartments', tg_chat_id: -100_1, assigned_to: director)
+  end
+
+  def start_in_test
+    Telegram::BotContext.within('test') { tap_callback("wiz:s:task:#{lead.id}", user: director) }
+  end
+
+  it 'текст в рабочий бот не отвечает на мастер, начатый в тестовом' do
+    start_in_test
+    expect(last_text).to include('До какого числа?')
+
+    expect(say('завтра', user: director)).to be_nil
+    expect(described_class.active?(director)).to be(false)
+    Telegram::BotContext.within('test') { expect(described_class.active?(director)).to be(true) }
+  end
+
+  it 'кнопка мастера другого бота — «неактуально», а не продолжение' do
+    start_in_test
+
+    press('Завтра', user: director)
+
+    expect(acks.last.first).to include('неактуален')
+  end
+
+  it 'новый мастер в другом боте не затирает незаконченный' do
+    start_in_test
+
+    tap_callback("wiz:s:task:#{lead.id}", user: director)
+
+    expect(last_text).to include('незаконченный мастер', 'тестовом')
+    expect(last_callbacks).to include('wiz:x')
+    expect(director.reload.pending_action.dig('data', 'bot')).to eq('test')
+  end
+end
+```
+
+В `app/services/telegram/work_bot/wizard/engine.rb` заменить:
+
+```ruby
+        def self.active?(tg_user)
+          tg_user&.pending_action&.dig('type') == STATE_TYPE
+        end
+```
+
+на:
+
+```ruby
+        # Мастер активен только в том боте, где начат: состояние одно на
+        # сотрудника, а ботов два (рабочий и тестовый).
+        def self.active?(tg_user)
+          pa = tg_user&.pending_action
+          pa&.dig('type') == STATE_TYPE && (pa.dig('data', 'bot') || 'main') == current_bot
+        end
+
+        def self.current_bot
+          Telegram::BotContext.bot || 'main'
+        end
+```
+
+Там же в `#start` заменить:
+
+```ruby
+          strip_previous_prompt
+          state = { 'flow' => klass.key, 'ctx' => flow.ctx, 'trail' => [] }
+```
+
+на:
+
+```ruby
+          if (other = foreign_wizard_bot)
+            send_dm("⏸ У тебя незаконченный мастер в #{other == 'test' ? 'тестовом' : 'рабочем'} боте. " \
+                    'Заверши его там или отмени — одновременно идёт только один мастер.',
+                    keyboard: [[{ text: '✖️ Отменить тот мастер', callback_data: 'wiz:x' }]])
+            return :gated
+          end
+
+          strip_previous_prompt
+          state = { 'flow' => klass.key, 'ctx' => flow.ctx, 'trail' => [], 'bot' => self.class.current_bot }
+```
+
+В `#text` заменить:
+
+```ruby
+          state = state['data'].to_h.deep_stringify_keys
+          flow = build_flow(state)
+```
+
+на:
+
+```ruby
+          state = state['data'].to_h.deep_stringify_keys
+          return nil unless (state['bot'] || 'main') == self.class.current_bot
+
+          flow = build_flow(state)
+```
+
+В `#current_state` заменить:
+
+```ruby
+          state = pa['data'].to_h.deep_stringify_keys
+          return nil unless state['flow'] == flow_key.to_s
+```
+
+на:
+
+```ruby
+          state = pa['data'].to_h.deep_stringify_keys
+          return nil unless (state['bot'] || 'main') == self.class.current_bot
+          return nil unless state['flow'] == flow_key.to_s
+```
+
+И добавить приватный метод перед `#current_state`:
+
+```ruby
+        # Бот, в котором висит незаконченный мастер, если это не текущий.
+        # Отмена (wiz:x) работает из любого бота — ей бот не важен.
+        def foreign_wizard_bot
+          pa = tg_user.pending_action
+          return nil unless pa && pa['type'] == STATE_TYPE
+
+          bot = pa.dig('data', 'bot') || 'main'
+          bot == self.class.current_bot ? nil : bot
+        end
+```
+
+Состояния, записанные до этого изменения, ключа `bot` не имеют и считаются мастерами рабочего бота.
+
+- [ ] **Step 8: Прогнать — зелёные**
+
+Run: `bin/rb --db bundle exec rspec spec/services/telegram/work_bot/wizard/engine_bot_spec.rb spec/services/telegram/work_bot/wizard/engine_spec.rb spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb spec/requests/webhooks spec/services/telegram`
+Expected: 0 failures (новые — `7 examples`).
+
+- [ ] **Step 9: Линт и коммит**
+
+Run: `bin/rb bundle exec rubocop -a app/services/telegram/work_bot/wizard/engine.rb spec/services/telegram/work_bot/wizard/engine_bot_spec.rb app/controllers/webhooks/telegram_test_controller.rb app/jobs/telegram/inbound_processor_job.rb app/services/telegram/inbound_processor.rb app/models/telegram_webhook_ack.rb db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb lib/tasks/telegram_webhook.rake config/routes.rb spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb`
 
 ```bash
 git add db/migrate/20260914120100_add_bot_to_telegram_webhook_acks.rb db/structure.sql app/models/telegram_webhook_ack.rb \
         app/controllers/webhooks/telegram_test_controller.rb config/routes.rb app/jobs/telegram/inbound_processor_job.rb \
         app/services/telegram/inbound_processor.rb lib/tasks/telegram_webhook.rake tg-webhook-relay/src/index.js \
+        app/services/telegram/work_bot/wizard/engine.rb spec/services/telegram/work_bot/wizard/engine_bot_spec.rb \
         spec/requests/webhooks/telegram_test_spec.rb spec/services/telegram/inbound_processor_sandbox_spec.rb
-git commit -m "feat(telegram): вход тестового бота — свой вебхук, дедупликация по боту, только личка"
+git commit -m "feat(telegram): вход тестового бота — свой вебхук, дедупликация по боту, только карточки CRM в личке"
 ```
 
 ### Task 18: Песочница карточек
@@ -5113,6 +5315,8 @@ git commit -m "feat(telegram): вход тестового бота — свой
 - Modify: `app/services/telegram/work_bot/wizard/crm_card_support.rb` (`#card`)
 - Modify: `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` (`#handle`)
 - Modify: `app/services/telegram/work_bot/commands/cards.rb` (`#sections`, `#own_cards`, `#export_problems`)
+- Modify: `app/services/telegram/work_bot/lead_announcer.rb` (`#crm_row` — только рабочие карточки)
+- Modify: `spec/jobs/crm_cards/export_job_spec.rb` (двойник карточки отвечает на `sandbox?`)
 - Test: `spec/services/crm_cards/sandbox_spec.rb`
 
 **Interfaces:**
@@ -5142,7 +5346,8 @@ RSpec.describe 'песочница карточек CRM (тестовый бот
   let!(:nick) { TelegramUser.create!(tg_user_id: 99_103, tg_username: 'nick', status: 'active', dm_chat_id: 99_103) }
   let(:test_lead) do
     LeadEvent.create!(lead_ref: agent, source: 'manual', current_stage: 'first_contact', first_contact_at: 1.hour.ago,
-                      anchor_topic_key: 'dispatcher', tg_chat_id: agent.dm_chat_id, assigned_to: agent, staff_test: true)
+                      anchor_topic_key: 'dispatcher', tg_chat_id: agent.dm_chat_id, assigned_to: agent, staff_test: true,
+                      metadata: { 'sandbox' => true })
   end
   let(:real_lead) do
     LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'first_contact',
@@ -5178,6 +5383,15 @@ RSpec.describe 'песочница карточек CRM (тестовый бот
       expect(workflow.upsert_lead_card!(lead: real_lead, actor: agent, values: values).error).to include('тестовым лидам')
     end
     expect(CrmCard.unscoped.count).to eq(0)
+  end
+
+  it 'рабочий бот не заводит карточку по тестовому лиду, а клиент с «именем сотрудника» — не тестовый' do
+    expect(workflow.upsert_lead_card!(lead: test_lead, actor: agent, values: values).error).to include('песочницы')
+
+    real_lead.update!(staff_test: true, staff_test_matched_by: 'name_staff_first')
+    in_test do
+      expect(workflow.upsert_lead_card!(lead: real_lead, actor: agent, values: values).error).to include('тестовым лидам')
+    end
   end
 
   it 'весь путь в песочнице: TEST-номер, в Topnlab ни одного вызова' do
@@ -5357,9 +5571,11 @@ end
 
 ```ruby
       return deny('Твоей должности в CRM не выдано право заводить заявки.') unless perms.can?(:create_lead)
-      if Telegram::BotContext.test? && !lead.staff_test?
+      sandbox_lead = Checker.sandbox_lead?(lead)
+      if Telegram::BotContext.test? && !sandbox_lead
         return deny('В тестовом боте карточки заводятся только по тестовым лидам.')
       end
+      return deny('Это тестовый лид песочницы — его карточку заводят в тестовом боте.') if !Telegram::BotContext.test? && sandbox_lead
 
       card = CrmCard.kind_lead.find_or_initialize_by(lead_event_id: lead.id)
 ```
@@ -5461,17 +5677,30 @@ end
 В `app/services/crm_cards/checker.rb` в `#lead_rules` заменить:
 
 ```ruby
-      errors << ['lead', 'Тестовая заявка сотрудника — в CRM не выгружается.'] if lead.staff_test?
+      errors = []
+      errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
 ```
 
 на:
 
 ```ruby
+      errors = []
       if @card.sandbox?
-        errors << ['lead', 'В песочнице — только тестовые лиды.'] unless lead.staff_test?
-      elsif lead.staff_test?
-        errors << ['lead', 'Тестовая заявка сотрудника — в CRM не выгружается.']
+        errors << ['lead', 'В песочнице — только тестовые лиды.'] unless self.class.sandbox_lead?(lead)
+      elsif self.class.sandbox_lead?(lead)
+        errors << ['lead', 'Лид из песочницы тестового бота — в CRM не выгружается.']
       end
+      errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
+```
+
+Там же сразу после `def self.call(card) … end` добавить:
+
+```ruby
+    # Тестовый лид — только созданный мастером песочницы (CrmTestLeadFlow).
+    # Не staff_test: его ставит эвристика и настоящему клиенту.
+    def self.sandbox_lead?(lead)
+      lead.present? && lead.metadata.to_h['sandbox'] == true
+    end
 ```
 
 В `app/jobs/crm_cards/export_job.rb` заменить:
@@ -5487,6 +5716,32 @@ end
       # о выгрузке песочницы обязаны прийти от тестового бота.
       Telegram::BotContext.within(card.sandbox? ? 'test' : 'main') { Workflow.new.export!(card) }
 ```
+
+В `app/services/telegram/work_bot/lead_announcer.rb` в `#crm_row` заменить:
+
+```ruby
+        card = ::CrmCard.kind_lead.find_by(lead_event_id: @lead.id)
+```
+
+на:
+
+```ruby
+        card = ::CrmCard.kind_lead.where(sandbox: false).find_by(lead_event_id: @lead.id)
+```
+
+В `spec/jobs/crm_cards/export_job_spec.rb` заменить:
+
+```ruby
+    card = instance_double(CrmCard)
+```
+
+на:
+
+```ruby
+    card = instance_double(CrmCard, sandbox?: false)
+```
+
+(джоб теперь спрашивает `sandbox?`; `MockExpectationError` не наследует `StandardError`, `rescue` джоба её не поймает.)
 
 В `app/services/telegram/work_bot/wizard/crm_card_support.rb` в `#card` заменить:
 
@@ -5517,7 +5772,7 @@ end
 - [ ] **Step 8: Прогнать — зелёные**
 
 Run: `bin/rb --db bundle exec rspec spec/services/crm_cards/sandbox_spec.rb`
-Expected: `7 examples, 0 failures`.
+Expected: `8 examples, 0 failures`.
 
 Run: `bin/rb --db bundle exec rspec spec/models/crm_card_spec.rb spec/services/crm_cards spec/jobs/crm_cards spec/services/telegram/work_bot`
 Expected: 0 failures — вне тестового контекста `in_current_bot` = рабочие карточки, поведение стеков A–D не меняется.
@@ -5531,7 +5786,8 @@ git add db/migrate/20260914120200_add_sandbox_to_crm_cards.rb db/structure.sql a
         app/services/crm_cards app/jobs/crm_cards/export_job.rb \
         app/services/telegram/work_bot/wizard/crm_card_support.rb \
         app/services/telegram/work_bot/callbacks/crm_card_callback.rb \
-        app/services/telegram/work_bot/commands/cards.rb spec/services/crm_cards/sandbox_spec.rb
+        app/services/telegram/work_bot/commands/cards.rb app/services/telegram/work_bot/lead_announcer.rb \
+        spec/jobs/crm_cards/export_job_spec.rb spec/services/crm_cards/sandbox_spec.rb
 git commit -m "feat(crm_cards): песочница тестового бота — свои карточки, TEST-выгрузка, права для проверяющих"
 ```
 
@@ -5548,7 +5804,7 @@ git commit -m "feat(crm_cards): песочница тестового бота �
 
 **Interfaces:**
 - Consumes: `CrmLeadCardFlow` (Task 9), `BotContext` (Task 16), песочница (Task 18).
-- Produces: `wiz:s:crm_lead` без id — начинает с выбора лида (в рабочем боте — открытые реальные лиды, в тестовом — только тестовые; у не-модератора — только свои); мастер `crm_test_lead` (только тестовый бот): имя → телефон → подтверждение → тестовый лид, назначенный на себя, со стадией «первый контакт». Меню: «📋 Карточка заявки» (`create_lead`), «🧪 Тестовый лид» (тестовый бот + `create_lead`).
+- Produces: `wiz:s:crm_lead` без id — начинает с выбора лида (в рабочем боте — открытые лиды без `metadata['sandbox']`, в тестовом — только с ним; у не-модератора — только свои); мастер `crm_test_lead` (только тестовый бот): имя → телефон → подтверждение → тестовый лид, назначенный на себя, со стадией «первый контакт». Меню: «📋 Карточка заявки» (`create_lead`), «🧪 Тестовый лид» (тестовый бот + `create_lead`).
 
 - [ ] **Step 1: Спека (красная)**
 
@@ -5573,7 +5829,7 @@ RSpec.describe 'карточка заявки из лички и тестовы�
   let!(:test_lead) do
     LeadEvent.create!(lead_ref: agent, source: 'manual', current_stage: 'first_contact', first_contact_at: 1.hour.ago,
                       anchor_topic_key: 'dispatcher', tg_chat_id: agent.dm_chat_id, assigned_to: agent, staff_test: true,
-                      metadata: { 'name' => 'Тест Тестович' })
+                      metadata: { 'name' => 'Тест Тестович', 'sandbox' => true })
   end
 
   def labels
@@ -5623,6 +5879,7 @@ RSpec.describe 'карточка заявки из лички и тестовы�
 
     expect(main).to include('📋 Карточка заявки').and(satisfy { |t| !t.include?('🧪 Тестовый лид') })
     expect(test).to include('📋 Карточка заявки', '🧪 Тестовый лид')
+    expect(test).not_to include('📅 Поставить задачу')
   end
 end
 ```
@@ -5714,7 +5971,12 @@ Expected: FAIL — мастер без id отказывает «открыва�
 
         def candidates
           @candidates ||= begin
-            scope = ::LeadEvent.open.where(staff_test: ::Telegram::BotContext.test?).order(updated_at: :desc)
+            scope = ::LeadEvent.open.order(updated_at: :desc)
+            scope = if ::Telegram::BotContext.test?
+                      scope.where("lead_events.metadata->>'sandbox' = 'true'")
+                    else
+                      scope.where("COALESCE(lead_events.metadata->>'sandbox', '') <> 'true'")
+                    end
             scope = scope.where(assigned_to: tg_user) unless permissions.can?(:moderate)
             scope.limit(CANDIDATES_LIMIT * 2).to_a.reject { |l| lead_refusal(l) }.first(CANDIDATES_LIMIT)
           end
@@ -5729,9 +5991,11 @@ Expected: FAIL — мастер без id отказывает «открыва�
         end
 
         def lead_refusal(target)
-          if ::Telegram::BotContext.test? && !target.staff_test?
+          sandbox_lead = ::CrmCards::Checker.sandbox_lead?(target)
+          if ::Telegram::BotContext.test? && !sandbox_lead
             return '🚫 В тестовом боте карточки заводятся только по тестовым лидам.'
           end
+          return '🚫 Это тестовый лид — его карточку заводят в тестовом боте.' if !::Telegram::BotContext.test? && sandbox_lead
           unless target.assigned_to_id == tg_user.id || permissions.can?(:moderate)
             responsible = target.assigned_to&.mention || 'пока никто не назначен'
             return "🚫 Карточку заполняет ответственный по лиду: #{escape_html(responsible)}."
@@ -5840,6 +6104,9 @@ end
 на:
 
 ```ruby
+          # Песочница обслуживает только карточки CRM: задачи и закрытие лидов
+          # работают на боевых данных и в тестовом боте не предлагаются.
+          rows = [] if ::Telegram::BotContext.test?
           # Права на карточки — из должности в CRM, а не из роли в боте.
           perms = tg_user && ::CrmCards::Permissions.for(tg_user)
           if perms&.can?(:create_lead)
