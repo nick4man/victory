@@ -60,6 +60,7 @@
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
 | `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
 | `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | — | MCP-сервер `github` в `.mcp.json` (PR, issues, ревью). Не выставлен — сервер стартует, но ходит в API анонимно и упирается в лимит по IP (`API rate limit exceeded for <ip>`). Разовый `export` не помогает: shell между вызовами не сохраняется — переменная должна лежать в профиле оболочки. |
 
 ## DB и миграции
 
