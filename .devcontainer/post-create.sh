@@ -51,9 +51,17 @@ fi
 [ -x bin/install-git-hooks ] && bin/install-git-hooks >/dev/null 2>&1
 
 # ── Проверка ────────────────────────────────────────────────────────────────
+# Один настоящий спек, а не только `rubocop --version`: он трогает базу с
+# PostGIS и pgvector, то есть проверяет ровно то, что могло не собраться.
+# Без него Codespace с битой базой отрисовал бы бодрый баннер и обещание
+# 1102 примеров.
 if [ "$GEMS_OK" = 1 ]; then
-  log 'проверяю: rubocop --version + один спек'
+  log 'проверяю линтер'
   bundle exec rubocop --version || fail 'rubocop недоступен'
+
+  log 'проверяю один спек (задействует БД)'
+  RAILS_ENV=test bundle exec rspec spec/models/property_spec.rb --no-color 2>&1 | tail -3 \
+    || fail 'спек не прошёл — база или гемы не готовы, полный прогон делать рано'
 fi
 
 log 'готово. Полезное:'

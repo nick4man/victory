@@ -120,7 +120,9 @@ elif [ ! -f "/usr/share/postgresql/${PG_MAJOR}/extension/postgis.control" ] \
   fi
 fi
 
-if [ -x "$PGBIN/initdb" ] && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/postgis.control" ]; then
+if [ -x "$PGBIN/initdb" ] \
+  && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/postgis.control" ] \
+  && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/vector.control" ]; then
   mkdir -p "$PGDATA"
   chown postgres:postgres "$PGDATA" 2>/dev/null
 
@@ -140,7 +142,12 @@ if [ -x "$PGBIN/initdb" ] && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/p
   # ровно в это: «cannot open pg.log»).
   PGLOG="$PGDATA/startup.log"
 
-  if su postgres -c "$PGBIN/pg_isready -q -h 127.0.0.1 -p 5432" 2>/dev/null; then
+  # Спрашиваем pg_ctl про НАШ каталог, а не pg_isready про порт. В образе
+  # рядом лежит дебиановский кластер /var/lib/postgresql/16/main со
+  # scram-аутентификацией; если на 5432 сидит он, pg_isready ответит «готов»,
+  # а createdb и db:test:prepare упадут на авторизации — и сводка при этом
+  # отрапортует успех. pg_ctl status различает эти два случая.
+  if su postgres -c "$PGBIN/pg_ctl -D '$PGDATA' status" >/dev/null 2>&1; then
     log 'PostgreSQL уже поднят'
     PG_OK=1
   elif [ -f "$PGDATA/PG_VERSION" ]; then
@@ -152,7 +159,7 @@ if [ -x "$PGBIN/initdb" ] && [ -f "/usr/share/postgresql/${PG_MAJOR}/extension/p
       > "$SCRATCH/pg-ctl.log" 2>&1; then
       PG_OK=1
     else
-      fail 'PostgreSQL не поднялся:'
+      fail 'PostgreSQL не поднялся (возможно, порт 5432 занят чужим кластером):'
       tail -10 "$SCRATCH/pg-ctl.log" 2>/dev/null
       tail -15 "$PGLOG" 2>/dev/null
     fi
@@ -161,12 +168,21 @@ fi
 
 # Тестовая база: создаём здесь, а не полагаемся на db:test:prepare — тот
 # подключается к ней же и на пустом кластере спотыкается о её отсутствие.
+# Неудача тушит PG_OK: без базы шаг 6 всё равно не отработает, а молчаливый
+# postgres:1 в сводке — хуже, чем честный ноль.
 if [ "$PG_OK" = 1 ]; then
-  su postgres -c "$PGBIN/psql -h 127.0.0.1 -p 5432 -U postgres -tAc \
+  if ! su postgres -c "$PGBIN/psql -h 127.0.0.1 -p 5432 -U postgres -tAc \
     \"SELECT 1 FROM pg_database WHERE datname='viktory_realty_test'\"" 2>/dev/null \
-    | grep -q 1 \
-    || su postgres -c "$PGBIN/createdb -h 127.0.0.1 -p 5432 -U postgres viktory_realty_test" \
-         >/dev/null 2>&1
+    | grep -q 1; then
+    if su postgres -c "$PGBIN/createdb -h 127.0.0.1 -p 5432 -U postgres viktory_realty_test" \
+         > "$SCRATCH/createdb.log" 2>&1; then
+      log 'создана база viktory_realty_test'
+    else
+      fail 'не удалось создать viktory_realty_test:'
+      tail -5 "$SCRATCH/createdb.log" 2>/dev/null
+      PG_OK=0
+    fi
+  fi
 fi
 
 # ── 4. Redis ────────────────────────────────────────────────────────────────
@@ -190,23 +206,35 @@ fi
 # (spec/support/external_services.rb), наружу никто не ходит. Они нужны лишь
 # потому, что Telegram::Client и Llm::OmniClient отказываются инициализироваться
 # с пустыми значениями — то есть без них спеки не создадут даже объект.
+#
+# DATABASE_NAME намеренно НЕ выставляем: config/database.yml читает его только
+# в production/staging, а имена dev- и test-баз там захардкожены. Выставленная
+# переменная создавала бы ложное впечатление, что ею можно управлять.
+#
+# Маркер против повторной дописки: SessionStart срабатывает и на resume/clear/
+# compact, а блок содержит самоссылающийся `PATH=…:$PATH` — без маркера каталоги
+# rbenv добавлялись бы в PATH заново на каждом старте.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
-  {
-    if [ "$RUBY_OK" = 1 ]; then
-      echo "export RBENV_VERSION='${RUBY_TARGET}'"
-      echo "export PATH=\"/opt/rbenv/versions/${RUBY_TARGET}/bin:/opt/rbenv/shims:\$PATH\""
-    fi
-    echo "export DATABASE_HOST='127.0.0.1'"
-    echo "export DATABASE_PORT='5432'"
-    echo "export DATABASE_USERNAME='postgres'"
-    echo "export DATABASE_NAME='viktory_realty_test'"
-    echo "export REDIS_URL='redis://127.0.0.1:6379/0'"
-    echo "export DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL='true'"
-    echo "export TELEGRAM_BOT_TOKEN='not-a-token-webmock-blocks-network'"
-    echo "export OMNIROUTE_BASE_URL='http://llm.invalid/v1'"
-    echo "export OMNIROUTE_API_KEY='not-a-key-webmock-blocks-network'"
-  } >> "$CLAUDE_ENV_FILE"
-  log 'ENV записан в CLAUDE_ENV_FILE'
+  if grep -q 'victory-bootstrap-env' "$CLAUDE_ENV_FILE" 2>/dev/null; then
+    log 'ENV уже записан, пропускаю'
+  else
+    {
+      echo '# victory-bootstrap-env'
+      if [ "$RUBY_OK" = 1 ]; then
+        echo "export RBENV_VERSION='${RUBY_TARGET}'"
+        echo "export PATH=\"/opt/rbenv/versions/${RUBY_TARGET}/bin:/opt/rbenv/shims:\$PATH\""
+      fi
+      echo "export DATABASE_HOST='127.0.0.1'"
+      echo "export DATABASE_PORT='5432'"
+      echo "export DATABASE_USERNAME='postgres'"
+      echo "export REDIS_URL='redis://127.0.0.1:6379/0'"
+      echo "export DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL='true'"
+      echo "export TELEGRAM_BOT_TOKEN='not-a-token-webmock-blocks-network'"
+      echo "export OMNIROUTE_BASE_URL='http://llm.invalid/v1'"
+      echo "export OMNIROUTE_API_KEY='not-a-key-webmock-blocks-network'"
+    } >> "$CLAUDE_ENV_FILE"
+    log 'ENV записан в CLAUDE_ENV_FILE'
+  fi
 fi
 
 # ── 6. Тестовая база ────────────────────────────────────────────────────────
@@ -214,7 +242,7 @@ if [ "$GEMS_OK" = 1 ] && [ "$PG_OK" = 1 ]; then
   log 'db:test:prepare'
   RAILS_ENV=test \
   DATABASE_HOST=127.0.0.1 DATABASE_PORT=5432 \
-  DATABASE_USERNAME=postgres DATABASE_NAME=viktory_realty_test \
+  DATABASE_USERNAME=postgres \
   REDIS_URL='redis://127.0.0.1:6379/0' \
   TELEGRAM_BOT_TOKEN='not-a-token-webmock-blocks-network' \
   OMNIROUTE_BASE_URL='http://llm.invalid/v1' \

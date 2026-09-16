@@ -35,8 +35,10 @@ services:
       DATABASE_PORT: '5432'
       DATABASE_USERNAME: postgres
       DATABASE_PASSWORD: ''
-      DATABASE_NAME: viktory_realty_development
-      TEST_DATABASE_NAME: viktory_realty_test
+      # DATABASE_NAME намеренно нет: config/database.yml читает её только в
+      # production/staging, имена dev- и test-баз там захардкожены
+      # (viktory_realty_development / _test). Переменная здесь лишь создавала
+      # бы впечатление, что именем можно управлять.
       REDIS_URL: redis://redis:6379/0
       # DatabaseCleaner считает «удалённой» любую БД не на localhost, а здесь
       # она в соседнем контейнере и одноразовая.
