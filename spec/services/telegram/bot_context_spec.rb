@@ -46,6 +46,32 @@ RSpec.describe Telegram::BotContext do
     expect(request).to have_been_requested
   end
 
+  it 'тестовый бот не пишет в чат с нечисловым chat_id — fail closed, а не .to_i == 0' do
+    described_class.within('test') do
+      expect { Telegram::Client.new.send_message('в канал', chat_id: '@some_channel') }
+        .to raise_error(Telegram::Client::GroupChatForbidden)
+    end
+
+    expect(a_request(:post, /api\.telegram\.org/)).not_to have_been_made
+  end
+
+  it 'тестовый бот пишет в личку по строковому numeric chat_id' do
+    request = stub_send('test-token')
+
+    described_class.within('test') { Telegram::Client.new.send_message('привет', chat_id: '111') }
+
+    expect(request).to have_been_requested
+  end
+
+  it 'TELEGRAM_BOT_TOKEN совпал с TELEGRAM_TEST_BOT_TOKEN — основной бот вне контекста всё равно пишет в группы' do
+    stub_const('ENV', ENV.to_h.merge('TELEGRAM_BOT_TOKEN' => 'same-token', 'TELEGRAM_TEST_BOT_TOKEN' => 'same-token'))
+    request = stub_send('same-token')
+
+    Telegram::Client.new.send_message('в группу', chat_id: -1_003_779_115_845)
+
+    expect(request).to have_been_requested
+  end
+
   it 'неизвестный бот — ошибка, а не тихий откат на основной' do
     expect { described_class.within('prod') { nil } }.to raise_error(ArgumentError, /prod/)
   end
