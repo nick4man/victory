@@ -45,7 +45,8 @@ module Telegram
           'crm_rework' => 'Telegram::WorkBot::Wizard::CrmCardReworkFlow',
           'crm_approve' => 'Telegram::WorkBot::Wizard::CrmCardApproveFlow',
           'crm_object' => 'Telegram::WorkBot::Wizard::CrmObjectCardFlow',
-          'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow'
+          'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
+          'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
         }.freeze
 
         # Какой шаг получает id, пришедший с кнопкой на карточке.
