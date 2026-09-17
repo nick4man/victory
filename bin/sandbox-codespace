@@ -74,7 +74,8 @@ case "${1:-}" in
     ;;
   seed)
     load_env
-    SANDBOX_STAFF="${2:?JSON: [{tg_user_id, username, first_name, last_name, crm: {user_id, role_id, role_name}?}]}" \
+    # JSON: массив объектов tg_user_id, username, first_name, last_name, role, crm (user_id, role_id, role_name).
+    SANDBOX_STAFF="${2:?нужен JSON со списком проверяющих}" \
       bin/rails runner '
         JSON.parse(ENV.fetch("SANDBOX_STAFF")).each do |s|
           tu = TelegramUser.find_or_initialize_by(tg_user_id: s.fetch("tg_user_id"))
