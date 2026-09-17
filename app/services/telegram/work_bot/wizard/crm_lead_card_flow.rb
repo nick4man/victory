@@ -19,7 +19,7 @@ module Telegram
         CANDIDATES_LIMIT = 8
 
         def steps
-          [lead_step] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
+          [lead_step, paste_step('lead')] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
             [Flow::Step.new(id: 'confirm', kind: :confirm,
                             prompt: 'Сохранить карточку заявки? Дальше — машинная проверка.',
                             confirm_label: '💾 Сохранить и проверить')]
@@ -45,6 +45,7 @@ module Telegram
 
         def accept(step, value, manual: false)
           return accept_lead(value) if step.id == 'lead'
+          return accept_paste('lead', value) if step.id == 'paste'
 
           field = ::CrmCards::Schema.field('lead', step.id)
           field ? accept_field(field, value) : [value, nil]
@@ -132,8 +133,10 @@ module Telegram
         end
 
         # Известное заранее: черновик поверх данных, пришедших с лидом.
+        # Вставленный текст свежее данных лида (сотрудник только что говорил с
+        # клиентом), но черновик, который он уже правил руками, не перебивает.
         def known_values
-          @known_values ||= prefill.merge(existing&.payload.to_h)
+          @known_values ||= prefill.merge(pasted_values).merge(existing&.payload.to_h)
         end
 
         def prefill
