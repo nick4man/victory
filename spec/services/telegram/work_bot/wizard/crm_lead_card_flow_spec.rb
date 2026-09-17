@@ -43,6 +43,22 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
     expect(last_callbacks).to include("crm_card:#{card.id}:submit")
   end
 
+  it 'номер клиента уже был — бот предупреждает и пускает дальше' do
+    previous = CrmCard.create!(kind: 'lead', author: agent, status: 'pending_review', submitted_at: 1.day.ago,
+                               payload: { 'name' => 'Анна', 'phone' => '79105550011' })
+    fresh = LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'first_contact',
+                              anchor_topic_key: 'apartments', tg_chat_id: -1_003_779_115_845,
+                              assigned_to: agent, first_contact_at: 1.hour.ago, metadata: { 'name' => 'Анна' })
+
+    tap_callback("wiz:s:crm_lead:#{fresh.id}", user: agent)
+    expect(last_text).to include('Телефон?')
+
+    say('+7 910 555-00-11', user: agent)
+
+    expect(dms.map { |d| d[:text] }.join).to include('Этот номер у нас уже был', "##{previous.id}")
+    expect(last_text).to include('Что нужно клиенту?')
+  end
+
   it 'по черновику спрашивает только незаполненное' do
     CrmCard.create!(kind: 'lead', author: agent, lead_event: lead,
                     payload: { 'name' => 'Анна', 'phone' => '79101234567', 'action' => 'rent', 'object_type' => 'room' })
