@@ -30,7 +30,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardEditFlow do
     press('Телефон', user: agent)
 
     say('12345', user: agent)
-    expect(last_text).to include('11 цифр', 'Шаг не сброшен')
+    expect(last_text).to include('нужно 11', 'Шаг не сброшен')
 
     say('8 (920) 555-44-33', user: agent)
     expect(last_text).to include('Сохранить «Телефон: +7 920 555-44-33»?')

@@ -44,7 +44,22 @@ module Telegram
           return [nil, "Поле «#{field.label}» обязательное — очистить нельзя."] if value == CLEAR && field.required
           return [CLEAR, nil] if value == CLEAR
 
-          ::CrmCards::FieldValue.normalize(field, value)
+          normalized, error = ::CrmCards::FieldValue.normalize(field, value)
+          warn_about_phone(normalized) if error.nil? && %i[phone phone_extra].include?(field.type)
+          [normalized, error]
+        end
+
+        # Отдельным сообщением, а не ошибкой шага: это подсказка, а не запрет —
+        # мастер идёт дальше, решает сотрудник. Сбой отправки молчим: из-за
+        # подсказки терять уже введённый номер незачем.
+        def warn_about_phone(digits)
+          lines = ::CrmCards::PhoneMatches.for(digits, card: ctx['card'].present? ? card : nil)
+          return if lines.empty?
+
+          client.send_message(['⚠️ Этот номер у нас уже был:', *lines].join("\n"),
+                              chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+        rescue ::Telegram::Client::Error => e
+          Rails.logger.warn("[Wizard#warn_about_phone] #{e.class}: #{e.message}")
         end
 
         def result_view(result)
