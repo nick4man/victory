@@ -38,8 +38,31 @@ namespace :telegram do
 
     desc 'Webhook тестового бота (песочница карточек CRM): только message и callback_query.'
     task setup_test: :environment do
+      test_token = ENV.fetch('TELEGRAM_TEST_BOT_TOKEN', nil)
+      main_token = ENV.fetch('TELEGRAM_BOT_TOKEN', nil)
+      # Оба токена должны быть заданы и различаться — иначе setWebhook либо
+      # упадёт с непонятной ошибкой Telegram, либо (что хуже) молча перепишет
+      # вебхук боевого бота на тестовый URL, если токены случайно совпали.
+      if test_token.blank? || main_token.blank? || test_token == main_token
+        abort('[telegram:webhook:setup_test] TELEGRAM_TEST_BOT_TOKEN и TELEGRAM_BOT_TOKEN должны быть ' \
+              'заданы и отличаться друг от друга — иначе тестовый вебхук либо не встанет, либо тихо ' \
+              'перепишет боевой. API не вызван.')
+      end
+
       url = ENV.fetch('TELEGRAM_TEST_WEBHOOK_URL')
       secret = ENV.fetch('TELEGRAM_TEST_WEBHOOK_SECRET')
+      # Регистрируется URL relay-воркера (tg-webhook-relay/src/index.js), а не
+      # прямой путь Rails: TG-диапазоны блокирует firewall на хосте (см.
+      # docstring воркера), напрямую до /webhooks/telegram_test TG не достучится.
+      # Воркер отличает тестовый бот от основного строго по pathname == '/test'
+      # (см. `isTest = new URL(request.url).pathname === '/test'` в index.js) —
+      # любой другой путь форвардится на основной эндпоинт бота-боёвика.
+      unless URI(url).path.end_with?('/test')
+        abort("[telegram:webhook:setup_test] TELEGRAM_TEST_WEBHOOK_URL=#{url} — путь должен " \
+              'заканчиваться на /test (эндпоинт relay-воркера для тестового бота): любой другой путь ' \
+              'воркер форвардит на основной эндпоинт. API не вызван.')
+      end
+
       result = Telegram::BotContext.within('test') do
         Telegram::Client.new.set_webhook(url, secret_token: secret, allowed_updates: %w[message callback_query],
                                               drop_pending_updates: true)
