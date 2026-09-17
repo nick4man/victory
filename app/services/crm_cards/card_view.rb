@@ -56,17 +56,20 @@ module CrmCards
       when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
       when 'pending_review' then moderator_rows(card) if moderator
       when 'approved' then approved_rows(card, owner, moderator)
-      when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale?
-      when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead?
+      when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
+      when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead? && card.crm_id.blank?
       end || []
     end
 
     # Объект вносит в CRM ответственный; заявка, не ушедшая в выгрузку за
-    # 15 минут (джоб не встал в очередь), — повторяется модератором.
+    # 15 минут (джоб не встал в очередь), — повторяется модератором. Если
+    # crm_id уже проставлен, Workflow#retry_export! всё равно откажет
+    # (заявка уже создана в CRM) — кнопку, которая всегда отвечает «нельзя»,
+    # не показываем вовсе (см. CardView doc-comment).
     def approved_rows(card, owner, moderator)
       return [[button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")]] if card.kind_object? && (owner || moderator)
 
-      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale?
+      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
     end
 
     def author_rows(card)
