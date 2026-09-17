@@ -130,7 +130,7 @@ mise list       # Проверить установленные инструме
 ```bash
 ✅ DATABASE_NAME=viktory_realty_production
 ✅ DATABASE_USERNAME=viktory_realty
-✅ DATABASE_PASSWORD=viktory_realty_secure_password_2024
+✅ DATABASE_PASSWORD=... (вычищен 16.09.26 — лежал здесь открытым текстом)
 ✅ SECRET_KEY_BASE=... (сгенерирован)
 ✅ DEVISE_SECRET_KEY=... (сгенерирован)
 ⏳ SMTP_ADDRESS=smtp.yandex.ru (нужно настроить)
