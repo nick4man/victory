@@ -48,7 +48,9 @@ module Telegram
         'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback',
         # Пошаговые мастера (задача, закрытие лида, переоткрытие) и меню
         # «Что сделать?». Формат — см. Wizard::Engine.
-        'wiz' => 'Telegram::WorkBot::Callbacks::WizardCallback'
+        'wiz' => 'Telegram::WorkBot::Callbacks::WizardCallback',
+        # Карточка CRM: показать в личке, отправить на модерацию, повторить выгрузку.
+        'crm_card' => 'Telegram::WorkBot::Callbacks::CrmCardCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)
