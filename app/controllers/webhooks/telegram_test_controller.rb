@@ -6,8 +6,11 @@ module Webhooks
   # В отличие от основного вебхука, секрет обязателен без «переходного»
   # пропуска: вход новый, совместимость сохранять не с чем. Пустой ENV —
   # вход закрыт (CLAUDE.md: вебхук при пустом секрете отказывает).
-  class TelegramTestController < ApplicationController
-    skip_before_action :verify_authenticity_token, raise: false
+  #
+  # ActionController::API, а не ApplicationController: браузерного стека
+  # (сессия, куки, CSRF) здесь нет, запрос подлинен только по секрету в
+  # заголовке — отключать нечего.
+  class TelegramTestController < ActionController::API
 
     def create
       return head(:forbidden) unless authorized?
