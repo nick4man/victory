@@ -23,6 +23,11 @@
 # untracked so worktrees don't fight over one committed file). See sessions/README.md.
 /.claude-session
 
+# Маркер прод-хоста: создаётся bin/prod-mark на той машине, где живёт прод.
+# Отслеживать нельзя — иначе прод-хостом объявится каждый клон, и сверка
+# отметки с живым чекаутом (.claude/hooks/lib/prod-state.sh) начнёт врать всем.
+/.victory-prod
+
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*

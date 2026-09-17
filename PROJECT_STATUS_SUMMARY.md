@@ -176,7 +176,7 @@
 ## ⚡ БЫСТРЫЙ ЗАПУСК
 
 ```bash
-cd ~/victory
+cd <каталог, куда клонирован репозиторий>
 
 # Установка
 bundle install && yarn install
