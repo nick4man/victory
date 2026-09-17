@@ -77,4 +77,13 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
 
     expect(last_text).to include("Карточка ##{card.id}", 'На модерации')
   end
+
+  it 'закрытый лид — мастер не стартует' do
+    lead.update!(current_stage: 'closed_lost')
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+
+    expect(last_text).to include('уже закрыт')
+    expect(agent.reload.pending_action).to be_nil
+  end
 end

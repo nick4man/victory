@@ -34,6 +34,7 @@ module Telegram
 
         def gate
           return '⚠️ Карточку заявки открывают кнопкой «📋 Карточка CRM» под лидом.' unless lead
+          return "ℹ️ Лид ##{lead.id} уже закрыт (#{lead.current_stage}) — карточку заводить нечего." if lead.closed?
           return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
           return '🚫 Твоей должности в CRM не выдано право заводить заявки.' unless permissions.can?(:create_lead)
 
