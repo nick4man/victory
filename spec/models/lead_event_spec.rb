@@ -80,4 +80,38 @@ RSpec.describe LeadEvent do
       expect(described_class.closed).to contain_exactly(won_event, lost_event)
     end
   end
+
+  describe 'segment (BOTTLENECK)' do
+    it 'принимает только значения из SEGMENTS' do
+      expect(build_event(segment: 'cash')).to be_valid
+      expect(build_event(segment: 'vip')).not_to be_valid
+    end
+
+    it 'nil допустим — сегмент выясняется позже' do
+      expect(build_event(segment: nil)).to be_valid
+    end
+
+    it 'SEGMENT_LABELS покрывает каждый сегмент' do
+      expect(LeadEvent::SEGMENT_LABELS.keys).to match_array(LeadEvent::SEGMENTS)
+    end
+
+    it '#segment_label для nil — «не указан»' do
+      expect(build_event(segment: nil).segment_label).to include('не указан')
+    end
+  end
+
+  describe 'scopes воронки показов' do
+    let!(:shown)   { build_event(first_show_at: 1.day.ago).tap(&:save!) }
+    let!(:unshown) { build_event.tap(&:save!) }
+
+    it '.shown — только с first_show_at' do
+      expect(described_class.shown).to contain_exactly(shown)
+    end
+
+    it '.segmented — только с сегментом' do
+      shown.update!(segment: 'cold')
+      expect(described_class.segmented).to contain_exactly(shown)
+    end
+  end
+
 end

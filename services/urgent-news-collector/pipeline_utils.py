@@ -40,7 +40,19 @@ def fmt_ddmmyy(d) -> str:
     except (ValueError, TypeError):
         return str(d)
 
-MIRROR_SCRIPT = "/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh"
+# Пути боевого каталога считаются ПРИ ВЫЗОВЕ, а не при импорте: вызывающие
+# скрипты подтягивают .env уже после `import pipeline_utils`, и константа,
+# вычисленная на импорте, не увидела бы CONVEYOR_HOME из файла.
+def conveyor_home() -> str:
+    return os.environ.get("CONVEYOR_HOME", "/opt/victory-conveyor")
+
+
+# Зеркало на сайт. Скрипт живёт в victory (services/chat-host-cron/) и
+# деплоится рядом с конвейером; путь наружу снят 11.09.26.
+def mirror_script_path() -> str:
+    return os.environ.get(
+        "MIRROR_SCRIPT", os.path.join(conveyor_home(), "post_news_to_victory.sh")
+    )
 SITE_BASE_URL = "https://victory62.org"
 
 BRAND_TAGS = ["#Виктори_Главное", "#Виктори_Молния", "#Виктори_Аналитика"]
@@ -161,7 +173,10 @@ def filter_topic_hashtags(raw):
     return out
 
 
-NOTIFICATIONS_DIR = "/opt/.openclaw/.openclaw/workspace-conveyor/SHARED/notifications"
+def notifications_dir() -> str:
+    return os.environ.get(
+        "NOTIFICATIONS_DIR", os.path.join(conveyor_home(), "notifications")
+    )
 
 
 def notify_failure(
@@ -199,9 +214,10 @@ def notify_failure(
         "detail": detail[:2000],
     }
     try:
-        os.makedirs(NOTIFICATIONS_DIR, exist_ok=True)
+        notif_dir = notifications_dir()
+        os.makedirs(notif_dir, exist_ok=True)
         path = os.path.join(
-            NOTIFICATIONS_DIR,
+            notif_dir,
             f"{component}_failed_{now.strftime('%Y%m%dT%H%M%SZ')}.json",
         )
         with open(path, "w", encoding="utf-8") as fh:
@@ -242,15 +258,16 @@ def mirror_to_victory(meta_path: str, text_path: str) -> str | None:
     токен не задан, или сайт ответил ошибкой — вызывающий код использует
     fallback_site_url() в этом случае.
     """
-    if not os.path.exists(MIRROR_SCRIPT):
-        logger.warning("[victory62-mirror] script missing: %s", MIRROR_SCRIPT)
+    mirror_script = mirror_script_path()
+    if not os.path.exists(mirror_script):
+        logger.warning("[victory62-mirror] script missing: %s", mirror_script)
         return None
     if not os.environ.get("VICTORY_NEWS_TOKEN"):
         logger.warning("[victory62-mirror] VICTORY_NEWS_TOKEN not set; skipping")
         return None
     try:
         result = subprocess.run(
-            [MIRROR_SCRIPT, meta_path, text_path],
+            [mirror_script, meta_path, text_path],
             capture_output=True, text=True, timeout=60, check=False,
         )
     except Exception as e:
@@ -297,14 +314,17 @@ def build_site_footer(url: str) -> str:
 
 # ============================================================================
 # LLM fallback chain — публикатор больше не зависит от одной модели в omniroute.
-# Зеркалит main.fallbacks из /opt/.openclaw/.openclaw/openclaw.json (id="main"),
+# Зеркалит main.fallbacks из openclaw.json (id="main"),
 # но содержит только реально живые сейчас маршруты. Битые перечислены ниже
 # в комментарии — вернуть, когда у провайдеров отпустит rate-limit.
 # ============================================================================
 
 OMNIROUTE_BASE = os.environ.get("OMNIROUTE_BASE_URL", "http://127.0.0.1:20128/v1")
 OPENCLAW_JSON_PATH = os.environ.get(
-    "OPENCLAW_JSON_PATH", "/opt/.openclaw/.openclaw/openclaw.json"
+    # Последняя (и только на чтение) связь с архивом openclaw: срабатывает,
+    # лишь если OMNIROUTE_API_KEY не задан в .env. В проде задан — см. .env.example.
+    "OPENCLAW_JSON_PATH",
+    "/opt/.openclaw/.openclaw/openclaw.json",
 )
 
 MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
@@ -316,21 +336,43 @@ MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
     # Free fallbacks via omniroute (RPM-limited but non-zero quota).
     ("cloudflare", "@cf/meta/llama-3.3-70b-instruct-fp8-fast",                     30),
     ("omniroute",  "openrouter/google/gemini-2.0-flash-exp:free",                  45),
-    # Direct Gemini Pro (more expensive but reliable).
-    ("google",     "gemini-2.5-pro",                                               45),
     # PAID — last resort.
     ("openrouter", "anthropic/claude-sonnet-4",                                    60),
 ]
 PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")}
+
+# Бесплатные модели прямого OpenRouter — ТОЛЬКО для классификатора (13.09.26).
+# Отобраны прогоном промпта классификатора: ставка ЦБ → URGENT/KEY_RATE,
+# спорт → NOISE, 2–15 с; работают только с reasoning off (см.
+# _call_openai_compatible). Бывают 429 у поставщика и обрывы TLS — это запас,
+# а не основа. В генерацию постов их не пускать: на промпте срочного поста
+# nemotron мешал русский с английским («unanimously»), laguna выдумывала цифры
+# («инфляция 4,3%, ВВП 0,8%»). Короткий JSON-вердикт им по силам, публикация — нет.
+FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
+    ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",                       30),
+    ("openrouter", "poolside/laguna-s-2.1:free",                                   30),
+    ("openrouter", "poolside/laguna-xs-2.1:free",                                  30),
+]
+
+# Цепочка классификатора: бесплатные OpenRouter встают сразу после Google,
+# до мёртвых сейчас cloudflare/omniroute и до платного хвоста.
+_GOOGLE_HEAD = [step for step in MAIN_MODEL_CHAIN if step[0] == "google"]
+CLASSIFIER_CHAIN: list[tuple[str, str, int]] = (
+    _GOOGLE_HEAD
+    + FREE_CLASSIFIER_MODELS
+    + [step for step in MAIN_MODEL_CHAIN if step[0] != "google"]
+)
 
 # Removed from chain 2026-05-14 (rate-limited / dead):
 #   groq/llama-3.3-70b-versatile          — TPD exhausted, 8h+ cooldown
 #   groq/openai/gpt-oss-120b              — same Groq TPD
 #   openrouter/google/gemma-4-31b-it:free — RPM 429 spam
 #   openrouter/z-ai/glm-4.5-air:free      — RPM 429
-#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429
+#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429 (вернули 13.09.26 напрямую)
 #   openrouter/openai/gpt-oss-120b:free   — RPM 429
 #   cloudflare @cf/openai/gpt-oss-120b    — duplicate of llama-3.3 above
+# Removed 13.09.26:
+#   google/gemini-2.5-pro                 — HTTP 404 «no longer available to new users»
 # Документация прочих "битых":
 #   omniroute cerebras/qwen-3-235b-a22b-instruct-2507     — 429 rate limit
 #   omniroute openrouter/qwen/qwen3-coder:free            — timeout > 30s
@@ -502,6 +544,11 @@ def _call_openai_compatible(provider, model, messages, temperature, max_tokens, 
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if provider == "openrouter":
+        # Бесплатные nemotron-модели «рассуждают» по умолчанию: рассуждение
+        # съедает max_tokens, и content приходит пустым или обрезанным JSON.
+        # Нам нужен только ответ — и так быстрее в 2–10 раз.
+        payload["reasoning"] = {"enabled": False}
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     resp.encoding = "utf-8"
     if resp.status_code != 200:

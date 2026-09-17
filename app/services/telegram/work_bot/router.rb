@@ -23,6 +23,8 @@ module Telegram
         '/start' => Commands::Help, # alias TG default → /help (плюс side-effect dm_chat_id update)
         # Интерактивное обучение боту — карточка уроков с кнопками в личке.
         '/tutorial' => Commands::Tutorial,
+        # Меню «Что сделать?» — вход в пошаговые мастера кнопками.
+        '/menu' => Commands::Menu,
         '/whoami' => Commands::Whoami,
         '/whoami_force' => Commands::WhoamiForce,
         '/promote' => Commands::Promote,
@@ -33,6 +35,14 @@ module Telegram
         '/route' => Commands::Route,
         '/assign' => Commands::Assign,
         '/stage' => Commands::Stage,
+        # BOTTLENECK — сегмент покупателя текстом, дублёр кнопок SegmentKeyboard.
+        '/segment' => Commands::Segment,
+        # BOTTLENECK — отчёт о показе текстом, когда голосовое неудобно.
+        '/show' => Commands::Show,
+        # BOTTLENECK — сводка возражений по объекту к разговору о цене.
+        '/objections' => Commands::Objections,
+        # BOTTLENECK — торг на объекте: карточка руководителю до звонка.
+        '/bargain' => Commands::Bargain,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,
@@ -92,7 +102,18 @@ module Telegram
           send(COMMANDS[cmd], rest)
           :handled
         else
-          reply("Команда #{cmd} не распознана либо ещё не реализована. Доступно: <code>/whoami email</code>")
+          # BOTTLENECK — каталог служебных подсказок не уходит тому, кого нет в
+          # telegram_users. Клиент, промахнувшийся мимо /start, получал
+          # инструкцию «Доступно: /whoami email» — приглашение в рабочий бот.
+          # После плана показов в каталоге на пять команд больше, так что цена
+          # утечки растёт. Экранирование cmd — из той же ветки: parse_mode HTML
+          # на `/<b` отдаёт 400, и клиент не получает ничего.
+          if TelegramUser.find_by(tg_user_id: @msg.dig('from', 'id')).nil?
+            reply('Я бот агентства «Виктори». Напишите запрос обычным сообщением — или пришлите фото документа, и менеджер свяжется с вами.')
+            return :client_hint
+          end
+
+          reply("Команда #{escape(cmd)} не распознана либо ещё не реализована. Доступно: <code>/whoami email</code>")
           :unknown_command
         end
       end

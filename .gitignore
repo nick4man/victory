@@ -303,3 +303,9 @@ ehthumbs.db
 !public/icon-*.png
 !public/apple-touch-icon.png
 
+
+# Вложенные worktree-чекауты, которые Claude Code заводит под .claude/worktrees/.
+# Это рабочие каталоги (сейчас ~146 МБ, видны в `git worktree list`), а не
+# содержимое репозитория. Без этой строки они висят в `git status` как untracked
+# и один `git add -A` утаскивает их в историю навсегда.
+/.claude/worktrees/

@@ -144,6 +144,37 @@ RSpec.describe Property do
       end
     end
 
+    describe '.in_advertising' do
+      # Список для XML-фидов (yrl/cian/avito). Стадии из EXCLUDED_FROM_CATALOG
+      # отсекаются даже у active-объекта — так бывает при force_publish.
+      def advertised(deal_state)
+        build_property(status: :active, published_at: 1.day.ago, in_mls: true, deal_state: deal_state)
+          .tap(&:save!)
+      end
+
+      it 'включает объект в рекламе' do
+        expect(described_class.in_advertising).to include(advertised('ad'))
+      end
+
+      it 'включает объект без стадии CRM' do
+        expect(described_class.in_advertising).to include(advertised(nil))
+      end
+
+      it 'не отдаёт в фиды объект с задатком' do
+        expect(described_class.in_advertising).not_to include(advertised('prepayment'))
+      end
+
+      it 'отсекает все стадии из EXCLUDED_FROM_CATALOG' do
+        excluded = described_class::EXCLUDED_FROM_CATALOG.map { |state| advertised(state) }
+        expect(described_class.in_advertising).not_to include(*excluded)
+      end
+
+      it 'требует хотя бы один исходящий канал' do
+        no_channel = build_property(status: :active, published_at: 1.day.ago, deal_state: 'ad').tap(&:save!)
+        expect(described_class.in_advertising).not_to include(no_channel)
+      end
+    end
+
     describe '.assigned_to' do
       it 'matches by user_id' do
         expect(described_class.assigned_to(user)).to include(draft)

@@ -60,6 +60,7 @@
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
 | `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
 | `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | — | MCP-сервер `github` в `.mcp.json` (PR, issues, ревью). Не выставлен — сервер стартует, но ходит в API анонимно и упирается в лимит по IP (`API rate limit exceeded for <ip>`). Разовый `export` не помогает: shell между вызовами не сохраняется — переменная должна лежать в профиле оболочки. |
 
 ## DB и миграции
 
@@ -163,15 +164,20 @@ bundle exec sidekiq -C config/sidekiq.yml
 ```
 Очереди по приоритету: `critical` → `mailers` → `default` → `scheduled` → `low_priority`.
 
-### Cron (Whenever)
-```bash
-bundle exec whenever --update-crontab
-bundle exec whenever --clear-crontab
-```
-Расписание:
-- ежечасно: `SendViewingRemindersJob`
-- 03:00: `UpdatePropertyStatisticsJob`
-- 10:00: `PropertyValuationFollowUpJob`
+### Cron
+
+Расписаний два, и оба **не** `whenever` — гема в `Gemfile` нет, а
+`config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
+
+- `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
+- системный crontab хоста — 5 записей, правится `crontab -e`: 4 через
+  `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и
+  `lock-clean`, который идёт прямо на хосте.
+
+🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
+них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
+упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит
+`views_count`. Разбор всех 19 записей — CLAUDE.md, секция «Планировщик один».
 
 ### Переезд базы на bookworm — пересборка прод-БД
 
@@ -243,7 +249,7 @@ ls -lt /var/backups/victory/db/ | head -3
 
 **3. Собрать новый образ, пока старый контейнер обслуживает трафик.**
 ```bash
-cd /home/q/victory
+cd ~/victory
 /usr/bin/docker image inspect -f '{{.Id}} {{.Created}}' \
   viktory-postgres-pgvector:pg15-postgis36        # ДО сборки, записать
 /usr/bin/docker compose build db
@@ -285,9 +291,9 @@ upsert в `properties`, а изменение `district` тянет за соб�
 sidekiq погашен шагом 4, база ещё на старом образе и старом glibc — ровно то
 состояние, с которым сравнивают. Три запроса — секунды, окно от них не вырастет.
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
-/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee /home/q/db-baseline.txt
+DB=$(grep  -m1 '^POSTGRES_DB='   ~/victory/.env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' ~/victory/.env | cut -d= -f2-)
+/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee ~/db-baseline.txt
 SELECT district, count(*) FROM properties
  WHERE district IS NOT NULL AND district <> ''
  GROUP BY district ORDER BY count(*) DESC, district;
@@ -297,7 +303,7 @@ SELECT count(*) AS geo FROM properties
 SELECT count(*) AS embeddings FROM property_embeddings;
 SQL
 ```
-Файл держать вне `/home/q/victory` — в чекауте его снесёт первый же `git clean -fd`.
+Файл держать вне `~/victory` — в чекауте его снесёт первый же `git clean -fd`.
 Те же три запроса пойдут ещё внутри окна, сразу после шага 8, и должны дать те же
 числа: проверка сравнивает «до/после», а не угаданный порог.
 
@@ -321,8 +327,8 @@ SQL
 
 **6. Расширения. ТОЧКА НЕВОЗВРАТА.**
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   /home/q/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' /home/q/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   ~/victory/.env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' ~/victory/.env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d "$DB" <<'SQL'
 SELECT postgis_extensions_upgrade();
 ALTER EXTENSION vector UPDATE;
@@ -382,7 +388,7 @@ NULL (PostgreSQL её намеренно не хранит), и `REFRESH` пад
 Проверка: `2.36` во всех строках, кроме `template0` — её ячейка пуста и до, и после.
 
 **Сверка с эталоном — здесь, до подъёма приложения.** Три запроса ниже — те же, что
-снимали эталон после шага 4: сравниваем вывод с `/home/q/db-baseline.txt`, а не с
+снимали эталон после шага 4: сравниваем вывод с `~/db-baseline.txt`, а не с
 ожиданием «строк должно быть много»; одного `postgis_full_version()` для этого мало.
 Приложение им не нужно — нужна только поднятая база, а шаг 9 сверку испортит:
 поднятый sidekiq законно гонит `topnlab_sync` (каждые 30 мин), тот апсертит
@@ -447,7 +453,7 @@ curl -sI https://victory62.org | head -1         # 200
 
 **10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
 ```bash
-sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp ~/victory/bin/backup /usr/local/bin/victory-backup
 grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 ```
 Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая
@@ -474,20 +480,20 @@ grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 **A — до шага 6** (расширения ещё не тронуты): вернуть контейнер на старый образ
 через compose-оверрайд, две минуты.
 ```bash
-cd /home/q/victory
-cat > /home/q/db-rollback.yml <<'YML'
+cd ~/victory
+cat > ~/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d --force-recreate db
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
-⚠️ Файл оверрайда — **вне** `/home/q/victory`: в чекауте он ляжет untracked, и первый
+⚠️ Файл оверрайда — **вне** `~/victory`: в чекауте он ляжет untracked, и первый
 же `git clean -fd` снесёт откат. Путь абсолютный, `-f` его принимает.
 🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
 то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
@@ -515,14 +521,14 @@ compose примиряет зависимость с той конфигурац
 поднимается последним — блок A заканчивается подъёмом web+sidekiq, а здесь они
 работали бы по базе, которую `pg_restore --clean` в этот момент перезаписывает.
 ```bash
-cd /home/q/victory
+cd ~/victory
 /usr/bin/docker compose stop sidekiq web
-cat > /home/q/db-rollback.yml <<'YML'
+cat > ~/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d --force-recreate db
 # путь обязателен: без аргумента `restore` печатает список копий, возвращает 0 и
 # НИЧЕГО не восстанавливает. Имя файла — из вывода шага 1.
@@ -530,7 +536,7 @@ YML
   /var/backups/victory/db/viktory-<dd.MM.yy-HHmm>.dump.gpg
 # оба -f обязательны и здесь — иначе поверх только что восстановленного каталога
 # PostGIS 3.5 поднимутся библиотеки 3.6, ровно та поломка, от которой мы откатываемся
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
 ```
@@ -564,7 +570,7 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36` — отсюда
   шаг 10 и запрет удалять теги `pg15-postgis35`/`pre-bookworm`, пока копия не
   синхронизирована. Daily-таймер (03:31 UTC) `verify` не гоняет.
-- **Соседний стек `victory-victory`** (`/home/q/victory-victory`, свой `pgdata`,
+- **Соседний стек `victory-victory`** (`~/victory-victory`, свой `pgdata`,
   свой compose-проект) тоже на `pg15-postgis35`. Это полноценный compose-стек, а не
   `bin/rb`, — `--nuke` к нему неприменим: ему нужна та же процедура либо явное
   решение оставить как есть.
@@ -575,9 +581,34 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `db/structure.sql` создаёт все семь расширений, — но `bin/backup verify` теперь
   проверяет `postgis` осмысленно.
 
+### Обычный деплой — `bin/deploy`
+
+Одна команда на прод-хосте из `~/victory` (ветка `main`):
+
+```bash
+bin/deploy --check   # план: коммиты, нужны ли миграции/рестарты/пересборка
+bin/deploy           # спросит и выкатит; --yes — без вопроса
+bin/deploy --rollback   # вернуть коммит, стоявший до последнего деплоя
+```
+
+Скрипт сам решает, что нужно по диффу `HEAD..origin/main`: sidekiq рестартует
+всегда (код не перечитывает), web — если тронуты `config/`, `lib/`, `db/`,
+`Gemfile`; `docker-compose.yml` — `up -d --no-deps web sidekiq` (restart
+конфиг не перечитывает); миграции — с бэкапом `bin/backup db` перед ними;
+изменения `Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint`
+включают процедуру пересборки из раздела ниже, старые образы остаются под
+тегом `:pre-<sha>` — по нему `--rollback` возвращает рантайм. После — проверки
+(health, сайт, sidekiq живёт 30с без перезапуска, миграции, ошибки загрузки в
+логах) и `bin/prod-mark`. Отказывается на грязном дереве, при разошедшейся
+`main` и при занятом `victory_bundle`. Автоотката нет — при проваленных
+проверках печатает команду отката. Лок — `.git/victory-deploy.lock`.
+
+Первый запуск, пока `bin/deploy` ещё нет в прод-чекауте:
+`git fetch origin main && bash <(git show origin/main:bin/deploy)`.
+
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
-Прод (`/home/q/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
+Прод (`~/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
 code-reload, поэтому merge в main обновляет код сразу, а **гемы и рантайм — нет**:
 они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
 `victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
@@ -586,7 +617,7 @@ code-reload, поэтому merge в main обновляет код сразу, 
 Правки ниже — из второго прогона.
 
 ```bash
-cd /home/q/victory
+cd ~/victory
 # 1. откат-теги
 /usr/bin/docker tag victory-web victory-web:pre-ruby34
 /usr/bin/docker tag victory-sidekiq victory-sidekiq:pre-ruby34
@@ -631,7 +662,7 @@ Bundler::RubyVersionMismatch: Your Ruby version is 3.3.6, but your Gemfile speci
 получить тот же `RubyVersionMismatch`, но уже с обеих сторон.
 
 ```bash
-git -C /home/q/victory reset --hard <коммит перед апгрейдом>   # для 3.4.10 это 5831765
+git -C ~/victory reset --hard <коммит перед апгрейдом>   # для 3.4.10 это 5831765
 /usr/bin/docker tag victory-web:pre-ruby34 victory-web
 /usr/bin/docker tag victory-sidekiq:pre-ruby34 victory-sidekiq
 # далее тот же свап с volume rm
@@ -683,4 +714,4 @@ bin/prod-mark            # отметить в GitHub, что именно вы�
 - `~/.claude-shared/` — межсессионный обмен: `inbox/`, `events/`, `locks/`.
 - `.remember/logs/` — дневной журнал remember-плагина (лежит в main checkout).
 
-Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `/home/q/.claude/plugins/installed_plugins.json`.
+Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `~/.claude/plugins/installed_plugins.json`.

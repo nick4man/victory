@@ -107,18 +107,31 @@ module Telegram
 
         result = ::Lead::Intake.call(source: 'tg_dm', payload: payload)
 
-        if result.is_a?(Hash) && result[:lead_event]
-          confirm_intake_to_client(result[:lead_event], classification)
-          :announced
-        else
-          Rails.logger.warn("[ClientBot::TextIntakeProcessor] Lead::Intake returned #{result.inspect.to_s.truncate(120)}")
-          :intake_failed
+        # Lead::Intake возвращает Lead::Intake::Result (Struct), не Hash —
+        # см. lead/intake.rb:23 и эталонную обработку в TopnlabCrmIntakeJob#perform.
+        unless result.respond_to?(:success?) && result.success?
+          error = result.respond_to?(:error) ? result.error : result.inspect
+          Rails.logger.warn("[ClientBot::TextIntakeProcessor] Lead::Intake failed: #{error.to_s.truncate(160)}")
+          return :intake_failed
         end
+
+        # success? && lead_event.nil? — адаптер сознательно пропустил лид
+        # (A7 gate: internal staff submission). Клиенту не отвечаем.
+        if result.lead_event.nil?
+          Rails.logger.info('[ClientBot::TextIntakeProcessor] Lead::Intake skipped LeadEvent creation')
+          return :skipped
+        end
+
+        confirm_intake_to_client(result, classification)
+        :announced
       end
 
-      def confirm_intake_to_client(lead_event, classification)
-        meta = lead_event.metadata || {}
-        text = if meta['returning_client']
+      def confirm_intake_to_client(result, classification)
+        # Склеенная заявка (threaded) возвращает карточку ПЕРВОГО обращения —
+        # её returning_client почти всегда false. Флаг из metadata остаётся для
+        # случая, когда прежний лид закрыт и Intake завёл новую карточку.
+        meta = result.lead_event.metadata || {}
+        text = if result.threaded? || meta['returning_client']
                  "👋 Спасибо, что вернулись! Передал агенту — он скоро ответит."
                else
                  reply_text_for(classification.intent)

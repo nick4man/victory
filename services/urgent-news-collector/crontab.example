@@ -1,17 +1,31 @@
-# Боевое расписание срочных новостей.
-# REPO — каталог этого репозитория, PY — интерпретер venv с requirements.txt,
-# LOGS — каталог для логов.
+# Боевое расписание конвейера новостей. Пути — боевого каталога,
+# который раскладывает deploy.sh (по умолчанию /opt/victory-conveyor).
+#
+# До 11.09.26 крон бил в архив openclaw (workspace-conveyor/IT/scripts) и
+# в venv оттуда же. Больше туда не ходим — см. VENDOR.md.
+#
 # flock -n защищает от наложения прогонов: коллектор при холодном старте
 # может идти несколько минут.
 #
-# ⚠️ LOGS обязан существовать ДО первой записи в crontab: cron не создаёт
-# каталог под редирект и падает на нём молча, ещё не запустив python. Симптом
-# неотличим от «скрипт не стартовал»: пустой лог и ничего в почте.
+# ⚠️ Каталог logs/ обязан существовать ДО первой записи в crontab: cron не
+# создаёт каталог под редирект и падает на нём молча, ещё не запустив python.
+# Симптом неотличим от «скрипт не стартовал»: пустой лог и ничего в почте.
+# deploy.sh создаёт logs/ сам — достаточно прогнать его до правки crontab.
 #
-#   mkdir -p LOGS
+# Время — MSK (TZ хоста). Токен зеркала берётся из /opt/victory-conveyor/.env
+# самими скриптами, в crontab его дублировать не нужно.
 
 # Сбор и классификация RSS каждые 30 минут.
-*/30 * * * * /usr/bin/flock -n /tmp/urgent_collector.lock -c "PY REPO/urgent_collector.py >> LOGS/urgent_collector.log 2>&1"
+*/30 * * * * /usr/bin/flock -n /tmp/urgent_collector.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/urgent_collector.py >> /opt/victory-conveyor/logs/urgent_collector.log 2>&1"
 
 # Публикация отобранного — со сдвигом на 2 минуты, чтобы не пересекаться со сбором.
-2,17,32,47 * * * * /usr/bin/flock -n /tmp/urgent_trigger.lock -c "PY REPO/urgent_trigger.py >> LOGS/urgent_trigger.log 2>&1"
+2,17,32,47 * * * * /usr/bin/flock -n /tmp/urgent_trigger.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/urgent_trigger.py >> /opt/victory-conveyor/logs/urgent_trigger.log 2>&1"
+
+# Еженедельный дайджест. Окно догона: скрипт сам решает, нужен ли выпуск
+# (week_anchor + digest_published_since), поэтому лишние запуски выходят мгновенно.
+# Вторник добавлен ради суточного простоя машины — 5 из 8 промахов.
+0 6-20 * * 1 /usr/bin/flock -n /tmp/weekly_digest.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/weekly_digest_trigger.py >> /opt/victory-conveyor/logs/weekly_digest.log 2>&1"
+0 6-12 * * 2 /usr/bin/flock -n /tmp/weekly_digest.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/weekly_digest_trigger.py >> /opt/victory-conveyor/logs/weekly_digest.log 2>&1"
+
+# Ставки банков — вторник и четверг утром.
+0 7 * * 2,4 /opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/bank_rates_trigger.py >> /opt/victory-conveyor/logs/bank_rates.log 2>&1

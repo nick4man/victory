@@ -276,7 +276,7 @@ VERSION=20260527020000`, затем обычный `db:migrate` подхвати
 `crontab.example` — раз в неделю, `flock -n` от наложения прогонов,
 `MAILTO` для алертов. Ставится на хосте прода (`crontab -e`
 пользователя, не `/etc/crontab`), путь внутри — main-чекаут
-(`/home/q/victory/services/zhk-registry`), не сессионный worktree
+(`~/victory/services/zhk-registry`), не сессионный worktree
 разработки. Подробности — комментарии в самом файле.
 
 ### 5. Логи и куда смотреть

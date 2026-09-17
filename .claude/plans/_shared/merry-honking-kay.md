@@ -85,7 +85,7 @@ webmock 3.26 уже в проекте (`stub_request`), harness — `require 'ra
 ## Verification
 
 ```bash
-cd /home/q/victory-victory
+cd ~/victory-victory
 bundle exec rspec spec/services/topnlab/client_spec.rb spec/services/topnlab/importer_spec.rb
 bundle exec rubocop app/services/topnlab/client.rb spec/services/topnlab/client_spec.rb spec/services/topnlab/importer_spec.rb
 ```

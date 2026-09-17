@@ -27,7 +27,7 @@ curl -sS -o /dev/null -w "%{http_code}\n" \
 С локальной машины (где есть SSH-доступ к chat):
 
 ```bash
-scp /home/q/victory/services/chat-host-cron/post_news_to_victory.sh \
+scp ~/victory/services/chat-host-cron/post_news_to_victory.sh \
     chat:/opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh
 ssh chat 'chmod +x /opt/.openclaw/.openclaw/workspace-conveyor/IT/scripts/post_news_to_victory.sh'
 ```
@@ -119,7 +119,7 @@ ADMIN_TOKEN в .env уже: `admin-dev-token-rotate-in-prod`.
 **ВАЖНО для prod:** замени токен на безопасный:
 ```bash
 NEW_TOKEN=$(docker compose exec -T web bin/rails secret | tail -1 | tr -d '\r' | head -c 32)
-sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${NEW_TOKEN}|" /home/q/victory/.env
+sed -i "s|^ADMIN_TOKEN=.*|ADMIN_TOKEN=${NEW_TOKEN}|" ~/victory/.env
 docker compose up -d --force-recreate web
 echo "New ADMIN_TOKEN: $NEW_TOKEN"
 ```

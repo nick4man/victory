@@ -10,7 +10,7 @@ module Topnlab
   # of wall-clock and must NEVER run inline on a controller request.
   #
   # Refresh strategy:
-  # - Background: RefreshTopnlabStatsJob every hour via whenever cron.
+  # - Background: RefreshTopnlabStatsJob every hour via config/sidekiq_cron.yml.
   # - Manual:     bin/rake topnlab:refresh_stats.
   # - Graceful:   if API errors (auth missing, timeout), return zeros + stale: true
   #               so /landing keeps rendering.

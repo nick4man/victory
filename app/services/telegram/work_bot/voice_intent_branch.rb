@@ -27,12 +27,16 @@ module Telegram
     class VoiceIntentBranch
       CONFIDENCE_THRESHOLD = 0.7
 
+      # BOTTLENECK — интенты, которые требуют уверенности. Всё остальное
+      # и всё неуверенное падает в :task_batch как безопасный дефолт.
+      RICH_KINDS = ['query', 'show_report'].freeze
+
       SYSTEM_PROMPT = <<~SYS.strip
         Ты классифицируешь голосовые сообщения сотрудников агентства недвижимости.
         Сообщение приходит от руководителя (директора) в личной переписке с ботом.
 
         Верни JSON ровно вида:
-          {"kind": "query"|"task_batch", "confidence": <0.0..1.0>}
+          {"kind": "query"|"task_batch"|"show_report", "confidence": <0.0..1.0>}
 
         query — вопрос/отчёт/аудит о собственной работе или о фактах в системе.
         Примеры query:
@@ -48,6 +52,12 @@ module Telegram
           • "Ирине: позвонить Анне до 16:00"
           • "Серёге показать квартиру на Ленина в пятницу"
           • "Маша, подготовь договор по сделке #87"
+
+        show_report — рассказ о ПРОВЕДЁННОМ показе квартиры: что сказали покупатели, что не понравилось,
+        назвали ли цену, что дальше. Нет адресата-сотрудника, нет поручения. Примеры show_report:
+          • "показ на Есенина прошёл, им не понравилась кухня, берут паузу до пятницы"
+          • "показала двушку на Ленина, покупатели предложили пять двести, хотят второй показ"
+          • "Оксана показала дом в Солотче, отказались, далеко от города"
 
         Если непонятно или 50/50 — выставляй confidence < 0.7 и любой kind.
         Caller интерпретирует низкий confidence как task_batch (safer default).
@@ -83,9 +93,9 @@ module Telegram
         kind = parsed['kind'].to_s
         conf = parsed['confidence'].to_f
 
-        if kind == 'query' && conf >= CONFIDENCE_THRESHOLD
-          Rails.logger.info("[VoiceIntentBranch] kind=query confidence=#{conf} transcript=#{@transcript.truncate(80).inspect}")
-          :query
+        if RICH_KINDS.include?(kind) && conf >= CONFIDENCE_THRESHOLD
+          Rails.logger.info("[VoiceIntentBranch] kind=#{kind} confidence=#{conf} transcript=#{@transcript.truncate(80).inspect}")
+          kind.to_sym
         else
           Rails.logger.info("[VoiceIntentBranch] kind=task_batch confidence=#{conf} llm_kind=#{kind.inspect}")
           :task_batch

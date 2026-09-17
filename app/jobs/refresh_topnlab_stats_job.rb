@@ -2,8 +2,8 @@
 
 # Refreshes the Topnlab counts cache out-of-band (Topnlab throttles get_ids
 # to 1 req / 6s, so a full sweep is ~8 minutes — must not run inline).
-# Scheduled hourly via whenever (config/schedule.rb) and on demand via
-# `bin/rake topnlab:refresh_stats`.
+# Scheduled hourly via config/sidekiq_cron.yml (refresh_topnlab_stats) and on
+# demand via `bin/rake topnlab:refresh_stats`.
 class RefreshTopnlabStatsJob < ApplicationJob
   queue_as :low_priority
 

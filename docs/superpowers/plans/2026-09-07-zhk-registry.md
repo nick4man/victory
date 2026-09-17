@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Работать только в worktree `/home/q/victory-registry`, ветка `claude/zhk-registry`. Чужие worktree и `/home/q/victory` — read-only (последний это live-prod bind-mount).
+- Работать только в worktree `~/victory-registry`, ветка `claude/zhk-registry`. Чужие worktree и `~/victory` — read-only (последний это live-prod bind-mount).
 - Ruby-файлы: `# frozen_string_literal: true` первой строкой, одинарные кавычки, комментарии по-русски.
 - Enum'ы — всегда `prefix: true` (правило #2 `CLAUDE.md`), русский перевод значений в комментарии рядом.
 - Даты в UI, сообщениях и комментариях — `dd.MM.yy`.
@@ -1895,7 +1895,7 @@ if __name__ == "__main__":
 # services/zhk-registry/crontab.example
 # Обход справочника ЖК — раз в неделю, ночью с понедельника на вторник.
 # Ставится в крон пользователя на хосте прода; каталог — main-чекаут.
-0 3 * * 2 cd /home/q/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1
+0 3 * * 2 cd ~/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1
 ```
 
 - [ ] **Step 5: Прогнать всё**
@@ -2096,7 +2096,7 @@ curl -s -X POST http://127.0.0.1:3001/webhooks/zhk_ingest \
 Отправку сводки тоже обернуть в `if not dry_run:`. Затем прогон на живых источниках — это первая проверка селекторов вне фикстур:
 
 ```bash
-cd /home/q/victory-registry/services/zhk-registry && DRY_RUN=1 .venv/bin/python3 run.py
+cd ~/victory-registry/services/zhk-registry && DRY_RUN=1 .venv/bin/python3 run.py
 ```
 
 Ожидаемо: строки `DRY_RUN erz:… {'developer': …}` по каждой карточке. Пусто по источнику — селекторы не подошли к живой вёрстке, чинить до боевого запуска.

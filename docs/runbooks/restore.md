@@ -94,20 +94,20 @@ sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin g
 # docker-compose-plugin обязателен: в пакет docker.io команда `docker compose` не входит
 
 # 2. Код — ДО восстановления storage: git clone в непустой каталог падает
-git clone https://github.com/nick4man/victory.git /home/q/victory
-cd /home/q/victory
+git clone https://github.com/nick4man/victory.git ~/victory
+cd ~/victory
 
 # 3. Достать копии из offsite (пароль crypt — тот же, что PASSPHRASE_FILE)
 rclone config          # завести victory-s3 и victory-crypt заново
 mkdir -p /var/backups/victory/{db,secrets,logs,tmp} && chmod 0700 /var/backups/victory
 rclone copy victory-crypt:victory-backups/db      /var/backups/victory/db
 rclone copy victory-crypt:victory-backups/secrets /var/backups/victory/secrets
-rclone copy victory-crypt:victory-backups/storage /home/q/victory/storage
+rclone copy victory-crypt:victory-backups/storage ~/victory/storage
 
 # 4. Секреты — из последнего архива
 gpg --batch --decrypt --passphrase-file /etc/victory-backup/passphrase \
     "$(ls -t /var/backups/victory/secrets/*.tar.gpg | head -1)" \
-  | tar -C /home/q/victory -xf -
+  | tar -C ~/victory -xf -
 
 # 5. Поднять БД и redis, дождаться готовности
 /usr/bin/docker compose up -d db redis
@@ -130,7 +130,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/
 без фотографий:
 
 ```bash
-find /home/q/victory/storage -type f | wc -l    # ожидается порядка 21 000
+find ~/victory/storage -type f | wc -l    # ожидается порядка 21 000
 ```
 
 ## Пароль шифрования
@@ -158,7 +158,7 @@ cp /etc/victory-backup/passphrase /media/usb/victory-backup-key.txt
 — иначе прод продолжит гонять старую версию:
 
 ```bash
-sudo install -m 0755 -o q -g q /home/q/victory/bin/backup /usr/local/bin/victory-backup
+sudo install -m 0755 -o q -g q ~/victory/bin/backup /usr/local/bin/victory-backup
 ```
 
 Первичная установка на чистой машине:
@@ -167,10 +167,10 @@ sudo install -m 0755 -o q -g q /home/q/victory/bin/backup /usr/local/bin/victory
 sudo mkdir -p /etc/victory-backup /var/backups/victory
 sudo chown -R "$(id -u):$(id -g)" /etc/victory-backup /var/backups/victory
 sudo chmod 0700 /var/backups/victory
-sudo cp /home/q/victory/config/backup.env.example /etc/victory-backup/backup.env
+sudo cp ~/victory/config/backup.env.example /etc/victory-backup/backup.env
 sudo chmod 0600 /etc/victory-backup/backup.env      # заполнить токены TG
-sudo install -m 0755 -o q -g q /home/q/victory/bin/backup /usr/local/bin/victory-backup
-sudo cp /home/q/victory/deploy/systemd/victory-backup-*.{service,timer} /etc/systemd/system/
+sudo install -m 0755 -o q -g q ~/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp ~/victory/deploy/systemd/victory-backup-*.{service,timer} /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now victory-backup-daily.timer victory-backup-weekly.timer
 ```

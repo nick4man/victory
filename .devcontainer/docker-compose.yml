@@ -1,0 +1,93 @@
+# Стек для GitHub Codespaces и Dev Containers.
+#
+# Почему отдельный файл, а не корневой docker-compose.yml: тот — боевой
+# (`restart: unless-stopped`, `env_file: .env`, порт на 0.0.0.0, именованные
+# volume'ы с прод-данными). В свежем Codespace `.env` нет вовсе, и compose
+# упал бы на первой же `${POSTGRES_USER}`. Здесь всё задано явно и
+# volume'ы свои — пересечься с прод-стеком невозможно.
+#
+# Dockerfile'ы при этом переиспользуются те же самые, и в этом весь смысл:
+# образ базы собирается из Dockerfile.postgres, то есть PostgreSQL 15 +
+# PostGIS 3.6 + pgvector — ровно то, что в проде и в джобе RSpec. В отличие
+# от облачной сессии Claude Code (.claude/hooks/session-bootstrap.sh), где
+# docker-демона нет и приходится довольствоваться системным PG 16 +
+# PostGIS 3.4, здесь расхождения с прод-базой нет.
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    # ENTRYPOINT боевого образа ждёт базу, гоняет db:prepare и поднимает
+    # Puma. Для dev-контейнера это лишнее: он должен просто жить, а команды
+    # запускает человек или агент. Отсюда пустой entrypoint и sleep.
+    entrypoint: []
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/victory:cached
+      # Гемы уже стоят в образе (Dockerfile делает bundle install). Volume
+      # нужен, чтобы `bundle install` после правки Gemfile переживал
+      # пересоздание контейнера.
+      - bundle:/usr/local/bundle
+    environment:
+      RAILS_ENV: development
+      DATABASE_HOST: db
+      DATABASE_PORT: '5432'
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: ''
+      # DATABASE_NAME намеренно нет: config/database.yml читает её только в
+      # production/staging, имена dev- и test-баз там захардкожены
+      # (viktory_realty_development / _test). Переменная здесь лишь создавала
+      # бы впечатление, что именем можно управлять.
+      REDIS_URL: redis://redis:6379/0
+      # DatabaseCleaner считает «удалённой» любую БД не на localhost, а здесь
+      # она в соседнем контейнере и одноразовая.
+      DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+      # Не секреты и не похожи на них: сеть в спеках закрыта WebMock
+      # (spec/support/external_services.rb). Значения нужны лишь потому, что
+      # Telegram::Client и Llm::OmniClient отказываются инициализироваться с
+      # пустыми — без них спеки не создадут даже объект.
+      TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+      OMNIROUTE_BASE_URL: http://llm.invalid/v1
+      OMNIROUTE_API_KEY: not-a-key-webmock-blocks-network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  db:
+    build:
+      context: ..
+      dockerfile: Dockerfile.postgres
+    # trust вместо пароля — как в джобе RSpec: контейнер слушает только внутри
+    # сети Codespace и умирает вместе с ним. Пароль тут ничего не защищает,
+    # зато захардкоженный он неотличим от настоящего и валит секрет-сканер.
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_DB: viktory_realty_development
+    # fsync=off — база одноразовая; без этого DatabaseCleaner упирается в
+    # statement_timeout на TRUNCATE сотен таблиц.
+    command: >
+      postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save '' --appendonly no
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  bundle:
