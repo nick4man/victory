@@ -1,0 +1,531 @@
+#!/usr/bin/env bash
+# bin/deploy — выкатить origin/main на прод одной командой.
+#
+# Деплой у нас ручной: мерж в `main` до сайта не доезжает, пока прод-чекаут
+# не обновят руками. Скрипт делает это целиком и в правильном порядке:
+#
+#   1. предполёт   — main, чистое дерево, fast-forward возможен, лок от двойного запуска;
+#   2. план        — какие коммиты едут и что им нужно (рестарт, миграции, пересборка);
+#   3. бэкап БД    — только если едут миграции;
+#   4. выкатка     — обычная (ff + миграции + рестарты) или с пересборкой образов,
+#                    если поменялись Gemfile/Dockerfile/.ruby-version;
+#   5. проверки    — health, сайт, sidekiq не падает, миграции, ошибки загрузки;
+#   6. отметка     — bin/prod-mark (ветка `prod` + тег deploy/<дата>).
+#
+# Почему рестарты вообще нужны при code-reload: web (RAILS_ENV=development)
+# перечитывает app/ сам, но не config/initializers, lib/ и гемы; sidekiq не
+# перечитывает НИЧЕГО — без рестарта джобы продолжают крутить старый код.
+#
+# Автоотката при провале проверок нет — намеренно: миграции назад сами не
+# едут, и молча откатывать дерево поверх новой схемы опаснее, чем остановиться
+# и показать команду отката. Процедура пересборки и её ловушки —
+# `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails».
+#
+# Использование (на прод-хосте, из прод-чекаута на ветке main):
+#   bin/deploy                 # показать план, спросить, выкатить
+#   bin/deploy --check         # только план, ничего не менять
+#   bin/deploy --yes           # без вопроса
+#   bin/deploy --rebuild       # пересобрать образы, даже если Gemfile не менялся
+#   bin/deploy --skip-backup   # не делать бэкап БД перед миграциями
+#   bin/deploy --rollback      # вернуть коммит, стоявший до последнего деплоя
+#   bin/deploy --rollback <sha>
+
+set -euo pipefail
+
+# Прод-чекаут — всегда main checkout, поэтому вычисляем, а не хардкодим: иначе
+# на втором хосте bin/deploy падает там, где prod-state.sh и bin/prod-mark
+# (правятся тем же PR) прекрасно работают, и три скрипта начинают расходиться в
+# том, что считать продом. `--git-common-dir` даёт `<main checkout>/.git`,
+# значит родитель — сам чекаут. CDPATH='' и `pwd -P` — по той же причине, что в
+# bin/rb: без первого `cd` печатает путь в stdout, без второго путь через
+# симлинк не совпадёт со `show-toplevel`.
+deploy_main_checkout() {
+  local common
+  common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
+}
+PROD_DIR="${VICTORY_PROD_DIR:-$(deploy_main_checkout)}"
+DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
+SITE_URL="${SITE_URL:-https://victory62.org}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health/database}"
+SIDEKIQ_SETTLE="${SIDEKIQ_SETTLE:-30}"   # сколько секунд sidekiq должен прожить без падения
+PREV_REF='refs/deploy/prev'              # локальный ref, не пушится
+BUNDLE_VOLUME='victory_bundle'
+
+MODE='deploy'; CHECK=0; YES=0; FORCE_REBUILD=0; SKIP_BACKUP=0; ROLLBACK_TO=''
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    # --check — флаг, а не режим: пока он писал в MODE, `--check --rollback`
+    # делал настоящий откат, а `--rollback <sha> --check` молча терял откат.
+    --check|--dry-run) CHECK=1; shift ;;
+    --yes|-y)          YES=1; shift ;;
+    --rebuild)         FORCE_REBUILD=1; shift ;;
+    --skip-backup)     SKIP_BACKUP=1; shift ;;
+    --rollback)        MODE='rollback'; shift
+                       if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then ROLLBACK_TO="$1"; shift; fi ;;
+    -h|--help)         sed -n '2,31p' "$0"; exit 0 ;;
+    *) echo "Неизвестный флаг: $1 (см. --help)" >&2; exit 2 ;;
+  esac
+done
+
+ts()   { date '+%d.%m.%y %H:%M:%S'; }
+log()  { printf '%s  %s\n' "$(ts)" "$*"; }
+step() { printf '\n%s  ▶ %s\n' "$(ts)" "$*"; }
+warn() { printf '%s  ⚠️  %s\n' "$(ts)" "$*" >&2; }
+die()  { printf '%s  ✗ %s\n' "$(ts)" "$*" >&2; exit 1; }
+
+# http.version=HTTP/1.1 — без него сеть к GitHub в этом окружении виснет (см. CLAUDE.md).
+git_() { git -c http.version=HTTP/1.1 -C "$PROD_DIR" "$@"; }
+compose() { (cd "$PROD_DIR" && "$DOCKER" compose "$@"); }
+
+confirm() {
+  [ "$YES" -eq 1 ] && return 0
+  [ -t 0 ] || die "Нет терминала для подтверждения — запусти с --yes"
+  local answer
+  read -r -p "$1 [y/N] " answer
+  case "$answer" in y|Y|yes|да|Да) return 0 ;; *) die 'Отменено.' ;; esac
+}
+
+# --- Предполёт и лок ----------------------------------------------------------
+
+# Пустой PROD_DIR = git не ответил (не репозиторий, --separate-git-dir, чужой
+# uid). Проверка ниже и так не пропустила бы, но сообщение «не найден: » без
+# пути бесполезно, поэтому отдельная ветка.
+[ -n "$PROD_DIR" ] || die 'Не удалось определить прод-чекаут: запускай из него (cd <чекаут> && bin/deploy) или задай VICTORY_PROD_DIR.'
+[ -d "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR (переопределить — VICTORY_PROD_DIR)"
+command -v "$DOCKER" >/dev/null || die "Не найден docker: $DOCKER"
+
+# Под root не запускаемся: git на чужом чекауте упрётся в «dubious ownership»,
+# а файлы, созданные по пути (лок, объекты .git), станут root-овыми и
+# заблокируют следующий обычный запуск. Бэкап, если ему нужен root, — отдельно.
+[ "$(id -u)" -ne 0 ] || [ "${DEPLOY_ALLOW_ROOT:-0}" = 1 ] \
+  || die "Не запускай под sudo/root — от владельца чекаута ($PROD_DIR). Если бэкапу нужен root: sudo bin/backup db, затем bin/deploy --skip-backup"
+
+LOCK_FILE="${DEPLOY_LOCK:-$PROD_DIR/.git/victory-deploy.lock}"
+exec 9>>"$LOCK_FILE" || die "Не открывается лок $LOCK_FILE — создан другим пользователем (root?). Удали его."
+flock -n 9 || die "Деплой уже идёт (лок $LOCK_FILE)"
+
+BRANCH=$(git_ symbolic-ref --quiet --short HEAD || echo '(detached)')
+[ "$BRANCH" = 'main' ] || die "Прод-чекаут на ветке '$BRANCH', а выкатываем только main"
+
+# Изменённые отслеживаемые файлы = на сайте работает не то, что в git.
+# ff-merge поверх них либо упадёт, либо смешает правки — оба исхода хуже остановки.
+DIRTY=$(git_ status --porcelain --untracked-files=no)
+if [ -n "$DIRTY" ]; then
+  printf '%s\n' "$DIRTY" >&2
+  die 'В прод-чекауте незакоммиченные правки (выше). Разберись с ними до деплоя.'
+fi
+
+# --- Классификация изменений --------------------------------------------------
+# Список файлов берётся ОДИН раз в переменную и матчится here-string'ом.
+# Не `git diff | grep -q`: grep -q выходит на первом совпадении, git ловит
+# SIGPIPE, и под pipefail «совпало» превращается в «не совпало» — ровно на
+# больших диффах, где Gemfile или db/migrate стоят в начале списка.
+
+RUNTIME_RX='^(Gemfile|Gemfile\.lock|Dockerfile|\.ruby-version|bin/docker-entrypoint)$'
+MIGRATION_RX='^db/(migrate/|schema\.rb|structure\.sql)'
+WEB_RESTART_RX='^(config/|lib/|db/|Gemfile)'
+COMPOSE_RX='^docker-compose\.yml$'
+
+changed_files() { git_ diff --name-only "$1" "$2"; }
+matches() { grep -E "$2" >/dev/null <<<"$1"; }
+
+# Контейнеры, кроме web/sidekiq, которые держат bundle-volume (например,
+# забытый `docker compose run`). С ними volume rm не пройдёт.
+bundle_volume_holders() {
+  "$DOCKER" ps -a --filter "volume=$BUNDLE_VOLUME" --format '{{.Names}}' \
+    | grep -vE '^victory-(web|sidekiq)-[0-9]+$' || true
+}
+
+require_free_bundle_volume() {
+  local holders
+  holders=$(bundle_volume_holders)
+  [ -z "$holders" ] && return 0
+  printf '%s\n' "$holders" >&2
+  die "volume $BUNDLE_VOLUME держат контейнеры выше — удали их (docker rm -f …) и повтори. Ничего не тронуто."
+}
+
+# Порядок и volume rm — из techContext.md: volume victory_bundle перекрывает
+# гемы образа, без его пересоздания новый рантайм не увидит ни одного гема.
+#
+# Вызывать ТОЛЬКО отдельной командой, не `swap || …` и не в `if`: слева от
+# `||` bash отключает set -e внутри функции, и падение любого шага тихо
+# превратится в «ошибку» вызывающего с неверным текстом. Поэтому каждый шаг
+# сам проверяет себя и сам говорит, в каком состоянии остался прод.
+# Держателей volume вызывающий проверяет ДО этой функции.
+swap_containers_with_new_bundle() {
+  local manual="docker compose rm -f web sidekiq; docker volume rm $BUNDLE_VOLUME; docker compose up -d --no-deps web sidekiq"
+
+  compose stop web sidekiq \
+    || die "docker compose stop не прошёл — web/sidekiq могут быть частично остановлены. Проверь: docker compose ps. Довести свап вручную: $manual"
+  compose rm -f web sidekiq \
+    || die "САЙТ МОЖЕТ ЛЕЖАТЬ: web/sidekiq остановлены, rm не прошёл. Вручную: $manual"
+  "$DOCKER" volume rm "$BUNDLE_VOLUME" >/dev/null \
+    || die "САЙТ ЛЕЖИТ: web и sidekiq удалены, а volume $BUNDLE_VOLUME не удалился.
+   Освободи его (docker ps -a --filter volume=$BUNDLE_VOLUME) и подними:
+   docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
+  # --no-deps: иначе compose пересоздаст db/redis, если их конфиг разошёлся с
+  # запущенным (например, неприменённая смена образа Postgres).
+  compose up -d --no-deps web sidekiq \
+    || die "САЙТ ЛЕЖИТ: web и sidekiq удалены, volume пересоздаётся, но up не прошёл (ошибка выше).
+   Исправь причину и подними: docker compose up -d --no-deps web sidekiq"
+  return 0
+}
+
+# Сколько последних pre-<sha> образов держать для отката. Каждый — несколько
+# ГБ, и без чистки диск прода растёт с каждой сменой гемов.
+KEEP_RUNTIME_TAGS="${KEEP_RUNTIME_TAGS:-3}"
+
+# $1 — тег, который удалять нельзя ни при каком порядке: образ отката для
+# только что завершённого деплоя. image ls сортирует по дате СБОРКИ образа, а
+# не тега: после отката на старый образ и повторной пересборки свежий pre-<sha>
+# может висеть на самом старом образе и попасть под нож.
+prune_runtime_tags() {
+  local keep="$1" tag
+  for tag in $("$DOCKER" image ls victory-web --format '{{.Tag}}' | grep -E '^pre-[0-9a-f]{7,}$' \
+               | grep -vx "$keep" | tail -n +"$KEEP_RUNTIME_TAGS" || true); do
+    "$DOCKER" rmi "victory-web:$tag" "victory-sidekiq:$tag" >/dev/null 2>&1 \
+      && log "удалён старый образ отката :$tag" || true
+  done
+}
+
+# Образы с рантаймом, подходящим к дереву `target`: тег pre-<sha>, где между
+# <sha> и target не менялся ни один runtime-файл. Печатает тег или ничего.
+find_runtime_tag() {
+  local target="$1" tag sha
+  for tag in $("$DOCKER" image ls victory-web --format '{{.Tag}}' | grep -E '^pre-[0-9a-f]{7,}$' || true); do
+    sha=${tag#pre-}
+    git_ cat-file -e "$sha^{commit}" 2>/dev/null || continue
+    "$DOCKER" image inspect "victory-sidekiq:$tag" >/dev/null 2>&1 || continue
+    if ! matches "$(changed_files "$sha" "$target")" "$RUNTIME_RX"; then
+      printf '%s\n' "$tag"
+      return 0
+    fi
+  done
+  return 0
+}
+
+tag_current_images() {
+  local tag="pre-${1:0:7}"
+  "$DOCKER" tag victory-web "victory-web:$tag"
+  "$DOCKER" tag victory-sidekiq "victory-sidekiq:$tag"
+}
+
+# RAILS_ENV на проде — development, а dump_schema_after_migration выключен
+# только для production? (config/application.rb) при schema_format = :sql.
+# Значит db:migrate перепишет db/structure.sql прямо в bind-mount: дерево
+# станет грязным, bin/prod-mark откажется ставить отметку, а следующий деплой
+# упадёт в предполёте «незакоммиченные правки» без внятной причины. Файл —
+# артефакт дампа и приезжает в git вместе с миграцией, поэтому возвращаем его.
+restore_structure_sql() {
+  git_ diff --quiet -- db/structure.sql && return 0
+  warn 'db:migrate переписал db/structure.sql (RAILS_ENV=development):'
+  git_ --no-pager diff --stat -- db/structure.sql >&2
+  git_ checkout -- db/structure.sql
+  warn "Файл возвращён к версии из git — дерево прод-чекаута должно остаться чистым.
+   Если расхождение не косметическое, проверь, что structure.sql закоммичен вместе с миграцией."
+}
+
+wait_healthy() {
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null | grep '"ok"' >/dev/null; then
+      log "web отвечает ($HEALTH_URL) через ~$((i * 3))с"
+      return 0
+    fi
+    sleep 3
+  done
+  return 1
+}
+
+sidekiq_state() {
+  local id
+  id=$(compose ps -q sidekiq 2>/dev/null || true)
+  [ -n "$id" ] || { echo 'absent'; return 0; }
+  "$DOCKER" inspect -f '{{.State.Running}} {{.State.StartedAt}} {{.RestartCount}}' "$id" 2>/dev/null || echo 'absent'
+}
+
+verify() {
+  step 'Проверки'
+  local failed=0 since="$1" started sk_before
+  started=$(date +%s)
+  sk_before=$(sidekiq_state)
+
+  wait_healthy || { warn "web не ответил на $HEALTH_URL за 3 минуты"; failed=1; }
+
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$SITE_URL" || echo '000')
+  case "$code" in
+    2??|3??) log "$SITE_URL → $code" ;;
+    *) warn "$SITE_URL → $code"; failed=1 ;;
+  esac
+
+  # Пустой вывод = команда не отработала; считать это «всё применено» нельзя.
+  local status pending
+  status=$(compose exec -T web bundle exec rails db:migrate:status 2>/dev/null || true)
+  pending=$(grep -cE '^\s*down\s' <<<"$status" || true)
+  if ! grep -E '^\s*(up|down)\s' >/dev/null <<<"$status"; then
+    warn 'Не удалось получить db:migrate:status'; failed=1
+  elif [ "$pending" -gt 0 ]; then
+    warn "Непримененных миграций: $pending"; failed=1
+  else
+    log 'миграции применены'
+  fi
+
+  # Один снимок `ps` сразу после рестарта покажет running и у падающего в цикле
+  # контейнера. Поэтому: sidekiq должен прожить SIDEKIQ_SETTLE секунд, не
+  # перезапустившись (тот же StartedAt и RestartCount).
+  local waited=$(( $(date +%s) - started ))
+  [ "$waited" -lt "$SIDEKIQ_SETTLE" ] && sleep $(( SIDEKIQ_SETTLE - waited ))
+  local sk_after
+  sk_after=$(sidekiq_state)
+  if [ "${sk_after%% *}" != 'true' ]; then
+    warn "sidekiq не работает ($sk_after)"; failed=1
+  elif [ "$sk_after" != "$sk_before" ]; then
+    warn "sidekiq перезапускался во время проверки ($sk_before → $sk_after) — падает на старте"; failed=1
+  else
+    log "sidekiq работает стабильно ${SIDEKIQ_SETTLE}с+"
+  fi
+
+  # Только ошибки ЗАГРУЗКИ. NameError/NoMethodError из обычных запросов и
+  # старых джобов dev-лог пишет постоянно — ловить их значит валить каждый деплой.
+  local errors
+  errors=$(compose logs --since "$since" web sidekiq 2>&1 \
+    | grep -E 'Bundler::|Zeitwerk::|RubyVersionMismatch|SyntaxError|LoadError|PG::ConnectionBad|Redis::CannotConnectError' \
+    | tail -5 || true)
+  if [ -n "$errors" ]; then
+    warn 'В логах после выкатки есть ошибки загрузки:'
+    printf '%s\n' "$errors" >&2
+    failed=1
+  else
+    log 'в логах web/sidekiq нет ошибок загрузки'
+  fi
+
+  return "$failed"
+}
+
+# --- Откат --------------------------------------------------------------------
+
+if [ "$MODE" = 'rollback' ]; then
+  CUR=$(git_ rev-parse HEAD)
+  if [ -n "$ROLLBACK_TO" ]; then
+    TARGET=$(git_ rev-parse --verify "$ROLLBACK_TO^{commit}") || die "Нет такого коммита: $ROLLBACK_TO"
+  else
+    TARGET=$(git_ rev-parse --verify --quiet "$PREV_REF") || die "Нет $PREV_REF — укажи коммит: bin/deploy --rollback <sha>"
+  fi
+  [ "$TARGET" != "$CUR" ] || die 'Прод уже на этом коммите.'
+
+  RB_CHANGED=$(changed_files "$TARGET" "$CUR")
+
+  step "Откат ${CUR:0:7} → ${TARGET:0:7}"
+  git_ log --oneline "$TARGET..$CUR" | sed 's/^/  откатывается: /'
+  if matches "$RB_CHANGED" "$MIGRATION_RX"; then
+    warn 'В откатываемом диапазоне есть миграции. Схема БД НЕ откатится сама:'
+    warn 'сначала `docker compose exec web bin/rails db:rollback STEP=<n>`, либо восстановление из бэкапа.'
+  fi
+
+  # Образы ищем ДО reset: дерево старого коммита при новом рантайме — это
+  # RubyVersionMismatch на любом следующем рестарте контейнера.
+  RB_TAG=''
+  if matches "$RB_CHANGED" "$RUNTIME_RX"; then
+    RB_TAG=$(find_runtime_tag "$TARGET")
+    [ -n "$RB_TAG" ] || die "Откат меняет рантайм, но образов под ${TARGET:0:7} нет (victory-web/victory-sidekiq:pre-*).
+   Ничего не тронуто. Собрать вручную: git reset --hard ${TARGET:0:7}, затем сборка и свап
+   из techContext.md «Деплой смены Ruby/Rails» (bin/deploy --rebuild не годится — он выкатит origin/main)."
+    log "рантайм для отката: образы :$RB_TAG"
+    require_free_bundle_volume
+  fi
+  if [ "$CHECK" -eq 1 ]; then
+    printf '\n(--check: ничего не изменено)\n'
+    exit 0
+  fi
+  confirm 'Откатываем?'
+
+  SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+  if [ -n "$RB_TAG" ]; then
+    # Держателей — последний раз ДО reset: после него откатываться «повторно»
+    # скрипт уже не сможет (CUR станет равен TARGET).
+    require_free_bundle_volume
+    tag_current_images "$CUR"    # чтобы можно было вернуться вперёд без сборки
+    git_ reset --hard "$TARGET"
+    "$DOCKER" tag "victory-web:$RB_TAG" victory-web
+    "$DOCKER" tag "victory-sidekiq:$RB_TAG" victory-sidekiq
+    swap_containers_with_new_bundle
+  else
+    git_ reset --hard "$TARGET"
+    if matches "$RB_CHANGED" "$COMPOSE_RX"; then
+      compose up -d --no-deps web sidekiq
+    fi
+    compose restart web sidekiq
+  fi
+
+  VERIFY_OK=1
+  verify "$SINCE" || VERIFY_OK=0
+  restore_structure_sql    # до любого выхода — см. комментарий у выкатки
+  [ "$VERIFY_OK" -eq 1 ] \
+    || die 'Откат выполнен, но проверки не прошли — смотри логи: docker compose logs --tail=200 web sidekiq'
+  "$PROD_DIR/bin/prod-mark" --force || warn 'bin/prod-mark не записал отметку — запусти вручную'
+  log "✓ Откат на ${TARGET:0:7} завершён"
+  exit 0
+fi
+
+# --- План ---------------------------------------------------------------------
+
+step 'Обновляю origin/main'
+git_ fetch --quiet origin main || die 'git fetch origin main не прошёл'
+
+OLD=$(git_ rev-parse HEAD)
+NEW=$(git_ rev-parse origin/main)
+
+if [ "$OLD" = "$NEW" ] && [ "$FORCE_REBUILD" -eq 0 ]; then
+  log "Прод уже на origin/main (${OLD:0:7}) — выкатывать нечего."
+  exit 0
+fi
+
+if ! git_ merge-base --is-ancestor "$OLD" "$NEW"; then
+  warn "Локальная main (${OLD:0:7}) разошлась с origin/main — fast-forward невозможен."
+  warn 'Коммиты, которых нет в origin/main:'
+  git_ log --oneline "$NEW..$OLD" | sed 's/^/    /' >&2
+  warn 'Ветки на origin, где они есть:'
+  git_ branch -r --contains "$OLD" | sed 's/^/    /' >&2
+  die 'Убедись, что эти коммиты не потеряются, затем выровняй: git reset --hard origin/main'
+fi
+
+CHANGED=$(changed_files "$OLD" "$NEW")
+REBUILD=$FORCE_REBUILD; MIGRATE=0; RESTART_WEB=0; RECREATE=0
+matches "$CHANGED" "$RUNTIME_RX"     && REBUILD=1
+matches "$CHANGED" "$MIGRATION_RX"   && MIGRATE=1
+matches "$CHANGED" "$WEB_RESTART_RX" && RESTART_WEB=1
+matches "$CHANGED" "$COMPOSE_RX"     && RECREATE=1
+
+yn() { [ "$1" -eq 1 ] && echo 'да' || echo 'нет'; }
+
+step "План: ${OLD:0:7} → ${NEW:0:7}"
+git_ log --oneline --no-merges "$OLD..$NEW" | sed 's/^/  /'
+cat <<EOF
+
+  Коммитов:               $(git_ rev-list --count "$OLD..$NEW")
+  Пересборка образов:     $(yn "$REBUILD")$([ "$REBUILD" -eq 1 ] && echo '  (даунтайм ~30-60с)')
+  Миграции:               $(yn "$MIGRATE")$([ "$MIGRATE" -eq 1 ] && [ "$SKIP_BACKUP" -eq 0 ] && echo '  (перед ними — bin/backup db)')
+  Пересоздать контейнеры: $(yn "$RECREATE")$([ "$RECREATE" -eq 1 ] && echo '  (менялся docker-compose.yml)')
+  Рестарт web:            $(yn $(( RESTART_WEB || REBUILD || RECREATE )))
+  Рестарт sidekiq:        да (он не перечитывает код)
+EOF
+
+if [ "$CHECK" -eq 1 ]; then
+  printf '\n(--check: ничего не изменено)\n'
+  exit 0
+fi
+
+confirm 'Выкатываем?'
+
+# --- Бэкап --------------------------------------------------------------------
+
+if [ "$MIGRATE" -eq 1 ] && [ "$SKIP_BACKUP" -eq 0 ]; then
+  step 'Бэкап БД перед миграциями'
+  "$PROD_DIR/bin/backup" db \
+    || die 'Бэкап не удался — выкатка остановлена, прод не тронут. Если нужен root: sudo bin/backup db, затем bin/deploy --skip-backup.'
+fi
+
+# --- Выкатка ------------------------------------------------------------------
+
+SINCE=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+PREV_BEFORE=$(git_ rev-parse --verify --quiet "$PREV_REF" || true)
+
+ff_to_new() {
+  git_ merge --ff-only --quiet "$NEW" || die "fast-forward на ${NEW:0:7} не прошёл (неотслеживаемые файлы на пути?). Прод не тронут."
+  # Точку отката пишем только после реального сдвига: иначе --rollback
+  # потеряет настоящий предыдущий коммит.
+  [ "$OLD" = "$NEW" ] || git_ update-ref "$PREV_REF" "$OLD"
+}
+
+# Вернуть всё, что успела поменять пересборка до свапа: дерево, точку отката
+# (прежнюю, а не пустую) и теги образов.
+abort_rebuild() {
+  git_ reset --hard --quiet "$OLD"
+  if [ -n "$PREV_BEFORE" ]; then git_ update-ref "$PREV_REF" "$PREV_BEFORE"; else git_ update-ref -d "$PREV_REF" 2>/dev/null || true; fi
+  "$DOCKER" tag "victory-web:pre-${OLD:0:7}" victory-web
+  "$DOCKER" tag "victory-sidekiq:pre-${OLD:0:7}" victory-sidekiq
+  die "$1 Дерево, точка отката и теги образов возвращены на ${OLD:0:7}, контейнеры не тронуты."
+}
+
+if [ "$REBUILD" -eq 1 ]; then
+  require_free_bundle_volume
+  step 'Пересборка образов'
+  tag_current_images "$OLD"
+  # Сборку из НОВОГО дерева и свап — подряд, без пауз: между ними Gemfile в
+  # bind-mount уже не совпадает с рантаймом, и любой рестарт контейнера
+  # (OOM, ребут) вернёт web, который не загрузится.
+  ff_to_new
+  compose build web sidekiq || abort_rebuild 'Сборка упала.'
+  # Сборка идёт минутами — за это время volume мог занять новый контейнер.
+  # Проверяем сейчас, пока контейнеры ещё не тронуты и откатить всё можно.
+  holders=$(bundle_volume_holders)
+  if [ -n "$holders" ]; then
+    printf '%s\n' "$holders" >&2
+    abort_rebuild "volume $BUNDLE_VOLUME заняли контейнеры выше, пока шла сборка — удали их и повтори."
+  fi
+  step 'Свап контейнеров (entrypoint web сам сделает db:prepare)'
+  swap_containers_with_new_bundle
+else
+  step 'Обновляю код'
+  ff_to_new
+
+  if [ "$MIGRATE" -eq 1 ]; then
+    step 'Миграции'
+    # Код уже на новом коммите, а dev-режим с pending-миграциями отдаёт 500 на
+    # каждый запрос — поэтому падение здесь = лежащий сайт, а не «разберись».
+    compose exec -T web bundle exec rails db:migrate \
+      || die "МИГРАЦИЯ УПАЛА — САЙТ ОТДАЁТ 500 (код ${NEW:0:7} ждёт непримененную миграцию).
+   Сначала вернуть сайт: bin/deploy --rollback --yes   (→ ${OLD:0:7})
+   Потом разбираться с ошибкой выше."
+    restore_structure_sql
+  fi
+
+  if [ "$RECREATE" -eq 1 ]; then
+    step 'Пересоздаю web и sidekiq (новый docker-compose.yml)'
+    # up -d пересоздаёт только сервис с изменившимся конфигом — рестарт web
+    # ниже всё равно нужен, если тронут config/.
+    compose up -d --no-deps web sidekiq
+  fi
+  if [ "$RESTART_WEB" -eq 1 ]; then
+    step 'Рестарт web'
+    compose restart web
+  fi
+  step 'Рестарт sidekiq'
+  compose restart sidekiq
+fi
+
+# --- Проверки и отметка -------------------------------------------------------
+
+VERIFY_OK=1
+verify "$SINCE" || VERIFY_OK=0
+# До любого выхода, в том числе по проваленным проверкам: при пересборке и
+# рестарте web миграции гоняет entrypoint (db:prepare), structure.sql
+# переписывается там — и грязное дерево не пустило бы рекомендованный ниже
+# `bin/deploy --rollback` дальше предполёта.
+restore_structure_sql
+
+if [ "$VERIFY_OK" -eq 0 ]; then
+  if [ "$OLD" != "$NEW" ]; then
+    die "Выкатка ${NEW:0:7} прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
+   Откат: bin/deploy --rollback   (вернёт ${OLD:0:7})"
+  fi
+  # --rebuild без новых коммитов: коммит тот же, --rollback тут не поможет —
+  # вернуть можно только прежние образы.
+  die "Пересборка прошла, но проверки не прошли. Логи: docker compose logs --tail=200 web sidekiq
+   Вернуть прежние образы:
+   docker tag victory-web:pre-${OLD:0:7} victory-web && docker tag victory-sidekiq:pre-${OLD:0:7} victory-sidekiq
+   затем: docker compose rm -sf web sidekiq && docker volume rm $BUNDLE_VOLUME && docker compose up -d --no-deps web sidekiq"
+fi
+
+prune_runtime_tags "pre-${OLD:0:7}"
+
+step 'Отметка в GitHub'
+"$PROD_DIR/bin/prod-mark" || warn 'bin/prod-mark не записал отметку — разберись и запусти вручную'
+
+printf '\n'
+log "✓ Выкачено: ${NEW:0:7} $(git_ log -1 --format=%s "$NEW")"
+[ "$OLD" = "$NEW" ] || log "  Откат при необходимости: bin/deploy --rollback  (→ ${OLD:0:7})"

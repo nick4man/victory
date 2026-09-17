@@ -1895,7 +1895,7 @@ if __name__ == "__main__":
 # services/zhk-registry/crontab.example
 # Обход справочника ЖК — раз в неделю, ночью с понедельника на вторник.
 # Ставится в крон пользователя на хосте прода; каталог — main-чекаут.
-0 3 * * 2 cd /home/q/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1
+0 3 * * 2 cd ~/victory/services/zhk-registry && .venv/bin/python3 run.py >> /var/log/zhk-registry.log 2>&1
 ```
 
 - [ ] **Step 5: Прогнать всё**

@@ -33,6 +33,17 @@ module Telegram
             @public_command = val
           end
 
+          # BOTTLENECK — команда пишет BotCommandLog сама, со своими полями
+          # (Whoami / WhoamiForce). Базовый аудит тогда молчит, иначе на каждый
+          # вызов приходится две строки и adoption-метрика двоится.
+          def self_audited(val = true)
+            @self_audited = val
+          end
+
+          def self_audited?
+            @self_audited == true
+          end
+
           def public_command?
             @public_command == true
           end
@@ -48,18 +59,15 @@ module Telegram
         end
 
         def call
-          # Публичные команды не требуют регистрации — пропускаем все gates.
-          return handle if self.class.public_command?
-
-          return reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.') if tg_user.nil?
-          # Phase 13 Iter 41 — manager_or_director? включает legacy is_manager + директоров + admin.
-          # До фикса /assign и подобные блокировались для директора с role=director, is_manager=false.
-          return reply('🚫 Команда доступна только руководителям.') if self.class.manager_only? && !tg_user.manager_or_director?
-          return reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.') if self.class.director_only? && !tg_user.can_voice_distribute?
-
-          handle
+          # Аргументы снимаем ДО dispatch: resolve_lead! выкусывает из @args
+          # номер лида, а в аудите нужна именно ссылка на лид (найдено ревью).
+          audited_args = @args.to_s
+          outcome = dispatch
+          audit!(outcome, args: audited_args)
+          outcome
         rescue StandardError => e
           Rails.logger.error("[WorkBot::Command #{self.class.name}] #{e.class}: #{e.message}")
+          audit!(:error, args: audited_args, error_class: e.class.name, error_message: e.message)
           reply("⚠️ Ошибка: #{e.message}")
           :error
         end
@@ -71,12 +79,15 @@ module Telegram
         end
 
         def reply(text, **opts)
+          # reply_markup пробрасывается осознанно: команда-дублёр кнопок
+          # (/segment без аргумента) присылает ту же клавиатуру, что карточка.
           client.send_message(
             text,
             chat_id: message.dig('chat', 'id'),
             reply_to_message_id: message['message_id'],
             message_thread_id: message['message_thread_id'],
-            parse_mode: opts.fetch(:parse_mode, 'HTML')
+            parse_mode: opts.fetch(:parse_mode, 'HTML'),
+            **opts.slice(:reply_markup)
           )
         end
 
@@ -144,10 +155,90 @@ module Telegram
           ::LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
         end
 
+        # Команда без аргументов — легаси-вход в мастер. Мастер идёт в личке;
+        # в группе вызвавшему отвечаем, куда смотреть, иначе кажется, что бот
+        # промолчал. seed — известный заранее объект (лид из reply на якорь);
+        # seed_id — номер, набранный руками, даже если по нему ничего не нашлось:
+        # тогда проверка мастера на входе ответит «не найден», а не молча
+        # покажет список последних лидов.
+        # @return [Symbol] исход Wizard::Engine#start
+        def open_wizard(flow_key, seed_record = nil, seed_id: nil)
+          id = seed_record&.id || seed_id
+          seed = id ? { Wizard::Engine::SEED_STEP.fetch(flow_key) => id.to_s } : {}
+          outcome = Wizard::Engine.new(tg_user: tg_user, client: client).start(flow_key, seed: seed)
+          if outcome == :dm_unavailable
+            reply('⚠️ Не могу написать тебе в личку. Открой чат с ботом, нажми «Start» и повтори команду.')
+          elsif message.dig('chat', 'type') != 'private'
+            reply(outcome == :started ? '↘︎ Мастер открыт в личке с ботом.' : '↘︎ Ответ — в личке с ботом.')
+          end
+          outcome
+        end
+
         # Hint-сообщение «лид не найден» — единый текст для всех команд.
         def lead_not_found_hint(cmd)
           "⚠️ Лид не найден. В group — reply на якорь лида. " \
             "В DM — укажи lead_id первым аргументом: <code>/#{cmd} 87 …</code>"
+        end
+
+        private
+
+        # Гейты вынесены из #call, чтобы исход был символом, а не возвратом
+        # reply (тот отдаёт хэш ответа Telegram — в result его писать нельзя).
+        def dispatch
+          return handle if self.class.public_command?
+
+          if tg_user.nil?
+            reply('🚫 Команда доступна только сотрудникам АН. Свяжитесь с руководителем.')
+            return :denied_not_staff
+          end
+
+          # Phase 13 Iter 41 — manager_or_director? включает legacy is_manager +
+          # директоров + admin. До фикса /assign блокировался для директора с
+          # role=director, is_manager=false.
+          if self.class.manager_only? && !tg_user.manager_or_director?
+            reply('🚫 Команда доступна только руководителям.')
+            return :denied_manager
+          end
+
+          if self.class.director_only? && !tg_user.can_voice_distribute?
+            reply('🚫 Только для директора АН. Используй /task @username dd.MM.yy <текст> для одиночной задачи.')
+            return :denied_director
+          end
+
+          handle
+        end
+
+        # BOTTLENECK — до этого места текстовые команды не попадали в
+        # BotCommandLog вообще: писали только CallbacksRouter, два варианта
+        # /whoami и StaffChatResponder, хотя комментарий в модели обещает
+        # «unified bot-action stream». Для базовой линии показов это критично:
+        # /segment, /stage и /show — ручные отметки, по которым оценивают людей,
+        # а BOTTLENECK требует, чтобы ручной ввод был прослеживаем (там же —
+        # suspicious_flag на Task). Аудит здесь, а не в каждой команде, чтобы
+        # новая команда получала его по факту наследования.
+        def audit!(outcome, args:, error_class: nil, error_message: nil)
+          return if self.class.self_audited?
+
+          tg_user_id = @message.is_a?(Hash) ? @message.dig('from', 'id') : nil
+          return if tg_user_id.blank?
+
+          BotCommandLog.create!(
+            tg_user_id:    tg_user_id,
+            command:       command_key,
+            args:          args.truncate(500),
+            result:        outcome.is_a?(Symbol) ? outcome.to_s : 'handled',
+            error_class:   error_class,
+            error_message: error_message.to_s.presence&.truncate(500)
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[WorkBot::Commands::Base#audit!] #{e.class}: #{e.message}")
+        end
+
+        # С ведущим слэшем — как пишет существующий Commands::Whoami#log_audit.
+        # Иначе одна и та же команда попадала бы в журнал под двумя ключами и
+        # ломала документированную метрику group(:command).count (найдено ревью).
+        def command_key
+          "/#{self.class.name.to_s.demodulize.underscore}"
         end
       end
     end

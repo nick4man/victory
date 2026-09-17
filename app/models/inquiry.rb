@@ -581,6 +581,10 @@ class Inquiry < ApplicationRecord
     # FK — exempt them from the property-or-message rule so /services/mortgage
     # applications validate cleanly.
     return if inquiry_type == 'mortgage'
+    # `/lead +79001234567 Анна` — руководитель заводит лид из TG-чата по одному
+    # телефону; суть запроса выясняют уже в работе. Без исключения такой лид
+    # отбивался валидацией, хотя команда формат «только телефон» обещает.
+    return if source == 'tg_manual'
 
     if property_id.blank? && message.blank?
       errors.add(:base, 'Необходимо указать объект недвижимости или сообщение')

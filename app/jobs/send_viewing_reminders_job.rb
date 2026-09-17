@@ -5,7 +5,11 @@
 class SendViewingRemindersJob < ApplicationJob
   queue_as :scheduled
   
-  # This job should be scheduled to run hourly via cron/whenever
+  # 🚨 NOT SCHEDULED: was declared only in the deleted config/schedule.rb,
+  # which never executed (no `whenever` gem). Do NOT just add it to
+  # config/sidekiq_cron.yml: the query below uses preferred_date and
+  # reminder_email_sent, but viewing_schedules has scheduled_at and
+  # reminder_sent, so it fails on the first run. Fix the query first.
   # Example: 0 * * * * SendViewingRemindersJob.perform_later
   
   def perform

@@ -28,12 +28,34 @@ class LeadEvent < ApplicationRecord
     'deal'
   ].freeze
 
+  # BOTTLENECK — квалификация покупателя. Единственный критерий фильтра
+  # «кто едет на показ», и единственный ключ, внутри которого можно сравнивать
+  # конверсию агента и руководителя (см. reglament/BOTTLENECK.md «Как мерить»).
+  SEGMENTS = ['cash', 'mortgage_approved', 'mortgage_pending', 'alternative', 'cold'].freeze
+  SEGMENT_LABELS = {
+    'cash'              => '💵 Наличные',
+    'mortgage_approved' => '🏦 Ипотека одобрена',
+    'mortgage_pending'  => '⏳ Ипотека не одобрена',
+    'alternative'       => '🔄 Альтернатива (продаёт своё)',
+    'cold'              => '❄️ Холодный'
+  }.freeze
+  SEGMENT_UNKNOWN_LABEL = '❔ сегмент не указан'
+
   belongs_to :lead_ref, polymorphic: true
   belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
   # Iter 59 — кто из staff выполнил действие. assigned_to vs assigned_by:
   # «assigned_to» — кому назначили, «assigned_by» — кто назначил.
   belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
   belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
+
+  # BOTTLENECK — денормализованный объект (Lead::PropertyResolver).
+  # has_many :show_reports объявляется вместе с самой моделью (Task 4): связь,
+  # объявленная раньше таблицы, роняет любой destroy лида на NameError.
+  belongs_to :property, optional: true
+  # dependent: :destroy, а не :nullify — show_reports.lead_event_id объявлен
+  # NOT NULL, и :nullify падал бы на ActiveRecord::NotNullViolation при удалении
+  # любого лида с отчётом (найдено ревью PR #65).
+  has_many :show_reports, dependent: :destroy
 
   # Phase 16.6 — semantic embedding (one-to-one). Опциональный — backfill
   # / async embed может быть pending.
@@ -48,6 +70,7 @@ class LeadEvent < ApplicationRecord
   validates :current_stage,    inclusion: { in: STAGES }
   validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
   validates :tg_chat_id, presence: true
+  validates :segment, inclusion: { in: SEGMENTS }, allow_nil: true
 
   scope :open,     -> { where.not(current_stage: ['closed_won', 'closed_lost']) }
   scope :closed,   -> { where(current_stage: ['closed_won', 'closed_lost']) }
@@ -71,6 +94,10 @@ class LeadEvent < ApplicationRecord
   scope :real,       -> { where(staff_test: false) }
   scope :staff_test_only, -> { where(staff_test: true) }
 
+  # BOTTLENECK — воронка показов.
+  scope :shown,     -> { where.not(first_show_at: nil) }
+  scope :segmented, -> { where.not(segment: nil) }
+
   # Phase 16 — auto-tag через эвристики (StaffSubmissionDetector).
   # Читаем name/email/phone из metadata (где Lead::Intake их кладёт).
   before_validation :detect_staff_test_submission, on: :create
@@ -85,6 +112,26 @@ class LeadEvent < ApplicationRecord
 
   def assigned?
     assigned_to_id.present?
+  end
+
+  def segment_label
+    SEGMENT_LABELS[segment] || SEGMENT_UNKNOWN_LABEL
+  end
+
+  # BOTTLENECK — единственный путь смены сегмента: и кнопка (SegmentCallback),
+  # и команда /segment. Раньше команда просто писала поле: без записи в историю
+  # и без перерисовки карточки, из-за чего в диспетчерской оставался «сегмент не
+  # указан» и ряд кнопок, приглашающий поставить второй, конфликтующий сегмент
+  # (найдено ревью PR #65).
+  def apply_segment!(value, by:)
+    with_lock do
+      reload
+      history = append_history(key: 'segment_history',
+                               entry: { 'at' => Time.current.iso8601, 'from' => segment,
+                                        'to' => value, 'by' => by })
+      update!(segment: value, metadata: metadata.merge('segment_history' => history))
+    end
+    self
   end
 
   # Telegram t.me deep-link to the current anchor message — для тизеров и SLA-пингов.
@@ -118,7 +165,11 @@ class LeadEvent < ApplicationRecord
     'routing_history' => 20,
     'stage_history' => 20,
     'dispatch_failures' => 5,
-    'crm_sync_errors' => 5 # Phase 13 Iter 47 — last 5 CRM-sync errors для pattern detection
+    # Phase 13 Iter 47 — last 5 CRM-sync errors для pattern detection.
+    'crm_sync_errors' => 5,
+    # BOTTLENECK — история просьб о торге и смен сегмента.
+    'bargain_requests' => 10,
+    'segment_history' => 10
   }.freeze
 
   def append_history(key:, entry:, cap: nil)

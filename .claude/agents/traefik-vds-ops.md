@@ -73,7 +73,7 @@ Production VDS = вы прячете все user'ы. Никогда не про�
      - securityHeaders
      - https-redirect
      - gzip
-3. Author router + service in /home/q/ubuntu_rep/traefik/config/config.yml
+3. Author router + service in ~/ubuntu_rep/traefik/config/config.yml
 4. Apply 7-step safety workflow
 5. Test via curl: ssh vds 'curl -sI https://<host>'
 ```

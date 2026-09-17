@@ -98,6 +98,11 @@ module Telegram
         attrs[:first_contact_at] = Time.current if @new == 'first_contact' && @lead.first_contact_at.nil?
         attrs[:closed_at]        = Time.current if @new.start_with?('closed_')
 
+        # BOTTLENECK — ключи когорты для Kpi::ShowFunnel. Ставятся один раз:
+        # /unstage намеренно не сбрасывает (история), как и first_contact_at.
+        attrs[:first_show_at] = Time.current if @new == 'show' && @lead.first_show_at.nil?
+        attrs[:contract_at]   = Time.current if @new == 'contract' && @lead.contract_at.nil?
+
         # Append stage_history entry. Phase 12 Iter 39 — cap через
         # LeadEvent#append_history (HISTORY_DEFAULT_CAPS['stage_history'] = 20).
         history = @lead.append_history(

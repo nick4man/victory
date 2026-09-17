@@ -23,6 +23,22 @@ RSpec.describe Telegram::WorkBot::VoiceIntentBranch do
       expect(described_class.call('какие задания я давала сегодня', client: client)).to eq(:query)
     end
 
+    it 'возвращает :show_report при kind=show_report и confidence>=0.7' do
+
+      client = StubOmniClientForBranch.new(content: { kind: 'show_report', confidence: 0.9 }.to_json)
+
+      expect(described_class.call('показ на Есенина прошёл, кухня не понравилась', client: client)).to eq(:show_report)
+
+    end
+
+    it 'show_report с низкой confidence → :task_batch (safer default)' do
+
+      client = StubOmniClientForBranch.new(content: { kind: 'show_report', confidence: 0.4 }.to_json)
+
+      expect(described_class.call('что-то про показ', client: client)).to eq(:task_batch)
+
+    end
+
     it 'возвращает :task_batch когда LLM kind=task_batch с любой confidence' do
       client = StubOmniClientForBranch.new(content: { kind: 'task_batch', confidence: 0.95 }.to_json)
       expect(described_class.call('Ирине позвонить Анне', client: client)).to eq(:task_batch)

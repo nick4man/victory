@@ -6,6 +6,23 @@
 > после `31.03.27` проверка `bin/services-check` начнёт напоминать.
 > Формулировки «не разрабатывается в этом репозитории» и «canonical source
 > lives elsewhere» описывают историю, а не владение.
+>
+> **11.09.26: вендоринг прекращён механически.** Каталог openclaw на диске
+> (`/opt/.openclaw/.openclaw/**`) тоже переведён в архив — только чтение.
+> `upstream-sync.sh` отключён и отказывается запускаться, запрет продублирован
+> в `.claude/settings.json`. Забирать больше неоткуда и незачем: наша копия
+> **опередила архив** — здесь есть `api/auth.py`, роутеры `jobs` / `search` /
+> `developers`, `jobs/scheduler.py`, `parsers/developer_risk.py`, три
+> alembic-миграции (`i7e8d4f3a9c1`, `j8f5e6a7b9c2`, `k9a6b7c8d2e3`) и
+> `scripts/check_cron_health.py`, которых в архиве нет. Встречное направление —
+> только `data/templates` и правки `docker-compose.yml` от 07.09.26.
+>
+> 🚨 Живой контейнер `audit-v2-api` при этом поднят **из архива**:
+> `docker inspect` показывает compose-project-dir в
+> `workspace-it-dept/devops/audit-v2-stack`. Переезд стека не сделан — смена
+> рабочего каталога меняет имя compose-проекта, а с ним и имена томов
+> (`audit-v2-stack_reports`). Без `name:` в compose или external-томов это
+> тихая потеря отчётов, поэтому отдельным шагом.
 
 This is a **vendored copy** of `audit-engine-v2` — a FastAPI-based property
 investment audit engine (Efficiency Index, Monte Carlo, hedonic regression,

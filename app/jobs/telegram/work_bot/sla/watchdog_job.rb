@@ -3,7 +3,9 @@
 module Telegram
   module WorkBot
     module Sla
-      # Сканер просрочек first_contact — каждые 5 мин из cron (config/schedule.rb).
+      # Сканер просрочек first_contact. 🚨 Расписания НЕТ: задача была объявлена
+      # только в удалённом config/schedule.rb, который никогда не исполнялся
+      # (гема whenever в Gemfile нет). Чтобы включить — строка в config/sidekiq_cron.yml.
       # Триггер пинга:
       #   - `current_stage == 'new'`
       #   - `assigned_to_id IS NOT NULL`

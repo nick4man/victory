@@ -190,14 +190,25 @@ EOF
 [ -n "$PROD_BLOCK" ] && printf '%s\n' "$PROD_BLOCK"
 
 # Session identity / worktree guards
-if [ "$SESSION_ID" = "main" ] && [ "$MAIN_CHECKOUT_RESOLVED" -eq 1 ]; then
+# Предупреждение печатаем ВСЕГДА, когда сессия объявлена как main: это
+# единственный guard про live-prod bind-mount во всём .claude/hooks, и молчать
+# ему нельзя. Не вычислился путь (dubious ownership на bind-mount, чужой uid) —
+# страдает только строка с путём, а не сам факт предупреждения.
+if [ "$SESSION_ID" = "main" ]; then
+  if [ "$MAIN_CHECKOUT_RESOLVED" -eq 1 ]; then
+    MAIN_LABEL="$MAIN_CHECKOUT"
+    WORKTREE_HINT="$WORKTREES_ROOT/victory-<session>"
+  else
+    MAIN_LABEL="путь не определился, git rev-parse молчит"
+    WORKTREE_HINT="соседний каталог victory-<session>"
+  fi
   cat <<WARN
 
-🚨  MAIN CHECKOUT ($MAIN_CHECKOUT) — this is the LIVE-PROD bind-mount
+🚨  MAIN CHECKOUT ($MAIN_LABEL) — this is the LIVE-PROD bind-mount
    (victory-web-1 mounts it at /app in RAILS_ENV=development with code-reload,
    so edits here hit the live site instantly). Reserved for deploy/merge ONLY —
    do NOT do active development here. Work in your session worktree
-   ($WORKTREES_ROOT/victory-<session>). See .claude/sessions/README.md
+   ($WORKTREE_HINT). See .claude/sessions/README.md
 WARN
 elif [ "$SESSION_ID" = "unknown" ]; then
   cat <<'WARN'

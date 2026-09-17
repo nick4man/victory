@@ -78,11 +78,14 @@ module Telegram
         # Прислать текстовое сообщение в тот же топик, где была нажата кнопка.
         def reply_in_topic(text, **opts)
           msg = callback_query['message'] || {}
+          # reply_markup пробрасывается осознанно: нудж про сегмент после
+          # перехода в «показ» приходит сразу с клавиатурой выбора.
           client.send_message(
             text,
             chat_id: msg.dig('chat', 'id'),
             message_thread_id: msg['message_thread_id'],
-            parse_mode: opts.fetch(:parse_mode, 'HTML')
+            parse_mode: opts.fetch(:parse_mode, 'HTML'),
+            **opts.slice(:reply_markup)
           )
         end
 

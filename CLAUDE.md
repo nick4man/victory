@@ -15,6 +15,7 @@ Rails 8.1.3.1 / Ruby 3.4.10 / PostgreSQL 15+ + PostGIS + pgvector. Russian-langu
 - `.claude/repo-index.md` — компактный индекс «файл → классы» (~5k токенов, читай первым).
 - `.claude/repo-map.md` — полный сигнатурный дамп (~190k токенов, on-demand для глубокого ныряния).
 - Обновить оба: `bundle exec rake repo:map`.
+- `.claude/docs/reglament/` — бизнес-регламенты агентства (Шаги 1–5 сделки) + ревью расхождений с кодом; сквозной разбор и проект исполняющей среды — `DESIGN.md` там же. Не код, но именно оттуда растут требования к work-bot, Task/SLA и Nextcloud-путям.
 
 ⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`, шесть `DEPLOYMENT*.md`, …) — исторический шум, местами полугодовой давности. Источник правды — `.claude/memory/`.
 
@@ -47,14 +48,37 @@ Rails-монолит. Четыре входа, и только первый — 
 - **LLM — free-first цепочка**, `Llm::OmniClient` (`DEFAULT_CHAINS[:chat]` / `[:analysis]`, платный Sonnet последний). Tool-calling — `app/services/chat_tools/` + `Llm::ToolRunner`. Перестановка модели вверх по цепочке = деньги, молча.
 - **Эмбеддинги** — pgvector + gem `neighbor`, таблицы `*_embedding`, наполняются `EmbedXxxJob`.
 
-### Два планировщика, и это не опечатка
+### Планировщик один, и он в репозитории
 
 | | Что |
 |---|---|
-| `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, SLA, cleanup). Время в MSK, зависит от `TZ` контейнера |
-| `config/schedule.rb` | whenever → системный crontab, ~17 записей |
+| `config/sidekiq_cron.yml` | 22 задачи внутри Sidekiq — **боевое** расписание (Topnlab sync, дайджесты, cleanup). Время в MSK, зависит от `TZ` контейнера |
+| системный crontab | 5 записей: 4 вида `cd /home/q/victory && /usr/bin/docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и `lock-clean`, который идёт прямо на хосте (`/home/q/victory/bin/lock-clean --force`). Живёт на хосте, **не** в репозитории — правится через `crontab -e` |
 
-Они пересекаются (`RefreshTopnlabStatsJob` объявлен в обоих), а ещё в `schedule.rb` есть мёртвая запись: ежедневный бэкап БД зашит на `cd /home/q/site/project/viktory_realty` — путь до перехода на Docker, которого больше нет (grep по `site/project`). Абсолютные пути в остальных `command`-строках — намеренные: у задачи крона нет cwd, а `~` раскрывается по `$HOME` вызывающего, поэтому они привязаны к прод-чекауту и работают только на прод-хосте. Добавляя периодику, по умолчанию бери `sidekiq_cron.yml` и проверь, нет ли дубля.
+Добавляя периодику, бери `sidekiq_cron.yml`: это единственное расписание,
+которое едет вместе с кодом.
+
+🚨 `config/schedule.rb` удалён 12.09.26. Он объявлял 19 записей и выглядел вторым
+планировщиком, но гема `whenever` в `Gemfile` нет — ни одна строка оттуда никогда
+не выполнялась. Разбор всех 19, чтобы не потерялся вместе с файлом:
+
+- **7 работают в другом месте** — `RefreshTopnlabStatsJob` (`sidekiq_cron.yml`),
+  Yandex.Webmaster ×3, `kpi:phase_a`, `lock-clean` (crontab хоста), бэкап
+  (`bin/backup` + systemd-таймер).
+- **3 рабочие, но без расписания** — `Telegram::WorkBot::Sla::WatchdogJob`,
+  `Sla::TasksWatchdogJob`, `topnlab:stages:refresh`. Включение SLA-сторожей — PR #64.
+- **2 существуют, но в текущем виде вредны** — `SendViewingRemindersJob` выбирает по
+  `preferred_date`/`reminder_email_sent`, а в `viewing_schedules` колонки
+  `scheduled_at`/`reminder_sent` (упадёт на первом прогоне);
+  `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по `PropertyView`,
+  а посетители анонимны (Devise выключен) — обнулит `views_count`. Сначала чинить.
+- **7 ссылаются на несуществующее** — классы `UserDigestJob`, `MarketAnalyticsUpdateJob`;
+  таски `db:sessions:trim`, `cache:clear_expired`, `sitemap:refresh` (sitemap строит
+  `SitemapController` на запросе); колонка `property_valuations.follow_up_email_sent`;
+  перевод `properties` в статус `expired`, которого в enum нет (`status` — integer).
+
+Возвращая любую из них — строка в `sidekiq_cron.yml`, а не воскрешение whenever,
+и только после проверки, что задача вообще отработает.
 
 ## Команды
 
@@ -72,7 +96,7 @@ Rails-монолит. Четыре входа, и только первый — 
 Работает прямо здесь — только Python-сервис:
 
 ```bash
-cd services/urgent-news-collector && python3 -m unittest test_urgent_relevance -v   # 26 тестов, без сети и БД
+cd services/urgent-news-collector && python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 46 тестов, без сети и БД
 ```
 
 Остальное — там, где есть Ruby (CI гоняет только первый блок):
@@ -103,7 +127,7 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 |---|---|---|
 | `audit-engine/` | Python (FastAPI) | не начат, срок 31.03.27 |
 | `chat-host-cron/` | bash | завершён |
-| `urgent-news-collector/` | Python, конвейер новостей — читай его `CLAUDE.md` | завершён |
+| `urgent-news-collector/` | Python, конвейер новостей: срочные + дайджест + ставки банков — читай его `CLAUDE.md` | завершён, боевой каталог `/opt/victory-conveyor` |
 | `web-comparables/` | не код, один `SKILL.md` | завершён |
 
 Четыре правила, проверяются `bin/services-check` (нужен только python3) на каждый PR:
@@ -113,7 +137,9 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 3. службы не знают друг о друге (`depends_on: none`) — связь только через контракт: вебхук, HTTP, формат файла. Импорт соседней службы или Rails-кода роняет проверку;
 4. незавершённый перенос обязан иметь дату `repatriate_by`; после неё проверка ругается, и продление становится осознанным решением в диффе.
 
-🚨 **openclaw — архив, а не апстрим.** Репозиторий `nick4man/openclaw` напрямую больше не правится, права на весь код агентства здесь; тот репозиторий постепенно разбираем. Но **репозиторий openclaw и каталог openclaw на диске — разные вещи**: `/opt/.openclaw/…/workspace-conveyor/IT/scripts` остаётся боевым, оттуда крон гоняет конвейер. Это цель деплоя, а не источник правды.
+🚨 **openclaw — архив целиком: и репозиторий, и каталог на диске.** Репозиторий `nick4man/openclaw` напрямую не правится с 07.09.26, права на весь код агентства здесь. С **11.09.26** архивом объявлен и каталог `/opt/.openclaw/.openclaw/**`: только чтение, писать туда нельзя. Прежняя оговорка «каталог остаётся боевым, это цель деплоя» **отменена** — конвейер новостей выкатывается из git в `/opt/victory-conveyor` (`services/urgent-news-collector/deploy.sh`).
+
+Оба синк-скрипта отключены и отказываются запускаться: `services/urgent-news-collector/sync-check.sh` (был `--deploy`) и `services/audit-engine/upstream-sync.sh`. Запрет продублирован в `.claude/settings.json` → `permissions.deny`, туда же запрет на запись в каталог архива. ⚠️ Хвост: живой контейнер `audit-v2-api` пока поднят из архива — переезд стека отдельным шагом, см. `services/audit-engine/VENDOR.md`.
 
 🚨 Rails-конвенции сюда НЕ переносятся: skill `victory-rails-conventions` и правила 1–2 выше — только для Ruby. Из трёх жёстких правил в Python-сервисы едет одно: даты `dd.MM.yy`.
 

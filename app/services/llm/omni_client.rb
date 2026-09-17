@@ -34,6 +34,21 @@ module Llm
         ds/deepseek-v4-flash
         kr/claude-sonnet-4.5
       ],
+      # BOTTLENECK — цепочка staff-аналитики: TaskExtractor, VoiceIntentBranch,
+      # QuestionClassifier, ShowReports::Extractor, недельная сводка. Раньше
+      # ключа здесь не было, и chain_for молча отдавал :chat — болтательные
+      # модели вместо reasoning, без единой ошибки в логах (найдено ревью PR #65).
+      staff_analysis: %w[
+        openrouter/openai/gpt-oss-120b:free
+        openrouter/z-ai/glm-4.5-air:free
+        openrouter/qwen/qwen3-next-80b-a3b-instruct:free
+        groq/openai/gpt-oss-120b
+        cerebras/zai-glm-4.7
+        cf/@cf/meta/llama-3.3-70b-instruct
+        gemini/gemini-2.5-flash
+        ds/deepseek-v4-flash
+        kr/claude-sonnet-4.5
+      ],
       analysis: %w[
         openrouter/openai/gpt-oss-120b:free
         openrouter/z-ai/glm-4.5-air:free

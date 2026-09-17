@@ -60,6 +60,7 @@
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
 | `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
 | `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | — | MCP-сервер `github` в `.mcp.json` (PR, issues, ревью). Не выставлен — сервер стартует, но ходит в API анонимно и упирается в лимит по IP (`API rate limit exceeded for <ip>`). Разовый `export` не помогает: shell между вызовами не сохраняется — переменная должна лежать в профиле оболочки. |
 
 ## DB и миграции
 
@@ -140,33 +141,45 @@ live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
 (В самих юнитах `deploy/systemd/victory-backup-*` пути чекаута нет — `ExecStart` указывает
 на `/usr/local/bin/victory-backup`, копию скрипта.)
 
-## Где абсолютный путь обязателен (аудит 11.09.26)
+## Где абсолютный путь обязателен (аудит 11.09.26, пересчёт 17.09.26)
 
-Пути внутри репозитория приведены к относительным: на коммите `af24d26` (им в `main`
-приехала секция выше) строк с `/home/q` было **247 в 47 файлах**, осталось **86 в 22** —
-то есть переведено 161. Счёт привязан к коммиту намеренно: `main` движется, и цифра «было»
-без точки отсчёта устаревает на следующем же мерже. Остаток
-**не недоделка**: у каждой строки нет точки отсчёта внутри репозитория. Проверено
-построчно, конвертируемых среди них нет. Пересчитать:
+Пути внутри репозитория приведены к относительным. Исходный аудит: на коммите
+`af24d26` (им в `main` приехала секция выше) строк с путём прод-хоста было
+**247 в 47 файлах**, после перевода осталось **86 в 22**. Счёт привязан к коммиту
+намеренно — `main` движется, и цифра «было» без точки отсчёта устаревает на
+следующем же мерже.
+
+Она и устарела. К моменту, когда эта ветка догнала `main` (мерж 17.09.26),
+осталось **25 строк в 14 файлах**: часть перевёл сам `main` независимо от ветки —
+в первую очередь ушла самая большая группа аудита, 24 строки VDS-путей из
+`.claude/docs/vds-infra-cheatsheet.md`. Пересчитать:
 
 ```bash
 git grep -c '/home/q' | awk -F: '{s+=$2} END{print s}'
 ```
 
 Поле `$2`, а не `$3`: без ref-а `git grep -c` печатает `файл:число`, с ref-ом —
-`ref:файл:число`. На этой ветке команда даёт **92**, а не 86: шесть путей цитирует сама
-эта секция.
+`ref:файл:число`. Из 25 две строки — служебные: сама эта команда и рассказ про замену
+10.09.26 в секции выше. Настоящего остатка, который что-то ломает, если его тронуть, —
+**23 строки**, они и разложены по группам.
 
 | Группа | Строк | Почему относительное невозможно |
 |---|---|---|
-| Другая машина — VDS через `ssh vds` | 24 | `/home/q/ubuntu_rep/traefik/…`, `…/crowdsec/…`. Репозитория там нет вообще; относительный путь резолвился бы от домашнего каталога ssh-логина |
-| Прод-хост: файлы вне чекаута и путь самого чекаута в runbook'ах | 21 | `db-baseline.txt`, `db-rollback.yml`, `document_pdf.md` (он же «выгрузка API Topnlab» — один артефакт): должны лежать снаружи, чтобы переживать `reset --hard`. Плюс `cd /home/q/victory` и `git -C /home/q/victory reset --hard` в процедурах деплоя и отката — там путь прод-чекаута сам часть процедуры |
-| Потребители без cwd | 19 | systemd `ExecStart=`/`WorkingDirectory=`, nginx `root`, exec-пути в `.mcp.json`, permission-глобы в `.claude/settings.json`, `APP_ROOT` в env под root, cron-строки |
-| Восстановление с нуля и `sudo` | 22 | `docs/runbooks/restore.md` начинается с `git clone … /home/q/victory` — относиться ещё не к чему; `sudo install`/`sudo cp` не наследуют cwd |
+| Потребители, читающие строку буквально | 7 | exec-пути в `.mcp.json` (3), permission-глобы в `.claude/settings.json` (2), `APP_ROOT` в `config/backup.env.example` — его читает `bin/backup` под root, крон-строка в `services/zhk-registry/crontab.example`. Ни cwd, ни `$HOME` владельца чекаута им недоступны; тильду они не разворачивают — её разворачивает шелл, а здесь шелла нет |
+| Прод-хост: файлы вне чекаута и путь чекаута внутри процедуры | 11 | `document_pdf.md` (выгрузка API Topnlab) и `TZ_*.md` лежат снаружи намеренно, чтобы переживать `reset --hard`; каталог над чекаутом с правами 0700 в `bin/backup`; `git clone` в `docs/runbooks/restore.md` — относиться ещё не к чему; крон-строки хоста в `CLAUDE.md`; в этом же файле — `tee` дампа схемы, `sudo cp` скрипта бэкапа и описание прод-стека: все три шага отложенные, cwd предыдущего шага им уже не наследуется |
+| Объяснение, почему хардкода больше нет | 4 | Комментарии в `bin/prod-mark`, `.claude/hooks/lib/prod-state.sh`, `.claude/hooks/session-bootstrap.sh`, `services/zhk-registry/crontab.example` цитируют прежний путь, объясняя замену. Убрать — потерять причину |
+| Конкретный worktree конкретной машины | 1 | `activeContext.md` называет рабочий каталог живой задачи, а не шаблон |
+
+⚠️ Строка про `.mcp.json` — «невозможно» с оговоркой. Подстановку `${VAR}` этот файл
+умеет (так туда приходит `GITHUB_PERSONAL_ACCESS_TOKEN`), поэтому теоретически корень
+подставляется переменной. Но именно из-за хардкода серверы `postgres` и `rails-guides`
+не поднимаются нигде, кроме одной машины: в облачной сессии это `ENOENT` и
+`CONNECTION_CLOSED`. Переводить вслепую нельзя — нужно проверить, что переменная
+доехала до запуска MCP-сервера, а не только до хука. Отдельной задачей, с проверкой.
 
 🚨 **Не приводи этот остаток «к одному виду».** Тильда здесь не работает тем более: её
 разворачивает только шелл, а перечисленные потребители читают строку буквально. 10.09.26
-замена `/home/q` → `~` по 51 файлу положила git-метаданные всех 15 worktree, MCP-сервер
+замена пути на `~` по 51 файлу положила git-метаданные всех 15 worktree, MCP-сервер
 `postgres`, deny-правило в `.claude/settings.json` и live-prod guard в `bin/rb` — разбор выше,
 в секции «Git — относительные пути worktree».
 
@@ -174,7 +187,6 @@ git grep -c '/home/q' | awk -F: '{s+=$2} END{print s}'
 --show-toplevel` для своего чекаута и `git rev-parse --git-common-dir` (его родитель) для main
 checkout. Сравнивая вычисленное с вычисленным, канонизируй обе стороны — `pwd -P`, не `pwd`:
 логический `pwd` вернёт путь через симлинк, и guard промахнётся.
-
 ## Команды
 
 ### Сервер
@@ -211,15 +223,20 @@ bundle exec sidekiq -C config/sidekiq.yml
 ```
 Очереди по приоритету: `critical` → `mailers` → `default` → `scheduled` → `low_priority`.
 
-### Cron (Whenever)
-```bash
-bundle exec whenever --update-crontab
-bundle exec whenever --clear-crontab
-```
-Расписание:
-- ежечасно: `SendViewingRemindersJob`
-- 03:00: `UpdatePropertyStatisticsJob`
-- 10:00: `PropertyValuationFollowUpJob`
+### Cron
+
+Расписаний два, и оба **не** `whenever` — гема в `Gemfile` нет, а
+`config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
+
+- `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
+- системный crontab хоста — 5 записей, правится `crontab -e`: 4 через
+  `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и
+  `lock-clean`, который идёт прямо на хосте.
+
+🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
+них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
+упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит
+`views_count`. Разбор всех 19 записей — CLAUDE.md, секция «Планировщик один».
 
 ### Переезд базы на bookworm — пересборка прод-БД
 
@@ -291,7 +308,7 @@ ls -lt /var/backups/victory/db/ | head -3
 
 **3. Собрать новый образ, пока старый контейнер обслуживает трафик.**
 ```bash
-cd /home/q/victory
+cd ~/victory
 /usr/bin/docker image inspect -f '{{.Id}} {{.Created}}' \
   viktory-postgres-pgvector:pg15-postgis36        # ДО сборки, записать
 /usr/bin/docker compose build db
@@ -431,7 +448,7 @@ NULL (PostgreSQL её намеренно не хранит), и `REFRESH` пад
 Проверка: `2.36` во всех строках, кроме `template0` — её ячейка пуста и до, и после.
 
 **Сверка с эталоном — здесь, до подъёма приложения.** Три запроса ниже — те же, что
-снимали эталон после шага 4: сравниваем вывод с `/home/q/db-baseline.txt`, а не с
+снимали эталон после шага 4: сравниваем вывод с `~/db-baseline.txt`, а не с
 ожиданием «строк должно быть много»; одного `postgis_full_version()` для этого мало.
 Приложение им не нужно — нужна только поднятая база, а шаг 9 сверку испортит:
 поднятый sidekiq законно гонит `topnlab_sync` (каждые 30 мин), тот апсертит
@@ -523,16 +540,16 @@ grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 **A — до шага 6** (расширения ещё не тронуты): вернуть контейнер на старый образ
 через compose-оверрайд, две минуты.
 ```bash
-cd /home/q/victory
-cat > /home/q/db-rollback.yml <<'YML'
+cd ~/victory
+cat > ~/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d --force-recreate db
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
@@ -564,14 +581,14 @@ compose примиряет зависимость с той конфигурац
 поднимается последним — блок A заканчивается подъёмом web+sidekiq, а здесь они
 работали бы по базе, которую `pg_restore --clean` в этот момент перезаписывает.
 ```bash
-cd /home/q/victory
+cd ~/victory
 /usr/bin/docker compose stop sidekiq web
-cat > /home/q/db-rollback.yml <<'YML'
+cat > ~/db-rollback.yml <<'YML'
 services:
   db:
     image: viktory-postgres-pgvector:pre-bookworm
 YML
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d --force-recreate db
 # путь обязателен: без аргумента `restore` печатает список копий, возвращает 0 и
 # НИЧЕГО не восстанавливает. Имя файла — из вывода шага 1.
@@ -579,7 +596,7 @@ YML
   /var/backups/victory/db/viktory-<dd.MM.yy-HHmm>.dump.gpg
 # оба -f обязательны и здесь — иначе поверх только что восстановленного каталога
 # PostGIS 3.5 поднимутся библиотеки 3.6, ровно та поломка, от которой мы откатываемся
-/usr/bin/docker compose -f docker-compose.yml -f /home/q/db-rollback.yml \
+/usr/bin/docker compose -f docker-compose.yml -f ~/db-rollback.yml \
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # pre-bookworm
 ```
@@ -624,6 +641,31 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `db/structure.sql` создаёт все семь расширений, — но `bin/backup verify` теперь
   проверяет `postgis` осмысленно.
 
+### Обычный деплой — `bin/deploy`
+
+Одна команда на прод-хосте из `~/victory` (ветка `main`):
+
+```bash
+bin/deploy --check   # план: коммиты, нужны ли миграции/рестарты/пересборка
+bin/deploy           # спросит и выкатит; --yes — без вопроса
+bin/deploy --rollback   # вернуть коммит, стоявший до последнего деплоя
+```
+
+Скрипт сам решает, что нужно по диффу `HEAD..origin/main`: sidekiq рестартует
+всегда (код не перечитывает), web — если тронуты `config/`, `lib/`, `db/`,
+`Gemfile`; `docker-compose.yml` — `up -d --no-deps web sidekiq` (restart
+конфиг не перечитывает); миграции — с бэкапом `bin/backup db` перед ними;
+изменения `Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint`
+включают процедуру пересборки из раздела ниже, старые образы остаются под
+тегом `:pre-<sha>` — по нему `--rollback` возвращает рантайм. После — проверки
+(health, сайт, sidekiq живёт 30с без перезапуска, миграции, ошибки загрузки в
+логах) и `bin/prod-mark`. Отказывается на грязном дереве, при разошедшейся
+`main` и при занятом `victory_bundle`. Автоотката нет — при проваленных
+проверках печатает команду отката. Лок — `.git/victory-deploy.lock`.
+
+Первый запуск, пока `bin/deploy` ещё нет в прод-чекауте:
+`git fetch origin main && bash <(git show origin/main:bin/deploy)`.
+
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
 Прод (main checkout, на текущем прод-хосте `/home/q/victory`; compose-проект `victory`)
@@ -636,7 +678,7 @@ code-reload, поэтому merge в main обновляет код сразу, 
 Правки ниже — из второго прогона.
 
 ```bash
-cd /home/q/victory
+cd ~/victory
 # 1. откат-теги
 /usr/bin/docker tag victory-web victory-web:pre-ruby34
 /usr/bin/docker tag victory-sidekiq victory-sidekiq:pre-ruby34
@@ -681,7 +723,7 @@ Bundler::RubyVersionMismatch: Your Ruby version is 3.3.6, but your Gemfile speci
 получить тот же `RubyVersionMismatch`, но уже с обеих сторон.
 
 ```bash
-git -C /home/q/victory reset --hard <коммит перед апгрейдом>   # для 3.4.10 это 5831765
+git -C ~/victory reset --hard <коммит перед апгрейдом>   # для 3.4.10 это 5831765
 /usr/bin/docker tag victory-web:pre-ruby34 victory-web
 /usr/bin/docker tag victory-sidekiq:pre-ruby34 victory-sidekiq
 # далее тот же свап с volume rm
