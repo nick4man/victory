@@ -1,0 +1,28 @@
+# Права на карточки CRM по должности сотрудника в Topnlab.
+#
+# Ключ — id должности (users.crm_role_id), его приносит ночной
+# TopnlabStaffSyncJob из getUsers. Название — только для людей: права
+# выдаются по id, поэтому переименование должности в CRM их не ломает
+# (bin/rails crm_cards:permissions предупредит о расхождении названий).
+#
+# Должность вне таблицы прав не имеет. Сменили сотруднику должность или
+# уволили в CRM — после ночной синхронизации права меняются сами.
+#
+# Возможности: create_lead — заводить заявки; create_object — объекты;
+# moderate — модерировать чужие карточки и выгружать в CRM.
+#
+# Таблица утверждена руководителем 15.09.26
+# (docs/superpowers/specs/2026-09-14-crm-card-moderation-design.md, §10).
+positions:
+  '89884':
+    title: Генеральный директор
+    capabilities: [create_lead, create_object, moderate]
+  '89879':
+    title: Агент
+    capabilities: [create_lead, create_object]
+  '89878':
+    title: Стажер
+    capabilities: [create_lead]
+  '90329':
+    title: Стажер
+    capabilities: [create_lead]
