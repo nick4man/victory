@@ -12,6 +12,15 @@
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  // SSH-сервер нужен `gh codespace ssh` / `gh codespace cp`: без него в
+  // Codespace не зайти из терминала, только через VS Code в браузере, — а
+  // агенту (Claude Code) отлаживать и гонять спеки нечем.
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    }
+  },
+
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
