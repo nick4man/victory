@@ -199,6 +199,15 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload).to have_attributes(status: 'export_failed', crm_id: '4455')
     end
 
+    it 'CRM приняла заявку, но номер не записался в базу — номер остаётся в логе' do
+      allow(exporter).to receive(:call).and_return(outcome)
+      allow(card).to receive(:update_columns).and_raise(ActiveRecord::ConnectionNotEstablished, 'db gone')
+      allow(Rails.logger).to receive(:error)
+
+      expect { workflow.export!(card) }.to raise_error(ActiveRecord::ConnectionNotEstablished)
+      expect(Rails.logger).to have_received(:error).with(a_string_including('номером 4455', "##{card.id}"))
+    end
+
     it 'ошибка CRM — export_failed с текстом; повтор только модератором' do
       allow(exporter).to receive(:call).and_raise(Topnlab::Client::Error, 'POST /call/main/importClient/: HTTP 502')
 
