@@ -32,6 +32,18 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardManualExportFlow do
     expect(card.transitions.last).to have_attributes(to_status: 'exported', actor_id: agent.id)
   end
 
+  it 'номер, уже отмеченный у другого объекта, не принимается' do
+    CrmCard.create!(kind: 'object', author: agent, status: 'exported', export_mode: 'manual', crm_id: '998877',
+                    payload: { 'owner_name' => 'Другой' })
+    CrmCards::Notifier.new(client: tg_client).approved(card)
+
+    press('Внесено в CRM', user: agent)
+    say('998877', user: agent)
+
+    expect(last_text).to include('уже отмечен у объекта')
+    expect(card.reload).to be_status_approved
+  end
+
   it 'посторонний отметить внесение не может' do
     petr = crm_staff(tg_user_id: 98_983, username: 'petr')
 
