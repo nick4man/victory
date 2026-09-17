@@ -20,7 +20,7 @@ module CrmCards
       values = card.payload
       response = topnlab.import_client(
         phone: values['phone'], name: values['name'], source: card.lead_event&.source.to_s,
-        realty_id: values['realty_id'], comment: values['comment'],
+        realty_id: values['realty_id'], comment: comment_with_extra_phone(values),
         action: values['action'] == 'rent' ? 0 : 1, object_type: values['object_type']
       )
       crm_id = response['insertedId'].to_s
@@ -30,6 +30,15 @@ module CrmCards
     end
 
     private
+
+    # У importClient один параметр под телефон. Второй номер клиента дописываем
+    # в комментарий: иначе сотрудник его собрал, а в CRM он не доехал.
+    def comment_with_extra_phone(values)
+      extra = values['phone_extra'].to_s
+      return values['comment'] if extra.blank?
+
+      [values['comment'], "Доп. телефон: +#{extra}"].compact_blank.join("\n")
+    end
 
     # Клиент Topnlab кидает на отсутствии ENV — создаём его только при
     # выгрузке, а не при построении Workflow в каждом мастере.
