@@ -24,6 +24,11 @@ module CrmCards
       perms = Permissions.for(actor)
       return deny(perms.denial) if perms.denial
       return deny('Твоей должности в CRM не выдано право заводить заявки.') unless perms.can?(:create_lead)
+      sandbox_lead = Checker.sandbox_lead?(lead)
+      if Telegram::BotContext.test? && !sandbox_lead
+        return deny('В тестовом боте карточки заводятся только по тестовым лидам.')
+      end
+      return deny('Это тестовый лид песочницы — его карточку заводят в тестовом боте.') if !Telegram::BotContext.test? && sandbox_lead
 
       card = CrmCard.kind_lead.find_or_initialize_by(lead_event_id: lead.id)
       save_values(card, values, actor: actor, perms: perms)
@@ -70,6 +75,7 @@ module CrmCards
     def return_for_rework!(card, actor:, comment:)
       text = comment.to_s.strip
       result = card.with_lock do
+        next deny(wrong_bot(card)) if wrong_bot(card)
         next deny(moderator_denial(actor, 'Возвращать на доработку')) unless moderator?(actor)
         next deny(not_pending(card)) unless card.status_pending_review?
         next deny('Нужен комментарий: что доработать.') if text.empty?
@@ -84,6 +90,7 @@ module CrmCards
 
     def approve!(card, actor:)
       result = card.with_lock do
+        next deny(wrong_bot(card)) if wrong_bot(card)
         next deny(moderator_denial(actor, 'Одобрять')) unless moderator?(actor)
         next deny(not_pending(card)) unless card.status_pending_review?
 
@@ -116,7 +123,7 @@ module CrmCards
       card.reload
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
       begin
-        outcome = exporter.call(card)
+        outcome = (card.sandbox? ? SandboxExporter.new : exporter).call(card)
       rescue StandardError => e
         return fail_export!(card, error: "#{e.class}: #{e.message}")
       end
@@ -139,7 +146,8 @@ module CrmCards
     def record_export!(card, crm_id:, mode:, actor: nil, warning: nil)
       digits = crm_id.to_s.strip
       result = card.with_lock do
-        next deny('Номер карточки в CRM — только цифры.') unless digits.match?(/\A\d{1,12}\z/)
+        number = card.sandbox? ? /\A(TEST-)?\d{1,12}\z/ : /\A\d{1,12}\z/
+        next deny('Номер карточки в CRM — только цифры.') unless digits.match?(number)
 
         if mode == 'manual'
           perms = Permissions.for(actor)
@@ -161,6 +169,7 @@ module CrmCards
 
     def retry_export!(card, actor:)
       result = card.with_lock do
+        next deny(wrong_bot(card)) if wrong_bot(card)
         next deny(moderator_denial(actor, 'Повторять выгрузку')) unless moderator?(actor)
         next deny('Повтор есть только у заявок — объект вносится в CRM вручную.') unless card.kind_lead?
         next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
@@ -175,7 +184,7 @@ module CrmCards
     end
 
     def can_edit?(card, actor, perms = Permissions.for(actor))
-      return false if perms.denial
+      return false if perms.denial || wrong_bot(card)
       return perms.can?(:moderate) if card.status_pending_review?
       return false unless CrmCard::AUTHOR_EDITABLE.include?(card.status)
       return true if perms.can?(:moderate)
@@ -185,6 +194,7 @@ module CrmCards
 
     def edit_denial(card, perms)
       return perms.denial if perms.denial
+      return wrong_bot(card) if wrong_bot(card)
       return 'Карточка на модерации — править её сейчас может только модератор.' if card.status_pending_review?
       return "Карточка уже в статусе «#{label(card)}» — править нечего." unless CrmCard::AUTHOR_EDITABLE.include?(card.status)
       return "Твоей должности в CRM не выдано право заводить #{card.kind_lead? ? 'заявки' : 'объекты'}." unless perms.can?("create_#{card.kind}")
@@ -199,6 +209,7 @@ module CrmCards
     def save_values(card, values, actor:, perms:)
       apply = lambda do
         card.author = actor if card.new_record? || taking_over?(card, actor)
+        card.sandbox = Telegram::BotContext.test? if card.new_record?
         next deny(edit_denial(card, perms)) unless can_edit?(card, actor, perms)
 
         allowed = Schema.for(card.kind).map(&:key)
@@ -208,6 +219,15 @@ module CrmCards
         ok(card)
       end
       card.persisted? ? card.with_lock(&apply) : apply.call
+    end
+
+    # Карточка живёт в боте, где её завели: песочница не трогает рабочие
+    # карточки, рабочий бот — тестовые. export! проверку не проходит: джоб
+    # выставляет контекст по самой карточке (ExportJob).
+    def wrong_bot(card)
+      return nil if card.sandbox? == Telegram::BotContext.test?
+
+      card.sandbox? ? 'Это карточка из тестового бота — открой её там.' : 'Это рабочая карточка — в тестовом боте её не трогаем.'
     end
 
     # Новый ответственный по лиду перенимает черновик заявки: автором в
@@ -230,6 +250,8 @@ module CrmCards
     # Лид с сайта теперь «в CRM»: LeadAssignment#push_to_crm и SpamCallback
     # начинают работать с ним так же, как с пришедшим из CRM.
     def sync_lead_ref!(card)
+      return if card.sandbox?
+
       ref = card.lead_event&.lead_ref
       return unless ref&.has_attribute?(:crm_id) && ref.crm_id.blank?
 
