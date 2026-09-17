@@ -177,6 +177,28 @@ RSpec.describe CrmCards::Workflow do
       expect(exporter).to have_received(:call).once
     end
 
+    it 'CRM приняла заявку, но статус записать не удалось — номер не теряется, повтор запрещён' do
+      allow(exporter).to receive(:call).and_return(outcome)
+      allow(workflow).to receive(:record_export!).and_return(CrmCards::Workflow::Result.new(ok: false, error: 'boom'))
+
+      workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', crm_id: '4455')
+      expect(card.export_error).to include('4455').and include('Не повторяй')
+      retry_result = nil
+      expect { retry_result = workflow.retry_export!(card, actor: director) }.not_to have_enqueued_job(CrmCards::ExportJob)
+      expect(retry_result.error).to include('уже есть в CRM')
+    end
+
+    it 'CRM приняла заявку, но запись статуса упала — export! не падает, номер сохранён' do
+      allow(exporter).to receive(:call).and_return(outcome)
+      allow(workflow).to receive(:record_export!).and_raise(ActiveRecord::StatementInvalid, 'db down')
+
+      expect { workflow.export!(card) }.not_to raise_error
+
+      expect(card.reload).to have_attributes(status: 'export_failed', crm_id: '4455')
+    end
+
     it 'ошибка CRM — export_failed с текстом; повтор только модератором' do
       allow(exporter).to receive(:call).and_raise(Topnlab::Client::Error, 'POST /call/main/importClient/: HTTP 502')
 

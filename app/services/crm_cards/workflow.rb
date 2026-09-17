@@ -120,7 +120,11 @@ module CrmCards
       rescue StandardError => e
         return fail_export!(card, error: "#{e.class}: #{e.message}")
       end
-      record_export!(card, crm_id: outcome.crm_id, mode: 'api', warning: outcome.warning)
+
+      # Заявка в CRM уже создана — номер фиксируем раньше всего, чтобы сбой
+      # ниже не потерял его, а повтор не завёл вторую заявку.
+      card.update_columns(crm_id: outcome.crm_id.to_s)
+      finalize_export!(card, outcome)
     end
 
     # mode 'api' — из export!; 'manual' — сотрудник внёс объект руками и ввёл номер.
@@ -152,6 +156,7 @@ module CrmCards
         next deny(moderator_denial(actor, 'Повторять выгрузку')) unless moderator?(actor)
         next deny('Повтор есть только у заявок — объект вносится в CRM вручную.') unless card.kind_lead?
         next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
+        next deny("Заявка уже есть в CRM (#{card.crm_id}) — повтор завёл бы вторую. Статус правится вручную.") if card.crm_id.present?
 
         transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
         card.update!(export_error: nil)
@@ -260,6 +265,22 @@ module CrmCards
       end
       notifier.export_failed(card) if result.ok?
       result
+    end
+
+    # record_export! может отказать (неверный формат номера) или упасть
+    # (БД) уже после того, как CRM приняла заявку — crm_id к этому моменту
+    # уже сохранён в export!, остаётся только не потерять карточку молча.
+    def finalize_export!(card, outcome)
+      result = record_export!(card, crm_id: outcome.crm_id, mode: 'api', warning: outcome.warning)
+      result.ok? ? result : lost_export_status!(card, outcome, result.error)
+    rescue StandardError => e
+      lost_export_status!(card, outcome, "#{e.class}: #{e.message}")
+    end
+
+    def lost_export_status!(card, outcome, reason)
+      Rails.logger.error("[CrmCards::Workflow] card=#{card.id} создана в CRM #{outcome.crm_id}, но статус не записан: #{reason}")
+      fail_export!(card, error: "Заявка уже создана в CRM под номером #{outcome.crm_id}, но статус не записан (#{reason}). " \
+                              'Не повторяй выгрузку — поправь статус вручную.')
     end
 
     def notifier
