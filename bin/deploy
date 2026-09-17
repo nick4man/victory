@@ -32,7 +32,19 @@
 
 set -euo pipefail
 
-PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+# Прод-чекаут — всегда main checkout, поэтому вычисляем, а не хардкодим: иначе
+# на втором хосте bin/deploy падает там, где prod-state.sh и bin/prod-mark
+# (правятся тем же PR) прекрасно работают, и три скрипта начинают расходиться в
+# том, что считать продом. `--git-common-dir` даёт `<main checkout>/.git`,
+# значит родитель — сам чекаут. CDPATH='' и `pwd -P` — по той же причине, что в
+# bin/rb: без первого `cd` печатает путь в stdout, без второго путь через
+# симлинк не совпадёт со `show-toplevel`.
+deploy_main_checkout() {
+  local common
+  common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
+}
+PROD_DIR="${VICTORY_PROD_DIR:-$(deploy_main_checkout)}"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 SITE_URL="${SITE_URL:-https://victory62.org}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/health/database}"
@@ -77,6 +89,10 @@ confirm() {
 
 # --- Предполёт и лок ----------------------------------------------------------
 
+# Пустой PROD_DIR = git не ответил (не репозиторий, --separate-git-dir, чужой
+# uid). Проверка ниже и так не пропустила бы, но сообщение «не найден: » без
+# пути бесполезно, поэтому отдельная ветка.
+[ -n "$PROD_DIR" ] || die 'Не удалось определить прод-чекаут: запускай из него (cd <чекаут> && bin/deploy) или задай VICTORY_PROD_DIR.'
 [ -d "$PROD_DIR/.git" ] || die "Прод-чекаут не найден: $PROD_DIR (переопределить — VICTORY_PROD_DIR)"
 command -v "$DOCKER" >/dev/null || die "Не найден docker: $DOCKER"
 

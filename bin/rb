@@ -82,7 +82,9 @@ fi
 # ── Guard: прод-checkout ────────────────────────────────────────────────────
 # main checkout — live bind-mount в victory-web-1 (RAILS_ENV=development +
 # code-reload). Поднимать здесь второй стек = гонять миграции по каталогу,
-# который сию секунду обслуживает victory62.org. Отказ, без вариантов.
+# который сию секунду обслуживает victory62.org. Отказ — с единственной
+# лазейкой VICTORY_RB_ALLOW_MAIN=1 (см. ниже): она для заведомо непрод-клона,
+# где main checkout никакой не живой, и о её применении печатается в stderr.
 #
 # Путь main checkout вычисляем, а не хардкодим: репозиторий живёт на двух хостах
 # (`<home>/victory` и `/opt/.openclaw/victory`), и на обоих main checkout — тот же
@@ -95,7 +97,11 @@ fi
 # достаточно, чтобы поднять стек на живом каталоге сайта.
 GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || echo '')
 MAIN=''
-[ -n "$GIT_COMMON" ] && MAIN=$(cd "$GIT_COMMON/.." 2>/dev/null && pwd -P)
+# CDPATH='' обязателен — ровно как в трёх соседних местах этой же правки.
+# С экспортированным CDPATH `cd` уходит в чужой каталог И печатает его в stdout:
+# $MAIN стал бы двухстрочным, сработала бы ветка fail-closed ниже, и bin/rb
+# отказывал бы вообще на каждом запуске.
+[ -n "$GIT_COMMON" ] && MAIN=$(CDPATH='' cd -- "$GIT_COMMON/.." 2>/dev/null && pwd -P)
 
 # fail-closed: не смогли определить main checkout — отказ, а не молчаливый пропуск.
 # Пустой `--git-common-dir` дал бы `cd /..` → `MAIN=/`, и guard не сработал бы
