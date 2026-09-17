@@ -9,8 +9,14 @@ module Telegram
       #
       # lead_ref — сам проверяющий (TelegramUser), а не Inquiry: создание
       # Inquiry рассылает письма админам и публикует лид в рабочую группу.
-      # staff_test: true исключает лид из метрик (LeadEvent.real) и
-      # не даёт ему попасть в CRM из рабочего бота (CrmCards::Checker).
+      #
+      # staff_test: true исключает лид из персистентного KPI-снапшота
+      # (Kpi::StaffSnapshot#leads_stats фильтрует через LeadEvent.real), а
+      # metadata['sandbox'] => true — из выбора лида в рабочем боте
+      # (CrmCards::Checker.sandbox_lead?, LeadPicking#recent_leads) и из CRM
+      # (Checker). Другие дайджесты/выборки, не прогнанные через .real или
+      # sandbox-фильтр явно, могут по-прежнему считать тестовые лиды — это не
+      # гарантия для всех метрик агентства, только для перечисленных мест.
       class CrmTestLeadFlow < Flow
         include CrmCardSupport
 
@@ -39,10 +45,11 @@ module Telegram
         end
 
         def finish
+          now = Time.current
           lead = ::LeadEvent.create!(
-            lead_ref: tg_user, source: 'manual', current_stage: 'first_contact', first_contact_at: Time.current,
+            lead_ref: tg_user, source: 'manual', current_stage: 'first_contact', first_contact_at: now,
             anchor_topic_key: 'dispatcher', tg_chat_id: tg_user.dm_chat_id || tg_user.tg_user_id,
-            assigned_to: tg_user, assigned_at: Time.current, staff_test: true,
+            assigned_to: tg_user, assigned_at: now, staff_test: true,
             metadata: { 'name' => ctx['name'], 'phone' => ctx['phone'], 'sandbox' => true }
           )
           { text: "🧪 Тестовый лид ##{lead.id} создан и назначен на тебя.",
