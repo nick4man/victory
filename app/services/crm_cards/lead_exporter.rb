@@ -39,13 +39,16 @@ module CrmCards
 
     # Заявка уже создана: сбой назначения выгрузку не отменяет, а
     # возвращается предупреждением — ответственного поставят в CRM руками.
+    # Ловим любую ошибку, не только Topnlab::Client::Error: сырой сетевой сбой
+    # (ECONNREFUSED, SSL) иначе вылетел бы до Outcome, номер заявки потерялся
+    # бы, и повтор выгрузки завёл бы в CRM вторую заявку.
     def assign_responsible(crm_id, author)
       return "у #{author.mention} нет email в привязке к CRM — ответственный не назначен" if author.email.blank?
 
       topnlab.transfer_client(order_id: crm_id.to_i, email: author.email)
       nil
-    rescue Topnlab::Client::Error => e
-      "ответственный не назначен: #{e.message.truncate(160)}"
+    rescue StandardError => e
+      "ответственный не назначен: #{e.class}: #{e.message.truncate(160)}"
     end
   end
 end

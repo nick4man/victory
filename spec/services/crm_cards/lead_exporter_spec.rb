@@ -56,6 +56,16 @@ RSpec.describe CrmCards::LeadExporter do
     expect(outcome.warning).to include('ответственный не назначен')
   end
 
+  it 'сырой сетевой сбой назначения тоже не теряет номер заявки' do
+    allow(topnlab).to receive(:import_client).and_return({ 'status' => 'ok', 'insertedId' => 4455 })
+    allow(topnlab).to receive(:transfer_client).and_raise(Errno::ECONNREFUSED)
+
+    outcome = exporter.call(card)
+
+    expect(outcome.crm_id).to eq('4455')
+    expect(outcome.warning).to include('ответственный не назначен', 'ECONNREFUSED')
+  end
+
   it 'лид переназначили после отправки — ответственным в CRM становится текущий назначенный' do
     petr = TelegramUser.create!(tg_user_id: 98_402, tg_username: 'petr', status: 'active', email: 'petr@victory.test')
     lead.update!(assigned_to: petr)

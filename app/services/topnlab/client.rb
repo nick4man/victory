@@ -392,6 +392,14 @@ module Topnlab
         raise Error,
               'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
               "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
+      rescue EOFError, Net::WriteTimeout, OpenSSL::SSL::SSLError => e
+        # Обрыв посреди обмена: запрос мог дойти. Для неидемпотентного вызова
+        # это то же, что ReadTimeout; остальные вызовы видят исключение как раньше.
+        raise if retry_network
+
+        raise Error,
+              'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
+              "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
       end
     end
 

@@ -126,6 +126,18 @@ RSpec.describe Topnlab::Client do
       expect(a_request(:post, import_re)).to have_been_made.once
     end
 
+    it 'EOFError посреди обмена — без повтора, ошибка клиента вместо сырого исключения' do
+      stub_request(:post, import_re)
+        .to_raise(EOFError).then
+        .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error, /повтор не выполнялся/)
+
+      expect(a_request(:post, import_re)).to have_been_made.once
+    end
+
     it 'ECONNRESET после отправки — тоже без повтора' do
       stub_request(:post, import_re)
         .to_raise(Errno::ECONNRESET).then
