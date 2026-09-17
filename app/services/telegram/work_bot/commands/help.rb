@@ -48,6 +48,8 @@ module Telegram
            'Заметка в CRM: reply + <code>/note текст</code> ИЛИ DM <code>/note 87 текст</code>'],
           ['/bargain',      :staff,
            'Покупатель назвал цену — предупредить руководителя перед звонком: <code>/bargain 5,2 млн</code>'],
+          ['/cards',        :staff,
+           'Карточки CRM (в личке): мои черновики и возвраты; у модератора — очередь и сбои выгрузки'],
           ['/objections',   :staff,
            'Возражения по объекту: <code>/objections</code> reply на карточку — «7 показов · 5× кухня»'],
           ['/show',         :staff,
