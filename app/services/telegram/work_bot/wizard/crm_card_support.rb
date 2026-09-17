@@ -24,7 +24,7 @@ module Telegram
         def card
           return @card if defined?(@card)
 
-          @card = ctx['card'].to_s.match?(/\A\d+\z/) ? ::CrmCard.find_by(id: ctx['card']) : nil
+          @card = ctx['card'].to_s.match?(/\A\d+\z/) ? ::CrmCard.in_current_bot.find_by(id: ctx['card']) : nil
         end
 
         # Варианты — кнопками, остальное — текстом. clearable — только в правке:

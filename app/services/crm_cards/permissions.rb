@@ -30,7 +30,23 @@ module CrmCards
 
     # @return [Array<TelegramUser>]
     def self.moderators
-      ::TelegramUser.active.where.not(topnlab_user_id: nil).order(:id).select { |staff| self.for(staff).can?(:moderate) }
+      scope = ::TelegramUser.active.where.not(topnlab_user_id: nil)
+      sandbox_ids = sandbox_capabilities.keys.map(&:to_i)
+      scope = scope.or(::TelegramUser.active.where(tg_user_id: sandbox_ids)) if sandbox_ids.any?
+      scope.order(:id).select { |staff| self.for(staff).can?(:moderate) }
+    end
+
+    # Только тестовый бот: права по списку TELEGRAM_TEST_CAPABILITIES —
+    # JSON { "<tg_user_id>": ["create_lead", ...] } — для тех, кто проверяет
+    # песочницу без учётки в CRM. В рабочем боте список не читается вовсе.
+    # @return [Hash{String => Array<String>}]
+    def self.sandbox_capabilities
+      return {} unless Telegram::BotContext.test?
+
+      JSON.parse(ENV.fetch('TELEGRAM_TEST_CAPABILITIES', '{}')).transform_keys(&:to_s)
+    rescue JSON::ParserError
+      Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не JSON, список игнорирую')
+      {}
     end
 
     # @return [Hash{String => Hash}] crm_role_id → { 'title' =>, 'capabilities' => }
@@ -45,6 +61,13 @@ module CrmCards
     def call
       return deny('Сотрудник не найден.') if @tg_user.nil?
       return deny('Аккаунт в боте не активен.') unless @tg_user.status == 'active'
+
+      sandbox = self.class.sandbox_capabilities[@tg_user.tg_user_id.to_s]
+      if sandbox
+        return Result.new(capabilities: Array(sandbox).map(&:to_s) & CAPABILITIES, crm_user: nil,
+                          position_title: 'песочница (TELEGRAM_TEST_CAPABILITIES)', denial: nil)
+      end
+
       return deny('Нет привязки к CRM — выполни /whoami со своим рабочим email.') if @tg_user.topnlab_user_id.blank?
 
       crm_user = ::User.find_by(crm_user_id: @tg_user.topnlab_user_id)
