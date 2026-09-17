@@ -30,6 +30,7 @@ RSpec.describe 'карточка заявки из лички и тестовы�
     expect(labels.join).to include('Анна').and(satisfy { |t| !t.include?('Тест Тестович') })
 
     press('Анна', user: agent)
+    press('Заполню по шагам', user: agent)
     expect(last_text).to include('Телефон?') # имя пришло с лидом, телефона в нём нет
   end
 
@@ -66,6 +67,7 @@ RSpec.describe 'карточка заявки из лички и тестовы�
 
     tap_callback('wiz:s:crm_lead', user: agent)
     press('Анна', user: agent) # выбор лида — ctx['lead'] ещё не записан на момент поиска шага
+    press('Заполню по шагам', user: agent)
     expect(last_text).to include('Телефон?')
 
     after_pick = open_calls
