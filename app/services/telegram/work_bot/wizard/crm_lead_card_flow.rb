@@ -16,8 +16,10 @@ module Telegram
 
         flow 'crm_lead', 'Карточка заявки для CRM'
 
+        CANDIDATES_LIMIT = 8
+
         def steps
-          ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
+          [lead_step] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
             [Flow::Step.new(id: 'confirm', kind: :confirm,
                             prompt: 'Сохранить карточку заявки? Дальше — машинная проверка.',
                             confirm_label: '💾 Сохранить и проверить')]
@@ -33,24 +35,17 @@ module Telegram
         end
 
         def gate
-          return '⚠️ Карточку заявки открывают кнопкой «📋 Карточка CRM» под лидом.' unless lead
-          return "ℹ️ Лид ##{lead.id} уже закрыт (#{lead.current_stage}) — карточку заводить нечего." if lead.closed?
           return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
           return '🚫 Твоей должности в CRM не выдано право заводить заявки.' unless permissions.can?(:create_lead)
+          return nil if ctx['lead'].blank? # лид выберут первым шагом
+          return "⚠️ Лид ##{escape_html(ctx['lead'])} не найден." unless lead
 
-          unless lead.assigned_to_id == tg_user.id || permissions.can?(:moderate)
-            responsible = lead.assigned_to&.mention || 'пока никто не назначен'
-            return "🚫 Карточку заполняет ответственный по лиду: #{escape_html(responsible)}."
-          end
-          if existing && !::CrmCard::AUTHOR_EDITABLE.include?(existing.status)
-            return "ℹ️ Карточка ##{existing.id} по этому лиду — #{::CrmCard::STATUS_LABELS[existing.status]}. " \
-                   'Открой её через /cards.'
-          end
-
-          nil
+          lead_refusal(lead)
         end
 
         def accept(step, value, manual: false)
+          return accept_lead(value) if step.id == 'lead'
+
           field = ::CrmCards::Schema.field('lead', step.id)
           field ? accept_field(field, value) : [value, nil]
         end
@@ -63,6 +58,60 @@ module Telegram
         end
 
         private
+
+        # Из лички лида выбирают списком: свои открытые (модератору — все),
+        # в тестовом боте — только тестовые, без уже отправленной карточки.
+        def lead_step
+          Flow::Step.new(id: 'lead', kind: :choice, per_row: 1,
+                         prompt: candidates.any? ? 'По какому лиду карточка?' : 'По какому лиду карточка? Подходящих лидов нет.',
+                         hint: 'В списке — открытые лиды без отправленной карточки.',
+                         options: candidates.map { |l| [lead_label(l), l.id.to_s] })
+        end
+
+        def candidates
+          @candidates ||= begin
+            scope = ::LeadEvent.open.order(updated_at: :desc)
+            scope = if ::Telegram::BotContext.test?
+                      scope.where("lead_events.metadata->>'sandbox' = 'true'")
+                    else
+                      scope.where("COALESCE(lead_events.metadata->>'sandbox', '') <> 'true'")
+                    end
+            scope = scope.where(assigned_to: tg_user) unless permissions.can?(:moderate)
+            scope.limit(CANDIDATES_LIMIT * 2).to_a.reject { |l| lead_refusal(l) }.first(CANDIDATES_LIMIT)
+          end
+        end
+
+        def accept_lead(value)
+          found = value.to_s.match?(/\A\d+\z/) ? ::LeadEvent.find_by(id: value) : nil
+          return [nil, 'Лид не найден — выбери из списка.'] unless found
+
+          refusal = lead_refusal(found)
+          refusal ? [nil, refusal] : [found.id.to_s, nil]
+        end
+
+        def lead_refusal(target)
+          sandbox_lead = ::CrmCards::Checker.sandbox_lead?(target)
+          if ::Telegram::BotContext.test? && !sandbox_lead
+            return '🚫 В тестовом боте карточки заводятся только по тестовым лидам.'
+          end
+          return '🚫 Это тестовый лид — его карточку заводят в тестовом боте.' if !::Telegram::BotContext.test? && sandbox_lead
+          return "ℹ️ Лид ##{target.id} уже закрыт (#{target.current_stage}) — карточку заводить нечего." if target.closed?
+
+          unless target.assigned_to_id == tg_user.id || permissions.can?(:moderate)
+            responsible = target.assigned_to&.mention || 'пока никто не назначен'
+            return "🚫 Карточку заполняет ответственный по лиду: #{escape_html(responsible)}."
+          end
+
+          card = ::CrmCard.kind_lead.find_by(lead_event_id: target.id)
+          return nil if card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status)
+
+          "ℹ️ Карточка ##{card.id} по этому лиду — #{::CrmCard::STATUS_LABELS[card.status]}. Открой её через /cards."
+        end
+
+        def lead_label(target)
+          name = target.metadata.to_h['name'].to_s.split.first
+          ["##{target.id}", name, target.lead_ref.try(:title).to_s.truncate(30)].compact_blank.join(' · ')
+        end
 
         def lead
           return @lead if defined?(@lead)
