@@ -254,7 +254,10 @@ module Topnlab
     # @param object_type [String] flat|room|commerce|house|land|garage
     # @param to_number [String, nil] входящий номер (если лид пришёл по звонку)
     # @return [Hash] {"status" => "ok", "insertedId" => <order_id>}
-    # @raise [Topnlab::Client::Error] на любую неуспешную попытку
+    # @raise [Topnlab::Client::Error] на любую неуспешную попытку. Ровно одна попытка
+    #   отправки — не идемпотентен (повтор завёл бы вторую заявку), поэтому
+    #   retry_network: false: сетевой сбой после отправки НЕ ретраится молча,
+    #   см. Topnlab::Client#perform.
     def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
                       action: nil, object_type: 'flat', to_number: nil)
       body = {
@@ -268,7 +271,7 @@ module Topnlab
       body[:called_for_object_short_id] = realty_id.to_i                        if realty_id
       body[:to_number]                  = to_number if to_number.present?
 
-      res = http_post_json('/call/main/importClient/', body)
+      res = http_post_json('/call/main/importClient/', body, retry_network: false)
       unless res.is_a?(Hash) && res['status'] == 'ok'
         raise Error, "importClient failed: #{res.inspect}"
       end
@@ -351,17 +354,24 @@ module Topnlab
       parse(response, "GET #{path}")
     end
 
-    def http_post_json(path, body)
+    def http_post_json(path, body, retry_network: true)
       throttle!(:fast)
       uri = URI("#{@base_url}#{path}")
       req = Net::HTTP::Post.new(uri)
       req['Content-Type'] = 'application/json'
       req.body = body.to_json
-      response = perform(req)
+      response = perform(req, retry_network: retry_network)
       parse(response, "POST #{path}")
     end
 
-    def perform(request)
+    # retry_network: false — только importClient (не идемпотентен, см. import_client).
+    # ReadTimeout/ECONNRESET/EPIPE могут случиться уже ПОСЛЕ того, как Topnlab
+    # принял запрос и создал заявку — транспортный повтор в этом случае завёл
+    # бы вторую заявку молча. OpenTimeout (соединение не установилось, запрос
+    # точно не ушёл) ретраится всегда, независимо от retry_network. Все
+    # остальные вызовы (GET'ы, transfer_client, patch_entity) сохраняют
+    # прежнее поведение — ретраят все четыре исключения с тем же backoff'ом.
+    def perform(request, retry_network: true)
       http = Net::HTTP.new(request.uri.host, request.uri.port)
       http.use_ssl = (request.uri.scheme == 'https')
       http.read_timeout = 60
@@ -370,12 +380,26 @@ module Topnlab
       begin
         http.request(request)
       rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::EPIPE => e
-        attempts += 1
-        if attempts <= 2
-          sleep(2 * attempts)
-          retry
+        if retry_network || e.is_a?(Net::OpenTimeout)
+          attempts += 1
+          if attempts <= 2
+            sleep(2 * attempts)
+            retry
+          end
+          raise Error, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
         end
-        raise Error, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
+
+        raise Error,
+              'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
+              "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
+      rescue EOFError, Net::WriteTimeout, OpenSSL::SSL::SSLError => e
+        # Обрыв посреди обмена: запрос мог дойти. Для неидемпотентного вызова
+        # это то же, что ReadTimeout; остальные вызовы видят исключение как раньше.
+        raise if retry_network
+
+        raise Error,
+              'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
+              "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
       end
     end
 

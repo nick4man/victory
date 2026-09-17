@@ -105,4 +105,64 @@ RSpec.describe Topnlab::Client do
         .to raise_error(Topnlab::Client::Error, /не карту сущностей/)
     end
   end
+
+  # importClient не идемпотентен: повторная отправка после сетевого сбоя заводит
+  # вторую заявку. ReadTimeout/ECONNRESET/EPIPE могут случиться уже ПОСЛЕ того,
+  # как Topnlab принял запрос — поэтому на них ни одного повтора. OpenTimeout —
+  # соединение не установилось, запрос точно не ушёл — единственное исключение,
+  # которое ретраится (тот же backoff, что и у остальных вызовов клиента).
+  describe '#import_client' do
+    let(:import_re) { %r{\Ahttps://crm\.example/call/main/importClient/} }
+
+    it 'ReadTimeout после отправки — НЕ повторяет запрос, сразу бросает Error' do
+      stub_request(:post, import_re)
+        .to_raise(Net::ReadTimeout).then
+        .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error, /сетевой сбой после отправки, повтор не выполнялся/)
+
+      expect(a_request(:post, import_re)).to have_been_made.once
+    end
+
+    it 'EOFError посреди обмена — без повтора, ошибка клиента вместо сырого исключения' do
+      stub_request(:post, import_re)
+        .to_raise(EOFError).then
+        .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error, /повтор не выполнялся/)
+
+      expect(a_request(:post, import_re)).to have_been_made.once
+    end
+
+    it 'ECONNRESET после отправки — тоже без повтора' do
+      stub_request(:post, import_re)
+        .to_raise(Errno::ECONNRESET).then
+        .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error, /сетевой сбой после отправки/)
+
+      expect(a_request(:post, import_re)).to have_been_made.once
+    end
+
+    it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
+      stub_request(:post, import_re)
+        .to_raise(Net::OpenTimeout).then
+        .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+      # Отдельный (не subject) инстанс: стабим sleep, чтобы не ждать реальный
+      # backoff, а RSpec/SubjectStub запрещает стабить методы объекта под тестом.
+      retrying_client = described_class.new(api_key: 'test-key', base_url: base_url)
+      allow(retrying_client).to receive(:sleep)
+
+      result = retrying_client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+
+      expect(result).to eq('status' => 'ok', 'insertedId' => 4455)
+      expect(a_request(:post, import_re)).to have_been_made.twice
+    end
+  end
 end
