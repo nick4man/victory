@@ -57,9 +57,10 @@ namespace :telegram do
       # Воркер отличает тестовый бот от основного строго по pathname == '/test'
       # (см. `isTest = new URL(request.url).pathname === '/test'` в index.js) —
       # любой другой путь форвардится на основной эндпоинт бота-боёвика.
-      unless URI(url).path.end_with?('/test')
+      # Прямой путь Rails тоже допустим: тестовый контроллер сам закрыт секретом.
+      unless URI(url).path == '/test' || URI(url).path.end_with?('/webhooks/telegram_test')
         abort("[telegram:webhook:setup_test] TELEGRAM_TEST_WEBHOOK_URL=#{url} — путь должен " \
-              'заканчиваться на /test (эндпоинт relay-воркера для тестового бота): любой другой путь ' \
+              'быть ровно /test (эндпоинт relay-воркера для тестового бота): любой другой путь ' \
               'воркер форвардит на основной эндпоинт. API не вызван.')
       end
 
