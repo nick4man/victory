@@ -36,6 +36,17 @@ namespace :telegram do
       puts "setWebhook result: #{result.inspect}"
     end
 
+    desc 'Webhook тестового бота (песочница карточек CRM): только message и callback_query.'
+    task setup_test: :environment do
+      url = ENV.fetch('TELEGRAM_TEST_WEBHOOK_URL')
+      secret = ENV.fetch('TELEGRAM_TEST_WEBHOOK_SECRET')
+      result = Telegram::BotContext.within('test') do
+        Telegram::Client.new.set_webhook(url, secret_token: secret, allowed_updates: %w[message callback_query],
+                                              drop_pending_updates: true)
+      end
+      puts "setWebhook (test) result: #{result.inspect}"
+    end
+
     desc 'Show current webhook info (URL, allowed_updates, pending_update_count).'
     task info: :environment do
       info = Telegram::Client.new.webhook_info
