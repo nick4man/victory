@@ -242,7 +242,7 @@ module Telegram
       # закрытом лиде заполнять нечего — мастер не предлагаем (как «Задачу»
       # и «Закрыть лид»), но статус уже отправленной карточки остаётся виден.
       def crm_row
-        card = ::CrmCard.kind_lead.where(sandbox: false).find_by(lead_event_id: @lead.id)
+        card = ::CrmCard.kind_lead.where(sandbox: ::CrmCards::Checker.sandbox_lead?(@lead)).find_by(lead_event_id: @lead.id)
         if card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status)
           return nil if @lead.closed? || @lead.lead_ref.try(:crm_id).present?
 

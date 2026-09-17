@@ -47,6 +47,20 @@ RSpec.describe 'песочница карточек CRM (тестовый бот
     end
   end
 
+  describe 'кривой TELEGRAM_TEST_CAPABILITIES' do
+    it 'не JSON — пустые права, без падения' do
+      stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_CAPABILITIES' => 'not json'))
+
+      in_test { expect(CrmCards::Permissions.sandbox_capabilities).to eq({}) }
+    end
+
+    it 'валидный JSON, но не объект ("[]") — пустые права, без падения' do
+      stub_const('ENV', ENV.to_h.merge('TELEGRAM_TEST_CAPABILITIES' => '[]'))
+
+      in_test { expect(CrmCards::Permissions.sandbox_capabilities).to eq({}) }
+    end
+  end
+
   it 'в тестовом боте карточку по реальному лиду не завести' do
     in_test do
       expect(workflow.upsert_lead_card!(lead: real_lead, actor: agent, values: values).error).to include('тестовым лидам')

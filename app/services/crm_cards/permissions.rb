@@ -43,7 +43,13 @@ module CrmCards
     def self.sandbox_capabilities
       return {} unless Telegram::BotContext.test?
 
-      JSON.parse(ENV.fetch('TELEGRAM_TEST_CAPABILITIES', '{}')).transform_keys(&:to_s)
+      parsed = JSON.parse(ENV.fetch('TELEGRAM_TEST_CAPABILITIES', '{}'))
+      unless parsed.is_a?(Hash)
+        Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не объект JSON, список игнорирую')
+        return {}
+      end
+
+      parsed.transform_keys(&:to_s)
     rescue JSON::ParserError
       Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не JSON, список игнорирую')
       {}
