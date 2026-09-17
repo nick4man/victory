@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+#
+# Песочница карточек CRM в GitHub Codespace: web + sidekiq + тестовый бот.
+# Запускать ВНУТРИ codespace (gh codespace ssh -c <имя>):
+#
+#   bin/sandbox-codespace up                 # миграции, web :3000, sidekiq
+#   bin/sandbox-codespace seed '<json>'      # сотрудники-проверяющие
+#   bin/sandbox-codespace webhook            # setWebhook тестового бота на этот codespace
+#   bin/sandbox-codespace status | logs | down
+#
+# Порт 3000 должен быть публичным — это делается С ХОСТА:
+#   gh codespace ports visibility 3000:public -c <имя>
+#
+# Боевых ключей здесь нет: TELEGRAM_BOT_TOKEN — заглушка из devcontainer, ключей
+# Topnlab нет. Джобы расписания (sidekiq_cron.yml) стартуют и падают в лог —
+# это ожидаемо и безопасно. Реальные сообщения уходят только от тестового бота
+# и только в личку (Telegram::Client отказывает в группы).
+#
+# Секреты — Codespaces-секреты репозитория TELEGRAM_TEST_BOT_TOKEN и
+# TELEGRAM_TEST_CAPABILITIES. Последний допускает и список id через запятую:
+# тогда каждому выдаются все возможности песочницы.
+
+set -euo pipefail
+cd /workspaces/victory
+
+STATE=/workspaces/.sandbox
+SECRETS=/workspaces/.codespaces/shared/user-secrets-envs.json
+mkdir -p "$STATE" && chmod 700 "$STATE"
+
+[ -n "${CODESPACES:-}" ] || { echo 'sandbox-codespace: только внутри GitHub Codespace.' >&2; exit 1; }
+
+load_env() {
+  [ -s "$STATE/webhook_secret" ] || { openssl rand -hex 32 > "$STATE/webhook_secret"; chmod 600 "$STATE/webhook_secret"; }
+  ruby -rjson -e '
+    s = JSON.parse(File.read(ARGV[0]))
+    token = s["TELEGRAM_TEST_BOT_TOKEN"].to_s
+    abort "нет секрета TELEGRAM_TEST_BOT_TOKEN" if token.empty?
+    raw = s["TELEGRAM_TEST_CAPABILITIES"].to_s.strip
+    caps = begin
+      parsed = JSON.parse(raw)
+      parsed.is_a?(Hash) ? parsed : raise(JSON::ParserError)
+    rescue JSON::ParserError
+      raw.split(/[\s,]+/).reject(&:empty?).to_h { |id| [id, %w[create_lead create_object moderate]] }
+    end
+    host = "#{ENV.fetch("CODESPACE_NAME")}-3000.#{ENV.fetch("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")}"
+    File.write(ARGV[1], <<~ENVF, perm: 0o600)
+      export TELEGRAM_TEST_BOT_TOKEN=#{token}
+      export TELEGRAM_TEST_CAPABILITIES=#{JSON.generate(caps).dump}
+      export TELEGRAM_TEST_WEBHOOK_SECRET=#{File.read(ARGV[2]).strip}
+      export TELEGRAM_TEST_WEBHOOK_URL=https://#{host}/webhooks/telegram_test
+    ENVF
+  ' "$SECRETS" "$STATE/env" "$STATE/webhook_secret"
+  # shellcheck disable=SC1091
+  . "$STATE/env"
+  export RAILS_ENV=development
+}
+
+running() { [ -s "$STATE/$1.pid" ] && kill -0 "$(cat "$STATE/$1.pid")" 2>/dev/null; }
+
+case "${1:-}" in
+  up)
+    load_env
+    bin/rails db:prepare
+    if running web; then echo 'web уже запущен'; else
+      nohup bin/rails server -b 0.0.0.0 -p 3000 > "$STATE/web.log" 2>&1 & echo $! > "$STATE/web.pid"
+    fi
+    if running sidekiq; then echo 'sidekiq уже запущен'; else
+      nohup bundle exec sidekiq -C config/sidekiq.yml > "$STATE/sidekiq.log" 2>&1 & echo $! > "$STATE/sidekiq.pid"
+    fi
+    echo "web и sidekiq стартуют; логи — $0 logs. Вебхук: $TELEGRAM_TEST_WEBHOOK_URL"
+    ;;
+  seed)
+    load_env
+    SANDBOX_STAFF="${2:?JSON: [{tg_user_id, username, first_name, last_name, crm: {user_id, role_id, role_name}?}]}" \
+      bin/rails runner '
+        JSON.parse(ENV.fetch("SANDBOX_STAFF")).each do |s|
+          tu = TelegramUser.find_or_initialize_by(tg_user_id: s.fetch("tg_user_id"))
+          tu.assign_attributes(tg_username: s["username"], first_name: s["first_name"], last_name: s["last_name"],
+                               role: s["role"] || "agent", status: "active", dm_chat_id: s.fetch("tg_user_id"))
+          crm = s["crm"]
+          tu.topnlab_user_id = crm && crm.fetch("user_id")
+          tu.save!
+          if crm
+            u = User.find_or_initialize_by(crm_user_id: crm.fetch("user_id"))
+            u.assign_attributes(email: u.email.presence || "crm#{crm.fetch("user_id")}@sandbox.test",
+                                first_name: s["first_name"].presence || "Сотрудник", last_name: s["last_name"].presence || "Песочница",
+                                role: :agent, active: true, crm_role_id: crm.fetch("role_id"),
+                                crm_role_name: crm.fetch("role_name"), crm_status: "active", telegram_user: tu)
+            u.password = SecureRandom.hex(16) if u.new_record?
+            u.save!
+          end
+          perms = Telegram::BotContext.within("test") { CrmCards::Permissions.for(tu) }
+          puts "@#{tu.tg_username}: #{perms.denial || perms.capabilities.join(", ")}"
+        end
+      '
+    ;;
+  webhook)
+    load_env
+    bin/rails telegram:webhook:setup_test
+    ;;
+  status)
+    for p in web sidekiq; do running $p && echo "$p: работает" || echo "$p: остановлен"; done
+    ;;
+  logs)
+    tail -n "${2:-40}" "$STATE/web.log" "$STATE/sidekiq.log"
+    ;;
+  down)
+    for p in web sidekiq; do running $p && kill "$(cat "$STATE/$p.pid")" && echo "$p остановлен"; rm -f "$STATE/$p.pid"; done
+    ;;
+  *)
+    sed -n '3,21p' "$0"; exit 1
+    ;;
+esac
