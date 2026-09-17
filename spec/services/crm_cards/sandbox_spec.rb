@@ -94,6 +94,19 @@ RSpec.describe 'песочница карточек CRM (тестовый бот
     expect(Topnlab::Client).not_to have_received(:new)
   end
 
+  it 'номер объекта из песочницы не запирает тот же номер в рабочем боте' do
+    staff = crm_staff(tg_user_id: 98_991, username: 'sbx_obj')
+    CrmCard.create!(kind: 'object', author: staff, status: 'exported', export_mode: 'manual', crm_id: '123456',
+                    sandbox: true, payload: { 'owner_name' => 'Тест' })
+    real = CrmCard.create!(kind: 'object', author: staff, status: 'approved', payload: { 'owner_name' => 'Настоящий' })
+    flow = Telegram::WorkBot::Wizard::CrmCardManualExportFlow.new(
+      tg_user: staff, ctx: { 'card' => real.id.to_s }, client: instance_double(Telegram::Client)
+    )
+
+    expect(flow.send(:number_taken_by, '123456')).to be_nil
+    expect(in_test { flow.send(:number_taken_by, '123456') }).to include('уже отмечен')
+  end
+
   it 'карточка живёт в своём боте' do
     card = in_test { workflow.upsert_lead_card!(lead: test_lead, actor: agent, values: values).card }
 

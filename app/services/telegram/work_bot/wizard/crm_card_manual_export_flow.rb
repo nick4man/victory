@@ -61,7 +61,9 @@ module Telegram
         # «Выгружен» — статус окончательный: опечатку или номер чужого объекта
         # потом в боте не исправить, поэтому занятый номер не принимаем.
         def number_taken_by(digits)
-          other = ::CrmCard.kind_object.where(crm_id: digits.to_s).where.not(id: card&.id).first
+          # Только карточки своего бота: номер из песочницы не должен запирать
+          # настоящий объект, а песочница — узнавать о настоящих номерах.
+          other = ::CrmCard.in_current_bot.kind_object.where(crm_id: digits.to_s).where.not(id: card&.id).first
           other && "Номер #{digits} уже отмечен у объекта ##{other.id} — проверь цифры в адресе карточки Topnlab."
         end
       end
