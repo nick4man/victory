@@ -14,6 +14,8 @@
  */
 
 const UPSTREAM_URL = 'https://victory62.org/webhooks/telegram';
+// Тестовый бот (песочница карточек CRM): setWebhook на <worker>/test.
+const TEST_UPSTREAM_URL = 'https://victory62.org/webhooks/telegram_test';
 
 // Защита от случайных POST'ов кем-то снаружи: TG отправляет
 // заголовок X-Telegram-Bot-Api-Secret-Token если в setWebhook
@@ -31,12 +33,16 @@ export default {
       });
     }
 
-    // Опциональная проверка secret token от Telegram (если CF secret выставлен)
-    if (env.TELEGRAM_WEBHOOK_SECRET) {
-      const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
-      if (got !== env.TELEGRAM_WEBHOOK_SECRET) {
+    const isTest = new URL(request.url).pathname === '/test';
+    const got = request.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (isTest) {
+      // Для тестового бота секрет обязателен: вход новый, open mode не нужен.
+      if (!env.TELEGRAM_TEST_WEBHOOK_SECRET || got !== env.TELEGRAM_TEST_WEBHOOK_SECRET) {
         return new Response('forbidden', { status: 403 });
       }
+    } else if (env.TELEGRAM_WEBHOOK_SECRET && got !== env.TELEGRAM_WEBHOOK_SECRET) {
+      // Опциональная проверка secret token основного бота (если CF secret выставлен)
+      return new Response('forbidden', { status: 403 });
     }
 
     // Forward тело без изменений + forward TG secret-token header,
@@ -52,7 +58,7 @@ export default {
 
     let upstream;
     try {
-      upstream = await fetch(UPSTREAM_URL, {
+      upstream = await fetch(isTest ? TEST_UPSTREAM_URL : UPSTREAM_URL, {
         method: 'POST',
         headers: upstreamHeaders,
         body

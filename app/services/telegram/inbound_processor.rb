@@ -30,6 +30,9 @@ module Telegram
       # HTTP 5xx, без guard'а один update обработался бы дважды. RecordNotUnique
       # → :duplicate без side-effects.
       return :duplicate if duplicate_update?
+      # Тестовый бот — песочница карточек CRM: личка и только сотрудники.
+      # Клиентский бот, группы и реакции он не обслуживает.
+      return :ignored if Telegram::BotContext.test? && !sandbox_update?
 
       # Phase 2 — callback_query от inline-кнопок маршрутизации/назначения/спама.
       # Должен сработать ДО разбора message — это отдельный тип апдейта без message.
@@ -195,7 +198,8 @@ module Telegram
       update_id = @update['update_id']
       return false if update_id.blank?
 
-      TelegramWebhookAck.create!(update_id: update_id, processed_at: Time.current)
+      TelegramWebhookAck.create!(update_id: update_id, bot: Telegram::BotContext.bot || 'main',
+                                 processed_at: Time.current)
       false
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
       # RecordInvalid fires если уже есть запись (uniqueness validation, локаль-нейтрально).
@@ -208,6 +212,33 @@ module Telegram
     rescue StandardError => e
       Rails.logger.warn("[InboundProcessor#duplicate_update?] #{e.class}: #{e.message}")
       false
+    end
+
+    # Тестовый бот обслуживает только карточки CRM: меню, /cards, мастера
+    # crm_* и кнопки crm_card:. Остальное в рабочем боте работает на боевых
+    # данных (/assign, /close, задачи, голосовые) — в песочницу не пускаем.
+    SANDBOX_CALLBACK_RX = /\A(crm_card:|wiz:[spmb]:crm_|wiz:x\z|wiz:menu\z)/
+    SANDBOX_COMMANDS = %w[/start /help /menu /cards].freeze
+
+    def sandbox_update?
+      callback = @update['callback_query']
+      source = callback || @update['message'] || @update['edited_message']
+      return false unless source
+
+      chat = callback ? source.dig('message', 'chat') : source['chat']
+      return false unless chat&.dig('type') == 'private'
+
+      staff = TelegramUser.active.find_by(tg_user_id: source.dig('from', 'id'))
+      return false unless staff
+      return callback['data'].to_s.match?(SANDBOX_CALLBACK_RX) if callback
+
+      text = source['text'].to_s.strip
+      return SANDBOX_COMMANDS.include?(text.split(/[\s@]/).first.to_s.downcase) if text.start_with?('/')
+
+      # Свободный текст — только ответ на шаг мастера карточки.
+      state = staff.pending_action
+      state&.dig('type') == Telegram::WorkBot::Wizard::Engine::STATE_TYPE &&
+        state.dig('data', 'flow').to_s.start_with?('crm_')
     end
 
     # @return [Boolean] true если запись TelegramUser нашлась и была обновлена
