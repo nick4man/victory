@@ -98,6 +98,8 @@ module Telegram
         rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
         rows << stage_row if @lead.open?
         rows << work_row if @lead.open?
+        crm = crm_row
+        rows << crm if crm
         { inline_keyboard: rows }
       end
 
@@ -231,6 +233,25 @@ module Telegram
           { text: '📝 Задача',      callback_data: "wiz:s:task:#{@lead.id}" },
           { text: '❌ Закрыть лид', callback_data: "wiz:s:close:#{@lead.id}" }
         ]
+      end
+
+      # Карточка для CRM. Лид с сайта или из Telegram попадает в CRM только
+      # через модерацию (CrmCards::Workflow). В группе — только кнопка и
+      # статус: поля с телефоном клиента показываются лишь в личке.
+      # Лид, пришедший из CRM (crm_id уже есть), кнопки не получает. На
+      # закрытом лиде заполнять нечего — мастер не предлагаем (как «Задачу»
+      # и «Закрыть лид»), но статус уже отправленной карточки остаётся виден.
+      def crm_row
+        card = ::CrmCard.kind_lead.find_by(lead_event_id: @lead.id)
+        if card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status)
+          return nil if @lead.closed? || @lead.lead_ref.try(:crm_id).present?
+
+          label = card&.status_needs_rework? ? '↩️ Карточка CRM: доработать' : '📋 Карточка CRM'
+          return [{ text: label, callback_data: "wiz:s:crm_lead:#{@lead.id}" }]
+        end
+
+        label = card.status_exported? ? "🟢 В CRM ##{card.crm_id}" : "#{::CrmCard::STATUS_LABELS[card.status]} · CRM"
+        [{ text: label, callback_data: "crm_card:#{card.id}:view" }]
       end
 
       def routing_keyboard_for(topic_key)
