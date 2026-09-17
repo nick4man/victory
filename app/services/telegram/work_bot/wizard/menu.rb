@@ -19,6 +19,10 @@ module Telegram
             { text: '♻️ Переоткрыть задачу', callback_data: 'wiz:s:reopen' }
           ]]
           rows << [{ text: '❌ Закрыть лид', callback_data: 'wiz:s:close' }] if tg_user&.manager_or_director?
+          # Право на объекты — из должности в CRM, а не из роли в боте.
+          if tg_user && ::CrmCards::Permissions.for(tg_user).can?(:create_object)
+            rows << [{ text: '🏠 Новый объект в CRM', callback_data: 'wiz:s:crm_object' }]
+          end
           rows
         end
       end
