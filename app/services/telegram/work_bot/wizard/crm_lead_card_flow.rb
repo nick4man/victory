@@ -68,17 +68,23 @@ module Telegram
                          options: candidates.map { |l| [lead_label(l), l.id.to_s] })
         end
 
+        # Пустой список без запроса, если лид уже выбран: steps() зовёт
+        # lead_step на каждом рендере мастера (чтобы id/порядок шагов не
+        # плавали), но список кандидатов после выбора уже не нужен — он не
+        # рисуется повторно, а candidates раньше всё равно бил в базу.
         def candidates
-          @candidates ||= begin
-            scope = ::LeadEvent.open.order(updated_at: :desc)
-            scope = if ::Telegram::BotContext.test?
-                      scope.where("lead_events.metadata->>'sandbox' = 'true'")
-                    else
-                      scope.where("COALESCE(lead_events.metadata->>'sandbox', '') <> 'true'")
-                    end
-            scope = scope.where(assigned_to: tg_user) unless permissions.can?(:moderate)
-            scope.limit(CANDIDATES_LIMIT * 2).to_a.reject { |l| lead_refusal(l) }.first(CANDIDATES_LIMIT)
-          end
+          @candidates ||= ctx['lead'].present? ? [] : fetch_candidates
+        end
+
+        def fetch_candidates
+          scope = ::LeadEvent.open.order(updated_at: :desc)
+          scope = if ::Telegram::BotContext.test?
+                    scope.where("lead_events.metadata->>'sandbox' = 'true'")
+                  else
+                    scope.where("COALESCE(lead_events.metadata->>'sandbox', '') <> 'true'")
+                  end
+          scope = scope.where(assigned_to: tg_user) unless permissions.can?(:moderate)
+          scope.limit(CANDIDATES_LIMIT * 2).to_a.reject { |l| lead_refusal(l) }.first(CANDIDATES_LIMIT)
         end
 
         def accept_lead(value)

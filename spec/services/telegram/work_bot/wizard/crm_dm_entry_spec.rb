@@ -60,6 +60,29 @@ RSpec.describe 'карточка заявки из лички и тестовы�
     expect(last_text).to include('только в тестовом боте')
   end
 
+  it 'после выбора лида список кандидатов больше не запрашивается на каждом шаге' do
+    open_calls = 0
+    allow(LeadEvent).to receive(:open).and_wrap_original { |m, *a| open_calls += 1; m.call(*a) }
+
+    tap_callback('wiz:s:crm_lead', user: agent)
+    press('Анна', user: agent) # выбор лида — ctx['lead'] ещё не записан на момент поиска шага
+    expect(last_text).to include('Телефон?')
+
+    after_pick = open_calls
+    expect(after_pick).to be <= 2 # список рендерится + шаг лида один раз ищется, не больше
+
+    say('+7 910 555-00-11', user: agent)
+    expect(last_text).to include('Что нужно клиенту?')
+    press('Продажа', user: agent)
+    expect(last_text).to include('Тип объекта?')
+    press('Квартира', user: agent)
+    expect(last_text).to include('Итог разговора с клиентом?')
+
+    # После того как лид выбран (ctx['lead'] заполнен), кандидаты больше не
+    # запрашиваются ни разу — весь дальнейший путь мастера не бьёт в базу.
+    expect(open_calls).to eq(after_pick)
+  end
+
   it 'меню: «Карточка заявки» везде, «Тестовый лид» — только в тестовом боте' do
     main = Telegram::WorkBot::Wizard::Menu.keyboard(agent).flatten.map { |b| b[:text] }
     test = Telegram::BotContext.within('test') { Telegram::WorkBot::Wizard::Menu.keyboard(agent).flatten.map { |b| b[:text] } }
