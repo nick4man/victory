@@ -10,13 +10,18 @@ module Telegram
   # Reads TELEGRAM_BOT_TOKEN from ENV; per-call chat_id passed explicitly.
   class Client
     class Error < StandardError; end
+    # Тестовый бот попытался написать в группу или канал.
+    class GroupChatForbidden < Error; end
 
     BASE = 'https://api.telegram.org'
 
-    def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
-      raise Error, 'TELEGRAM_BOT_TOKEN not set' if token.blank?
+    def initialize(token: Telegram::BotContext.token)
+      if token.blank?
+        raise Error, "#{Telegram::BotContext.test? ? 'TELEGRAM_TEST_BOT_TOKEN' : 'TELEGRAM_BOT_TOKEN'} not set"
+      end
 
       @token = token
+      @test_bot = token == ENV['TELEGRAM_TEST_BOT_TOKEN']
     end
 
     # @return [Hash] Telegram message object on success ({message_id:, chat:, text:, ...})
@@ -124,6 +129,7 @@ module Telegram
       parts << form_file(boundary, 'document', filename, content_type, content)
       parts << "--#{boundary}--\r\n".b
 
+      guard_private_chat!(chat_id)
       uri = URI("#{BASE}/bot#{@token}/sendDocument")
       req = Net::HTTP::Post.new(uri, 'Content-Type' => "multipart/form-data; boundary=#{boundary}")
       req.body = parts
@@ -292,7 +298,17 @@ module Telegram
       io
     end
 
+    # Тестовый бот работает только в личке. Проверка здесь, а не у вызывающих:
+    # в группу пишут десятки мест (карточки лидов, дайджесты, эскалации), и
+    # любое из них, сработав внутри песочницы, иначе попыталось бы писать туда.
+    def guard_private_chat!(chat_id)
+      return unless @test_bot && chat_id.to_i.negative?
+
+      raise GroupChatForbidden, "тестовый бот не пишет в группы (chat_id=#{chat_id})"
+    end
+
     def api_call(method, body = {}, retried: false)
+      guard_private_chat!(body[:chat_id]) if body.key?(:chat_id)
       uri = URI("#{BASE}/bot#{@token}/#{method}")
       req = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json')
       req.body = JSON.generate(body) unless body.empty?
