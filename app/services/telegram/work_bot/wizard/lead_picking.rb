@@ -36,6 +36,9 @@ module Telegram
 
           found = ::LeadEvent.find_by(id: raw.to_i)
           return [nil, "Лид ##{raw} не найден. Проверь номер или выбери из списка."] unless found
+          if ::CrmCards::Checker.sandbox_lead?(found)
+            return [nil, "🚫 Лид ##{found.id} тестовый — с ним работают только в тестовом боте."]
+          end
           return [nil, "Лид ##{raw} уже закрыт (#{found.current_stage})."] unless found.open?
 
           [found.id.to_s, nil]
@@ -45,6 +48,7 @@ module Telegram
         def lead_gate
           return nil if ctx['lead'].blank?
           return "⚠️ Лид ##{escape_html(ctx['lead'])} не найден." unless lead
+          return "🚫 Лид ##{lead.id} тестовый — с ним работают только в тестовом боте." if ::CrmCards::Checker.sandbox_lead?(lead)
           return "ℹ️ Лид ##{lead.id} уже закрыт (#{lead.current_stage})." unless lead.open?
 
           nil
@@ -55,6 +59,7 @@ module Telegram
         def recent_leads
           @recent_leads ||= begin
             scope = ::LeadEvent.open.order(updated_at: :desc)
+                              .where("COALESCE(lead_events.metadata->>'sandbox', '') <> 'true'")
             scope = scope.for_agent(tg_user) unless manager?
             scope.limit(RECENT_LIMIT).to_a
           end

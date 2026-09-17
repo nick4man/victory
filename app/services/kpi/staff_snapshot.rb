@@ -76,7 +76,10 @@ module Kpi
     end
 
     def leads_stats(staff)
-      scope = LeadEvent.where(assigned_to_id: staff.id)
+      # .real — тестовые лиды песочницы (staff_test: true) не утекают в
+      # персистентный ежедневный снапшот, в отличие от карточек CRM, где
+      # видимость решает Checker.sandbox_lead?/BotContext.
+      scope = LeadEvent.real.where(assigned_to_id: staff.id)
 
       assigned = scope.where(assigned_at: @range).count
       in_30m   = scope.where(assigned_at: @range)
