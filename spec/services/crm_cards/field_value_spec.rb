@@ -37,8 +37,10 @@ RSpec.describe CrmCards::FieldValue do
       expect(error).to include('не мобильный', 'Доп. телефон')
     end
 
-    it 'вторым номером городской принимается' do
+    it 'вторым номером городской принимается — и с кодом страны, и без' do
       expect(described_class.normalize(field(:phone_extra), '+7 4912 12-34-56')).to eq(['74912123456', nil])
+      expect(described_class.normalize(field(:phone_extra), '4912 12-34-56')).to eq(['74912123456', nil])
+      expect(described_class.normalize(field(:phone_extra), '495 123-45-67')).to eq(['74951234567', nil])
       expect(described_class.normalize(field(:phone_extra), '89101234567')).to eq(['79101234567', nil])
     end
 

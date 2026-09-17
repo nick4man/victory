@@ -44,7 +44,10 @@ module CrmCards
     # девяткой не бывает — значит, «не 9» после +7 это и есть городской.
     def phone(raw, mobile: true)
       digits = raw.to_s.gsub(/\D/, '')
-      digits = "7#{digits}" if digits.length == 10 && digits.start_with?('9')
+      # Десять цифр без кода страны: 9 — мобильный, 3/4/8 — код города
+      # (495, 4912, 812…). Прочее не дорисовываем: «8977842598» — это опечатка
+      # в мобильном, а не номер, которому не хватает семёрки.
+      digits = "7#{digits}" if digits.length == 10 && digits.match?(/\A[349]/)
       digits = "7#{digits[1..]}" if digits.length == 11 && digits.start_with?('8')
       unless digits.match?(/\A7\d{10}\z/)
         return [nil, "В номере #{digits.length} цифр, а нужно 11: +7 910 123-45-67 или 89101234567."]
