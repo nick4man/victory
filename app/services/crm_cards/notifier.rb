@@ -67,12 +67,18 @@ module CrmCards
     rescue Telegram::Client::Error => e
       Rails.logger.warn("[CrmCards::Notifier] DM to #{user.mention} failed: #{e.message}")
       false
+    rescue StandardError => e
+      # сетевые ошибки Net::HTTP клиент Telegram не оборачивает
+      Rails.logger.error("[CrmCards::Notifier] DM to #{user.mention} failed unexpectedly: #{e.class}: #{e.message}")
+      false
     end
 
     def refresh_lead_anchor(card)
       return unless card.lead_event
 
       Telegram::WorkBot::LeadAnnouncer.refresh!(card.lead_event, client: client)
+    rescue StandardError => e
+      Rails.logger.warn("[CrmCards::Notifier] refresh anchor lead=#{card.lead_event_id}: #{e.class}: #{e.message}")
     end
 
     def client

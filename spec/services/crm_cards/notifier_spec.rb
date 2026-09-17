@@ -84,4 +84,30 @@ RSpec.describe CrmCards::Notifier do
 
     expect { notifier.returned(card, comment: 'Уточни бюджет') }.not_to raise_error
   end
+
+  it 'сырая сетевая ошибка Telegram-клиента не роняет конвейер' do
+    allow(tg_client).to receive(:send_message).and_raise(Net::ReadTimeout)
+
+    expect { notifier.submitted(card, moderators: [director]) }.not_to raise_error
+  end
+
+  it 'одобрение заявки: ответственному — что выгружаем в CRM' do
+    notifier.approved(card)
+
+    expect(sent.last[:chat_id]).to eq(agent.dm_chat_id)
+    expect(sent.last[:text]).to include('одобрена', 'выгружаю в CRM')
+  end
+
+  it 'одобрение объекта: автору — что внести в CRM руками' do
+    # Schema.for('object') до Task 13 падает KeyError, а CardView.render его
+    # вызывает — стабим рендер, чтобы проверить только текст Notifier.
+    allow(CrmCards::CardView).to receive(:render).and_return({ text: 'карточка', keyboard: [] })
+    object_card = CrmCard.create!(kind: 'object', author: agent, status: 'pending_review', checked_at: Time.current,
+                                  payload: {})
+
+    notifier.approved(object_card)
+
+    expect(sent.last[:chat_id]).to eq(agent.dm_chat_id)
+    expect(sent.last[:text]).to include('Объект одобрен')
+  end
 end
