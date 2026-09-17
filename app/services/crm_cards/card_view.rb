@@ -40,7 +40,7 @@ module CrmCards
     # Значение без HTML — для кнопок и для экранирования снаружи.
     def plain_value(field, value)
       case field.type
-      when :phone   then format_phone(value.to_s)
+      when :phone, :phone_extra then format_phone(value.to_s)
       when :choice  then Schema.option_label(field, value) || value.to_s
       when :decimal then ActiveSupport::NumberHelper.number_to_delimited(value, delimiter: ' ', separator: ',')
       else value.to_s

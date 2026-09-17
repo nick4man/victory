@@ -31,6 +31,15 @@ RSpec.describe CrmCards::LeadExporter do
     expect(topnlab).to have_received(:transfer_client).with(order_id: 4455, email: 'irina@victory.test')
   end
 
+  it 'второй номер клиента дописывается в комментарий заявки' do
+    card.update!(payload: card.payload.merge('phone_extra' => '74912123456'))
+    allow(topnlab).to receive_messages(import_client: { 'status' => 'ok', 'insertedId' => 4455 }, transfer_client: true)
+
+    exporter.call(card)
+
+    expect(topnlab).to have_received(:import_client).with(hash_including(comment: a_string_including('Доп. телефон: +74912123456')))
+  end
+
   it 'продажа уходит как action: 1' do
     card.update!(payload: card.payload.merge('action' => 'sale'))
     allow(topnlab).to receive_messages(import_client: { 'status' => 'ok', 'insertedId' => 1 }, transfer_client: {})
