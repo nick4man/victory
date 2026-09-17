@@ -43,10 +43,34 @@ RSpec.describe CrmCards::Permissions do
 
   it 'две разные учётки CRM на одном телеграме — отказ, а не выбор наугад' do
     staff = crm_staff(tg_user_id: 98_106)
-    create(:user, role: :agent, crm_user_id: 999_001, crm_role_id: '90328', crm_role_name: 'Юрист',
-                  crm_status: 'blocked', telegram_user: staff)
+    create(:user, role: :agent, crm_user_id: 999_001, crm_role_id: '89884', crm_role_name: 'Генеральный директор',
+                  crm_status: 'active')
+    staff.update!(topnlab_user_id: 999_001)
 
     expect(described_class.for(staff).denial).to include('двум разным учёткам')
+  end
+
+  it 'связь только со стороны бота (/link на чужой email) прав не даёт' do
+    manager = TelegramUser.create!(tg_user_id: 98_109, tg_username: 'mgr', first_name: 'mgr', role: 'manager',
+                                   status: 'active', topnlab_user_id: 999_002)
+    create(:user, role: :agent, crm_user_id: 999_002, crm_role_id: '89884', crm_role_name: 'Генеральный директор',
+                  crm_status: 'active')
+
+    perms = described_class.for(manager)
+
+    expect(perms.can?(:moderate)).to be(false)
+    expect(perms.denial).to include('не закреплена')
+  end
+
+  it 'учётка CRM закреплена за другим телеграмом — отказ' do
+    owner = crm_staff(tg_user_id: 98_110, position: '89884')
+    impostor = TelegramUser.create!(tg_user_id: 98_111, tg_username: 'imp', first_name: 'imp', role: 'manager',
+                                    status: 'active')
+    crm_id = owner.topnlab_user_id
+    owner.update!(topnlab_user_id: nil) # сотрудника отвязали в боте, а учётка CRM осталась за ним
+    impostor.update!(topnlab_user_id: crm_id)
+
+    expect(described_class.for(impostor.reload).can?(:moderate)).to be(false)
   end
 
   it 'неактивный в боте — без прав' do

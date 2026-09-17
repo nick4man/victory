@@ -22,7 +22,7 @@ module CrmCardHelpers
                                  topnlab_user_id: crm_user_id, email: "staff#{tg_user_id}@victory.test")
     FactoryBot.create(:user, role: :agent, crm_user_id: crm_user_id, crm_role_id: position,
                              crm_role_name: CRM_TEST_POSITIONS.dig(position, 'title') || 'Конструктор',
-                             crm_status: crm_status)
+                             crm_status: crm_status, telegram_user: staff)
     staff
   end
 end

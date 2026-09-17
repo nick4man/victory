@@ -58,6 +58,13 @@ module CrmCards
         return deny('Телеграм привязан к двум разным учёткам CRM — права не выдаются, ' \
                     'пока руководитель не исправит привязку.', crm_user: crm_user)
       end
+      # Обе связи должны указывать друг на друга. topnlab_user_id менеджер бота
+      # ставит через /link по любому email из CRM без подтверждения — одной
+      # этой связи хватило бы, чтобы выдать себе права чужой должности.
+      unless crm_user.telegram_user_id == @tg_user.id
+        return deny('Учётка CRM не закреплена за этим телеграмом — права не выдаются, ' \
+                    'пока руководитель не подтвердит привязку.', crm_user: crm_user)
+      end
 
       return deny("Учётка в CRM не активна (#{crm_user.crm_status}).", crm_user: crm_user) unless crm_user.crm_status == 'active'
 
