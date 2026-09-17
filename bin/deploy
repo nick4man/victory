@@ -39,9 +39,33 @@ set -euo pipefail
 # значит родитель — сам чекаут. CDPATH='' и `pwd -P` — по той же причине, что в
 # bin/rb: без первого `cd` печатает путь в stdout, без второго путь через
 # симлинк не совпадёт со `show-toplevel`.
+#
+# Отсчёт ведём от каталога САМОГО СКРИПТА, как в bin/prod-mark, и по той же
+# причине, только острее: prod-mark всего лишь пишет отметку, а здесь идут
+# `merge --ff-only`, `reset --hard` и пересборка образов. Позвать `bin/deploy`
+# по абсолютному пути, стоя в постороннем клоне victory, — и предполёт не
+# возразит (`.git` на месте, ветка main), а выкатка поедет по чужому каталогу.
+#
+# Fallback на cwd нужен для первого запуска, когда скрипта в чекауте ещё нет:
+# `cd <чекаут> && bash <(git show origin/main:bin/deploy)` — там `$0` это
+# `/dev/fd/63`, каталог скрипта не репозиторий, и якориться не от чего.
+# Процедура в techContext.md явно требует `cd` в чекаут перед этим вызовом.
 deploy_main_checkout() {
-  local common
-  common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+  local here common
+  here=$(CDPATH='' cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P) || here=''
+  common=''
+  [ -n "$here" ] && common=$(git -C "$here" rev-parse --git-common-dir 2>/dev/null || echo '')
+
+  if [ -z "$common" ]; then
+    here=$(pwd -P) || return 0
+    common=$(git rev-parse --git-common-dir 2>/dev/null || echo '')
+    [ -n "$common" ] || return 0
+  fi
+
+  case "$common" in
+    /*) : ;;                        # абсолютный — как есть
+    *)  common="$here/$common" ;;   # относительный — якорим к точке отсчёта
+  esac
   (CDPATH='' cd -- "$common/.." 2>/dev/null && pwd -P) || return 0
 }
 PROD_DIR="${VICTORY_PROD_DIR:-$(deploy_main_checkout)}"
