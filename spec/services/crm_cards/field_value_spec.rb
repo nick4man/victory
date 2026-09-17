@@ -20,7 +20,33 @@ RSpec.describe CrmCards::FieldValue do
       value, error = described_class.normalize(field(:phone), '<b>123</b>')
 
       expect(value).to be_nil
-      expect(error).to include('11 цифр').and not_include('<b>')
+      expect(error).to include('нужно 11').and not_include('<b>')
+    end
+
+    it 'мусор в номере вычищается, но недостающая цифра не дорисовывается' do
+      value, error = described_class.normalize(field(:phone), '+8ш977842598')
+
+      expect(value).to be_nil
+      expect(error).to include('10 цифр', '11')
+    end
+
+    it 'городской первым номером не принимается — по нему клиенту не перезвонить' do
+      value, error = described_class.normalize(field(:phone), '+7 4912 12-34-56')
+
+      expect(value).to be_nil
+      expect(error).to include('не мобильный', 'Доп. телефон')
+    end
+
+    it 'вторым номером городской принимается' do
+      expect(described_class.normalize(field(:phone_extra), '+7 4912 12-34-56')).to eq(['74912123456', nil])
+      expect(described_class.normalize(field(:phone_extra), '89101234567')).to eq(['79101234567', nil])
+    end
+
+    it 'вторым номером мусорный номер всё равно не принимается' do
+      value, error = described_class.normalize(field(:phone_extra), '+8ш977842598')
+
+      expect(value).to be_nil
+      expect(error).to include('10 цифр')
     end
   end
 

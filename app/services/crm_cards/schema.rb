@@ -15,11 +15,13 @@ module CrmCards
       %w[Квартира flat], %w[Комната room], %w[Дом house],
       %w[Коммерция commerce], %w[Участок land], %w[Гараж garage]
     ].freeze
-    PHONE_HINT = 'Российский номер: +7 910 123-45-67 или 89101234567.'
+    PHONE_HINT = 'Мобильный клиента: +7 910 123-45-67 или 89101234567. Городской — вторым номером.'
 
     LEAD = [
       Field.new(key: 'name', label: 'Имя клиента', type: :string, required: true, max: 255),
       Field.new(key: 'phone', label: 'Телефон', type: :phone, required: true, hint: PHONE_HINT),
+      Field.new(key: 'phone_extra', label: 'Доп. телефон', type: :phone_extra, required: false,
+                hint: 'Второй номер клиента: городской или ещё один мобильный. Нет — пропусти.'),
       Field.new(key: 'action', label: 'Что нужно клиенту', type: :choice, required: true, options: ACTIONS),
       Field.new(key: 'object_type', label: 'Тип объекта', type: :choice, required: true, options: REALTY_TYPES),
       Field.new(key: 'comment', label: 'Итог разговора с клиентом', type: :text, required: true, min: 20, max: 500,

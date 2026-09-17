@@ -16,6 +16,7 @@ module CrmCards
       case field.type
       when :string, :text then text(field, raw)
       when :phone   then phone(raw)
+      when :phone_extra then phone(raw, mobile: false)
       when :choice  then choice(field, raw)
       when :integer then integer(raw)
       when :decimal then decimal(raw)
@@ -32,13 +33,26 @@ module CrmCards
     end
 
     # Topnlab принимает ровно 11 цифр с ведущей 7 (Topnlab::Client#normalize_phone_11d).
-    def phone(raw)
+    #
+    # Мусор из номера вычищаем, но недостачу цифр молча не дорисовываем:
+    # «+8ш977842598» — это 10 цифр, и прежний код лепил к ним семёрку, получая
+    # несуществующий «+7 897…». Ошибка всплыла бы уже в CRM, на звонке.
+    #
+    # Первый номер клиента — всегда мобильный (+7 9XX). Городской принимаем
+    # только вторым номером (:phone_extra): по нему не перезвонить клиенту,
+    # который оставил заявку с сайта, а у российских городских вторая цифра
+    # девяткой не бывает — значит, «не 9» после +7 это и есть городской.
+    def phone(raw, mobile: true)
       digits = raw.to_s.gsub(/\D/, '')
-      digits = "7#{digits}" if digits.length == 10
+      digits = "7#{digits}" if digits.length == 10 && digits.start_with?('9')
       digits = "7#{digits[1..]}" if digits.length == 11 && digits.start_with?('8')
-      return [nil, 'Нужен российский номер из 11 цифр, начиная с 7 или 8.'] unless digits.match?(/\A7\d{10}\z/)
+      unless digits.match?(/\A7\d{10}\z/)
+        return [nil, "В номере #{digits.length} цифр, а нужно 11: +7 910 123-45-67 или 89101234567."]
+      end
+      return [digits, nil] if !mobile || digits[1] == '9'
 
-      [digits, nil]
+      [nil, "+7 #{digits[1..3]}… — это не мобильный: после +7 идёт 9. " \
+            'Городской номер впиши вторым, в «Доп. телефон».']
     end
 
     def choice(field, raw)
