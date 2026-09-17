@@ -30,11 +30,24 @@ RSpec.describe Telegram::WorkBot::Commands::Cards do
     described_class.new(message: message, args: '', tg_user: user, client: tg_client).call
   end
 
-  it 'сотруднику — только свои черновики и возвраты, с кнопками' do
+  it 'сотруднику — все свои карточки в работе (и на модерации), чужих нет, выгруженных нет' do
+    other = crm_staff(tg_user_id: 98_953, username: 'petr')
+    CrmCard.create!(kind: 'object', author: other, payload: { 'owner_name' => 'Жанна' })
+    CrmCard.create!(kind: 'object', author: agent, status: 'exported', crm_id: '77', payload: { 'owner_name' => 'Олег' })
+
     run(agent)
 
-    expect(sent.last[:text]).to include("##{draft.id}", 'Анна').and(satisfy { |t| !t.include?('Борис') })
-    expect(sent.last[:keyboard].flatten.map { |b| b[:callback_data] }).to eq(["crm_card:#{draft.id}:view"])
+    expect(sent.last[:text]).to include('Анна', 'Борис', 'Вера').and(satisfy { |t| !t.include?('Жанна') && !t.include?('Олег') })
+    expect(sent.last[:keyboard].flatten.map { |b| b[:callback_data] })
+      .to contain_exactly("crm_card:#{draft.id}:view", "crm_card:#{pending.id}:view", "crm_card:#{failed.id}:view")
+  end
+
+  it 'длинная очередь — в заголовке полное число' do
+    12.times { |i| CrmCard.create!(kind: 'object', author: agent, status: 'pending_review', payload: { 'owner_name' => "К#{i}" }) }
+
+    run(director)
+
+    expect(sent.last[:text]).to include('⏳ На модерации</b> (10 из 13)')
   end
 
   it 'одобренный объект ждёт внесения — виден ответственному, пока номер не отмечен' do
