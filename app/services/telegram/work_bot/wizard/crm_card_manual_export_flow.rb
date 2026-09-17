@@ -38,16 +38,31 @@ module Telegram
           return [value, nil] unless step.id == 'crm_id'
 
           digits = value.to_s.strip
-          digits.match?(/\A\d{1,12}\z/) ? [digits, nil] : [nil, 'Номер карточки — только цифры, без пробелов и букв.']
+          return [nil, 'Номер карточки — только цифры, без пробелов и букв.'] unless digits.match?(/\A\d{1,12}\z/)
+
+          taken = number_taken_by(digits)
+          taken ? [nil, taken] : [digits, nil]
         end
 
         def finish
           return { text: '⚠️ Карточка не найдена — ничего не отмечено.' } unless card
+          # Повторная проверка: между вводом и подтверждением номер мог занять другой.
+          taken = number_taken_by(ctx['crm_id'])
+          return { text: "⚠️ #{taken}" } if taken
 
           result = workflow.record_export!(card, crm_id: ctx['crm_id'], mode: 'manual', actor: tg_user)
           return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
 
           { text: "🟢 Объект ##{card.id} отмечен как внесённый в CRM: #{escape_html(result.card.crm_id)}." }
+        end
+
+        private
+
+        # «Выгружен» — статус окончательный: опечатку или номер чужого объекта
+        # потом в боте не исправить, поэтому занятый номер не принимаем.
+        def number_taken_by(digits)
+          other = ::CrmCard.kind_object.where(crm_id: digits.to_s).where.not(id: card&.id).first
+          other && "Номер #{digits} уже отмечен у объекта ##{other.id} — проверь цифры в адресе карточки Topnlab."
         end
       end
     end
