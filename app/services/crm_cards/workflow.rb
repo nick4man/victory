@@ -123,7 +123,15 @@ module CrmCards
 
       # Заявка в CRM уже создана — номер фиксируем раньше всего, чтобы сбой
       # ниже не потерял его, а повтор не завёл вторую заявку.
-      card.update_columns(crm_id: outcome.crm_id.to_s)
+      begin
+        card.update_columns(crm_id: outcome.crm_id.to_s)
+      rescue StandardError => e
+        # База недоступна — номер остаётся только в логе; без этой строки
+        # карточка через 15 минут предложит повтор, и он заведёт дубль.
+        Rails.logger.error("[CrmCards::Workflow] заявка создана в CRM под номером #{outcome.crm_id}, " \
+                           "но номер не записан в карточку ##{card.id}: #{e.class}: #{e.message}")
+        raise
+      end
       finalize_export!(card, outcome)
     end
 
