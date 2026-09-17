@@ -3,7 +3,7 @@
 module Telegram
   module WorkBot
     module Commands
-      # `/cards` — карточки CRM: у сотрудника свои черновики и возвраты, у
+      # `/cards` — карточки CRM: у сотрудника свои карточки в работе, у
       # модератора ещё очередь модерации и сбои выгрузки. Только в личке:
       # в списке имена клиентов.
       class Cards < Base
@@ -19,8 +19,10 @@ module Telegram
 
           lines = ['📋 <b>Карточки CRM</b>']
           rows = []
-          sections(perms).each do |title, cards|
-            lines << '' << "<b>#{title}</b> (#{cards.size})"
+          sections(perms).each do |title, all_cards|
+            cards = all_cards.first(LIMIT)
+            count = all_cards.size > cards.size ? "#{cards.size} из #{all_cards.size}" : cards.size
+            lines << '' << "<b>#{title}</b> (#{count})"
             lines << 'Пусто.' if cards.empty?
             cards.each do |card|
               lines << "• #{escape_html(line_for(card))}"
@@ -33,22 +35,21 @@ module Telegram
         private
 
         def sections(perms)
-          list = [['📝 Мои черновики, возвраты и объекты к внесению', own_cards]]
+          list = [['📝 Мои карточки в работе', own_cards]]
           if perms.can?(:moderate)
-            list << ['⏳ На модерации', ::CrmCard.status_pending_review.order(:submitted_at).limit(LIMIT).to_a]
+            list << ['⏳ На модерации', ::CrmCard.status_pending_review.order(:submitted_at).to_a]
             list << ['⚠️ Сбои выгрузки', export_problems]
           end
           list
         end
 
         # «Мои» — по CrmCard#responsible, а не по author_id: заявку ведёт
-        # текущий ответственный по лиду. Одобренный объект остаётся в списке,
-        # пока ответственный не отметит номер карточки в CRM.
+        # текущий ответственный по лиду. Все карточки, ещё не ушедшие в CRM:
+        # мастер карточки по лиду отсылает сюда, если карточка уже отправлена.
         def own_cards
-          ::CrmCard.includes(:lead_event).where(status: ::CrmCard::AUTHOR_EDITABLE + ['approved'])
+          ::CrmCard.includes(:lead_event).where.not(status: 'exported')
                    .order(updated_at: :desc).to_a
-                   .select { |c| c.responsible&.id == tg_user.id && (!c.status_approved? || c.kind_object?) }
-                   .first(LIMIT)
+                   .select { |c| c.responsible&.id == tg_user.id }
         end
 
         # Застрявшее одобрение (джоб не встал в очередь) — тоже сбой: иначе
@@ -56,7 +57,6 @@ module Telegram
         def export_problems
           ::CrmCard.where(status: %w[export_failed exporting approved]).order(:updated_at).to_a
                    .select { |c| c.status_export_failed? || c.export_stale? }
-                   .first(LIMIT)
         end
 
         def line_for(card)

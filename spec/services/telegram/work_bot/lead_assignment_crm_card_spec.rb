@@ -26,6 +26,14 @@ RSpec.describe Telegram::WorkBot::LeadAssignment, 'напоминание о к�
     )
   end
 
+  it 'карточка уже отправлена — кнопка не нужна, даже если у lead_ref нет номера CRM' do
+    CrmCard.create!(kind: 'lead', author: agent, lead_event: lead, status: 'exported', crm_id: '4455')
+
+    described_class.new(lead, assignee: agent, actor: director, client: tg_client).call
+
+    expect(tg_client).to have_received(:send_message).with(anything, hash_not_including(:reply_markup))
+  end
+
   it 'лиду, пришедшему из CRM, кнопка не нужна' do
     lead.lead_ref.update_columns(crm_id: '4455')
 
