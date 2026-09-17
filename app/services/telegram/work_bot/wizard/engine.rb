@@ -41,12 +41,15 @@ module Telegram
           'reopen' => 'Telegram::WorkBot::Wizard::ReopenFlow',
           # Карточки CRM через модерацию (docs/superpowers/specs/2026-09-14-crm-card-moderation-design.md).
           'crm_lead' => 'Telegram::WorkBot::Wizard::CrmLeadCardFlow',
-          'crm_edit' => 'Telegram::WorkBot::Wizard::CrmCardEditFlow'
+          'crm_edit' => 'Telegram::WorkBot::Wizard::CrmCardEditFlow',
+          'crm_rework' => 'Telegram::WorkBot::Wizard::CrmCardReworkFlow',
+          'crm_approve' => 'Telegram::WorkBot::Wizard::CrmCardApproveFlow'
         }.freeze
 
         # Какой шаг получает id, пришедший с кнопкой на карточке.
         SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
-                      'crm_lead' => 'lead', 'crm_edit' => 'card' }.freeze
+                      'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
+                      'crm_approve' => 'card' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize
