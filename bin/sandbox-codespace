@@ -42,7 +42,10 @@ load_env() {
     rescue JSON::ParserError
       raw.split(/[\s,]+/).reject(&:empty?).to_h { |id| [id, %w[create_lead create_object moderate]] }
     end
-    host = "#{ENV.fetch("CODESPACE_NAME")}-3000.#{ENV.fetch("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")}"
+    # В ssh-сессии этих переменных нет — они лежат в том же файле, что и секреты.
+    name = ENV["CODESPACE_NAME"] || s.fetch("CODESPACE_NAME")
+    domain = ENV["GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN"] || s.fetch("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
+    host = "#{name}-3000.#{domain}"
     File.write(ARGV[1], <<~ENVF, perm: 0o600)
       export TELEGRAM_TEST_BOT_TOKEN=#{token}
       export TELEGRAM_TEST_CAPABILITIES=#{JSON.generate(caps).dump}
