@@ -21,6 +21,9 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
   it 'с кнопки под лидом: имя и телефон из заявки не спрашивает, остальное — по шагам' do
     tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent, chat_type: 'supergroup')
     expect(acks.last.first).to include('личке')
+    expect(last_text).to include('Вставь данные клиента')
+
+    press('Заполню по шагам', user: agent)
     expect(last_text).to include('Что нужно клиенту?')
 
     press('Продажа', user: agent)
@@ -51,6 +54,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
                               assigned_to: agent, first_contact_at: 1.hour.ago, metadata: { 'name' => 'Анна' })
 
     tap_callback("wiz:s:crm_lead:#{fresh.id}", user: agent)
+    press('Заполню по шагам', user: agent)
     expect(last_text).to include('Телефон?')
 
     say('+7 910 555-00-11', user: agent)
@@ -59,11 +63,51 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
     expect(last_text).to include('Что нужно клиенту?')
   end
 
+  it 'вставленный текст разбирается: мастер спрашивает только недостающее' do
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    expect(last_text).to include('Вставь данные клиента')
+
+    say("Анна Смирнова, +7 910 555-00-11\nхочет снять комнату в центре, бюджет 25 тысяч, заехать в октябре",
+        user: agent)
+
+    expect(last_text).to include('Сохранить карточку заявки?')
+
+    expect { press('Сохранить', user: agent) }.to change(CrmCard, :count).by(1)
+    expect(CrmCard.last.payload).to include('name' => 'Анна Смирнова', 'phone' => '79105550011',
+                                            'action' => 'rent', 'object_type' => 'room')
+  end
+
+  it 'лид из вставленного текста: карточка собрана целиком, мастер сразу предлагает проверку' do
+    lead.update!(metadata: lead.metadata.merge('summary' => 'Ищет однокомнатную в центре, снять на долгий срок'))
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+
+    expect(last_text).to include('Сохранить карточку заявки?')
+
+    expect { press('Сохранить', user: agent) }.to change(CrmCard, :count).by(1)
+    card = CrmCard.last
+    expect(card.payload).to include('action' => 'rent', 'object_type' => 'flat')
+    expect(card.payload['comment']).to include('однокомнатную')
+    expect(last_text).to include('✅ пройдена')
+    expect(last_callbacks).to include("crm_card:#{card.id}:submit")
+  end
+
+  it 'в тексте нашлось не всё — мастер спрашивает только недостающее' do
+    lead.update!(metadata: lead.metadata.merge('summary' => 'Звонил, попросил перезвонить вечером по поводу жилья'))
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    expect(last_text).to include('Вставь данные клиента')
+
+    press('Заполню по шагам', user: agent)
+    expect(last_text).to include('Что нужно клиенту?')
+  end
+
   it 'по черновику спрашивает только незаполненное' do
     CrmCard.create!(kind: 'lead', author: agent, lead_event: lead,
                     payload: { 'name' => 'Анна', 'phone' => '79101234567', 'action' => 'rent', 'object_type' => 'room' })
 
     tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    press('Заполню по шагам', user: agent)
 
     expect(last_text).to include('Итог разговора с клиентом?')
   end

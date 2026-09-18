@@ -39,6 +39,34 @@ module Telegram
           end
         end
 
+        PASTE_SKIP = '__steps__'
+
+        # Первый шаг обоих мастеров: «вставь как есть». Разбор — TextIntake,
+        # дальше мастер спрашивает только то, чего в тексте не нашлось.
+        def paste_step(kind)
+          Flow::Step.new(
+            id: 'paste', kind: :input,
+            prompt: kind == 'lead' ? 'Вставь данные клиента как есть — разберу сам.' : 'Вставь данные объекта как есть — разберу сам.',
+            hint: 'Переписка, письмо, заметка — одним сообщением. Что не разберу, спрошу по шагам.',
+            quick: [['✍️ Заполню по шагам', PASTE_SKIP]]
+          )
+        end
+
+        # @return [Array(Hash, String|nil)] разобранные поля в ctx['paste']
+        def accept_paste(kind, value)
+          return [{}, nil] if value == PASTE_SKIP
+
+          result = ::CrmCards::TextIntake.call(kind: kind, text: value)
+          return [nil, result.error] if result.error && result.values.blank?
+
+          [result.values, nil]
+        end
+
+        # Что разобрано из вставленного текста (ctx['paste'] — хэш из accept_paste).
+        def pasted_values
+          ctx['paste'].is_a?(Hash) ? ctx['paste'] : {}
+        end
+
         # @return [Array(Object, String|nil)]
         def accept_field(field, value)
           return [nil, "Поле «#{field.label}» обязательное — очистить нельзя."] if value == CLEAR && field.required
