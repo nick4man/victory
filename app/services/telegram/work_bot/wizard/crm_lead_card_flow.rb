@@ -26,6 +26,10 @@ module Telegram
         end
 
         def skip?(step)
+          # Вставлять нечего, если всё обязательное уже известно: лид, заведённый
+          # вставкой текста, приносит и имя с телефоном, и итог разговора.
+          return nothing_to_ask? if step.id == 'paste'
+
           field = ::CrmCards::Schema.field('lead', step.id)
           return false unless field
           return true unless field.required
@@ -132,6 +136,15 @@ module Telegram
           @existing = lead && ::CrmCard.kind_lead.find_by(lead_event_id: lead.id)
         end
 
+        def nothing_to_ask?
+          ::CrmCards::Schema.for('lead').none? do |field|
+            next false unless field.required
+
+            _, error = ::CrmCards::FieldValue.normalize(field, known_values[field.key])
+            error.present?
+          end
+        end
+
         # Известное заранее: черновик поверх данных, пришедших с лидом.
         # Вставленный текст свежее данных лида (сотрудник только что говорил с
         # клиентом), но черновик, который он уже правил руками, не перебивает.
@@ -146,10 +159,10 @@ module Telegram
           values['name'] = name if name.present? && name != 'Без имени'
           phone, error = ::CrmCards::FieldValue.phone(meta['phone'].to_s)
           values['phone'] = phone unless error
-          # Текст, вставленный при заведении лида, — готовый итог разговора.
-          summary, summary_error = ::CrmCards::FieldValue.normalize(::CrmCards::Schema.field('lead', 'comment'),
-                                                                   meta['summary'])
-          values['comment'] = summary if meta['summary'].present? && summary_error.nil?
+          # Текст, вставленный при заведении лида, разбираем ещё раз — правилами,
+          # без модели: оттуда и итог разговора, и тип сделки с типом объекта.
+          values.merge!(::CrmCards::TextIntake.call(kind: 'lead', text: meta['summary'], llm: false).values) if
+            meta['summary'].present?
           external_id = lead&.property&.external_id.to_s
           values['realty_id'] = external_id.to_i if external_id.match?(/\A\d+\z/)
           values

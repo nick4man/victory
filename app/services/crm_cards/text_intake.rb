@@ -26,9 +26,11 @@ module CrmCards
       'sale' => /куп|прода|покуп|ипотек|сделк/i
     }.freeze
 
+    # Порядок важен: «однокомнатная» — это квартира, а не комната, поэтому
+    # квартиру проверяем раньше, а комнату ловим только по началу слова.
     REALTY_WORDS = {
-      'room' => /комнат/i,
-      'flat' => /квартир|студи|однушк|двушк|трёшк|трешк|\d\s*-?\s*комн/i,
+      'flat' => /квартир|студи|однушк|двушк|тр[её]шк|\d\s*-?\s*комн|[а-я]+комнатн/i,
+      'room' => /\bкомнат/i,
       'house' => /дом\b|коттедж|таунхаус|дача/i,
       'commerce' => /коммерц|офис|склад|помещени|торгов/i,
       'land' => /участок|земл|сотк/i,
@@ -43,21 +45,24 @@ module CrmCards
     REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:#]?\s*(\d{3,9})/i
     PHONE_CANDIDATE = /(?:\+?\d[\s()\-]*){10,}/
 
-    def self.call(kind:, text:, client: nil)
-      new(kind: kind, text: text, client: client).call
+    def self.call(kind:, text:, client: nil, llm: true)
+      new(kind: kind, text: text, client: client, llm: llm).call
     end
 
-    def initialize(kind:, text:, client: nil)
+    # llm: false — только правила. Так текст разбирают повторно (уже сохранённый
+    # у лида), и платить за модель второй раз не за что.
+    def initialize(kind:, text:, client: nil, llm: true)
       @kind = kind.to_s
       @text = text.to_s.strip.first(MAX_TEXT).to_s
       @client = client
+      @llm = llm
     end
 
     def call
       return Result.new(values: {}, error: 'Текст слишком короткий — вставь данные клиента целиком.') if too_short?
 
       values = normalize(rules)
-      return Result.new(values: values) if missing_required(values).empty?
+      return Result.new(values: values) if !@llm || missing_required(values).empty?
 
       llm = llm_values
       Result.new(values: normalize(llm.fetch(:values, {}).merge(values)), model: llm[:model], error: llm[:error])

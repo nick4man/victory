@@ -77,17 +77,29 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
                                             'action' => 'rent', 'object_type' => 'room')
   end
 
-  it 'текст, вставленный при заведении лида, становится итогом разговора' do
+  it 'лид из вставленного текста: карточка собрана целиком, мастер сразу предлагает проверку' do
     lead.update!(metadata: lead.metadata.merge('summary' => 'Ищет однокомнатную в центре, снять на долгий срок'))
 
     tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
-    press('Заполню по шагам', user: agent)
-    press('Аренда', user: agent)
-    press('Квартира', user: agent)
 
     expect(last_text).to include('Сохранить карточку заявки?')
+
     expect { press('Сохранить', user: agent) }.to change(CrmCard, :count).by(1)
-    expect(CrmCard.last.payload['comment']).to include('однокомнатную')
+    card = CrmCard.last
+    expect(card.payload).to include('action' => 'rent', 'object_type' => 'flat')
+    expect(card.payload['comment']).to include('однокомнатную')
+    expect(last_text).to include('✅ пройдена')
+    expect(last_callbacks).to include("crm_card:#{card.id}:submit")
+  end
+
+  it 'в тексте нашлось не всё — мастер спрашивает только недостающее' do
+    lead.update!(metadata: lead.metadata.merge('summary' => 'Звонил, попросил перезвонить вечером по поводу жилья'))
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    expect(last_text).to include('Вставь данные клиента')
+
+    press('Заполню по шагам', user: agent)
+    expect(last_text).to include('Что нужно клиенту?')
   end
 
   it 'по черновику спрашивает только незаполненное' do
