@@ -146,6 +146,10 @@ module Telegram
           values['name'] = name if name.present? && name != 'Без имени'
           phone, error = ::CrmCards::FieldValue.phone(meta['phone'].to_s)
           values['phone'] = phone unless error
+          # Текст, вставленный при заведении лида, — готовый итог разговора.
+          summary, summary_error = ::CrmCards::FieldValue.normalize(::CrmCards::Schema.field('lead', 'comment'),
+                                                                   meta['summary'])
+          values['comment'] = summary if meta['summary'].present? && summary_error.nil?
           external_id = lead&.property&.external_id.to_s
           values['realty_id'] = external_id.to_i if external_id.match?(/\A\d+\z/)
           values

@@ -77,6 +77,19 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
                                             'action' => 'rent', 'object_type' => 'room')
   end
 
+  it 'текст, вставленный при заведении лида, становится итогом разговора' do
+    lead.update!(metadata: lead.metadata.merge('summary' => 'Ищет однокомнатную в центре, снять на долгий срок'))
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    press('Заполню по шагам', user: agent)
+    press('Аренда', user: agent)
+    press('Квартира', user: agent)
+
+    expect(last_text).to include('Сохранить карточку заявки?')
+    expect { press('Сохранить', user: agent) }.to change(CrmCard, :count).by(1)
+    expect(CrmCard.last.payload['comment']).to include('однокомнатную')
+  end
+
   it 'по черновику спрашивает только незаполненное' do
     CrmCard.create!(kind: 'lead', author: agent, lead_event: lead,
                     payload: { 'name' => 'Анна', 'phone' => '79101234567', 'action' => 'rent', 'object_type' => 'room' })

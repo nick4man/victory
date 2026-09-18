@@ -43,6 +43,7 @@ RSpec.describe 'карточка заявки из лички и тестовы�
   it 'тестовый лид: создаётся без Inquiry и без сообщений в группу, назначен на себя' do
     Telegram::BotContext.within('test') do
       tap_callback('wiz:s:crm_test_lead', user: agent)
+      press('Заполню по шагам', user: agent)
       say('Пётр Проверкин', user: agent)
       say('+7 910 555-00-11', user: agent)
       expect { press('Создать', user: agent) }.to change(LeadEvent.where(staff_test: true), :count).by(1)
@@ -53,6 +54,21 @@ RSpec.describe 'карточка заявки из лички и тестовы�
     expect(lead.metadata).to include('name' => 'Пётр Проверкин', 'phone' => '79105550011', 'sandbox' => true)
     expect(dms.map { |m| m[:chat_id] }).to all(eq(agent.dm_chat_id))
     expect(last_callbacks).to include("wiz:s:crm_lead:#{lead.id}")
+  end
+
+  it 'тестовый лид из вставленного текста: имя и телефон не переспрашиваются' do
+    Telegram::BotContext.within('test') do
+      tap_callback('wiz:s:crm_test_lead', user: agent)
+      say('Шубанов Сергей Александрович, интересуюсь однокомнатной в центре, снять на долгий срок. ' \
+          'Телефон 89646273671.', user: agent)
+
+      expect(last_text).to include('Создать тестовый лид')
+      expect { press('Создать', user: agent) }.to change(LeadEvent.where(staff_test: true), :count).by(1)
+    end
+
+    lead = LeadEvent.order(:id).last
+    expect(lead.metadata).to include('name' => 'Шубанов Сергей Александрович', 'phone' => '79646273671')
+    expect(lead.metadata['summary']).to include('однокомнатной')
   end
 
   it 'тестовый лид в рабочем боте не заводится' do
