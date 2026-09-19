@@ -39,13 +39,26 @@ module Telegram
         def summary
           return nil unless SUMMARY_PATH.exist?
 
-          text = SUMMARY_PATH.read.to_s.gsub(/<!--.*?-->/m, '')
           # Из markdown Telegram понимает мало: заголовок и **жирный** в <b>,
-          # остальное отдаём как есть, заэкранировав.
-          escape_html(text).gsub(/^#+\s*(.+)$/) { "<b>#{Regexp.last_match(1)}</b>" }
-                           .gsub(/\*\*(.+?)\*\*/) { "<b>#{Regexp.last_match(1)}</b>" }
-                           .gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
-                           .squeeze("\n").strip
+          # остальное отдаём как есть, заэкранировав. Комментарии-подсказки
+          # редактору выбрасываем построчно, а не регуляркой по тексту:
+          # вырезание разметки regexp'ом — приглашение к инъекции.
+          escape_html(without_comments(SUMMARY_PATH.read.to_s))
+            .gsub(/^#+\s*(.+)$/) { "<b>#{Regexp.last_match(1)}</b>" }
+            .gsub(/\*\*(.+?)\*\*/) { "<b>#{Regexp.last_match(1)}</b>" }
+            .gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
+            .squeeze("\n").strip
+        end
+
+        def without_comments(text)
+          inside = false
+          text.lines.reject do |line|
+            was_inside = inside
+            inside = true if line.include?('<!--') && !line.include?('-->')
+            skip = was_inside || line.strip.start_with?('<!--')
+            inside = false if was_inside && line.include?('-->')
+            skip
+          end.join
         end
       end
     end

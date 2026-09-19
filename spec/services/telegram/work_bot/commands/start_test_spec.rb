@@ -55,6 +55,17 @@ RSpec.describe Telegram::WorkBot::Commands::StartTest do
     expect(a_request(:post, %r{/start})).not_to have_been_made
   end
 
+  it 'подсказки редактору в сводку не попадают, разметка не протекает' do
+    stub_list('Available')
+
+    run(director)
+
+    text = nil
+    expect(tg_client).to have_received(:send_message) { |body, *| text = body }
+    expect(text).to include('Что сейчас в песочнице', '<b>')
+    expect(text).not_to include('<!--', 'Этот файл печатает')
+  end
+
   it 'агенту команда недоступна' do
     run(agent)
 
