@@ -12,6 +12,10 @@
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  // Пробуждение из боевого бота (/starttest) происходит без человека за
+  // терминалом — песочница должна подняться сама.
+  "postStartCommand": "bash .devcontainer/post-start.sh",
+
   // SSH-сервер нужен `gh codespace ssh` / `gh codespace cp`: без него в
   // Codespace не зайти из терминала, только через VS Code в браузере, — а
   // агенту (Claude Code) отлаживать и гонять спеки нечем. Node — потому что
