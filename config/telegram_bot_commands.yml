@@ -48,6 +48,7 @@ commands:
 
   # === Director — voice-distribution и admin ===
   - { cmd: resume_batch, tier: director, group: false, desc: 'Переоткрыть voice batch (окно 24ч)' }
+  - { cmd: starttest,    tier: director, group: false, desc: 'Разбудить песочницу и напомнить, что в ней проверяем' }
 
   # === Phase 15 — director DM control panel ===
   - { cmd: dashboard,    tier: manager,  group: false, desc: 'Полная сводка АН: лиды/задачи/сотрудники/KPI' }

@@ -56,6 +56,8 @@ module Telegram
         '/resume_batch' => Commands::ResumeBatch,
         # Phase 15 — control panel snapshot для директора в DM (manager+).
         '/dashboard' => Commands::Dashboard,
+        # Разбудить песочницу в Codespace и напомнить, что в ней проверяем.
+        '/starttest' => Commands::StartTest,
         '/panel' => Commands::Dashboard, # alias
         # Phase 15 — reference card (cheat-sheet) для DM. Public (renderer
         # сам фильтрует секции по role). User закрепит сообщение в DM.
