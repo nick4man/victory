@@ -20,7 +20,7 @@ RSpec.describe Telegram::WorkBot::Commands::StartTest do
   end
 
   def stub_list(state)
-    stub_request(:get, 'https://api.github.com/user/codespaces')
+    stub_request(:get, 'https://api.github.com/user/codespaces?per_page=100')
       .to_return(status: 200, headers: { 'Content-Type' => 'application/json' },
                  body: { codespaces: [{ name: 'crm-sandbox-abc', display_name: 'crm-sandbox', state: state,
                                         web_url: 'https://github.com/codespaces/crm-sandbox-abc',
@@ -66,10 +66,34 @@ RSpec.describe Telegram::WorkBot::Commands::StartTest do
     expect(text).not_to include('<!--', 'Этот файл печатает')
   end
 
+  it 'просыпающуюся песочницу не будит второй раз и не плодит уведомления' do
+    stub_list('Starting')
+
+    run(director)
+
+    expect(a_request(:post, %r{/start})).not_to have_been_made
+    expect(Sandbox::CodespaceReadyJob).to have_received(:perform_async)
+  end
+
+  it 'в группе команда не работает — сводка только в личке' do
+    group = { 'message_id' => 1, 'from' => { 'id' => director.tg_user_id }, 'text' => '/starttest',
+              'chat' => { 'id' => -100_1, 'type' => 'supergroup' } }
+    described_class.new(message: group, args: '', tg_user: director, client: tg_client).call
+
+    expect(a_request(:get, 'https://api.github.com/user/codespaces?per_page=100')).not_to have_been_made
+    expect(tg_client).to have_received(:send_message).with(a_string_including('только в личке'), anything)
+  end
+
+  it 'ключ аудита совпадает с командой, которую набирают' do
+    stub_list('Available')
+
+    expect { run(director) }.to change { BotCommandLog.where(command: '/starttest').count }.by(1)
+  end
+
   it 'агенту команда недоступна' do
     run(agent)
 
-    expect(a_request(:get, 'https://api.github.com/user/codespaces')).not_to have_been_made
+    expect(a_request(:get, 'https://api.github.com/user/codespaces?per_page=100')).not_to have_been_made
   end
 
   it 'нет токена — понятный отказ, а не падение' do
@@ -80,7 +104,7 @@ RSpec.describe Telegram::WorkBot::Commands::StartTest do
   end
 
   it 'GitHub отвечает ошибкой — тоже отказ с текстом' do
-    stub_request(:get, 'https://api.github.com/user/codespaces').to_return(status: 401, body: '{}')
+    stub_request(:get, 'https://api.github.com/user/codespaces?per_page=100').to_return(status: 401, body: '{}')
 
     expect(run(director)).to eq(:error)
     expect(tg_client).to have_received(:send_message).with(a_string_including('GitHub ответил 401'), anything)

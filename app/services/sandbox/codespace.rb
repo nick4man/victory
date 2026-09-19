@@ -10,13 +10,15 @@ module Sandbox
   class Codespace
     API = 'https://api.github.com'
     DISPLAY_NAME = ENV.fetch('SANDBOX_CODESPACE_NAME', 'crm-sandbox')
-    READY_STATES = %w[Available Provisioning Starting Queued].freeze
+    # Состояния, в которых codespace уже едет к «Available» — будить повторно
+    # нечего: GitHub ответит ошибкой, а проверяющий получит два «поднялась».
+    STARTING_STATES = %w[Provisioning Starting Queued Rebuilding Awaiting].freeze
 
     class Error < StandardError; end
 
     Status = Struct.new(:name, :state, :branch, :web_url, :last_used_at, keyword_init: true) do
       def awake? = state == 'Available'
-      def starting? = %w[Provisioning Starting Queued Rebuilding].include?(state)
+      def starting? = STARTING_STATES.include?(state)
     end
 
     def self.start! = new.start!
@@ -28,11 +30,11 @@ module Sandbox
       find!
     end
 
-    # Идемпотентно: разбуженный codespace остаётся разбуженным.
+    # Идемпотентно: разбуженный и просыпающийся codespace не трогаем.
     # @return [Status]
     def start!
       current = find!
-      return current if current.awake?
+      return current if current.awake? || current.starting?
 
       post("/user/codespaces/#{current.name}/start")
       find!
@@ -47,8 +49,10 @@ module Sandbox
       value
     end
 
+    # per_page=100: у владельца токена бывает больше 30 codespace'ов, и на
+    # странице по умолчанию наш просто не нашёлся бы — «создай его».
     def find!
-      list = get('/user/codespaces').fetch('codespaces', [])
+      list = get('/user/codespaces?per_page=100').fetch('codespaces', [])
       # display_name задаёт человек при создании, name генерируется GitHub.
       found = list.find { |cs| cs['display_name'] == DISPLAY_NAME || cs['name'] == DISPLAY_NAME }
       raise Error, "Codespace «#{DISPLAY_NAME}» не найден — создай его или поправь SANDBOX_CODESPACE_NAME." unless found
@@ -60,6 +64,8 @@ module Sandbox
     def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
     def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
 
+    # Сетевые сбои приводим к своей ошибке все до одного: наверху их ловят по
+    # Codespace::Error, и «голый» SSLError убил бы джоб ожидания молча.
     def request(req)
       req['Authorization'] = "Bearer #{token}"
       req['Accept'] = 'application/vnd.github+json'
@@ -70,7 +76,8 @@ module Sandbox
       raise Error, "GitHub ответил #{res.code} на #{req.method} #{req.uri.path}" unless res.is_a?(Net::HTTPSuccess)
 
       res.body.present? ? JSON.parse(res.body) : {}
-    rescue JSON::ParserError, SocketError, Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNREFUSED => e
+    rescue JSON::ParserError, SocketError, SystemCallError, OpenSSL::SSL::SSLError,
+           Net::OpenTimeout, Net::ReadTimeout, Net::HTTPBadResponse, EOFError => e
       raise Error, "GitHub недоступен: #{e.class}"
     end
   end
