@@ -5,11 +5,14 @@
 #
 #   bin/sandbox-codespace up                 # миграции, web :3000, sidekiq
 #   bin/sandbox-codespace seed '<json>'      # сотрудники-проверяющие
-#   bin/sandbox-codespace webhook            # setWebhook тестового бота на этот codespace
 #   bin/sandbox-codespace status | logs | down
+#   bin/sandbox-codespace webhook            # вместо опроса — вебхук (нужен публичный порт)
 #
-# Порт 3000 должен быть публичным — это делается С ХОСТА:
-#   gh codespace ports visibility 3000:public -c <имя>
+# Апдейты тестовый бот отдаёт опросом (getUpdates), а не вебхуком: порт 3000
+# после каждого пробуждения codespace снова становится приватным, и Telegram
+# получает 401. Опрос ни от портов, ни от ретранслятора не зависит, поэтому
+# `up` поднимается сам — в том числе когда codespace разбудили /starttest из
+# боевого бота.
 #
 # Боевых ключей здесь нет: TELEGRAM_BOT_TOKEN — заглушка из devcontainer, ключей
 # Topnlab нет. Джобы расписания (sidekiq_cron.yml) стартуют и падают в лог —
@@ -70,7 +73,13 @@ case "${1:-}" in
     if running sidekiq; then echo 'sidekiq уже запущен'; else
       nohup bundle exec sidekiq -C config/sidekiq.yml > "$STATE/sidekiq.log" 2>&1 & echo $! > "$STATE/sidekiq.pid"
     fi
-    echo "web и sidekiq стартуют; логи — $0 logs. Вебхук: $TELEGRAM_TEST_WEBHOOK_URL"
+    if running poller; then echo 'опрос уже идёт'; else
+      # getUpdates и вебхук взаимоисключающи — снимаем вебхук, если он стоял.
+      curl -s "https://api.telegram.org/bot$TELEGRAM_TEST_BOT_TOKEN/deleteWebhook" > /dev/null
+      nohup bin/rails runner "load Rails.root.join('bin/sandbox-poller.rb').to_s" \
+        > "$STATE/poller.log" 2>&1 & echo $! > "$STATE/poller.pid"
+    fi
+    echo "web, sidekiq и опрос тестового бота запущены; логи — $0 logs"
     ;;
   seed)
     load_env
@@ -103,13 +112,13 @@ case "${1:-}" in
     bin/rails telegram:webhook:setup_test
     ;;
   status)
-    for p in web sidekiq; do running $p && echo "$p: работает" || echo "$p: остановлен"; done
+    for p in web sidekiq poller; do running $p && echo "$p: работает" || echo "$p: остановлен"; done
     ;;
   logs)
-    tail -n "${2:-40}" "$STATE/web.log" "$STATE/sidekiq.log"
+    tail -n "${2:-40}" "$STATE/web.log" "$STATE/sidekiq.log" "$STATE/poller.log"
     ;;
   down)
-    for p in web sidekiq; do running $p && kill "$(cat "$STATE/$p.pid")" && echo "$p остановлен"; rm -f "$STATE/$p.pid"; done
+    for p in web sidekiq poller; do running $p && kill "$(cat "$STATE/$p.pid")" && echo "$p остановлен"; rm -f "$STATE/$p.pid"; done
     ;;
   *)
     sed -n '3,21p' "$0"; exit 1
