@@ -11,13 +11,12 @@ FactoryBot.define do
     metadata { {} }
 
     # Suppress noisy after_create callbacks during testing.
-    # The callbacks that fire TG push / CRM sync / agent assignment
+    # The callbacks that fire TG push / agent assignment
     # are tested in their own specs and not relevant to referral flow.
     after(:build) do |inquiry|
       inquiry.define_singleton_method(:push_to_work_bot) { nil }
       inquiry.define_singleton_method(:assign_to_agent)  { nil }
       inquiry.define_singleton_method(:send_notifications) { nil }
-      inquiry.define_singleton_method(:sync_to_crm)      { nil }
     end
 
     trait :with_external_listing do
