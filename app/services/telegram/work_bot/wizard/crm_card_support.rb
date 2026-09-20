@@ -39,6 +39,47 @@ module Telegram
           end
         end
 
+        PASTE_SKIP = '__steps__'
+
+        # Первый шаг обоих мастеров: «вставь как есть». Разбор — TextIntake,
+        # дальше мастер спрашивает только то, чего в тексте не нашлось.
+        def paste_step(kind)
+          Flow::Step.new(
+            id: 'paste', kind: :input,
+            prompt: kind == 'lead' ? 'Вставь данные клиента как есть — разберу сам.' : 'Вставь данные объекта как есть — разберу сам.',
+            hint: 'Переписка, письмо, заметка — одним сообщением. Что не разберу, спрошу по шагам.',
+            quick: [['✍️ Заполню по шагам', PASTE_SKIP]]
+          )
+        end
+
+        # @return [Array(Hash, String|nil)] разобранные поля в ctx['paste']
+        def accept_paste(kind, value, needs: nil)
+          return [{}, nil] if value == PASTE_SKIP
+
+          result = ::CrmCards::TextIntake.call(kind: kind, text: value, needs: needs)
+          return [nil, result.error] if result.error && result.values.blank?
+
+          warn_about_partial_parse(result.error)
+          [result.values, nil]
+        end
+
+        # Разбор удался наполовину: правила что-то нашли, а модель не ответила.
+        # Мастер идёт дальше, но сотрудник должен знать, что часть полей могла
+        # не разобраться, — иначе неполный разбор не отличить от полного.
+        def warn_about_partial_parse(error)
+          return if error.blank?
+
+          client.send_message("⚠️ #{escape_html(error)} Проверь, что мастер не спросил.",
+                              chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+        rescue ::Telegram::Client::Error => e
+          Rails.logger.warn("[Wizard#warn_about_partial_parse] #{e.class}: #{e.message}")
+        end
+
+        # Что разобрано из вставленного текста (ctx['paste'] — хэш из accept_paste).
+        def pasted_values
+          ctx['paste'].is_a?(Hash) ? ctx['paste'] : {}
+        end
+
         # @return [Array(Object, String|nil)]
         def accept_field(field, value)
           return [nil, "Поле «#{field.label}» обязательное — очистить нельзя."] if value == CLEAR && field.required
