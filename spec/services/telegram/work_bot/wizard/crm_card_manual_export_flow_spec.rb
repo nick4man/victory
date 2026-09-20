@@ -17,6 +17,20 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardManualExportFlow do
                                'area_common' => 54.3, 'rooms' => 2, 'contract_type' => 'verbal' })
   end
 
+  it 'до разрешения руководителя внести объект нельзя — отказ до ввода номера' do
+    tap_callback("wiz:s:crm_manual:#{card.id}", user: agent)
+
+    expect(last_text).to include('ещё не разрешил руководитель')
+    expect(card.reload.crm_id).to be_nil
+  end
+
+  it 'в карточке без разрешения нет подсказки «внеси в CRM»' do
+    text = CrmCards::CardView.render(card, viewer: agent)[:text]
+
+    expect(text).to include('Ждёт решения руководителя')
+    expect(text).not_to include('Внеси объект в CRM вручную')
+  end
+
   it 'автор получает паспорт для внесения и отмечает номер карточки CRM' do
     card.update!(released_by: director, released_at: Time.current)
     CrmCards::Notifier.new(client: tg_client).released(card)
