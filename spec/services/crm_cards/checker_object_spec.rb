@@ -57,7 +57,7 @@ RSpec.describe CrmCards::Checker, 'карточка объекта' do
 
   it 'conditionally_required знает условия' do
     expect(described_class.conditionally_required('realty_type' => 'flat', 'contract_type' => 'ad_agreement'))
-      .to eq(%w[area_common rooms contract_number])
+      .to eq(%w[area_common rooms floor contract_number])
     expect(described_class.conditionally_required('realty_type' => 'land')).to eq(%w[area_land])
     expect(described_class.conditionally_required({})).to eq([])
   end

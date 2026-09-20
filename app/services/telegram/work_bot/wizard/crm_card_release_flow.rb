@@ -42,12 +42,10 @@ module Telegram
           result = workflow.release_for_export!(card, actor: tg_user, expected: ctx['confirm'])
           return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
 
-          done = if card.kind_lead?
-                   'выгрузка запущена, итог придёт сообщением'
-                 else
-                   "внесёт в CRM вручную #{escape_html(card.responsible.mention)}"
-                 end
-          { text: "📤 Карточка ##{card.id}: #{done}." }
+          # Показываем карточку, а не обещание «выгрузка запущена»: в песочнице
+          # выгрузка мгновенная, и обещание приходило уже после её итога —
+          # «итог придёт сообщением» строкой ниже самого итога.
+          ::CrmCards::CardView.render(card.reload, viewer: tg_user)
         end
 
         private
