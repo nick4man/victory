@@ -28,10 +28,11 @@ module CrmCards
 
     # Порядок важен: «однокомнатная» — это квартира, а не комната, поэтому
     # квартиру проверяем раньше, а комнату ловим только по началу слова.
+    # «дом» — обязательно с начала слова, иначе «рядом с лесом» становится домом.
     REALTY_WORDS = {
       'flat' => /квартир|студи|однушк|двушк|тр[её]шк|\d\s*-?\s*комн|[а-я]+комнатн/i,
       'room' => /\bкомнат/i,
-      'house' => /дом\b|коттедж|таунхаус|дача/i,
+      'house' => /\bдом[ауе]?\b|коттедж|таунхаус|дача/i,
       'commerce' => /коммерц|офис|склад|помещени|торгов/i,
       'land' => /участок|земл|сотк/i,
       'garage' => /гараж|машиноместо/i
@@ -43,19 +44,27 @@ module CrmCards
     # «Хочет», «Звонил» с заглавной выглядят так же, как имя.
     NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
     REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:#]?\s*(\d{3,9})/i
-    PHONE_CANDIDATE = /(?:\+?\d[\s()\-]*){10,}/
+    # Разделители внутри номера — что угодно, кроме перевода строки: иначе номер
+    # в конце строки слипается с цифрами следующей, выходит 12 цифр, проверка
+    # их отбрасывает, и телефон пропадает молча.
+    PHONE_CANDIDATE = /(?:\+?\d[ \t\u00a0()\-]*){10,}/
 
-    def self.call(kind:, text:, client: nil, llm: true)
-      new(kind: kind, text: text, client: client, llm: llm).call
+    def self.call(kind:, text:, client: nil, llm: true, needs: nil)
+      new(kind: kind, text: text, client: client, llm: llm, needs: needs).call
     end
 
     # llm: false — только правила. Так текст разбирают повторно (уже сохранённый
     # у лида), и платить за модель второй раз не за что.
-    def initialize(kind:, text:, client: nil, llm: true)
+    #
+    # needs — поля, ради которых стоит звать модель. По умолчанию все обязательные
+    # в карточке, но зовущему они нужны не всегда: тестовому мастеру хватает имени
+    # с телефоном, и без этого списка он платил бы за модель на каждой вставке.
+    def initialize(kind:, text:, client: nil, llm: true, needs: nil)
       @kind = kind.to_s
       @text = text.to_s.strip.first(MAX_TEXT).to_s
       @client = client
       @llm = llm
+      @needs = needs&.map(&:to_s)
     end
 
     def call
@@ -75,7 +84,8 @@ module CrmCards
     def schema = Schema.for(@kind)
 
     def missing_required(values)
-      schema.select { |f| f.required && values[f.key].blank? }.map(&:key)
+      keys = @needs || schema.select(&:required).map(&:key)
+      keys.select { |key| values[key].blank? }
     end
 
     # Значение остаётся, только если проходит обычную проверку поля.
@@ -95,11 +105,27 @@ module CrmCards
       values[key(:phone)] = phones.first if phones.first
       values[key(:phone_extra)] = phones[1] if phones[1] && key(:phone_extra)
       values[key(:name)] = name if name
-      values['action'] = ACTION_WORDS.find { |_, re| @text.match?(re) }&.first
+      values['action'] = action
       values[key(:realty)] = REALTY_WORDS.find { |_, re| @text.match?(re) }&.first
       values['realty_id'] = @text[REALTY_ID, 1] if @kind == 'lead'
-      values['comment'] = @text.squish if @kind == 'lead'
+      values['comment'] = comment if @kind == 'lead'
       values.compact
+    end
+
+    # Совпали обе стороны сделки — не угадываем: «сейчас снимает, хочет купить»
+    # одинаково похоже на аренду и на покупку. Пустое поле мастер спросит,
+    # а неверно угаданное само же свой вопрос и погасит.
+    def action
+      matched = ACTION_WORDS.select { |_, re| @text.match?(re) }.keys
+      matched.first if matched.one?
+    end
+
+    # Вставка длиннее лимита поля иначе не прошла бы проверку и молча пропала,
+    # а следом — платный вызов модели за «недостающее» обязательное поле.
+    def comment
+      limit = schema.find { |f| f.key == 'comment' }&.max
+      text = @text.squish
+      limit ? text.truncate(limit) : text
     end
 
     # Одно и то же по смыслу поле называется в заявке и в объекте по-разному.
@@ -132,7 +158,12 @@ module CrmCards
       )
       parsed = JSON.parse(response[:content].to_s)
       { values: parsed.is_a?(Hash) ? parsed : {}, model: response[:model] }
-    rescue JSON::ParserError, Llm::OmniClient::Error => e
+    # StandardError целиком, а не только OmniClient::Error: клиент перевыбрасывает
+    # ошибку последней модели в цепочке как есть, и сетевая (Socket::ResolutionError,
+    # таймаут) проходила мимо узкого rescue. Тогда падал весь шаг мастера, а сотрудник
+    # не получал вообще ничего — ни разбора, ни отказа. Так и было в песочнице, где
+    # адрес моделей заведомо нерабочий.
+    rescue StandardError => e
       Rails.logger.warn("[CrmCards::TextIntake] #{e.class}: #{e.message}")
       { values: {}, error: 'Разобрать текст моделью не удалось — заполним по шагам.' }
     end

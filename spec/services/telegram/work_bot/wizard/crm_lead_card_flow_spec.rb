@@ -77,19 +77,38 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
                                             'action' => 'rent', 'object_type' => 'room')
   end
 
-  it 'лид из вставленного текста: карточка собрана целиком, мастер сразу предлагает проверку' do
+  it 'из текста лида берём тип сделки и объекта, но итог разговора спрашиваем всегда' do
     lead.update!(metadata: lead.metadata.merge('summary' => 'Ищет однокомнатную в центре, снять на долгий срок'))
 
     tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    press('Заполню по шагам', user: agent)
 
+    # Текст, который клиент написал о себе сам, подтверждением разговора не является.
+    expect(last_text).to include('Итог разговора с клиентом?')
+
+    say('Созвонились, подтвердила бюджет 25 тысяч и переезд в октябре', user: agent)
     expect(last_text).to include('Сохранить карточку заявки?')
 
     expect { press('Сохранить', user: agent) }.to change(CrmCard, :count).by(1)
     card = CrmCard.last
     expect(card.payload).to include('action' => 'rent', 'object_type' => 'flat')
-    expect(card.payload['comment']).to include('однокомнатную')
+    expect(card.payload['comment']).to include('Созвонились')
     expect(last_text).to include('✅ пройдена')
     expect(last_callbacks).to include("crm_card:#{card.id}:submit")
+  end
+
+  it 'телефон из текста лида не подменяет тот, с которым лид пришёл' do
+    lead.update!(metadata: lead.metadata.merge(
+      'phone' => '79101112233',
+      'summary' => 'Перезвонить на 8 920 333-44-55, это телефон мужа, хочет снять квартиру'
+    ))
+
+    tap_callback("wiz:s:crm_lead:#{lead.id}", user: agent)
+    press('Заполню по шагам', user: agent)
+    say('Созвонились, подтвердил бюджет и сроки', user: agent)
+    press('Сохранить', user: agent)
+
+    expect(CrmCard.last.payload['phone']).to eq('79101112233')
   end
 
   it 'в тексте нашлось не всё — мастер спрашивает только недостающее' do

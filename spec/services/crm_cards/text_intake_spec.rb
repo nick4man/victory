@@ -80,4 +80,61 @@ RSpec.describe CrmCards::TextIntake do
     expect(result.values).to include('owner_name' => 'Пётр Иванов', 'owner_phone' => '79105550055',
                                      'action' => 'sale', 'realty_type' => 'garage')
   end
+
+  it 'модель уронила сеть — шаг не падает, сотрудник получает объяснение' do
+    # Клиент перевыбрасывает ошибку последней модели как есть, а не свою:
+    # в песочнице это Socket::ResolutionError, в проде — таймаут.
+    allow(llm).to receive(:complete).and_raise(Socket::ResolutionError, 'llm.invalid')
+
+    result = described_class.call(kind: 'lead', text: 'Сдаёт комнату, звонить на 89105550044', client: llm)
+
+    expect(result.values).to include('phone' => '79105550044', 'action' => 'rent')
+    expect(result.error).to include('заполним по шагам')
+  end
+
+  it 'телефон в конце строки не слипается со следующей' do
+    text = "Клиент: Анна Смирнова\n+7 910 555-00-11\n2-комнатная, до 6 млн, купить"
+
+    result = described_class.call(kind: 'lead', text: text, client: llm)
+
+    expect(result.values).to include('phone' => '79105550011')
+  end
+
+  it '«рядом» — это не дом' do
+    result = described_class.call(
+      kind: 'lead', client: llm,
+      text: 'Пётр Иванов 89105550022 хочет купить участок рядом с лесом, 8 соток'
+    )
+
+    expect(result.values).to include('object_type' => 'land')
+  end
+
+  it 'в тексте и аренда, и покупка — тип сделки не угадываем, его спросит мастер' do
+    allow(llm).to receive(:complete).and_return({ content: '{}', model: 'free/model' })
+
+    result = described_class.call(
+      kind: 'lead', client: llm,
+      text: 'Анна Смирнова 89105550022: сейчас снимает квартиру, хочет купить свою двушку'
+    )
+
+    expect(result.values).not_to have_key('action')
+  end
+
+  it 'длинная вставка обрезается до лимита поля, а не пропадает целиком' do
+    text = "Анна Смирнова 89105550022 хочет снять квартиру. #{'подробности переписки ' * 60}"
+
+    result = described_class.call(kind: 'lead', text: text, client: llm)
+
+    expect(result.values['comment']).to be_present
+    expect(result.values['comment'].length).to be <= 500
+  end
+
+  it 'звавшему хватает имени и телефона — модель не зовётся' do
+    expect(llm).not_to receive(:complete)
+
+    result = described_class.call(kind: 'lead', client: llm, needs: %w[name phone],
+                                  text: 'Анна Смирнова, телефон 89105550022')
+
+    expect(result.values).to include('name' => 'Анна Смирнова', 'phone' => '79105550022')
+  end
 end
