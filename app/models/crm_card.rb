@@ -12,6 +12,9 @@ class CrmCard < ApplicationRecord
   belongs_to :lead_event, optional: true
   belongs_to :author,   class_name: 'TelegramUser'
   belongs_to :reviewer, class_name: 'TelegramUser', optional: true
+  # Кто разрешил выгрузку в CRM (право export). Одобрение и разрешение —
+  # разные решения разных людей, поэтому и поле отдельное от reviewer.
+  belongs_to :released_by, class_name: 'TelegramUser', optional: true
   has_many :transitions, -> { order(:created_at, :id) },
            class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
 
@@ -24,7 +27,7 @@ class CrmCard < ApplicationRecord
     draft: 'draft',                   # черновик — заполняет автор
     needs_rework: 'needs_rework',     # возвращена модератором с комментарием
     pending_review: 'pending_review', # на модерации
-    approved: 'approved',             # одобрена, ждёт выгрузки
+    approved: 'approved',             # одобрена; ждёт разрешения руководителя, затем выгрузки
     exporting: 'exporting',           # выгрузка идёт прямо сейчас
     exported: 'exported',             # в CRM, crm_id известен
     export_failed: 'export_failed'    # выгрузка не удалась, ждёт повтора модератором
@@ -66,10 +69,27 @@ class CrmCard < ApplicationRecord
 
   # Заявка, застрявшая дольше EXPORT_STALE_AFTER: процесс упал между
   # захватом статуса и ответом CRM (exporting) или джоб не встал в очередь
-  # после одобрения (approved). Модератору нужна кнопка повтора, иначе
-  # такую карточку не сдвинуть ничем.
+  # после разрешения выгрузки (approved). Модератору нужна кнопка повтора,
+  # иначе такую карточку не сдвинуть ничем.
+  #
+  # Одобренная, но ещё не разрешённая карточка застрявшей НЕ считается:
+  # она ровно этого и ждёт — решения руководителя, а оно берёт столько
+  # времени, сколько нужно человеку.
   def export_stale?
-    kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
+    return false unless kind_lead? && updated_at < EXPORT_STALE_AFTER.ago
+
+    status_exporting? || (status_approved? && released_at.present?)
+  end
+
+  # Отпечаток того, что человек видит перед выгрузкой. Сюда входит всё, что
+  # уйдёт в CRM или влияет на решение: поля карточки, ответственный и состояние
+  # лида. Руководитель подтверждает не «карточку вообще», а конкретное её
+  # состояние — и выгрузиться должно ровно оно.
+  def release_digest
+    lead = lead_event
+    parts = [payload.sort.to_h.to_json, responsible&.id, lead&.current_stage,
+             lead&.assigned_to_id, lead&.lead_ref.try(:crm_id)]
+    Digest::SHA256.hexdigest(parts.join('|'))[0, 16]
   end
 
   # Кто отвечает за карточку сейчас. У заявки — текущий ответственный по

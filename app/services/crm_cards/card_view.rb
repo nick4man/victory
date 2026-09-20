@@ -55,21 +55,35 @@ module CrmCards
       case card.status
       when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
       when 'pending_review' then moderator_rows(card) if moderator
-      when 'approved' then approved_rows(card, owner, moderator)
+      when 'approved' then approved_rows(card, owner, moderator, perms)
       when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
       when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead? && card.crm_id.blank?
       end || []
     end
 
-    # Объект вносит в CRM ответственный; заявка, не ушедшая в выгрузку за
-    # 15 минут (джоб не встал в очередь), — повторяется модератором. Если
-    # crm_id уже проставлен, Workflow#retry_export! всё равно откажет
-    # (заявка уже создана в CRM) — кнопку, которая всегда отвечает «нельзя»,
-    # не показываем вовсе (см. CardView doc-comment).
-    def approved_rows(card, owner, moderator)
-      return [[button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")]] if card.kind_object? && (owner || moderator)
+    # Одобренная карточка ждёт решения руководителя: до него никаких кнопок
+    # выгрузки у автора нет. После разрешения объект вносит в CRM ответственный;
+    # заявка, не ушедшая в выгрузку за 15 минут (джоб не встал в очередь), —
+    # повторяется модератором. Если crm_id уже проставлен, Workflow#retry_export!
+    # всё равно откажет (заявка уже создана в CRM) — кнопку, которая всегда
+    # отвечает «нельзя», не показываем вовсе (см. CardView doc-comment).
+    def approved_rows(card, owner, moderator, perms)
+      rows = []
+      if card.released_at.blank?
+        rows << [button(release_label(card), "wiz:s:crm_release:#{card.id}")] if perms.can?(:export)
+        # Пока карточка не ушла в CRM, её ещё можно вернуть автору: за время
+        # ожидания решения лид мог закрыться, и выгружать станет нечего.
+        rows << [button('↩️ На доработку', "wiz:s:crm_rework:#{card.id}")] if moderator
+        return rows
+      end
 
-      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
+      rows << [button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")] if card.kind_object? && (owner || moderator)
+      rows << [button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")] if moderator && card.export_stale? && card.crm_id.blank?
+      rows
+    end
+
+    def release_label(card)
+      card.kind_lead? ? '📤 Выгрузить в CRM' : '📤 Разрешить внесение'
     end
 
     def author_rows(card)
@@ -110,11 +124,17 @@ module CrmCards
         card.check_errors.map { |e| "• #{escape(error_label(card, e['field']))}: #{escape(e['message'])}" }
     end
 
+    AWAITING_RELEASE_HINT = '⏳ Одобрена. Ждёт решения руководителя о выгрузке в CRM — вносить ничего не нужно.'
+
     def status_lines(card)
       case card.status
       when 'needs_rework'
         ['', "↩️ <b>Вернули на доработку</b> #{escape(card.reviewer&.mention)}: #{escape(card.last_rework_comment)}"]
       when 'approved'
+        # Пока руководитель не разрешил выгрузку, звать автора вносить объект
+        # в CRM нельзя: кнопки «Внесено в CRM» у него ещё нет, а внесёт он по
+        # этой подсказке руками — и разрешение окажется ни при чём.
+        return ['', AWAITING_RELEASE_HINT] if card.released_at.blank?
         return ['', MANUAL_EXPORT_HINT] if card.kind_object?
 
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []

@@ -40,6 +40,8 @@ RSpec.describe 'модерация карточки CRM в Telegram' do
     press('На доработку', user: director, message: last_dm_to(director))
     expect(last_text).to include("Что доработать в карточке ##{card.id}?")
     say('Уточни бюджет и срок покупки', user: director)
+    # Подтверждение называет карточку и автора — промах по кнопке виден заранее.
+    expect(last_text).to include("Вернуть карточку ##{card.id} автору @irina")
     press('Вернуть', user: director)
     expect(card.reload).to be_status_needs_rework
     expect(last_dm_to(agent)[:text]).to include('вернулась на доработку', 'Уточни бюджет и срок покупки')
@@ -48,9 +50,16 @@ RSpec.describe 'модерация карточки CRM в Telegram' do
     expect(card.reload).to be_status_pending_review
 
     tap_callback("wiz:s:crm_approve:#{card.id}", user: director)
-    expect(last_text).to include('Ответственным в CRM станет @irina')
-    expect { press('Одобрить', user: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+    expect(last_text).to include("карточке ##{card.id}", '@irina')
+    # Одобрение само в CRM не отправляет — это отдельное решение руководителя.
+    expect { press('Одобрить', user: director) }.not_to have_enqueued_job(CrmCards::ExportJob)
     expect(card.reload).to be_status_approved
+    expect(card.released_at).to be_nil
+
+    tap_callback("wiz:s:crm_release:#{card.id}", user: director)
+    expect(last_text).to include("карточке ##{card.id}", '@irina', 'Отменить запись в CRM нельзя')
+    expect { press('Выгрузить', user: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+    expect(card.reload.released_by_id).to eq(director.id)
   end
 
   it 'повторное нажатие «На модерацию» не создаёт второго перехода' do
