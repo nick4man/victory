@@ -12,6 +12,13 @@ RSpec.describe 'мастер не молчит на неожиданный вв�
   let(:sent) { [] }
 
   before do
+    # Сообщение, не предназначенное мастеру, идёт дальше по конвейеру и доходит
+    # до LLM-Q&A — в спеках сеть закрыта, отвечаем заглушкой.
+    stub_request(:post, %r{llm\.invalid}).to_return(
+      status: 200, headers: { 'Content-Type' => 'application/json' },
+      body: { 'choices' => [{ 'message' => { 'content' =>
+        '{"kind":"information","confidence":0.4,"reasoning":"тест"}' } }] }.to_json
+    )
     allow_any_instance_of(Telegram::Client).to receive(:send_message) do |_c, text, **opts|
       sent << { text: text, chat_id: opts[:chat_id] }
       { 'message_id' => sent.size }
@@ -28,10 +35,36 @@ RSpec.describe 'мастер не молчит на неожиданный вв�
     staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_lead', 'bot' => 'main' },
                               step: 'name', ttl: 1.second)
     travel_to(2.minutes.from_now) do
-      expect(process(dm('text' => 'Анна Смирнова'))).to eq(:handled)
+      # Сообщение не съедаем: если это был не ответ мастеру, а обычный вопрос,
+      # он должен дойти до того, кто на него ответит.
+      expect(process(dm('text' => 'Анна Смирнова'))).not_to eq(:handled)
     end
 
-    expect(sent.last[:text]).to include('Мастер истёк', '/menu')
+    # Дальше по конвейеру бот отвечает и на сам вопрос — нас интересует, что
+    # про истёкший мастер он сказал.
+    expect(sent.map { |m| m[:text] }.join("\n")).to include('Мастер истёк', '/menu')
+  end
+
+  it 'след старше часа молчит и пропадает сам' do
+    staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_lead', 'bot' => 'main' },
+                              step: 'name', ttl: 1.second)
+    travel_to(2.minutes.from_now) { staff.pending_action } # след появился
+    travel_to(3.hours.from_now) do
+      expect(Telegram::WorkBot::Wizard::Engine.expired_notice(staff.reload)).to be_nil
+      staff.pending_action
+      expect(staff.reload.dm_pending_action).to eq({})
+    end
+  end
+
+  it 'след мастера песочницы рабочий бот не озвучивает' do
+    staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_lead', 'bot' => 'test' },
+                              step: 'name', ttl: 1.second)
+    travel_to(2.minutes.from_now) do
+      staff.pending_action
+
+      expect(Telegram::WorkBot::Wizard::Engine.expired_notice(staff.reload)).to be_nil
+      expect(staff.reload.expired_action).to be_present
+    end
   end
 
   it 'про истёкший мастер говорим один раз — след одноразовый' do
