@@ -81,6 +81,17 @@ class CrmCard < ApplicationRecord
     status_exporting? || (status_approved? && released_at.present?)
   end
 
+  # Отпечаток того, что человек видит перед выгрузкой. Сюда входит всё, что
+  # уйдёт в CRM или влияет на решение: поля карточки, ответственный и состояние
+  # лида. Руководитель подтверждает не «карточку вообще», а конкретное её
+  # состояние — и выгрузиться должно ровно оно.
+  def release_digest
+    lead = lead_event
+    parts = [payload.sort.to_h.to_json, responsible&.id, lead&.current_stage,
+             lead&.assigned_to_id, lead&.lead_ref.try(:crm_id)]
+    Digest::SHA256.hexdigest(parts.join('|'))[0, 16]
+  end
+
   # Кто отвечает за карточку сейчас. У заявки — текущий ответственный по
   # лиду: его назначают /assign, и он же станет ответственным в CRM, даже
   # если карточку заполнял предыдущий. У объекта — автор.

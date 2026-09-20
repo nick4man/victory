@@ -168,16 +168,26 @@ RSpec.describe CrmCards::Workflow do
         .not_to have_enqueued_job(CrmCards::ExportJob)
     end
 
-    it 'клиента завели в CRM, пока карточка ждала решения, — выгрузить нельзя' do
+    it 'лид изменился после показа подтверждения — выгрузки нет, решать заново' do
       workflow.approve!(card, actor: director)
-      # Между одобрением и решением руководителя проходят часы и дни: за это
-      # время клиента могли внести в CRM руками. Вторая заявка — дубль.
-      lead.lead_ref.update!(crm_id: '4455')
+      seen = card.reload.release_digest
+      # Пока руководитель думал, лид закрыли. Подтверждал он не это.
+      lead.update!(current_stage: 'closed_lost')
 
-      result = workflow.release_for_export!(card.reload, actor: director)
+      result = workflow.release_for_export!(card.reload, actor: director, expected: seen)
 
-      expect(result.error).to include('больше не проходит')
+      expect(result.error).to include('изменилась после того, как ты её открыл')
       expect(card.reload.released_at).to be_nil
+    end
+
+    it 'замечания по лиду выгрузку не запрещают — решение за человеком' do
+      workflow.approve!(card, actor: director)
+      lead.update!(current_stage: 'closed_lost')
+      # Отпечаток снят уже после изменения: руководитель видит замечания и решает сам.
+      seen = card.reload.release_digest
+
+      expect(workflow.release_for_export!(card.reload, actor: director, expected: seen)).to be_ok
+      expect(card.reload.released_at).to be_present
     end
 
     it 'одобренную карточку, пока она не ушла в CRM, можно вернуть автору' do
