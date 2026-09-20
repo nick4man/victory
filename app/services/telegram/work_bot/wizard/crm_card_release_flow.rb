@@ -15,9 +15,13 @@ module Telegram
 
         flow 'crm_release', 'Разрешить выгрузку карточки в CRM'
 
+        # :choice с одной кнопкой, а не :confirm: в значении кнопки уезжает
+        # отпечаток карточки на момент показа. Нажатие возвращает его обратно,
+        # и Workflow сверяет — выгрузится ровно то, что человек видел.
         def steps
-          [Flow::Step.new(id: 'confirm', kind: :confirm, prompt: confirm_prompt,
-                          confirm_label: card&.kind_lead? ? '📤 Выгрузить' : '📤 Разрешить')]
+          label = card&.kind_lead? ? '📤 Выгрузить' : '📤 Разрешить'
+          [Flow::Step.new(id: 'confirm', kind: :choice, prompt: confirm_prompt,
+                          options: [[label, card&.release_digest.to_s]], per_row: 1)]
         end
 
         def gate
@@ -35,7 +39,7 @@ module Telegram
         def finish
           return { text: '⚠️ Карточка не найдена — ничего не выгружено.' } unless card
 
-          result = workflow.release_for_export!(card, actor: tg_user)
+          result = workflow.release_for_export!(card, actor: tg_user, expected: ctx['confirm'])
           return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
 
           done = if card.kind_lead?
@@ -56,10 +60,23 @@ module Telegram
 
           who = escape_html(card.responsible&.mention.to_s)
           approved_by = escape_html(card.reviewer&.mention.to_s)
-          return "Разрешить внести объект по карточке ##{card.id} (#{who}) в CRM?\nОдобрил: #{approved_by}." if card.kind_object?
+          head = if card.kind_object?
+                   "Разрешить внести объект по карточке ##{card.id} (#{who}) в CRM?\nОдобрил: #{approved_by}."
+                 else
+                   "Выгрузить заявку по карточке ##{card.id} (#{who}) в CRM?\n" \
+                     "Одобрил: #{approved_by}. Отменить запись в CRM нельзя."
+                 end
+          [head, *warnings].join("\n")
+        end
 
-          "Выгрузить заявку по карточке ##{card.id} (#{who}) в CRM?\n" \
-            "Одобрил: #{approved_by}. Отменить запись в CRM нельзя."
+        # Что изменилось у лида, пока карточка ждала решения. Не запрет, а то,
+        # чего руководитель может не знать: решение всё равно за ним.
+        def warnings
+          problems = ::CrmCards::Checker.call(card)
+          return [] if problems.empty?
+
+          ['', '⚠️ Сейчас по лиду есть замечания — реши, выгружать ли:'] +
+            problems.map { |e| "• #{escape_html(e['message'])}" }
         end
       end
     end
