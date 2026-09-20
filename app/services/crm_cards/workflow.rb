@@ -107,8 +107,32 @@ module CrmCards
         ok(card)
       end
       if result.ok?
+        notifier.approved(card, exporters: exporters)
+      end
+      result
+    end
+
+    # Третья ступень: одобренная карточка уходит в CRM только по решению
+    # держателя права export. До него заявка не выгружается, а у объекта автор
+    # не видит кнопку «Внесено в CRM» — одобрение и отправка в CRM это разные
+    # решения, и принимают их разные люди.
+    def release_for_export!(card, actor:)
+      result = card.with_lock do
+        next deny(wrong_bot(card)) if wrong_bot(card)
+        perms = Permissions.for(actor)
+        next deny(perms.denial) if perms.denial
+        next deny('Решение о выгрузке в CRM принимает руководитель.') unless perms.can?(:export)
+        next deny("Карточка не одобрена (#{label(card)}).") unless card.status_approved?
+        next deny('Карточка уже отправлена в CRM.') if card.released_at.present?
+
+        card.update!(released_by: actor, released_at: Time.current)
+        card.transitions.create!(from_status: 'approved', to_status: 'approved',
+                                 actor: actor, comment: 'разрешена выгрузка')
+        ok(card)
+      end
+      if result.ok?
         ExportJob.perform_later(card.id) if card.kind_lead?
-        notifier.approved(card)
+        notifier.released(card)
       end
       result
     end
@@ -117,8 +141,12 @@ module CrmCards
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
     def export!(card)
       claimed = CrmCard.where(id: card.id, kind: 'lead', status: 'approved')
+                       .where.not(released_at: nil)
                        .update_all(status: 'exporting', updated_at: Time.current)
-      return deny('Карточка не ждёт выгрузки: не одобрена или её уже выгружает другой процесс.') unless claimed == 1
+      unless claimed == 1
+        return deny('Карточка не ждёт выгрузки: не одобрена, не разрешена руководителем ' \
+                    'или её уже выгружает другой процесс.')
+      end
 
       card.reload
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
@@ -154,6 +182,7 @@ module CrmCards
           allowed = perms.denial.nil? && (card.responsible&.id == actor.id || perms.can?(:moderate))
           next deny(perms.denial || 'Отметить внесение в CRM может автор карточки или модератор.') unless allowed
           next deny("Карточка не ждёт ручного внесения (#{label(card)}).") unless card.kind_object? && card.status_approved?
+          next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.released_at.blank?
         else
           next deny("Карточка не выгружается (#{label(card)}).") unless card.status_exporting?
         end
@@ -182,6 +211,8 @@ module CrmCards
       ExportJob.perform_later(card.id) if result.ok?
       result
     end
+
+    def exporters = Permissions.exporters
 
     def can_edit?(card, actor, perms = Permissions.for(actor))
       return false if perms.denial || wrong_bot(card)

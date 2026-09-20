@@ -18,8 +18,9 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardManualExportFlow do
   end
 
   it 'автор получает паспорт для внесения и отмечает номер карточки CRM' do
-    CrmCards::Notifier.new(client: tg_client).approved(card)
-    expect(last_text).to include('Объект одобрен', 'Внеси объект в CRM вручную', 'Собственник: Иванов Пётр')
+    card.update!(released_by: director, released_at: Time.current)
+    CrmCards::Notifier.new(client: tg_client).released(card)
+    expect(last_text).to include('разрешил внесение', 'Собственник: Иванов Пётр')
 
     press('Внесено в CRM', user: agent)
     say('номер 123', user: agent)
@@ -35,7 +36,8 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardManualExportFlow do
   it 'номер, уже отмеченный у другого объекта, не принимается' do
     CrmCard.create!(kind: 'object', author: agent, status: 'exported', export_mode: 'manual', crm_id: '998877',
                     payload: { 'owner_name' => 'Другой' })
-    CrmCards::Notifier.new(client: tg_client).approved(card)
+    card.update!(released_by: director, released_at: Time.current)
+    CrmCards::Notifier.new(client: tg_client).released(card)
 
     press('Внесено в CRM', user: agent)
     say('998877', user: agent)

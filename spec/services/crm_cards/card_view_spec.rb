@@ -94,7 +94,7 @@ RSpec.describe CrmCards::CardView do
   end
 
   it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do
-    card.update!(status: 'approved')
+    card.update!(status: 'approved', released_by: director, released_at: Time.current)
     card.update_columns(updated_at: 20.minutes.ago)
 
     expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])

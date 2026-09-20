@@ -91,11 +91,23 @@ RSpec.describe CrmCards::Notifier do
     expect { notifier.submitted(card, moderators: [director]) }.not_to raise_error
   end
 
-  it 'одобрение заявки: ответственному — что выгружаем в CRM' do
-    notifier.approved(card)
+  it 'одобрение заявки: ответственному — что карточка ждёт решения о выгрузке' do
+    notifier.approved(card, exporters: [director])
 
-    expect(sent.last[:chat_id]).to eq(agent.dm_chat_id)
-    expect(sent.last[:text]).to include('одобрена', 'выгружаю в CRM')
+    texts = sent.map { |m| m[:text] }
+    expect(texts.first).to include('одобрена', 'ждёт решения руководителя')
+    expect(sent.first[:chat_id]).to eq(agent.dm_chat_id)
+    # руководителю — та же карточка с кнопкой выгрузки
+    expect(texts.last).to include('Ждёт выгрузки в CRM')
+    expect(sent.last[:chat_id]).to eq(director.dm_chat_id)
+  end
+
+  it 'права выгрузки нет ни у кого — модератор узнаёт, что карточка застрянет' do
+    card.update!(reviewer: director)
+
+    notifier.approved(card, exporters: [])
+
+    expect(sent.last[:text]).to include('решение о выгрузке принять некому')
   end
 
   it 'одобрение объекта: автору — что внести в CRM руками' do
@@ -105,9 +117,9 @@ RSpec.describe CrmCards::Notifier do
     object_card = CrmCard.create!(kind: 'object', author: agent, status: 'pending_review', checked_at: Time.current,
                                   payload: {})
 
-    notifier.approved(object_card)
+    notifier.approved(object_card, exporters: [])
 
     expect(sent.last[:chat_id]).to eq(agent.dm_chat_id)
-    expect(sent.last[:text]).to include('Объект одобрен')
+    expect(sent.first[:text]).to include('одобрена', 'ждёт решения руководителя')
   end
 end
