@@ -31,6 +31,7 @@ module CrmCards
         lines << "#{field.label}: #{value.nil? ? '—' : escape(plain_value(field, value))}"
       end
       lines << ''
+      lines.concat(note_lines(card))
       lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
       lines.concat(status_lines(card))
@@ -52,13 +53,25 @@ module CrmCards
 
       moderator = perms.can?(:moderate)
       owner = card.responsible&.id == viewer.id
-      case card.status
-      when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
-      when 'pending_review' then moderator_rows(card) if moderator
-      when 'approved' then approved_rows(card, owner, moderator, perms)
-      when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
-      when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead? && card.crm_id.blank?
-      end || []
+      rows = case card.status
+             when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
+             when 'pending_review' then moderator_rows(card) if moderator
+             when 'approved' then approved_rows(card, owner, moderator, perms)
+             when 'exporting' then retry_rows(card, moderator)
+             # Сбой выгрузки — повтор без ожидания: ждать уже нечего.
+             when 'export_failed'
+               [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+                 moderator && card.kind_lead? && card.crm_id.blank?
+             end || []
+      # Заметку дописывают на любой стадии, включая уже выгруженную: работа с
+      # клиентом не заканчивается записью в CRM.
+      rows += [[button('📝 Добавить заметку', "wiz:s:crm_note:#{card.id}")]] if owner || moderator
+      rows
+    end
+
+    def retry_rows(card, moderator)
+      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+        moderator && card.export_stale? && card.crm_id.blank?
     end
 
     # Одобренная карточка ждёт решения руководителя: до него никаких кнопок
@@ -108,6 +121,24 @@ module CrmCards
     # сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
     # по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
     # явно (metadata['sandbox']) и предупреждения не получают.
+    # Последние записи — свежие сверху. Полная история у лида и в CRM;
+    # в карточке показываем столько, чтобы сообщение осталось читаемым.
+    NOTES_SHOWN = 3
+
+    def note_lines(card)
+      notes = card.notes.recent.limit(NOTES_SHOWN).to_a
+      return [] if notes.empty?
+
+      lines = ['📝 <b>Заметки</b>']
+      lines += notes.map do |n|
+        "• #{Formatters::DateFormat.fmt_dt(n.created_at)} #{escape(n.author_name)}: #{escape(n.note)}"
+      end
+      total = card.notes.count
+      lines << "<i>…всего записей: #{total}</i>" if total > NOTES_SHOWN
+      lines << ''
+      lines
+    end
+
     def staff_test_lines(card)
       lead = card.lead_event
       return [] unless lead&.staff_test? && lead.metadata.to_h['sandbox'] != true
