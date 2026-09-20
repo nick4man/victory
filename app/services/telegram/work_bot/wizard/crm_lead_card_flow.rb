@@ -159,13 +159,29 @@ module Telegram
           values['name'] = name if name.present? && name != 'Без имени'
           phone, error = ::CrmCards::FieldValue.phone(meta['phone'].to_s)
           values['phone'] = phone unless error
-          # Текст, вставленный при заведении лида, разбираем ещё раз — правилами,
-          # без модели: оттуда и итог разговора, и тип сделки с типом объекта.
-          values.merge!(::CrmCards::TextIntake.call(kind: 'lead', text: meta['summary'], llm: false).values) if
-            meta['summary'].present?
+          values.merge!(from_summary(meta['summary']))
           external_id = lead&.property&.external_id.to_s
           values['realty_id'] = external_id.to_i if external_id.match?(/\A\d+\z/)
           values
+        end
+
+        # Текст, с которым пришёл лид, разбираем правилами (без модели — платить
+        # за него второй раз не за что), но берём оттуда только тип сделки и
+        # объекта.
+        #
+        # Имя и телефон не берём: они пришли вместе с лидом и надёжнее выловленных
+        # из свободного текста — иначе «перезвонить на 8 920…, это телефон мужа»
+        # заменило бы номер клиента, и мастер об этом даже не спросил бы.
+        #
+        # «Итог разговора» — тем более: это подтверждение, что сотрудник с клиентом
+        # говорил. Текст, который клиент написал о себе сам, подтверждением быть не
+        # может, а заполненное поле сняло бы сам вопрос.
+        SUMMARY_KEYS = %w[action object_type].freeze
+
+        def from_summary(summary)
+          return {} if summary.blank?
+
+          ::CrmCards::TextIntake.call(kind: 'lead', text: summary, llm: false).values.slice(*SUMMARY_KEYS)
         end
       end
     end

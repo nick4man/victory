@@ -47,7 +47,9 @@ module Telegram
         end
 
         def accept(step, value, manual: false)
-          return accept_paste('lead', value) if step.id == 'paste'
+          # Тестовому лиду нужны только имя с телефоном — их правила берут сами,
+          # и звать ради них платную модель не за что.
+          return accept_paste('lead', value, needs: %w[name phone]) if step.id == 'paste'
 
           field = ::CrmCards::Schema.field('lead', step.id)
           field ? accept_field(field, value) : [value, nil]
