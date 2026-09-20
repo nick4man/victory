@@ -83,6 +83,14 @@ module Telegram
         return Telegram::WorkBot::OwnerIntakeProcessor.call(msg)
       end
 
+      # Мастер ждёт текстовый ответ, а пришёл стикер, фото или голосовое.
+      # Раньше такое сообщение уходило в тишину: человек не понимал, принято
+      # оно или мастер умер. Перехватываем до фото-режимов — пока идёт мастер,
+      # любое вложение относится к нему.
+      if (rt = workbot_wizard_non_text(msg))
+        return rt
+      end
+
       # Iter 60 — manager+ photo в DM → WorkBot photo disposition flow.
       # Должен проверяться РАНЬШЕ client_photo_intake (это перехватывает
       # только staff с manager_or_director?, agents падают дальше в client path).
@@ -388,6 +396,38 @@ module Telegram
       nil
     end
 
+    # Нетекстовое сообщение при живом мастере: объясняем, что ждём текст, и
+    # шаг не сбрасываем — человек ответит следующим сообщением.
+    # @return [Symbol, nil] :handled если перехвачено
+    def workbot_wizard_non_text(msg)
+      return nil unless msg.dig('chat', 'type') == 'private'
+      return nil if msg['text'].present?
+
+      tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
+      return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+
+      Telegram::Client.new.send_message(
+        "📎 Сейчас идёт мастер — он ждёт #{WIZARD_EXPECTS.fetch(attachment_kind(msg), 'текстовый ответ')}.\n" \
+        '<i>Шаг не сброшен: ответь сообщением, предыдущие ответы сохранены. Выйти — /cancel.</i>',
+        chat_id: tg_user.dm_chat_id || tg_user.tg_user_id, parse_mode: 'HTML'
+      )
+      :handled
+    rescue StandardError => e
+      Rails.logger.warn("[InboundProcessor#workbot_wizard_non_text] #{e.class}: #{e.message}")
+      :error
+    end
+
+    WIZARD_EXPECTS = {
+      'sticker' => 'текстовый ответ, а не стикер',
+      'photo' => 'текстовый ответ — фото к карточке пока не прикрепляются',
+      'voice' => 'текстовый ответ — голосовые в мастере пока не разбираются',
+      'document' => 'текстовый ответ, а не файл'
+    }.freeze
+
+    def attachment_kind(msg)
+      %w[sticker photo voice video_note audio document].find { |k| msg[k].present? }.to_s
+    end
+
     # @return [Symbol, nil] :handled если текст ушёл в активный мастер; nil — не наш кейс.
     def workbot_wizard_text(msg)
       return nil unless msg.dig('chat', 'type') == 'private'
@@ -399,6 +439,11 @@ module Telegram
       return nil if text.empty? || text.start_with?('/')
 
       tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
+      # Ответ пришёл, когда мастер уже истёк: молчать нельзя — человек ждёт.
+      if (notice = Telegram::WorkBot::Wizard::Engine.expired_notice(tg_user))
+        Telegram::Client.new.send_message(notice, chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+        return :handled
+      end
       return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
 
       Telegram::WorkBot::Wizard::Engine.new(tg_user: tg_user).text(text)

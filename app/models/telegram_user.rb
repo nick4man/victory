@@ -217,10 +217,14 @@ class TelegramUser < ApplicationRecord
     pa = dm_pending_action
     return nil if pa.blank?
 
+    # Хлебная крошка от протухшего состояния — не действие: отдавать её
+    # вызывающим нельзя, она нужна только чтобы сказать человеку «мастер истёк».
+    return nil if pa['type'].blank?
+
     expires_at = pa['expires_at'] || pa[:expires_at]
     expired = expires_at.present? && Time.iso8601(expires_at.to_s) < Time.current
     if expired
-      clear_pending_action!
+      expire_pending_action!(pa)
       return nil
     end
 
@@ -229,6 +233,23 @@ class TelegramUser < ApplicationRecord
     # Malformed expires_at — treat as expired для safety.
     clear_pending_action!
     nil
+  end
+
+  # Протухшее состояние не просто стираем, а оставляем след: иначе на ответ,
+  # пришедший через час, бот молчит, и человек не понимает, умер бот или так
+  # задумано. След одноразовый — его забирает тот, кто о нём расскажет.
+  def expire_pending_action!(previous)
+    crumb = { 'expired' => { 'type' => previous['type'].to_s, 'step' => previous['step'].to_s,
+                             'at' => Time.current.iso8601 } }
+    update_column(:dm_pending_action, crumb) # rubocop:disable Rails/SkipsModelValidations
+    nil
+  end
+
+  # @return [Hash, nil] след протухшего состояния. Не стираем: забрать его
+  # должен тот, кто о нём расскажет, — чужой след (фото-режим) не трогаем.
+  def expired_action
+    crumb = dm_pending_action.is_a?(Hash) ? dm_pending_action['expired'] : nil
+    crumb.presence
   end
 
   def clear_pending_action!
