@@ -168,6 +168,25 @@ RSpec.describe CrmCards::Workflow do
         .not_to have_enqueued_job(CrmCards::ExportJob)
     end
 
+    it 'клиента завели в CRM, пока карточка ждала решения, — выгрузить нельзя' do
+      workflow.approve!(card, actor: director)
+      # Между одобрением и решением руководителя проходят часы и дни: за это
+      # время клиента могли внести в CRM руками. Вторая заявка — дубль.
+      lead.lead_ref.update!(crm_id: '4455')
+
+      result = workflow.release_for_export!(card.reload, actor: director)
+
+      expect(result.error).to include('больше не проходит')
+      expect(card.reload.released_at).to be_nil
+    end
+
+    it 'одобренная, но не разрешённая карточка застрявшей не считается' do
+      workflow.approve!(card, actor: director)
+      card.reload.update_columns(updated_at: 20.minutes.ago)
+
+      expect(card.reload).not_to be_export_stale
+    end
+
     it 'одобренная, но не разрешённая заявка не выгружается' do
       workflow.approve!(card, actor: director)
 

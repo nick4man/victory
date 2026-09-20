@@ -36,11 +36,18 @@ module Telegram
 
         def sections(perms)
           list = [['📝 Мои карточки в работе', own_cards]]
-          if perms.can?(:moderate)
-            list << ['⏳ На модерации', ::CrmCard.in_current_bot.status_pending_review.order(:submitted_at).to_a]
-            list << ['⚠️ Сбои выгрузки', export_problems]
-          end
+          list << ['⏳ На модерации', ::CrmCard.in_current_bot.status_pending_review.order(:submitted_at).to_a] if
+            perms.can?(:moderate)
+          # Держателю права выгрузки нужен свой список: иначе одобренную карточку
+          # ему негде найти — только в том единственном уведомлении, которое он
+          # мог смахнуть.
+          list << ['📤 Ждут решения о выгрузке', awaiting_release] if perms.can?(:export)
+          list << ['⚠️ Сбои выгрузки', export_problems] if perms.can?(:moderate) || perms.can?(:export)
           list
+        end
+
+        def awaiting_release
+          ::CrmCard.in_current_bot.status_approved.where(released_at: nil).order(:reviewed_at).to_a
         end
 
         # «Мои» — по CrmCard#responsible, а не по author_id: заявку ведёт

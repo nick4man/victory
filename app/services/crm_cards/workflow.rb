@@ -123,7 +123,17 @@ module CrmCards
         next deny(perms.denial) if perms.denial
         next deny('Решение о выгрузке в CRM принимает руководитель.') unless perms.can?(:export)
         next deny("Карточка не одобрена (#{label(card)}).") unless card.status_approved?
-        next deny('Карточка уже отправлена в CRM.') if card.released_at.present?
+        next deny(already_released(card)) if card.released_at.present?
+
+        # Между одобрением и этим решением проходят часы и дни: клиента могли
+        # завести в CRM руками, лид — закрыть или переназначить. Раньше проверка
+        # стояла вплотную к постановке выгрузки в очередь, и окна не было.
+        refresh_check(card)
+        unless card.check_passed?
+          card.save!
+          next deny("Машинная проверка больше не проходит: #{card.check_errors.size} замеч. — " \
+                    'выгружать нельзя, верни карточку на доработку.')
+        end
 
         card.update!(released_by: actor, released_at: Time.current)
         card.transitions.create!(from_status: 'approved', to_status: 'approved',
@@ -213,6 +223,15 @@ module CrmCards
     end
 
     def exporters = Permissions.exporters
+
+    # У объекта разрешение ничего не отправляет — оно лишь открывает автору
+    # ручное внесение. Сказать «уже отправлена в CRM» значило бы объявить
+    # сделанным то, чего ещё никто не делал.
+    def already_released(card)
+      return 'Выгрузка этой заявки уже запущена.' if card.kind_lead?
+
+      "Внесение уже разрешено — объект ждёт номера от #{card.responsible&.mention}."
+    end
 
     def can_edit?(card, actor, perms = Permissions.for(actor))
       return false if perms.denial || wrong_bot(card)

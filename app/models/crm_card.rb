@@ -69,10 +69,16 @@ class CrmCard < ApplicationRecord
 
   # Заявка, застрявшая дольше EXPORT_STALE_AFTER: процесс упал между
   # захватом статуса и ответом CRM (exporting) или джоб не встал в очередь
-  # после одобрения (approved). Модератору нужна кнопка повтора, иначе
-  # такую карточку не сдвинуть ничем.
+  # после разрешения выгрузки (approved). Модератору нужна кнопка повтора,
+  # иначе такую карточку не сдвинуть ничем.
+  #
+  # Одобренная, но ещё не разрешённая карточка застрявшей НЕ считается:
+  # она ровно этого и ждёт — решения руководителя, а оно берёт столько
+  # времени, сколько нужно человеку.
   def export_stale?
-    kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
+    return false unless kind_lead? && updated_at < EXPORT_STALE_AFTER.ago
+
+    status_exporting? || (status_approved? && released_at.present?)
   end
 
   # Кто отвечает за карточку сейчас. У заявки — текущий ответственный по

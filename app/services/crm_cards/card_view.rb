@@ -121,11 +121,17 @@ module CrmCards
         card.check_errors.map { |e| "• #{escape(error_label(card, e['field']))}: #{escape(e['message'])}" }
     end
 
+    AWAITING_RELEASE_HINT = '⏳ Одобрена. Ждёт решения руководителя о выгрузке в CRM — вносить ничего не нужно.'
+
     def status_lines(card)
       case card.status
       when 'needs_rework'
         ['', "↩️ <b>Вернули на доработку</b> #{escape(card.reviewer&.mention)}: #{escape(card.last_rework_comment)}"]
       when 'approved'
+        # Пока руководитель не разрешил выгрузку, звать автора вносить объект
+        # в CRM нельзя: кнопки «Внесено в CRM» у него ещё нет, а внесёт он по
+        # этой подсказке руками — и разрешение окажется ни при чём.
+        return ['', AWAITING_RELEASE_HINT] if card.released_at.blank?
         return ['', MANUAL_EXPORT_HINT] if card.kind_object?
 
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
