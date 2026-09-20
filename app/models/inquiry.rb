@@ -316,10 +316,6 @@ class Inquiry < ApplicationRecord
     cancel!
   end
 
-  def synced_to_crm?
-    crm_id.present? && synced_to_crm_at.present?
-  end
-
   # Metadata helpers
   def set_metadata(key, value)
     self.metadata ||= {}

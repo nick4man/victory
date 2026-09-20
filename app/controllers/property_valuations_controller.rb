@@ -223,7 +223,7 @@ class PropertyValuationsController < ApplicationController
   def comparable_property_type_slug(pt)
     { 'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room' }[pt.to_s]
-  end  
+  end
 
   # Cost cap: 5 valuations per hour per IP. Soft-fail если Redis недоступен
   # (rescue ниже возвращает false → no rate-limit). Используем DB 1 как
