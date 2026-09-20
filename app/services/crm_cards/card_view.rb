@@ -35,6 +35,7 @@ module CrmCards
         lines << "#{field.label}: #{value.nil? ? '—' : escape(plain_value(field, value))}"
       end
       lines << ''
+      lines.concat(change_request_lines(card))
       lines.concat(note_lines(card))
       lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
@@ -73,7 +74,18 @@ module CrmCards
       # Заметку дописывают на любой стадии, включая уже выгруженную: работа с
       # клиентом не заканчивается записью в CRM.
       rows += [[button('📝 Добавить заметку', "wiz:s:crm_note:#{card.id}")]] if owner || moderator
+      rows += change_request_rows(card) if moderator
+      # Опубликованную карточку правит тот, кто её ведёт, — но через модерацию.
+      rows += [[button('✏️ Изменить поле', "wiz:s:crm_edit:#{card.id}")]] if
+        card.status_exported? && (owner || moderator)
       rows
+    end
+
+    def change_request_rows(card)
+      card.change_requests.status_pending.recent.map do |req|
+        label = Schema.field(card.kind, req.field)&.label || req.field
+        [button("✏️ Решить: #{label}", "wiz:s:crm_change:#{req.id}")]
+      end
     end
 
     def retry_rows(card, moderator)
@@ -122,6 +134,29 @@ module CrmCards
     def header(card)
       title = "📋 <b>#{KIND_TITLES[card.kind]} · карточка ##{card.id}</b>"
       card.lead_event_id ? "#{title} · лид ##{card.lead_event_id}" : title
+    end
+
+    # Открытые заявки на правку: пока модератор не решил, в карточке остаётся
+    # прежнее значение, и человек должен видеть, что правка висит.
+    def change_request_lines(card)
+      pending = card.change_requests.status_pending.recent.to_a
+      return [] if pending.empty?
+
+      lines = ['✏️ <b>Ждут согласования</b>']
+      lines += pending.map do |req|
+        field = Schema.field(card.kind, req.field)
+        label = field&.label || req.field
+        "• #{escape(label)}: «#{escape(request_value(field, req.old_value))}» → " \
+          "«#{escape(request_value(field, req.new_value))}» (#{escape(req.author.mention)})"
+      end
+      lines << ''
+      lines
+    end
+
+    def request_value(field, value)
+      return '—' if value.nil?
+
+      field ? plain_value(field, value).to_s : value.to_s
     end
 
     # Последние записи — свежие сверху. Полная история у лида и в CRM: в

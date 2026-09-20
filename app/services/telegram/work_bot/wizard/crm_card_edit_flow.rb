@@ -21,15 +21,25 @@ module Telegram
 
           list << field_step(chosen, id: 'value', prompt: "#{chosen.label} — новое значение?",
                                      clearable: !chosen.required)
-          list << Flow::Step.new(id: 'confirm', kind: :confirm, prompt: confirm_prompt, confirm_label: '💾 Сохранить')
+          list << Flow::Step.new(id: 'confirm', kind: :confirm, prompt: confirm_prompt,
+                                 confirm_label: published? ? '✏️ Отправить на согласование' : '💾 Сохранить')
         end
 
         def gate
           return '⚠️ Карточка не найдена.' unless card
+          return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
+          return nil if published? && participant?
           return nil if workflow.can_edit?(card, tg_user, permissions)
 
           "🚫 #{escape_html(workflow.edit_denial(card, permissions))}"
         end
+
+        # Карточка в CRM — поле меняется не сразу, а через модерацию: там уже
+        # запись в боевой базе, и правка «телефон не тот» должна быть кем-то
+        # согласована. Ход работы дописывается заметками и без модерации.
+        def published? = card.status_exported?
+
+        def participant? = card.responsible&.id == tg_user.id || permissions.can?(:moderate)
 
         def accept(step, value, manual: false)
           case step.id
@@ -43,7 +53,19 @@ module Telegram
           return { text: '⚠️ Карточка не найдена — ничего не изменено.' } unless card && chosen
 
           value = ctx['value'] == CLEAR ? nil : ctx['value']
+          return request_change(value) if published?
+
           result_view(workflow.update_fields!(card, { chosen.key => value }, actor: tg_user))
+        end
+
+        def request_change(value)
+          result = ::CrmCards::ChangeRequests
+                   .new(notifier: ::CrmCards::Notifier.new(client: client))
+                   .open!(card, actor: tg_user, field: chosen.key, value: value)
+          return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
+
+          { text: "✏️ Заявка на правку поля «#{escape_html(chosen.label)}» ушла модератору. " \
+                  'Пока он не решит, в карточке остаётся прежнее значение.' }
         end
 
         private
@@ -69,6 +91,11 @@ module Telegram
           return '' unless chosen && ctx.key?('value')
 
           shown = ctx['value'] == CLEAR ? 'очистить' : ::CrmCards::CardView.plain_value(chosen, ctx['value'])
+          if published?
+            return "Отправить на согласование «#{escape_html(chosen.label)}: #{escape_html(shown)}»?\n" \
+                   "Карточка ##{card.id} уже в CRM — поле изменится после решения модератора."
+          end
+
           "Сохранить «#{escape_html(chosen.label)}: #{escape_html(shown)}»?"
         end
       end
