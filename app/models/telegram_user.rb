@@ -219,7 +219,12 @@ class TelegramUser < ApplicationRecord
 
     # Хлебная крошка от протухшего состояния — не действие: отдавать её
     # вызывающим нельзя, она нужна только чтобы сказать человеку «мастер истёк».
-    return nil if pa['type'].blank?
+    # Невостребованная крошка сама убирается через CRUMB_TTL: иначе она лежала
+    # бы вечно и однажды ответила «мастер истёк» на обычный вопрос.
+    if pa['type'].blank?
+      drop_stale_crumb!(pa['expired'])
+      return nil
+    end
 
     expires_at = pa['expires_at'] || pa[:expires_at]
     expired = expires_at.present? && Time.iso8601(expires_at.to_s) < Time.current
@@ -238,22 +243,51 @@ class TelegramUser < ApplicationRecord
   # Протухшее состояние не просто стираем, а оставляем след: иначе на ответ,
   # пришедший через час, бот молчит, и человек не понимает, умер бот или так
   # задумано. След одноразовый — его забирает тот, кто о нём расскажет.
+  # Сколько живёт след: столько человек ещё помнит, что заполнял мастер.
+  CRUMB_TTL = 1.hour
+
   def expire_pending_action!(previous)
     crumb = { 'expired' => { 'type' => previous['type'].to_s, 'step' => previous['step'].to_s,
+                             'bot' => previous.dig('data', 'bot').presence || 'main',
                              'at' => Time.current.iso8601 } }
     update_column(:dm_pending_action, crumb) # rubocop:disable Rails/SkipsModelValidations
     nil
   end
 
-  # @return [Hash, nil] след протухшего состояния. Не стираем: забрать его
-  # должен тот, кто о нём расскажет, — чужой след (фото-режим) не трогаем.
+  # @return [Hash, nil] свежий след протухшего состояния. Не стираем: забрать
+  # его должен тот, кто о нём расскажет, — чужой след (фото-режим) не трогаем.
   def expired_action
     crumb = dm_pending_action.is_a?(Hash) ? dm_pending_action['expired'] : nil
-    crumb.presence
+    return nil if crumb.blank? || crumb_stale?(crumb)
+
+    crumb
+  end
+
+  # Забрать след может только тот, кто его прочитал: между чтением и стиранием
+  # человек мог начать новый мастер, и безусловное стирание убило бы его.
+  def take_expired_action!(crumb)
+    self.class.where(id: id)
+        .where("dm_pending_action->'expired'->>'at' = ?", crumb['at'].to_s)
+        .update_all(dm_pending_action: {}) # rubocop:disable Rails/SkipsModelValidations
   end
 
   def clear_pending_action!
     update_column(:dm_pending_action, {}) # rubocop:disable Rails/SkipsModelValidations
     nil
+  end
+
+  private
+
+  def crumb_stale?(crumb)
+    at = crumb['at'].to_s
+    at.blank? || Time.iso8601(at) < CRUMB_TTL.ago
+  rescue ArgumentError, TypeError
+    true
+  end
+
+  def drop_stale_crumb!(crumb)
+    return if crumb.blank? || !crumb_stale?(crumb)
+
+    clear_pending_action!
   end
 end

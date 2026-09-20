@@ -404,17 +404,34 @@ module Telegram
       return nil if msg['text'].present?
 
       tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
-      return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+      # Вложение после истечения мастера — тоже не тишина, но и не наш случай:
+      # сказали и пропустили дальше, там его ждут фото-режимы.
+      unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+        notify_wizard_expired(tg_user)
+        return nil
+      end
 
       Telegram::Client.new.send_message(
         "📎 Сейчас идёт мастер — он ждёт #{WIZARD_EXPECTS.fetch(attachment_kind(msg), 'текстовый ответ')}.\n" \
-        '<i>Шаг не сброшен: ответь сообщением, предыдущие ответы сохранены. Выйти — /cancel.</i>',
+        '<i>Шаг не сброшен: ответь сообщением, предыдущие ответы сохранены. ' \
+        'Выйти — кнопка «✖️ Отмена» под вопросом мастера.</i>',
         chat_id: tg_user.dm_chat_id || tg_user.tg_user_id, parse_mode: 'HTML'
       )
       :handled
     rescue StandardError => e
+      # Не съедаем сообщение: оно могло предназначаться фото-режиму или клиенту.
       Rails.logger.warn("[InboundProcessor#workbot_wizard_non_text] #{e.class}: #{e.message}")
-      :error
+      nil
+    end
+
+    # @return [void]
+    def notify_wizard_expired(tg_user)
+      notice = Telegram::WorkBot::Wizard::Engine.expired_notice(tg_user)
+      return if notice.blank?
+
+      Telegram::Client.new.send_message(notice, chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
+    rescue StandardError => e
+      Rails.logger.warn("[InboundProcessor#notify_wizard_expired] #{e.class}: #{e.message}")
     end
 
     WIZARD_EXPECTS = {
@@ -440,10 +457,9 @@ module Telegram
 
       tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
       # Ответ пришёл, когда мастер уже истёк: молчать нельзя — человек ждёт.
-      if (notice = Telegram::WorkBot::Wizard::Engine.expired_notice(tg_user))
-        Telegram::Client.new.send_message(notice, chat_id: tg_user.dm_chat_id || tg_user.tg_user_id)
-        return :handled
-      end
+      # Сообщение при этом НЕ съедаем: если это был не ответ мастеру, а обычный
+      # вопрос, он должен дойти до того, кто на него ответит.
+      notify_wizard_expired(tg_user)
       return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
 
       Telegram::WorkBot::Wizard::Engine.new(tg_user: tg_user).text(text)

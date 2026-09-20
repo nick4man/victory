@@ -75,14 +75,19 @@ module Telegram
           pa&.dig('type') == STATE_TYPE && (pa.dig('data', 'bot') || 'main') == current_bot
         end
 
-        # Мастер истёк, пока человек отвечал. Говорим об этом один раз — след
-        # одноразовый, поэтому повторное сообщение не придёт.
+        # Мастер истёк, пока человек отвечал. Говорим об этом один раз: след
+        # одноразовый и живёт час — дальше он молча пропадает, иначе однажды
+        # ответил бы «мастер истёк» на обычный вопрос через неделю.
+        #
+        # След своего бота: песочница не должна отвечать за рабочего бота и
+        # наоборот — состояние у них раздельное (см. .active?).
         # @return [String, nil] текст для человека
         def self.expired_notice(tg_user)
           crumb = tg_user&.expired_action
           return nil unless crumb.is_a?(Hash) && crumb['type'] == STATE_TYPE
+          return nil unless (crumb['bot'].presence || 'main') == current_bot
 
-          tg_user.clear_pending_action!
+          tg_user.take_expired_action!(crumb)
           '⌛ Мастер истёк — ответ пришёл слишком поздно, и шаг уже закрыт. ' \
             'Начни заново: /menu. Ничего из введённого не сохранилось.'
         end
