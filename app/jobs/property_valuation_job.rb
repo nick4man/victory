@@ -3,14 +3,14 @@
 # Async background worker for express valuation (POST /valuations).
 # Mirrors InvestmentAuditJob pattern — moves heavy compute out of the
 # request thread so user sees loader page сразу. Updates valuation status
-# at the end + emits the same downstream notifications (mailer + CRM +
+# at the end + emits the same downstream notifications (mailer +
 # Telegram staff dispatch) only когда status: :completed.
 #
 # Pipeline:
 #   1. PropertyEvaluationService.new(valuation).call — comp finder + hedonic + bootstrap
 #   2. On success → persist estimated_price/min/max/confidence/hedonic_data, status=completed
 #   3. Async mailer (если email указан)
-#   5. ExpressReportNotifier — staff TG group с HTML summary + attached PDF
+#   4. ExpressReportNotifier — staff TG group с HTML summary + attached PDF
 #
 # Если PropertyEvaluationService возвращает {success:false} или бросает
 # исключение — status=failed + evaluation_data[:error] для UI / debugging.

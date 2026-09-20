@@ -21,8 +21,6 @@ class ContactFormsController < ApplicationController
       InquiryMailer.new_inquiry_notification(@inquiry).deliver_later
       InquiryMailer.inquiry_confirmation(@inquiry).deliver_later if @inquiry.email.present?
       
-      # Send to CRM
-      
       # Track event
       track_event('quick_inquiry_submitted', {
         inquiry_id: @inquiry.id,
