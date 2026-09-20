@@ -705,6 +705,45 @@ ALTER SEQUENCE public.conversations_id_seq OWNED BY public.conversations.id;
 
 
 --
+-- Name: crm_card_change_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_card_change_requests (
+    id bigint NOT NULL,
+    crm_card_id bigint NOT NULL,
+    author_id bigint NOT NULL,
+    reviewer_id bigint,
+    field character varying NOT NULL,
+    old_value jsonb,
+    new_value jsonb,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    comment text,
+    reviewed_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: crm_card_change_requests_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.crm_card_change_requests_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crm_card_change_requests_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.crm_card_change_requests_id_seq OWNED BY public.crm_card_change_requests.id;
+
+
+--
 -- Name: crm_card_transitions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3355,6 +3394,13 @@ ALTER TABLE ONLY public.conversations ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: crm_card_change_requests id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests ALTER COLUMN id SET DEFAULT nextval('public.crm_card_change_requests_id_seq'::regclass);
+
+
+--
 -- Name: crm_card_transitions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3857,6 +3903,14 @@ ALTER TABLE ONLY public.client_documents
 
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_card_change_requests crm_card_change_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT crm_card_change_requests_pkey PRIMARY KEY (id);
 
 
 --
@@ -4914,6 +4968,34 @@ CREATE INDEX index_conversations_on_user_id ON public.conversations USING btree 
 --
 
 CREATE INDEX index_conversations_on_visitor_token ON public.conversations USING btree (visitor_token);
+
+
+--
+-- Name: index_crm_card_change_requests_on_author_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_author_id ON public.crm_card_change_requests USING btree (author_id);
+
+
+--
+-- Name: index_crm_card_change_requests_on_crm_card_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_crm_card_id ON public.crm_card_change_requests USING btree (crm_card_id);
+
+
+--
+-- Name: index_crm_card_change_requests_on_reviewer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_reviewer_id ON public.crm_card_change_requests USING btree (reviewer_id);
+
+
+--
+-- Name: index_crm_card_change_requests_pending_field; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_crm_card_change_requests_pending_field ON public.crm_card_change_requests USING btree (crm_card_id, field) WHERE ((status)::text = 'pending'::text);
 
 
 --
@@ -7320,6 +7402,14 @@ ALTER TABLE ONLY public.inquiries
 
 
 --
+-- Name: crm_card_change_requests fk_rails_19956590ab; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_19956590ab FOREIGN KEY (crm_card_id) REFERENCES public.crm_cards(id);
+
+
+--
 -- Name: messages fk_rails_1b38f09558; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7397,6 +7487,14 @@ ALTER TABLE ONLY public.price_histories
 
 ALTER TABLE ONLY public.properties
     ADD CONSTRAINT fk_rails_36e2ff0e8d FOREIGN KEY (moderated_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: crm_card_change_requests fk_rails_382ebfbe38; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_382ebfbe38 FOREIGN KEY (author_id) REFERENCES public.telegram_users(id);
 
 
 --
@@ -7840,6 +7938,14 @@ ALTER TABLE ONLY public.listing_consents
 
 
 --
+-- Name: crm_card_change_requests fk_rails_d9d1d2a4eb; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_d9d1d2a4eb FOREIGN KEY (reviewer_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: reviews fk_rails_e0f0178b9b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7926,6 +8032,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260920140000'),
 ('20260920030000'),
 ('20260914120200'),
 ('20260914120100'),

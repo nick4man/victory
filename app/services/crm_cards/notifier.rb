@@ -58,6 +58,31 @@ module CrmCards
       refresh_lead_anchor(card)
     end
 
+    # Правка опубликованной карточки: заявку видит модератор, решение — автор.
+    def change_requested(request, moderators:)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      head = "✏️ <b>Правка опубликованной карточки ##{card.id}</b> от #{escape(request.author.mention)}\n" \
+             "#{escape(label)}: «#{escape(request.old_value.to_s)}» → «#{escape(request.new_value.to_s)}»"
+      delivered = moderators.count { |m| deliver(m, head, card) }
+      return unless delivered.zero?
+
+      dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
+                         'Сообщи ему другим способом.')
+    end
+
+    def change_decided(request)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      text = if request.status_approved?
+               "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n" \
+                 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+             else
+               "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
+             end
+      dm(request.author, text)
+    end
+
     def exported(card, warning: nil)
       text = "🟢 <b>Карточка ##{card.id} в CRM:</b> #{escape(card.crm_id)}"
       text += "\n⚠️ #{escape(warning)}" if warning.present?
