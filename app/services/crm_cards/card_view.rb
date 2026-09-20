@@ -197,10 +197,10 @@ module CrmCards
     end
 
     def check_lines(card)
-      return ['🔍 Машинная проверка ещё не запускалась.'] if card.checked_at.nil?
-      return ['🔍 Машинная проверка: ✅ пройдена'] if card.check_errors.blank?
+      return ['🔍 Заполнение ещё не проверяли.'] if card.checked_at.nil?
+      return ['🔍 Проверил заполнение: всё на месте.'] if card.check_errors.blank?
 
-      ["🔍 Машинная проверка: ❌ #{card.check_errors.size} замеч."] +
+      ["🔍 Проверил заполнение — замечаний (#{card.check_errors.size}):"] +
         card.check_errors.map { |e| "• #{escape(error_label(card, e['field']))}: #{escape(e['message'])}" }
     end
 

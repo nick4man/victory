@@ -20,7 +20,9 @@ module Telegram
 
       COMMANDS = {
         '/help' => Commands::Help,
-        '/start' => Commands::Help, # alias TG default → /help (плюс side-effect dm_chat_id update)
+        # Первое впечатление нового сотрудника: меню с кнопками, а не простыня
+        # команд четырёх ролей. Полный справочник — /help.
+        '/start' => Commands::Start,
         # Интерактивное обучение боту — карточка уроков с кнопками в личке.
         '/tutorial' => Commands::Tutorial,
         # Меню «Что сделать?» — вход в пошаговые мастера кнопками.

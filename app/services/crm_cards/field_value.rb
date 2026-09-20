@@ -18,14 +18,20 @@ module CrmCards
       when :phone   then phone(raw)
       when :phone_extra then phone(raw, mobile: false)
       when :choice  then choice(field, raw)
-      when :integer then integer(raw)
+      when :integer then integer(raw, zero_ok: field.key == 'rooms')
       when :decimal then decimal(raw)
       else [nil, 'Неизвестный тип поля.']
       end
     end
 
+    # Теги в значении — почти всегда вставка из письма или попытка разметки.
+    # Не вырезаем молча (это исказило бы заметку по сделке) и не показываем
+    # дословно (они уедут в CRM как есть) — просим убрать.
+    TAG = %r{</?[a-zA-Z][a-zA-Z0-9]*(?:\s[^<>\n]*)?/?>}
+
     def text(field, raw)
       value = field.type == :text ? raw.to_s.strip : raw.to_s.squish
+      return [nil, 'Убери из текста угловые скобки — разметка в карточку не нужна.'] if value.match?(TAG)
       return [nil, "Слишком коротко: #{value.length} симв., нужно от #{field.min}."] if field.min && value.length < field.min
       return [nil, "Слишком длинно: #{value.length} симв., влезает #{field.max}."] if field.max && value.length > field.max
 
@@ -50,12 +56,23 @@ module CrmCards
       digits = "7#{digits}" if digits.length == 10 && digits.match?(/\A[349]/)
       digits = "7#{digits[1..]}" if digits.length == 11 && digits.start_with?('8')
       unless digits.match?(/\A7\d{10}\z/)
-        return [nil, "В номере #{digits.length} цифр, а нужно 11: +7 910 123-45-67 или 89101234567."]
+        return [nil, "В номере #{plural_digits(digits.length)}, а нужно 11: +7 910 123-45-67 или 89101234567."]
       end
       return [digits, nil] if !mobile || digits[1] == '9'
 
       [nil, "+7 #{digits[1..3]}… — это не мобильный: после +7 идёт 9. " \
             'Городской номер впиши вторым, в «Доп. телефон».']
+    end
+
+    # «1 цифра», «3 цифры», «11 цифр» — иначе отказ читается как машинный.
+    def plural_digits(count)
+      tail = count % 100
+      word = if (11..14).cover?(tail) then 'цифр'
+             elsif (tail % 10) == 1 then 'цифра'
+             elsif (2..4).cover?(tail % 10) then 'цифры'
+             else 'цифр'
+             end
+      "#{count} #{word}"
     end
 
     def choice(field, raw)
@@ -65,10 +82,12 @@ module CrmCards
       [nil, 'Такого варианта нет — выбери кнопкой.']
     end
 
-    def integer(raw)
+    # zero_ok — для комнат: студия это ноль комнат, и запрещать его значит
+    # заставлять сотрудника вписать неправду.
+    def integer(raw, zero_ok: false)
       value = raw.to_s.strip
       return [nil, 'Нужно целое число цифрами.'] unless value.match?(/\A\d+\z/)
-      return [nil, 'Число должно быть больше нуля.'] if value.to_i.zero?
+      return [nil, 'Число должно быть больше нуля.'] if value.to_i.zero? && !zero_ok
 
       [value.to_i, nil]
     end
