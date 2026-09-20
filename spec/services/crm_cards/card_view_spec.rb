@@ -36,7 +36,7 @@ RSpec.describe CrmCards::CardView do
                                 { 'field' => 'lead', 'message' => 'Лид закрыт' }])
 
     expect(described_class.render(card, viewer: agent)[:text])
-      .to include('не хватает (2)', '• Итог разговора с клиентом: Слишком коротко', '• Лид: Лид закрыт')
+      .to include('замечаний (2)', '• Итог разговора с клиентом: Слишком коротко', '• Лид: Лид закрыт')
   end
 
   it 'черновик с пройденной проверкой: автору — править и отправить' do

@@ -200,7 +200,7 @@ module CrmCards
       return ['🔍 Заполнение ещё не проверяли.'] if card.checked_at.nil?
       return ['🔍 Проверил заполнение: всё на месте.'] if card.check_errors.blank?
 
-      ["🔍 Проверил заполнение — не хватает (#{card.check_errors.size}):"] +
+      ["🔍 Проверил заполнение — замечаний (#{card.check_errors.size}):"] +
         card.check_errors.map { |e| "• #{escape(error_label(card, e['field']))}: #{escape(e['message'])}" }
     end
 

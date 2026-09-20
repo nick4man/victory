@@ -38,7 +38,10 @@ module CrmCards
       'garage' => /гараж|машиноместо/i
     }.freeze
 
-    NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)\s*[:\-—]\s*(.+)/i
+    # Ограничиваем запятой, точкой с запятой и концом строки: «Контакт - Анна
+    # Смирнова, хочет двушку до 6 млн» — имя здесь «Анна Смирнова», а не вся
+    # строка целиком.
+    NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
     # Имя без подписи — минимум два слова с заглавной в начале строки
     # («Анна Смирнова», «Пётр Иванов 8910…»). Одно слово не берём: «Сдаёт»,
     # «Хочет», «Звонил» с заглавной выглядят так же, как имя.
@@ -123,13 +126,29 @@ module CrmCards
     # Вставка длиннее лимита поля иначе не прошла бы проверку и молча пропала,
     # а следом — платный вызов модели за «недостающее» обязательное поле.
     # Дословную копию всей вставки в «итог разговора» не кладём: ФИО и телефон
-    # уже разложены по своим полям, и дублировать их в заметке незачем —
-    # модератор читает одно и то же трижды.
+    # уже разложены по своим полям. Убираем ровно то, что разобрали, а не всё
+    # похожее: цена «12 500 000 - 13 000 000» тоже выглядит как телефон, и
+    # слепая чистка вырезала бы бюджет — самое ценное в заметке.
     def comment
-      limit = schema.find { |f| f.key == 'comment' }&.max
-      text = @text.gsub(PHONE_CANDIDATE, ' ').gsub(NAME_LABEL, ' ').squish
-      text = @text.squish if text.length < MIN_TEXT
-      limit ? text.truncate(limit) : text
+      field = schema.find { |f| f.key == 'comment' }
+      stripped = without_known_values
+      # Осталось меньше, чем поле принимает, — лучше копия целиком, чем пусто:
+      # пустое обязательное поле потянет за собой платный вызов модели.
+      text = stripped.length >= field&.min.to_i ? stripped : @text.squish
+      field&.max ? text.truncate(field.max) : text
+    end
+
+    def without_known_values
+      text = @text.dup
+      accepted_phones.each { |run| text = text.sub(run, ' ') }
+      labelled = @text[NAME_LABEL, 1]&.strip
+      text = text.sub(labelled, ' ') if labelled.present?
+      text.squish
+    end
+
+    # Только те куски, которые прошли проверку телефона: остальное — числа.
+    def accepted_phones
+      @text.scan(PHONE_CANDIDATE).select { |candidate| FieldValue.phone(candidate, mobile: false).last.nil? }
     end
 
     # Одно и то же по смыслу поле называется в заявке и в объекте по-разному.
