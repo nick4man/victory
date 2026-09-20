@@ -27,6 +27,7 @@ module Telegram
 
         def gate
           return '⚠️ Карточка не найдена.' unless card
+          return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
           return nil if published? && participant?
           return nil if workflow.can_edit?(card, tg_user, permissions)
 

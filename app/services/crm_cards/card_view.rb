@@ -76,7 +76,8 @@ module CrmCards
       rows += [[button('📝 Добавить заметку', "wiz:s:crm_note:#{card.id}")]] if owner || moderator
       rows += change_request_rows(card) if moderator
       # Опубликованную карточку правит тот, кто её ведёт, — но через модерацию.
-      rows += [[button('✏️ Изменить поле', "wiz:s:crm_edit:#{card.id}")]] if card.status_exported? && owner
+      rows += [[button('✏️ Изменить поле', "wiz:s:crm_edit:#{card.id}")]] if
+        card.status_exported? && (owner || moderator)
       rows
     end
 
@@ -143,12 +144,19 @@ module CrmCards
 
       lines = ['✏️ <b>Ждут согласования</b>']
       lines += pending.map do |req|
-        label = Schema.field(card.kind, req.field)&.label || req.field
-        "• #{escape(label)}: «#{escape(req.old_value.to_s)}» → «#{escape(req.new_value.to_s)}» " \
-          "(#{escape(req.author.mention)})"
+        field = Schema.field(card.kind, req.field)
+        label = field&.label || req.field
+        "• #{escape(label)}: «#{escape(request_value(field, req.old_value))}» → " \
+          "«#{escape(request_value(field, req.new_value))}» (#{escape(req.author.mention)})"
       end
       lines << ''
       lines
+    end
+
+    def request_value(field, value)
+      return '—' if value.nil?
+
+      field ? plain_value(field, value).to_s : value.to_s
     end
 
     # Последние записи — свежие сверху. Полная история у лида и в CRM: в

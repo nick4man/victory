@@ -62,13 +62,24 @@ module CrmCards
     def change_requested(request, moderators:)
       card = request.crm_card
       label = Schema.field(card.kind, request.field)&.label || request.field
+      field = Schema.field(card.kind, request.field)
       head = "✏️ <b>Правка опубликованной карточки ##{card.id}</b> от #{escape(request.author.mention)}\n" \
-             "#{escape(label)}: «#{escape(request.old_value.to_s)}» → «#{escape(request.new_value.to_s)}»"
+             "#{escape(label)}: «#{escape(shown(field, request.old_value))}» → " \
+             "«#{escape(shown(field, request.new_value))}»"
       delivered = moderators.count { |m| deliver(m, head, card) }
-      return unless delivered.zero?
+      if moderators.empty?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но модераторов с доступом к CRM " \
+                           'нет — согласовать её некому. Сообщи директору.')
+      elsif delivered.zero?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
+                           'Сообщи ему другим способом.')
+      end
+    end
 
-      dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
-                         'Сообщи ему другим способом.')
+    # Заметку в CRM записать не удалось: обещать «там уже есть запись» нельзя.
+    def change_note_failed(request)
+      dm(request.reviewer, "⚠️ Правка по карточке ##{request.crm_card_id} принята, но записать заметку в CRM " \
+                           'не вышло. Скажи ответственному о согласовании другим способом.')
     end
 
     def change_decided(request)
@@ -81,6 +92,13 @@ module CrmCards
                "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
              end
       dm(request.author, text)
+    end
+
+    # Значение — как в карточке: «Продажа», а не «sale», телефон с плюсом.
+    def shown(field, value)
+      return '—' if value.nil?
+
+      field ? CardView.plain_value(field, value).to_s : value.to_s
     end
 
     def exported(card, warning: nil)

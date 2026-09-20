@@ -12,6 +12,7 @@ module Telegram
 
         COMMENT_MIN = 5
         COMMENT_MAX = 500
+        VERDICTS = { 'approved' => 'принята', 'rejected' => 'отклонена' }.freeze
 
         def steps
           list = [Flow::Step.new(id: 'verdict', kind: :choice, per_row: 1, prompt: verdict_prompt,
@@ -27,7 +28,7 @@ module Telegram
           return '⚠️ Заявка на правку не найдена.' unless request
           return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
           return '🚫 Решение по заявке на правку принимает модератор.' unless permissions.can?(:moderate)
-          return "ℹ️ По заявке уже принято решение — #{request.status}." unless request.status_pending?
+          return "ℹ️ По этой заявке решение уже принято: #{VERDICTS[request.status]}." unless request.status_pending?
 
           nil
         end
@@ -58,19 +59,26 @@ module Telegram
 
         private
 
+        # ctx['request'] — id заявки, а не карточки: у CrmCardSupport#card свой
+        # ключ, и подменять его чужим числом нельзя — он молча вернул бы чужую
+        # карточку с тем же номером.
         def request
           return @request if defined?(@request)
 
-          @request = ::CrmCardChangeRequest.find_by(id: ctx['card'].to_s[/\A\d+\z/])
+          found = ::CrmCardChangeRequest.find_by(id: ctx['request'].to_s[/\A\d+\z/])
+          # Карточка песочницы решается в тестовом боте, боевая — в рабочем.
+          @request = found if found && found.crm_card.sandbox? == ::Telegram::BotContext.test?
         end
 
         def verdict_prompt
           return '' unless request
 
-          label = ::CrmCards::Schema.field(request.crm_card.kind, request.field)&.label || request.field
+          field = ::CrmCards::Schema.field(request.crm_card.kind, request.field)
+          was = ::CrmCards::CardView.plain_value(field, request.old_value) if field
+          now = ::CrmCards::CardView.plain_value(field, request.new_value) if field
           "Карточка ##{request.crm_card_id} уже в CRM. #{escape_html(request.author.mention)} просит изменить " \
-            "«#{escape_html(label)}»:\nбыло «#{escape_html(request.old_value.to_s)}» → " \
-            "стало «#{escape_html(request.new_value.to_s)}»."
+            "«#{escape_html(field&.label || request.field)}»:\nбыло «#{escape_html(was.to_s)}» → " \
+            "стало «#{escape_html(now.to_s)}»."
         end
       end
     end
