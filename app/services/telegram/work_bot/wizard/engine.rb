@@ -45,6 +45,7 @@ module Telegram
           'crm_rework' => 'Telegram::WorkBot::Wizard::CrmCardReworkFlow',
           'crm_approve' => 'Telegram::WorkBot::Wizard::CrmCardApproveFlow',
           'crm_release' => 'Telegram::WorkBot::Wizard::CrmCardReleaseFlow',
+          'crm_note' => 'Telegram::WorkBot::Wizard::CrmCardNoteFlow',
           'crm_object' => 'Telegram::WorkBot::Wizard::CrmObjectCardFlow',
           'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
           'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
@@ -53,7 +54,8 @@ module Telegram
         # Какой шаг получает id, пришедший с кнопкой на карточке.
         SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
                       'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
-                      'crm_approve' => 'card', 'crm_release' => 'card', 'crm_manual' => 'card' }.freeze
+                      'crm_approve' => 'card', 'crm_release' => 'card',
+                      'crm_note' => 'card', 'crm_manual' => 'card' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize

@@ -17,6 +17,8 @@ class CrmCard < ApplicationRecord
   belongs_to :released_by, class_name: 'TelegramUser', optional: true
   has_many :transitions, -> { order(:created_at, :id) },
            class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
+  # Ход работы с клиентом: дописывается без модерации, уходит в CRM заметкой.
+  has_many :notes, as: :notable, dependent: :destroy, inverse_of: :notable
 
   enum :kind, {
     lead: 'lead',    # заявка покупателя/арендатора → clientorder через import_client

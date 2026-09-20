@@ -75,7 +75,8 @@ RSpec.describe CrmCards::Notifier do
     notifier.export_failed(card)
 
     to_director = sent.find { |m| m[:chat_id] == director.dm_chat_id }
-    expect(to_director[:keyboard].flatten.map { |b| b[:callback_data] }).to eq(["crm_card:#{card.id}:retry"])
+    expect(to_director[:keyboard].flatten.map { |b| b[:callback_data] })
+      .to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
     expect(sent.find { |m| m[:chat_id] == agent.dm_chat_id }[:text]).to include('кнопка повтора')
   end
 
