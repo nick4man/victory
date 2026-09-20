@@ -14,7 +14,7 @@ module Telegram
         def steps
           [
             Flow::Step.new(id: 'crm_id', kind: :input, prompt: "Номер карточки объекта ##{ctx['card']} в CRM?",
-                           hint: 'Цифры из адреса карточки в Topnlab: …/object-card/<номер>.'),
+                           hint: 'Открой карточку объекта в CRM и скопируй цифры из конца адресной строки браузера.'),
             Flow::Step.new(id: 'confirm', kind: :confirm,
                            prompt: "Объект ##{ctx['card']} внесён в CRM под номером #{escape_html(ctx['crm_id'])}?",
                            confirm_label: '✅ Подтвердить')

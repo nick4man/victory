@@ -122,9 +122,13 @@ module CrmCards
 
     # Вставка длиннее лимита поля иначе не прошла бы проверку и молча пропала,
     # а следом — платный вызов модели за «недостающее» обязательное поле.
+    # Дословную копию всей вставки в «итог разговора» не кладём: ФИО и телефон
+    # уже разложены по своим полям, и дублировать их в заметке незачем —
+    # модератор читает одно и то же трижды.
     def comment
       limit = schema.find { |f| f.key == 'comment' }&.max
-      text = @text.squish
+      text = @text.gsub(PHONE_CANDIDATE, ' ').gsub(NAME_LABEL, ' ').squish
+      text = @text.squish if text.length < MIN_TEXT
       limit ? text.truncate(limit) : text
     end
 

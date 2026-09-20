@@ -27,7 +27,7 @@ RSpec.describe CrmCards::CardView do
 
     expect(text).to include("карточка ##{card.id}", "лид ##{lead.id}", 'Имя клиента: Анна &lt;b&gt;',
                             'Телефон: +7 910 123-45-67', 'Что нужно клиенту: Продажа / покупка',
-                            '✅ пройдена', 'Ответственный: @irina')
+                            'всё на месте', 'Ответственный: @irina')
     expect(text).not_to include('ID объекта в CRM')
   end
 
@@ -36,7 +36,7 @@ RSpec.describe CrmCards::CardView do
                                 { 'field' => 'lead', 'message' => 'Лид закрыт' }])
 
     expect(described_class.render(card, viewer: agent)[:text])
-      .to include('❌ 2 замеч.', '• Итог разговора с клиентом: Слишком коротко', '• Лид: Лид закрыт')
+      .to include('не хватает (2)', '• Итог разговора с клиентом: Слишком коротко', '• Лид: Лид закрыт')
   end
 
   it 'черновик с пройденной проверкой: автору — править и отправить' do
