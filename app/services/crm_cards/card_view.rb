@@ -71,6 +71,9 @@ module CrmCards
       rows = []
       if card.released_at.blank?
         rows << [button(release_label(card), "wiz:s:crm_release:#{card.id}")] if perms.can?(:export)
+        # Пока карточка не ушла в CRM, её ещё можно вернуть автору: за время
+        # ожидания решения лид мог закрыться, и выгружать станет нечего.
+        rows << [button('↩️ На доработку', "wiz:s:crm_rework:#{card.id}")] if moderator
         return rows
       end
 

@@ -77,7 +77,7 @@ module CrmCards
       result = card.with_lock do
         next deny(wrong_bot(card)) if wrong_bot(card)
         next deny(moderator_denial(actor, 'Возвращать на доработку')) unless moderator?(actor)
-        next deny(not_pending(card)) unless card.status_pending_review?
+        next deny(not_returnable(card)) unless returnable?(card)
         next deny('Нужен комментарий: что доработать.') if text.empty?
 
         transition!(card, to: 'needs_rework', actor: actor, comment: text)
@@ -320,6 +320,17 @@ module CrmCards
 
     def not_pending(card)
       "Карточка не на модерации (#{label(card)})."
+    end
+
+    # Одобренную, но ещё не выгруженную карточку тоже можно вернуть автору.
+    # Иначе она застревает намертво: за время ожидания решения руководителя
+    # лид мог закрыться, и тогда выгрузить её уже нельзя, а вернуть — некому.
+    def returnable?(card)
+      card.status_pending_review? || (card.status_approved? && card.released_at.blank?)
+    end
+
+    def not_returnable(card)
+      "Карточку в статусе «#{label(card)}» вернуть на доработку нельзя."
     end
 
     def label(card)

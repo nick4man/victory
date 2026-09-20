@@ -180,6 +180,24 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload.released_at).to be_nil
     end
 
+    it 'одобренную карточку, пока она не ушла в CRM, можно вернуть автору' do
+      workflow.approve!(card, actor: director)
+      lead.update!(current_stage: 'closed_lost')
+
+      result = workflow.return_for_rework!(card.reload, actor: director, comment: 'лид закрыли, карточка не нужна')
+
+      expect(result).to be_ok
+      expect(card.reload).to be_status_needs_rework
+    end
+
+    it 'ушедшую в CRM карточку вернуть уже нельзя' do
+      workflow.approve!(card, actor: director)
+      workflow.release_for_export!(card.reload, actor: director)
+
+      expect(workflow.return_for_rework!(card.reload, actor: director, comment: 'передумали').error)
+        .to include('вернуть на доработку нельзя')
+    end
+
     it 'одобренная, но не разрешённая карточка застрявшей не считается' do
       workflow.approve!(card, actor: director)
       card.reload.update_columns(updated_at: 20.minutes.ago)
