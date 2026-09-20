@@ -43,6 +43,8 @@ module Telegram
         '/objections' => Commands::Objections,
         # BOTTLENECK — торг на объекте: карточка руководителю до звонка.
         '/bargain' => Commands::Bargain,
+        # Карточки CRM через модерацию: черновики, очередь модератора, сбои выгрузки.
+        '/cards' => Commands::Cards,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,
