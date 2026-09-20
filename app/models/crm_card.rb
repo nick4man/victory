@@ -19,6 +19,8 @@ class CrmCard < ApplicationRecord
            class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
   # Ход работы с клиентом: дописывается без модерации, уходит в CRM заметкой.
   has_many :notes, as: :notable, dependent: :destroy, inverse_of: :notable
+  # Правка уже опубликованной карточки — только через модерацию.
+  has_many :change_requests, class_name: 'CrmCardChangeRequest', dependent: :destroy, inverse_of: :crm_card
 
   enum :kind, {
     lead: 'lead',    # заявка покупателя/арендатора → clientorder через import_client

@@ -8,9 +8,7 @@ module CrmCards
   # Только для личных сообщений: в тексте телефон клиента.
   module CardView
     KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
-    RETRY_HINT = 'Отказ детерминирован: CRM обработала запрос и отклонила заявку — повтор безопасен.'
-    VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
-                  'модератор привязывает номер кнопкой «Номер из CRM» (новый importClient не вызывается).'
+    RETRY_HINT = 'Если это таймаут — сначала найди клиента в CRM по телефону: заявка могла создаться.'
     MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
                          'Копию договора приложи в CRM. Затем нажми «Внесено в CRM» и введи номер карточки.'
 
@@ -37,6 +35,7 @@ module CrmCards
         lines << "#{field.label}: #{value.nil? ? '—' : escape(plain_value(field, value))}"
       end
       lines << ''
+      lines.concat(change_request_lines(card))
       lines.concat(note_lines(card))
       lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
@@ -66,28 +65,31 @@ module CrmCards
              when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
              when 'pending_review' then moderator_rows(card) if moderator
              when 'approved' then approved_rows(card, owner, moderator, perms)
-             when 'exporting'
-               # Исход неизвестен (lock не доказательство живости, ревью #210):
-               # новый importClient запрещён — только привязка номера, найденного
-               # в CRM после сверки (ревью PR #210, round 7).
-               [[button('📎 Номер из CRM', "wiz:s:crm_attach:#{card.id}")]] if moderator && card.export_stale? && card.crm_id.blank?
+             when 'exporting' then retry_rows(card, moderator)
+             # Сбой выгрузки — повтор без ожидания: ждать уже нечего.
              when 'export_failed'
-               # Неоднозначный сбой (ответ CRM потерялся) — привязка номера из CRM;
-               # отказ CRM — обычная кнопка повтора.
-               buttons = []
-               if moderator && card.kind_lead? && card.crm_id.blank?
-                 if card.export_retryable == false
-                   buttons << button('📎 Номер из CRM', "wiz:s:crm_attach:#{card.id}")
-                 else
-                   buttons << button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")
-                 end
-               end
-               buttons.any? ? [buttons] : []
+               [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+                 moderator && card.kind_lead? && card.crm_id.blank?
              end || []
       # Заметку дописывают на любой стадии, включая уже выгруженную: работа с
       # клиентом не заканчивается записью в CRM.
       rows += [[button('📝 Добавить заметку', "wiz:s:crm_note:#{card.id}")]] if owner || moderator
+      rows += change_request_rows(card) if moderator
+      # Опубликованную карточку правит тот, кто её ведёт, — но через модерацию.
+      rows += [[button('✏️ Изменить поле', "wiz:s:crm_edit:#{card.id}")]] if card.status_exported? && owner
       rows
+    end
+
+    def change_request_rows(card)
+      card.change_requests.status_pending.recent.map do |req|
+        label = Schema.field(card.kind, req.field)&.label || req.field
+        [button("✏️ Решить: #{label}", "wiz:s:crm_change:#{req.id}")]
+      end
+    end
+
+    def retry_rows(card, moderator)
+      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+        moderator && card.export_stale? && card.crm_id.blank?
     end
 
     # Одобренная карточка ждёт решения руководителя: до него никаких кнопок
@@ -131,6 +133,22 @@ module CrmCards
     def header(card)
       title = "📋 <b>#{KIND_TITLES[card.kind]} · карточка ##{card.id}</b>"
       card.lead_event_id ? "#{title} · лид ##{card.lead_event_id}" : title
+    end
+
+    # Открытые заявки на правку: пока модератор не решил, в карточке остаётся
+    # прежнее значение, и человек должен видеть, что правка висит.
+    def change_request_lines(card)
+      pending = card.change_requests.status_pending.recent.to_a
+      return [] if pending.empty?
+
+      lines = ['✏️ <b>Ждут согласования</b>']
+      lines += pending.map do |req|
+        label = Schema.field(card.kind, req.field)&.label || req.field
+        "• #{escape(label)}: «#{escape(req.old_value.to_s)}» → «#{escape(req.new_value.to_s)}» " \
+          "(#{escape(req.author.mention)})"
+      end
+      lines << ''
+      lines
     end
 
     # Последние записи — свежие сверху. Полная история у лида и в CRM: в
@@ -191,14 +209,13 @@ module CrmCards
         return ['', AWAITING_RELEASE_HINT] if card.released_at.blank?
         return ['', MANUAL_EXPORT_HINT] if card.kind_object?
 
-        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут: джоб не встал в очередь — попытка не начиналась, повтор безопасен."] : []
+        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
       when 'exporting'
-        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут — исход неизвестен. #{VERIFY_HINT}"] : []
+        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
       when 'exported'
         exported_lines(card)
       when 'export_failed'
-        hint = card.export_retryable == false ? VERIFY_HINT : RETRY_HINT
-        ['', "⚠️ <b>Выгрузка не удалась:</b> #{escape(card.export_error)}", "<i>#{hint}</i>"]
+        ['', "⚠️ <b>Выгрузка не удалась:</b> #{escape(card.export_error)}", "<i>#{RETRY_HINT}</i>"]
       else []
       end
     end
