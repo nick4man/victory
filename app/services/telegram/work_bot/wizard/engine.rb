@@ -75,6 +75,18 @@ module Telegram
           pa&.dig('type') == STATE_TYPE && (pa.dig('data', 'bot') || 'main') == current_bot
         end
 
+        # Мастер истёк, пока человек отвечал. Говорим об этом один раз — след
+        # одноразовый, поэтому повторное сообщение не придёт.
+        # @return [String, nil] текст для человека
+        def self.expired_notice(tg_user)
+          crumb = tg_user&.expired_action
+          return nil unless crumb.is_a?(Hash) && crumb['type'] == STATE_TYPE
+
+          tg_user.clear_pending_action!
+          '⌛ Мастер истёк — ответ пришёл слишком поздно, и шаг уже закрыт. ' \
+            'Начни заново: /menu. Ничего из введённого не сохранилось.'
+        end
+
         def self.current_bot
           Telegram::BotContext.bot || 'main'
         end
