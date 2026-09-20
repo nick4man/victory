@@ -241,7 +241,13 @@ module CrmCards
         sync_lead_ref!(card)
         ok(card)
       end
-      notifier.exported(card, warning: warning) if result.ok?
+      if result.ok?
+        # Заметки, написанные до попадания в CRM, отправляем теперь: до этой
+        # минуты их некуда было прикрепить, а копились они как раз тогда, когда
+        # с клиентом активно разговаривали.
+        Notes.flush_pending!(card)
+        notifier.exported(card, warning: warning)
+      end
       result
     rescue ActiveRecord::RecordNotUnique => e
       raise unless e.message.include?('idx_crm_cards_unique_exported_object_crm_id')

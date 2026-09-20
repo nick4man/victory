@@ -3,6 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe CrmCards::Notes do
+  let(:notifier) { instance_double(CrmCards::Notifier, exported: nil) }
   let!(:agent) { crm_staff(tg_user_id: 98_701, username: 'irina') }
   let!(:director) { crm_staff(tg_user_id: 98_702, username: 'oksana', position: '89884', role: 'director') }
   let(:card) { CrmCard.create!(kind: 'lead', author: agent, payload: { 'name' => 'Анна' }) }
@@ -58,5 +59,31 @@ RSpec.describe CrmCards::Notes do
   it 'пустая заметка не сохраняется' do
     expect(described_class.add!(card, actor: agent, text: ' ').error).to include('Слишком коротко')
     expect(card.reload.notes).to be_empty
+  end
+
+  it 'заметки, написанные до CRM, уходят туда при выгрузке' do
+    described_class.add!(card, actor: agent, text: 'Первый звонок, бюджет 6 млн')
+    described_class.add!(card, actor: agent, text: 'Показ в субботу')
+    card.update!(status: 'exporting')
+
+    expect { CrmCards::Workflow.new(notifier: notifier).record_export!(card, crm_id: '4455', mode: 'api') }
+      .to have_enqueued_job(TopnlabNotePushJob).twice
+    expect(card.reload.notes.map(&:crm_entity_type).uniq).to eq(['order'])
+  end
+
+  it 'автор заметки без учётки в CRM не превращается в чужого сотрудника' do
+    # Сотрудник без учётки в CRM: раньше именно его подставляло find_by(crm_user_id: nil).
+    User.create!(email: 'someone@victory62.org', first_name: 'Чужой', last_name: 'Сотрудник',
+                 role: 'client', password: 'secret123456')
+    note = described_class.add!(card, actor: agent, text: 'Из песочницы, без учётки').note
+    note.update_columns(user_id: nil, crm_user_id: nil)
+
+    expect(note.reload.author_name).to eq('Сотрудник CRM')
+  end
+
+  it 'длинная заметка не раздувает карточку сверх лимита Telegram' do
+    described_class.add!(card, actor: agent, text: 'я' * 2000)
+
+    expect(CrmCards::CardView.render(card.reload, viewer: agent)[:text].length).to be < 4096
   end
 end
