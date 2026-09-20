@@ -19,6 +19,10 @@ module CrmCards
       { text: text(card), keyboard: keyboard(card, viewer, Permissions.for(viewer)) }
     end
 
+    # Лимит Telegram — 4096; оставляем запас на заголовок, который Notifier
+    # приписывает сверху.
+    TEXT_LIMIT = 3600
+
     def text(card)
       lines = [header(card),
                "Статус: #{CrmCard::STATUS_LABELS[card.status]}",
@@ -35,7 +39,10 @@ module CrmCards
       lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
       lines.concat(status_lines(card))
-      lines.join("\n")
+      # Страховка от лимита Telegram: карточка, которая не влезла, не открывается
+      # вовсе, а отказ приходит уже на отправке и выглядит как «не удалось
+      # написать в личку». Лучше обрезанная карточка, чем никакой.
+      lines.join("\n").truncate(TEXT_LIMIT, omission: "\n<i>…карточка обрезана, полностью — в CRM</i>")
     end
 
     # Значение без HTML — для кнопок и для экранирования снаружи.
@@ -117,28 +124,35 @@ module CrmCards
       card.lead_event_id ? "#{title} · лид ##{card.lead_event_id}" : title
     end
 
-    # Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
-    # сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
-    # по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
-    # явно (metadata['sandbox']) и предупреждения не получают.
-    # Последние записи — свежие сверху. Полная история у лида и в CRM;
-    # в карточке показываем столько, чтобы сообщение осталось читаемым.
+    # Последние записи — свежие сверху. Полная история у лида и в CRM: в
+    # карточку кладём три и режем длину каждой, иначе сообщение перестанет
+    # влезать в лимит Telegram и карточка не откроется вовсе — ни у автора,
+    # ни у модератора, которому её отправили.
     NOTES_SHOWN = 3
+    NOTE_PREVIEW = 300
 
     def note_lines(card)
       notes = card.notes.recent.limit(NOTES_SHOWN).to_a
       return [] if notes.empty?
 
       lines = ['📝 <b>Заметки</b>']
-      lines += notes.map do |n|
-        "• #{Formatters::DateFormat.fmt_dt(n.created_at)} #{escape(n.author_name)}: #{escape(n.note)}"
-      end
+      lines += notes.map { |n| note_line(n, card) }
       total = card.notes.count
       lines << "<i>…всего записей: #{total}</i>" if total > NOTES_SHOWN
       lines << ''
       lines
     end
 
+    def note_line(note, card)
+      mark = '⏳ ' if card.crm_id.present? && !note.synced?
+      "• #{mark}#{Formatters::DateFormat.fmt_dt(note.created_at)} #{escape(note.author_name)}: " \
+        "#{escape(note.note.to_s.truncate(NOTE_PREVIEW))}"
+    end
+
+    # Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
+    # сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
+    # по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
+    # явно (metadata['sandbox']) и предупреждения не получают.
     def staff_test_lines(card)
       lead = card.lead_event
       return [] unless lead&.staff_test? && lead.metadata.to_h['sandbox'] != true

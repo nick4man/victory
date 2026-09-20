@@ -25,6 +25,17 @@ module CrmCards
 
     def self.add!(card, actor:, text:) = new(card, actor: actor, text: text).add!
 
+    # Карточка только что попала в CRM — досылаем всё, что написали, пока
+    # прикреплять было не к чему.
+    def self.flush_pending!(card)
+      return if card.sandbox? || card.crm_id.blank?
+
+      card.notes.pending.find_each do |note|
+        note.update(crm_entity_type: CRM_TYPES[card.kind]) if note.crm_entity_type.blank?
+        TopnlabNotePushJob.perform_later(note.id)
+      end
+    end
+
     def initialize(card, actor:, text:)
       @card = card
       @actor = actor
