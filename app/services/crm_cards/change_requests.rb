@@ -41,9 +41,7 @@ module CrmCards
     # @return [Result]
     def approve!(request, actor:)
       decide!(request, actor: actor, to: 'approved') do |req|
-        card = req.crm_card
-        card.update!(payload: card.payload.merge(req.field => req.new_value))
-        Notes.add!(card, actor: actor, text: change_note(req))
+        apply_to_card!(req, actor: actor)
       end
     end
 
@@ -65,26 +63,86 @@ module CrmCards
       perms = Permissions.for(actor)
       return deny(perms.denial) if perms.denial
       return deny('Решение по заявке на правку принимает модератор.') unless perms.can?(:moderate)
-      return deny('По этой заявке решение уже принято.') unless request.status_pending?
+      return deny(wrong_bot) unless request.crm_card.sandbox? == Telegram::BotContext.test?
 
+      applied = false
       request.with_lock do
+        # Проверка статуса — внутри блокировки: два модератора, нажавшие
+        # «Принять» одновременно, иначе оба прошли бы мимо неё, и в CRM ушли
+        # бы две одинаковые записи о согласовании.
+        next unless request.status_pending?
+
         request.update!(status: to, reviewer: actor, reviewed_at: Time.current, comment: comment)
         yield(request) if block_given?
+        applied = true
       end
+      return deny('По этой заявке решение уже принято.') unless applied
+
+      # Заметка — после коммита: иначе джоб отправки в CRM успевает стартовать
+      # раньше, не находит записи и молча бросает её без повтора.
+      note_change(request, actor: actor) if to == 'approved'
       notifier&.change_decided(request)
       Result.new(ok: true, request: request)
+    end
+
+    def wrong_bot
+      Telegram::BotContext.test? ? 'Это боевая карточка — решение по ней принимают в рабочем боте.' : 'Это карточка песочницы — решение по ней принимают в тестовом боте.'
+    end
+
+    # Правка поля — под блокировкой самой карточки: параллельное одобрение
+    # правок двух разных полей иначе затирало бы одно другим.
+    def apply_to_card!(request, actor:)
+      card = request.crm_card
+      card.with_lock do
+        card.reload
+        card.payload = card.payload.merge(request.field => request.new_value).compact
+        # Проверку пересчитываем: иначе карточка после правки показывала бы
+        # вчерашнее «проверка пройдена» по старым значениям.
+        card.check_errors = Checker.call(card)
+        card.checked_at = Time.current
+        card.save!
+        card.transitions.create!(from_status: card.status, to_status: card.status, actor: actor,
+                                 comment: "правка поля «#{label_for(request)}» согласована")
+      end
+    end
+
+    # Заметка — единственный след правки в CRM, пока поле там меняют руками.
+    # Не смогли записать — честно говорим автору, а не обещаем несуществующее.
+    def note_change(request, actor:)
+      result = Notes.add!(request.crm_card, actor: actor, text: change_note(request))
+      return if result.ok?
+
+      Rails.logger.warn("[CrmCards::ChangeRequests] заметка по правке ##{request.id} не сохранена: #{result.error}")
+      notifier&.change_note_failed(request)
     end
 
     def participant?(card, actor, perms)
       card.responsible&.id == actor.id || perms.can?(:moderate)
     end
 
+    def label_for(request)
+      Schema.field(request.crm_card.kind, request.field)&.label || request.field
+    end
+
+    # Значения режем: у объекта комментарий влезает в 1000 символов, и пара
+    # таких значений вышла бы за лимит заметки — запись не сохранилась бы вовсе.
+    VALUE_IN_NOTE = 200
+
     # Заметка уходит в CRM: пока поле там правят руками, запись объясняет,
     # что именно изменилось и кто это согласовал.
     def change_note(request)
-      label = Schema.field(request.crm_card.kind, request.field)&.label || request.field
-      "Согласована правка: «#{label}» — было «#{request.old_value}», стало «#{request.new_value}». " \
+      field = Schema.field(request.crm_card.kind, request.field)
+      was = shown(field, request.old_value)
+      now = shown(field, request.new_value)
+      "Согласована правка: «#{label_for(request)}» — было «#{was}», стало «#{now}». " \
         "Одобрил #{request.reviewer&.mention}. Поправьте поле в CRM."
+    end
+
+    def shown(field, value)
+      return '—' if value.nil?
+
+      text = field ? CardView.plain_value(field, value) : value.to_s
+      text.to_s.truncate(VALUE_IN_NOTE)
     end
   end
 end

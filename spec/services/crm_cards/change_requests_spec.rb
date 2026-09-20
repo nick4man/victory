@@ -30,7 +30,8 @@ RSpec.describe CrmCards::ChangeRequests do
 
     expect(service.approve!(request, actor: director)).to be_ok
     expect(card.reload.payload['phone']).to eq('79209998877')
-    expect(card.notes.last.note).to include('Согласована правка', '79101112233', '79209998877')
+    # Значения в заметке — как в карточке, а не машинные: коллега в CRM читает её глазами.
+    expect(card.notes.last.note).to include('Согласована правка', '+7 910 111-22-33', '+7 920 999-88-77')
   end
 
   it 'отклонение поле не трогает и требует объяснения' do
@@ -68,5 +69,41 @@ RSpec.describe CrmCards::ChangeRequests do
     service.approve!(request, actor: director)
 
     expect(service.approve!(request.reload, actor: director).error).to include('уже принято')
+  end
+
+  it 'одобрение двух правок подряд не теряет первую' do
+    phone_req = service.open!(card, actor: agent, field: 'phone', value: '79209998877').request
+    name_req = service.open!(card, actor: agent, field: 'name', value: 'Анна Петрова').request
+
+    service.approve!(phone_req, actor: director)
+    service.approve!(name_req.reload, actor: director)
+
+    expect(card.reload.payload).to include('phone' => '79209998877', 'name' => 'Анна Петрова')
+  end
+
+  it 'после правки машинная проверка пересчитывается, а не остаётся вчерашней' do
+    card.update!(check_errors: [], checked_at: 1.day.ago)
+    request = service.open!(card, actor: agent, field: 'phone', value: '79209998877').request
+
+    expect { service.approve!(request, actor: director) }
+      .to change { card.reload.checked_at }
+    expect(card.transitions.last.comment).to include('правка поля')
+  end
+
+  it 'значения в заметке человеческие, а не машинные коды' do
+    request = service.open!(card, actor: agent, field: 'action', value: 'rent').request
+    service.approve!(request, actor: director)
+
+    note = card.reload.notes.last.note
+    expect(note).to include('Аренда')
+    expect(note).not_to include('«rent»')
+  end
+
+  it 'карточку песочницы в рабочем боте не решают' do
+    card.update!(sandbox: true)
+    request = service.open!(card, actor: agent, field: 'phone', value: '79209998877').request
+
+    expect(service.approve!(request, actor: director).error).to include('песочниц')
+    expect(card.reload.payload['phone']).to eq('79101112233')
   end
 end
