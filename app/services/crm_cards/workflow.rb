@@ -9,6 +9,9 @@ module CrmCards
   # сотруднику, а не авария. Уведомления уходят после снятия блокировки
   # строки, чтобы медленный Telegram не держал её.
   class Workflow
+    # Столько ждём перед выгрузкой, чтобы сообщение мастера легло раньше итога.
+    EXPORT_DELAY = 5.seconds
+
     Result = Struct.new(:ok, :card, :error, keyword_init: true) do
       def ok?
         ok == true
@@ -140,7 +143,10 @@ module CrmCards
         ok(card)
       end
       if result.ok?
-        ExportJob.perform_later(card.id) if card.kind_lead?
+        # Небольшая задержка — чтобы «отправляю в CRM» успело дойти до человека
+        # раньше её итога. В песочнице выгрузка мгновенная, и без этого обещание
+        # приходило строкой ниже самого результата (QA-прогон 20.09.26, п. 12).
+        ExportJob.set(wait: EXPORT_DELAY).perform_later(card.id) if card.kind_lead?
         notifier.released(card)
       end
       result

@@ -17,11 +17,11 @@ RSpec.describe 'замечания QA-прогона' do
     expect(error).to include('угловые скобки')
   end
 
-  it 'обычный текст с «меньше» не путаем с разметкой' do
-    value, error = CrmCards::FieldValue.normalize(comment, 'Бюджет < 6 млн, торг уместен, созвонились вечером')
+  it 'обычный текст с «меньше» и «больше» не путаем с разметкой' do
+    value, error = CrmCards::FieldValue.normalize(comment, 'Бюджет < 6 млн, ищет > 50 м², созвонились вечером')
 
     expect(error).to be_nil
-    expect(value).to include('< 6 млн')
+    expect(value).to include('< 6 млн', '> 50 м²')
   end
 
   it 'число в отказе по телефону согласовано со словом' do
@@ -61,5 +61,32 @@ RSpec.describe 'замечания QA-прогона' do
     expect(result.values['comment']).to include('снять двушку')
     expect(result.values['comment']).not_to include('910')
     expect(result.values['comment']).not_to include('Анна Смирнова')
+  end
+
+  it 'бюджет из заметки не вырезается вместе с телефонами' do
+    text = 'Анна Смирнова 89105550011 готова купить в диапазоне 12 500 000 - 13 000 000, смотрела три объекта'
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['comment']).to include('12 500 000 - 13 000 000')
+    expect(result.values['comment']).not_to include('89105550011')
+  end
+
+  it 'имя по подписи не заглатывает остаток строки' do
+    text = "Звонила по ипотеке\nКонтакт - Анна Смирнова, хочет двушку до 6 млн, ипотека одобрена"
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['name']).to eq('Анна Смирнова')
+    expect(result.values['comment']).to include('двушку до 6 млн')
+  end
+
+  it 'после чистки осталось слишком мало — кладём вставку целиком' do
+    text = "Клиент: Анна Смирнова\n+7 910 555-00-11\nищет гараж, торг"
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['comment']).to be_present
+    expect(result.values['comment']).to include('гараж')
   end
 end
