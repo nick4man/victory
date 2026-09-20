@@ -224,26 +224,6 @@ class PropertyValuationsController < ApplicationController
     { 'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room' }[pt.to_s]
   end
-  
-  def create_crm_lead(valuation)
-    # Integration with CRM (AmoCRM, Bitrix24, etc.)
-    # This would be implemented based on your CRM system
-    
-    Rails.logger.info "Creating CRM lead for valuation ##{valuation.id}"
-    
-    # Example structure:
-    # AmoCrmService.create_lead(
-    #   name: "Оценка: #{valuation.address}",
-    #   email: valuation.email,
-    #   phone: valuation.phone,
-    #   custom_fields: {
-    #     property_type: valuation.property_type,
-    #     estimated_price: valuation.estimated_price
-    #   }
-    # )
-  rescue StandardError => e
-    Rails.logger.error "Failed to create CRM lead: #{e.message}"
-  end
 
   # Cost cap: 5 valuations per hour per IP. Soft-fail если Redis недоступен
   # (rescue ниже возвращает false → no rate-limit). Используем DB 1 как

@@ -21,9 +21,6 @@ class ContactFormsController < ApplicationController
       InquiryMailer.new_inquiry_notification(@inquiry).deliver_later
       InquiryMailer.inquiry_confirmation(@inquiry).deliver_later if @inquiry.email.present?
       
-      # Send to CRM
-      create_crm_lead(@inquiry)
-      
       # Track event
       track_event('quick_inquiry_submitted', {
         inquiry_id: @inquiry.id,
@@ -309,14 +306,6 @@ class ContactFormsController < ApplicationController
 
     scope = scope.where(rooms: criteria['rooms']) if criteria['rooms'].present?
     scope.limit(10)
-  end
-  
-  def create_crm_lead(inquiry)
-    # Integration with CRM
-    Rails.logger.info "Creating CRM lead for inquiry ##{inquiry.id}"
-    # AmoCrmService.create_lead(inquiry) if defined?(AmoCrmService)
-  rescue StandardError => e
-    Rails.logger.error "Failed to create CRM lead: #{e.message}"
   end
   
   def create_crm_task(inquiry, task_type)

@@ -118,7 +118,6 @@ class Inquiry < ApplicationRecord
   before_validation :detect_staff_test_submission, on: :create
   after_create :assign_to_agent
   after_create :send_notifications
-  after_create :sync_to_crm
   after_create_commit :push_to_work_bot
   # Phase 3 MLS/YRL — если Inquiry на чужой объект, заводим pending
   # Referral для commission tracking. Service сам решает что делать
@@ -142,7 +141,6 @@ class Inquiry < ApplicationRecord
   scope :this_week, -> { where('created_at >= ?', Time.current.beginning_of_week) }
   scope :this_month, -> { where('created_at >= ?', Time.current.beginning_of_month) }
   scope :high_priority, -> { where(priority: [:high, :urgent]) }
-  scope :needs_sync, -> { where(crm_id: nil).where.not(status: :spam) }
 
   # ============================================
   # STATE MACHINE (AASM)
@@ -318,18 +316,6 @@ class Inquiry < ApplicationRecord
     cancel!
   end
 
-  # CRM sync
-  def sync_to_crm!
-    return if crm_id.present?
-    
-    # AmoCrmSyncJob.perform_later(id)
-    # Placeholder for CRM sync logic
-  end
-
-  def synced_to_crm?
-    crm_id.present? && synced_to_crm_at.present?
-  end
-
   # Metadata helpers
   def set_metadata(key, value)
     self.metadata ||= {}
@@ -485,10 +471,6 @@ class Inquiry < ApplicationRecord
   def send_notifications
     notify_admins!
     InquiryNotificationJob.perform_later(id) if defined?(InquiryNotificationJob)
-  end
-
-  def sync_to_crm
-    sync_to_crm! if ENV['AMOCRM_ENABLED'] == 'true'
   end
 
   # Публикуем карточку нового лида в Telegram-бот АН.
