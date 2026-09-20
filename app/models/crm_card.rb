@@ -12,6 +12,9 @@ class CrmCard < ApplicationRecord
   belongs_to :lead_event, optional: true
   belongs_to :author,   class_name: 'TelegramUser'
   belongs_to :reviewer, class_name: 'TelegramUser', optional: true
+  # Кто разрешил выгрузку в CRM (право export). Одобрение и разрешение —
+  # разные решения разных людей, поэтому и поле отдельное от reviewer.
+  belongs_to :released_by, class_name: 'TelegramUser', optional: true
   has_many :transitions, -> { order(:created_at, :id) },
            class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
 
@@ -24,7 +27,7 @@ class CrmCard < ApplicationRecord
     draft: 'draft',                   # черновик — заполняет автор
     needs_rework: 'needs_rework',     # возвращена модератором с комментарием
     pending_review: 'pending_review', # на модерации
-    approved: 'approved',             # одобрена, ждёт выгрузки
+    approved: 'approved',             # одобрена; ждёт разрешения руководителя, затем выгрузки
     exporting: 'exporting',           # выгрузка идёт прямо сейчас
     exported: 'exported',             # в CRM, crm_id известен
     export_failed: 'export_failed'    # выгрузка не удалась, ждёт повтора модератором

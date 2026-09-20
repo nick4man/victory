@@ -26,13 +26,29 @@ module CrmCards
       refresh_lead_anchor(card)
     end
 
-    def approved(card)
-      header = if card.kind_lead?
-                 "✅ <b>Карточка ##{card.id} одобрена</b> #{escape(card.reviewer&.mention)} — выгружаю в CRM."
-               else
-                 "✅ <b>Объект одобрен</b> #{escape(card.reviewer&.mention)} — внеси его в CRM и отметь номер карточки."
-               end
-      deliver(card.responsible, header, card)
+    # Одобрение больше не отправляет карточку в CRM — это решает руководитель
+    # (право export). Поэтому автору сообщаем, что карточка ждёт его решения,
+    # а самому руководителю карточка уходит с кнопкой выгрузки.
+    def approved(card, exporters: [])
+      deliver(card.responsible,
+              "✅ <b>Карточка ##{card.id} одобрена</b> #{escape(card.reviewer&.mention)} — " \
+              'ждёт решения руководителя о выгрузке в CRM.', card)
+      delivered = exporters.count { |boss| deliver(boss, "📤 <b>Ждёт выгрузки в CRM</b> · карточка ##{card.id}", card) }
+      if delivered.zero?
+        dm(card.reviewer, "⚠️ Карточка ##{card.id} одобрена, но решение о выгрузке принять некому: " \
+                          'права выгрузки нет ни у кого из сотрудников. Проверь должности в CRM.')
+      end
+      refresh_lead_anchor(card)
+    end
+
+    def released(card)
+      text = if card.kind_lead?
+               "📤 <b>Карточка ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил выгрузку — отправляю в CRM."
+             else
+               "📤 <b>Объект по карточке ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил внесение — " \
+                 'внеси его в CRM и отметь номер.'
+             end
+      deliver(card.responsible, text, card)
       refresh_lead_anchor(card)
     end
 
