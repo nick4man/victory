@@ -109,13 +109,17 @@ module Telegram
           { text: "⚠️ #{escape_html(result.error)}" }
         end
 
-        def moderator_gate
+        # statuses — из каких статусов действие вообще возможно. Одобрить можно
+        # только то, что на модерации; вернуть автору — ещё и одобренное, пока
+        # руководитель не отправил его в CRM.
+        def moderator_gate(statuses: %w[pending_review])
           return '⚠️ Карточка не найдена.' unless card
           return "🚫 #{escape_html(permissions.denial)}" if permissions.denial
           return '🚫 Решение по карточке принимает модератор.' unless permissions.can?(:moderate)
-          unless card.status_pending_review?
+          unless statuses.include?(card.status)
             return "ℹ️ Карточка ##{card.id} не на модерации — #{::CrmCard::STATUS_LABELS[card.status]}."
           end
+          return "ℹ️ Карточка ##{card.id} уже отправлена в CRM." if card.status_approved? && card.released_at.present?
 
           nil
         end

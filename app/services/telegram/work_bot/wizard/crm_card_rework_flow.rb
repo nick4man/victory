@@ -23,7 +23,7 @@ module Telegram
         end
 
         def gate
-          moderator_gate
+          moderator_gate(statuses: %w[pending_review approved])
         end
 
         def accept(step, value, manual: false)
