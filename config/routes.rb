@@ -824,6 +824,8 @@ Rails.application.routes.draw do
 
     # Telegram
     post 'telegram', to: 'telegram#create'
+    # Тестовый бот: песочница карточек CRM, только личка.
+    post 'telegram_test', to: 'telegram_test#create'
 
     # Payment systems
     post 'yookassa', to: 'yookassa#create'

@@ -14,7 +14,9 @@ module CrmCards
       card = CrmCard.find_by(id: card_id)
       return unless card
 
-      Workflow.new.export!(card)
+      # Контекст — по карточке, а не по тому, что донёс Sidekiq: уведомления
+      # о выгрузке песочницы обязаны прийти от тестового бота.
+      Telegram::BotContext.within(card.sandbox? ? 'test' : 'main') { Workflow.new.export!(card) }
     rescue StandardError => e
       Rails.logger.error("[CrmCards::ExportJob] card=#{card_id} #{e.class}: #{e.message}")
     end

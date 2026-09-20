@@ -54,6 +54,10 @@ class CrmCard < ApplicationRecord
   scope :not_deleted, -> { where(deleted_at: nil) }
   default_scope { not_deleted }
 
+  # Карточки бота, который обрабатывает текущий апдейт: песочница видит
+  # только свои, рабочий бот — только рабочие.
+  scope :in_current_bot, -> { where(sandbox: Telegram::BotContext.test?) }
+
   validates :kind, :status, presence: true
 
   def check_passed?

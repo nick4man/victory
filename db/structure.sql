@@ -760,7 +760,8 @@ CREATE TABLE public.crm_cards (
     export_error text,
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    sandbox boolean DEFAULT false NOT NULL
 );
 
 
@@ -2831,7 +2832,8 @@ ALTER SEQUENCE public.telegram_users_id_seq OWNED BY public.telegram_users.id;
 CREATE TABLE public.telegram_webhook_acks (
     id bigint NOT NULL,
     update_id bigint NOT NULL,
-    processed_at timestamp(6) without time zone NOT NULL
+    processed_at timestamp(6) without time zone NOT NULL,
+    bot character varying DEFAULT 'main'::character varying NOT NULL
 );
 
 
@@ -4955,6 +4957,13 @@ CREATE INDEX index_crm_cards_on_reviewer_id ON public.crm_cards USING btree (rev
 
 
 --
+-- Name: index_crm_cards_on_sandbox_and_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_sandbox_and_status ON public.crm_cards USING btree (sandbox, status);
+
+
+--
 -- Name: index_crm_cards_on_status_and_submitted_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6950,17 +6959,17 @@ CREATE UNIQUE INDEX index_telegram_users_on_topnlab_user_id ON public.telegram_u
 
 
 --
+-- Name: index_telegram_webhook_acks_on_bot_and_update_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_telegram_webhook_acks_on_bot_and_update_id ON public.telegram_webhook_acks USING btree (bot, update_id);
+
+
+--
 -- Name: index_telegram_webhook_acks_on_processed_at; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX index_telegram_webhook_acks_on_processed_at ON public.telegram_webhook_acks USING btree (processed_at);
-
-
---
--- Name: index_telegram_webhook_acks_on_update_id; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_telegram_webhook_acks_on_update_id ON public.telegram_webhook_acks USING btree (update_id);
 
 
 --
@@ -7900,6 +7909,8 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20260914120200'),
+('20260914120100'),
 ('20260914120000'),
 ('20260911100100'),
 ('20260911100000'),

@@ -10,13 +10,23 @@ module Telegram
   # Reads TELEGRAM_BOT_TOKEN from ENV; per-call chat_id passed explicitly.
   class Client
     class Error < StandardError; end
+    # Тестовый бот попытался написать в группу или канал.
+    class GroupChatForbidden < Error; end
 
     BASE = 'https://api.telegram.org'
 
-    def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
-      raise Error, 'TELEGRAM_BOT_TOKEN not set' if token.blank?
+    def initialize(token: Telegram::BotContext.token)
+      if token.blank?
+        raise Error, "#{Telegram::BotContext.test? ? 'TELEGRAM_TEST_BOT_TOKEN' : 'TELEGRAM_BOT_TOKEN'} not set"
+      end
 
       @token = token
+      # Явный BotContext побеждает — иначе, если ops по ошибке выставят
+      # TELEGRAM_BOT_TOKEN == TELEGRAM_TEST_BOT_TOKEN, любой основной клиент
+      # тихо станет тестовым и группы перестанут получать сообщения.
+      @test_bot = Telegram::BotContext.test? ||
+                  (token == ENV.fetch('TELEGRAM_TEST_BOT_TOKEN', nil) &&
+                   token != ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
     end
 
     # @return [Hash] Telegram message object on success ({message_id:, chat:, text:, ...})
@@ -109,6 +119,7 @@ module Telegram
     #   - String (path to file)
     def send_document(file, chat_id:, caption: nil, parse_mode: 'HTML',
                       reply_to_message_id: nil, message_thread_id: nil)
+      guard_private_chat!(chat_id)
       io, filename, content_type = unpack_file(file)
       content = io.read
       boundary = "----victory-#{SecureRandom.hex(8)}"
@@ -292,7 +303,27 @@ module Telegram
       io
     end
 
+    # Тестовый бот работает только в личке. Проверка здесь, а не у вызывающих:
+    # в группу пишут десятки мест (карточки лидов, дайджесты, эскалации), и
+    # любое из них, сработав внутри песочницы, иначе попыталось бы писать туда.
+    #
+    # Fail closed: личный chat_id у Telegram всегда положительное целое
+    # (user id); группы/каналы/супергруппы — отрицательное. `'@channel'`,
+    # `''`, `nil`, произвольная строка не парсятся в положительное целое —
+    # и тестовому боту такой chat_id тоже запрещён, а не молча пропущен
+    # (`.to_i` на нечисловой строке даёт 0, что не отрицательно и раньше
+    # проходило проверку).
+    def guard_private_chat!(chat_id)
+      return unless @test_bot
+
+      id = Integer(chat_id.to_s, exception: false)
+      return if id&.positive?
+
+      raise GroupChatForbidden, "тестовый бот не пишет в группы (chat_id=#{chat_id})"
+    end
+
     def api_call(method, body = {}, retried: false)
+      guard_private_chat!(body[:chat_id]) if body.key?(:chat_id)
       uri = URI("#{BASE}/bot#{@token}/#{method}")
       req = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json')
       req.body = JSON.generate(body) unless body.empty?
