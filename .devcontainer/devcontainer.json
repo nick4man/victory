@@ -12,6 +12,20 @@
 
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  // SSH-сервер нужен `gh codespace ssh` / `gh codespace cp`: без него в
+  // Codespace не зайти из терминала, только через VS Code в браузере, — а
+  // агенту (Claude Code) отлаживать и гонять спеки нечем. Node — потому что
+  // служебный агент Codespaces поднимает SSH через `node` внутри контейнера;
+  // в slim-образе Rails его нет, и ssh висит на «exec: node: not found».
+  "features": {
+    "ghcr.io/devcontainers/features/sshd:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    }
+  },
+
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
