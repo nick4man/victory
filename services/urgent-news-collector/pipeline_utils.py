@@ -344,10 +344,13 @@ PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")
 # Бесплатные модели прямого OpenRouter — ТОЛЬКО для классификатора (13.09.26).
 # Отобраны прогоном промпта классификатора: ставка ЦБ → URGENT/KEY_RATE,
 # спорт → NOISE, 2–15 с; работают только с reasoning off (см.
-# _call_openai_compatible). Бывают 429 у поставщика и обрывы TLS — это запас,
-# а не основа. В генерацию постов их не пускать: на промпте срочного поста
-# nemotron мешал русский с английским («unanimously»), laguna выдумывала цифры
-# («инфляция 4,3%, ВВП 0,8%»). Короткий JSON-вердикт им по силам, публикация — нет.
+# _call_openai_compatible). На деле это основа классификатора, а не запас:
+# Google почти всегда упирается в квоту (429), и с 13.09 по 02.10.26 nemotron
+# дал ~60% успешных вердиктов. Слабые места: у laguna-s — 429 у поставщика,
+# у nemotron — обрывы соединения/TLS и изредка битый JSON. В генерацию постов
+# их не пускать: на промпте срочного поста nemotron мешал русский с английским
+# («unanimously»), laguna выдумывала цифры («инфляция 4,3%, ВВП 0,8%»).
+# Короткий JSON-вердикт им по силам, публикация — нет.
 FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
     ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",                       30),
     ("openrouter", "poolside/laguna-s-2.1:free",                                   30),
@@ -355,12 +358,17 @@ FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
 ]
 
 # Цепочка классификатора: бесплатные OpenRouter встают сразу после Google,
-# до мёртвых сейчас cloudflare/omniroute и до платного хвоста.
+# до мёртвых сейчас cloudflare/omniroute. Платного хвоста здесь НЕТ (02.10.26):
+# с 13.09 по 22.09 Sonnet классифицировал 670 новостей, выбрал месячный лимит
+# общего ключа OpenRouter, и неделю у постов не было платного резерва. Когда
+# бесплатное отказало, новость ждёт следующего прогона (classify_retry) — это
+# дешевле, чем платить за вердикт по каждой записи RSS.
 _GOOGLE_HEAD = [step for step in MAIN_MODEL_CHAIN if step[0] == "google"]
 CLASSIFIER_CHAIN: list[tuple[str, str, int]] = (
     _GOOGLE_HEAD
     + FREE_CLASSIFIER_MODELS
-    + [step for step in MAIN_MODEL_CHAIN if step[0] != "google"]
+    + [step for step in MAIN_MODEL_CHAIN
+       if step[0] != "google" and (step[0], step[1]) not in PAID_MODELS]
 )
 
 # Removed from chain 2026-05-14 (rate-limited / dead):
@@ -368,7 +376,7 @@ CLASSIFIER_CHAIN: list[tuple[str, str, int]] = (
 #   groq/openai/gpt-oss-120b              — same Groq TPD
 #   openrouter/google/gemma-4-31b-it:free — RPM 429 spam
 #   openrouter/z-ai/glm-4.5-air:free      — RPM 429
-#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429 (вернули 13.09.26 напрямую)
+#   openrouter/nvidia/nemotron-3-super-120b-a12b:free — RPM 429 (вернули 13.09.26 напрямую, только в классификатор)
 #   openrouter/openai/gpt-oss-120b:free   — RPM 429
 #   cloudflare @cf/openai/gpt-oss-120b    — duplicate of llama-3.3 above
 # Removed 13.09.26:

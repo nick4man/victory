@@ -19,7 +19,7 @@ Python-конвейер новостей внутри Rails-репозитори
 ## Запуск тестов
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 46 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 47 тестов, без сети и БД
 ```
 
 Только **из каталога сервиса**: импорты плоские (`from urgent_relevance import ...`),
@@ -93,7 +93,10 @@ python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains 
   платную модель на кроне каждые 15 минут, молча.
 - **Две цепочки, а не одна** (с 13.09.26). Классификатор (`urgent_collector`) идёт по
   `CLASSIFIER_CHAIN` — это `MAIN_MODEL_CHAIN` плюс бесплатные модели прямого OpenRouter
-  (`FREE_CLASSIFIER_MODELS`) сразу после Google. Посты и дайджест идут по `MAIN_MODEL_CHAIN`
+  (`FREE_CLASSIFIER_MODELS`) сразу после Google и **без платного Sonnet** (с 02.10.26):
+  за 10 дней он классифицировал 670 новостей и выбрал месячный лимит общего ключа, после
+  чего неделю не было платного резерва и у постов. Не возвращай его в классификатор —
+  `test_model_chains` это проверяет. Посты и дайджест идут по `MAIN_MODEL_CHAIN`
   без них: на промпте поста бесплатные модели мешали русский с английским и выдумывали
   цифры. Не переноси их в `MAIN_MODEL_CHAIN` — `test_model_chains` это проверяет.
   Бесплатным моделям OpenRouter нужен `reasoning: {enabled: false}`, иначе рассуждение
@@ -108,7 +111,7 @@ python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains 
   которой упала цепочка, не пишется в `urgent_events` и ждёт следующего прогона;
   `state/classifier_pending.json` в боевом каталоге помнит время первого сбоя. В
   NOISE по-старому она уходит только через 6 ч — страховка от «ядовитой» записи,
-  которая гоняла бы цепочку с платным хвостом вечно. Два сбоя подряд останавливают
+  которая гоняла бы цепочку вечно. Два сбоя подряд останавливают
   весь прогон, чтобы не жечь квоту на остальные новости. Вернёшь запись в NOISE
   при ошибке — повторишь потерю 1950 новостей 07.09.26.
 
