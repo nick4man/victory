@@ -11,13 +11,13 @@ Rails 8.1.3.1 / Ruby 3.4.10 / PostgreSQL 15+ + PostGIS + pgvector. Russian-langu
 - `.claude/memory/activeContext.md` — текущая ветка, фаза, что в фокусе сейчас (обновляется неделями).
 - `.claude/memory/systemPatterns.md` — конвенции (enums `_prefix`, soft-delete `deleted_at`, frozen literals, single quotes, dd.MM.yy даты, service-object pattern).
 - `.claude/memory/techContext.md` — стек, ENV vars, команды (`rspec`, `rubocop`, миграции, Sidekiq, cron).
-- `.claude/memory/progress.md` — что в проде, что отключено (Devise off!), что заглушка, аспирационные роуты, известный tech-debt. ⚠️ Секция tech-debt устарела: спеков **90**, а не 5; rubocop/brakeman/bundler-audit в `Gemfile` уже есть.
+- `.claude/memory/progress.md` — что в проде, что отключено (Devise off!), что заглушка, аспирационные роуты, известный tech-debt.
 - `.claude/repo-index.md` — компактный индекс «файл → классы» (~5k токенов, читай первым).
 - `.claude/repo-map.md` — полный сигнатурный дамп (~190k токенов, on-demand для глубокого ныряния).
 - Обновить оба: `bundle exec rake repo:map`.
 - `.claude/docs/reglament/` — бизнес-регламенты агентства (Шаги 1–5 сделки) + ревью расхождений с кодом; сквозной разбор и проект исполняющей среды — `DESIGN.md` там же. Не код, но именно оттуда растут требования к work-bot, Task/SLA и Nextcloud-путям.
 
-⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`, шесть `DEPLOYMENT*.md`, …) — исторический шум, местами полугодовой давности. Источник правды — `.claude/memory/`.
+⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`, `DEPLOYMENT*.md`, …) — исторический шум, местами полугодовой давности. Источник правды — `.claude/memory/`.
 
 ## 3 жёстких правила (не нарушай, не спрашивая)
 
@@ -38,12 +38,12 @@ Rails-монолит. Четыре входа, и только первый — 
 | Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, ~891 строка `config/routes.rb` | нет (Devise off) |
 | JSON API | `namespace :api { namespace :v1 }` | JWT |
 | Админка | `namespace :admin` | `?token=$ADMIN_TOKEN` |
-| Вебхуки | `app/controllers/webhooks/` — `topnlab`, `telegram`, `news_ingest`, `yookassa`, `amocrm` | у каждого свой секрет из ENV; при пустом ENV контроллер отказывает, а не пропускает |
+| Вебхуки | `app/controllers/webhooks/` — `topnlab`, `topnlab_reports`, `telegram`, `news_ingest`, `zhk_ingest`, `yookassa`, `amocrm` | у каждого свой секрет из ENV; при пустом ENV контроллер отказывает, а не пропускает |
 
 Что нужно знать до первой правки:
 
 - **Каталог объектов не наш.** Источник правды — внешняя CRM Topnlab; `Property` — проекция, которую наполняют `TopnlabSyncJob` (каждые 30 мин) и соседние sync-джобы. Инвариант: при неполном обходе архивация пропускается, иначе каталог схлопывается.
-- **Доменная логика — в `app/services/` (~260 файлов), не в моделях и не в контроллерах.** Plain-Ruby класс с `call`, см. `systemPatterns.md`. Не путать с верхнеуровневым `services/`.
+- **Доменная логика — в `app/services/` (~300 файлов), не в моделях и не в контроллерах.** Plain-Ruby класс с `call`, см. `systemPatterns.md`. Не путать с верхнеуровневым `services/`.
 - **Два Telegram-бота из одного Rails**: `telegram/work_bot/` (сотрудники — фактический CRM-канал: команды, задачи, дайджесты, эскалации) и `telegram/client_bot/` (клиенты). Общий вход — `Telegram::InboundProcessor`.
 - **LLM — free-first цепочка**, `Llm::OmniClient` (`DEFAULT_CHAINS[:chat]` / `[:analysis]`, платный Sonnet последний). Tool-calling — `app/services/chat_tools/` + `Llm::ToolRunner`. Перестановка модели вверх по цепочке = деньги, молча.
 - **Эмбеддинги** — pgvector + gem `neighbor`, таблицы `*_embedding`, наполняются `EmbedXxxJob`.
@@ -58,31 +58,14 @@ Rails-монолит. Четыре входа, и только первый — 
 Добавляя периодику, бери `sidekiq_cron.yml`: это единственное расписание,
 которое едет вместе с кодом.
 
-🚨 `config/schedule.rb` удалён 12.09.26. Он объявлял 19 записей и выглядел вторым
-планировщиком, но гема `whenever` в `Gemfile` нет — ни одна строка оттуда никогда
-не выполнялась. Разбор всех 19, чтобы не потерялся вместе с файлом:
-
-- **7 работают в другом месте** — `RefreshTopnlabStatsJob` (`sidekiq_cron.yml`),
-  Yandex.Webmaster ×3, `kpi:phase_a`, `lock-clean` (crontab хоста), бэкап
-  (`bin/backup` + systemd-таймер).
-- **3 рабочие, но без расписания** — `Telegram::WorkBot::Sla::WatchdogJob`,
-  `Sla::TasksWatchdogJob`, `topnlab:stages:refresh`. Включение SLA-сторожей — PR #64.
-- **2 существуют, но в текущем виде вредны** — `SendViewingRemindersJob` выбирает по
-  `preferred_date`/`reminder_email_sent`, а в `viewing_schedules` колонки
-  `scheduled_at`/`reminder_sent` (упадёт на первом прогоне);
-  `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по `PropertyView`,
-  а посетители анонимны (Devise выключен) — обнулит `views_count`. Сначала чинить.
-- **7 ссылаются на несуществующее** — классы `UserDigestJob`, `MarketAnalyticsUpdateJob`;
-  таски `db:sessions:trim`, `cache:clear_expired`, `sitemap:refresh` (sitemap строит
-  `SitemapController` на запросе); колонка `property_valuations.follow_up_email_sent`;
-  перевод `properties` в статус `expired`, которого в enum нет (`status` — integer).
-
-Возвращая любую из них — строка в `sidekiq_cron.yml`, а не воскрешение whenever,
-и только после проверки, что задача вообще отработает.
+🚨 `config/schedule.rb` удалён 12.09.26: гема `whenever` нет, ни одна его строка не выполнялась.
+Возвращая оттуда задачу — строка в `sidekiq_cron.yml`, и только после проверки, что она отработает:
+часть тех 19 записей вредна или ссылается на несуществующее. Разбор — `.claude/memory/progress.md`,
+секция «Удалённый `config/schedule.rb`».
 
 ## Команды
 
-🚨 **Ruby есть не на каждой машине — сначала пойми, где ты.** Репозиторий работает с двух хостов, и они не похожи:
+🚨 **Ruby есть не на каждой машине — сначала пойми, где ты.** Репозиторий работает с двух хостов и из облака, и они не похожи:
 
 Различать машины по **имени хоста** (`hostname`), а не по пути: `~` и относительные пути есть на обеих, и по ним они неотличимы.
 
@@ -90,6 +73,7 @@ Rails-монолит. Четыре входа, и только первый — 
 |---|---|---|
 | **`victory`** — прод-хост: здесь живёт victory62.org, docker и все worktree рядом с main checkout | в контейнере, менеджера версий на хосте нет | **только через `bin/rb`**: `bin/rb bundle exec rubocop`, `bin/rb --db bundle exec rspec` |
 | **openclaw-машина** (main checkout в `/opt/.openclaw/victory`) | нет вообще: ни `ruby`, ни `bundle` в PATH, ни контейнеров, ни rails-образа | никак — Ruby-команды не запускать, `post-edit-rubocop.sh` там молчаливый no-op |
+| **облако** — Claude Code on the web, Codespaces | ставится сам: `session-bootstrap.sh` (web) или `.devcontainer/` (Codespaces) | `bundle exec …` напрямую. ⚠️ На web — системный PG16 + PostGIS 3.4 против PG15 + PostGIS 3.6 в проде и CI: облачный прогон спеков не проверка совместимости с прод-базой, последнее слово за CI |
 
 Не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть.
 
@@ -106,7 +90,7 @@ bundle exec rubocop --parallel        # + -a safe / -A unsafe autocorrect
 bundle exec brakeman --exit-on-warn --quiet --format text
 bundle exec bundle-audit update && bundle exec bundle-audit check
 
-bundle exec rspec                                  # 1102 примера, гоняются и в CI
+bundle exec rspec                                  # ~1800 примеров, гоняются и в CI
 bundle exec rspec spec/models/property_spec.rb     # один файл
 bundle exec rspec spec/models/property_spec.rb:42  # один пример
 
@@ -115,11 +99,11 @@ bundle exec sidekiq -C config/sidekiq.yml
 bundle exec rake repo:map             # регенерация repo-index.md + repo-map.md
 ```
 
-Полный список ENV и rake-задач — `.claude/memory/techContext.md` и `lib/tasks/*.rake` (31 файл).
+Полный список ENV и rake-задач — `.claude/memory/techContext.md` и `lib/tasks/*.rake`.
 
 ## `services/` — подсистемы вне Rails
 
-Не путать с `app/services/` (Ruby service objects, ~260 файлов). Архитектура —
+Не путать с `app/services/` (Ruby service objects, ~300 файлов). Архитектура —
 **один репозиторий, много маленьких служб**. Полные правила и индекс:
 `services/README.md`; обязательства конкретной службы — в её `SERVICE.md`.
 
@@ -129,6 +113,7 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 | `chat-host-cron/` | bash | завершён |
 | `urgent-news-collector/` | Python, конвейер новостей: срочные + дайджест + ставки банков — читай его `CLAUDE.md` | завершён, боевой каталог `/opt/victory-conveyor` |
 | `web-comparables/` | не код, один `SKILL.md` | завершён |
+| `zhk-registry/` | Python, крон «Реестра новостроек» → вебхук `zhk_ingest`; свой `CLAUDE.md` | своя служба, переноса не было |
 
 Четыре правила, проверяются `bin/services-check` (нужен только python3) на каждый PR:
 
@@ -153,19 +138,13 @@ bundle exec rake repo:map             # регенерация repo-index.md + r
 
 ## Параллельные сессии Claude Code
 
-Worktree сейчас **два**. Источник правды — `git worktree list`, не эта таблица:
+Какие worktree живут и на каких ветках — только `git worktree list`; списки в документах устаревают за дни.
 
-| Worktree | Ветка | Назначение |
-|---|---|---|
-| `/opt/.openclaw/victory` | `main` | ТОЛЬКО deploy/merge |
-| `/opt/.openclaw/victory-urgent-collector` | `feat/urgent-news-collector` | Python-конвейер новостей |
-
-🚨 **В `victory-urgent-collector` включён sparse-checkout** (06.09.26): на диске только
-`services/urgent-news-collector/`, `app/controllers/webhooks/` (контракт вебхука) и `.claude/`
-плюс корневые файлы — 175 файлов вместо 1490. Rails-дерева здесь нет **намеренно**: это не
-битый клон и не пропажа, Ruby на этой машине всё равно не запускается. Нужен другой каталог —
-`git sparse-checkout add app/services`, вернуть всё — `git sparse-checkout disable`. Настройка
-per-worktree (`extensions.worktreeConfig`), main checkout не затронут.
+🚨 **В worktree openclaw-машины бывает включён sparse-checkout**: на диске лишь нужные службе каталоги
+плюс `.claude/` и корневые файлы. Отсутствие Rails-дерева там **намеренно** — это не битый клон.
+Что выкачано — `git sparse-checkout list`; добавить каталог — `git sparse-checkout add <путь>`,
+вернуть всё — `git sparse-checkout disable`. Настройка per-worktree (`extensions.worktreeConfig`),
+main checkout не затронут.
 
 🚨 **`/opt/.openclaw/victory` = main checkout, НЕ активная разработка.** Это live-prod bind-mount (`victory-web-1` → `/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой сайт.
 
@@ -201,19 +180,19 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 ## Branch discipline (main = prod)
 
-- **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут (он же main checkout) обновляют руками, и 07.09.26 он отставал на 33 коммита. Процедура — `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». **Никаких direct push to main.**
+- **`main`** — production. **Деплой ручной, а не автоматический** — мерж в `main` до сайта не доезжает: прод-чекаут (он же main checkout) обновляют руками, и 07.09.26 он отставал на 33 коммита. Обычный деплой — `bin/deploy` (`.claude/memory/techContext.md`, «Обычный деплой — `bin/deploy`»); смена Ruby/Rails с пересборкой образов — там же, «Деплой смены Ruby/Rails». **Никаких direct push to main.**
 - **`dev/<session>`** или feature branches (`claude/<task>`, `test/<smth>`) — где работает каждая сессия. Push свободно.
-- **PR → main** — единственный путь в прод. На PR приезжает **9 проверок**, и `.github/workflows/lint.yml` даёт только три из них:
+- **PR → main** — единственный путь в прод. На PR приезжает **11 проверок**:
 
   | Проверка | Откуда |
   |---|---|
-  | RuboCop, Brakeman, bundler-audit | `.github/workflows/lint.yml` — единственный workflow в репозитории |
+  | RuboCop, Brakeman, bundler-audit, «Учёт и границы служб» (`bin/services-check`), RSpec | `.github/workflows/lint.yml`, пять джобов |
   | CodeQL + `Analyze (ruby / python / javascript-typescript / actions)` | code scanning **default setup**, включён через UI GitHub — файла в репозитории нет, `ls .github/workflows/` его не покажет |
   | GitGuardian Security Checks | GitHub App, вне репозитория |
 
-  **RSpec — тоже джоб в `lint.yml`** (поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон). Сеть в спеках закрыта WebMock, ActiveJob на `:test`.
+  RSpec поднимает свой PostGIS+pgvector-образ, `db:test:prepare`, полный прогон; сеть в спеках закрыта WebMock, ActiveJob на `:test`. Второй workflow, `.github/workflows/claude.yml`, — Claude Code action на явное `@claude` в issue/PR, проверкой не является.
 - 🚨 **Code-review на diff — обязательный этап каждого PR, а не опция.** Запускать самому, не спрашивая разрешения и не предлагая как вариант: PR не считается готовым, пока ревью не пройдено и блокеры не закрыты. Порядок: код → CI зелёный → ревью → правки по находкам → merge.
-  Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` в списке типов субагентов этой сессии нет; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
+  Вызов: скилл `/code-review <PR#> <уровень>` — проверено на PR #27, читает diff и гоняет код сам. `pr-review-toolkit:code-reviewer` есть, только если установлен плагин `pr-review-toolkit`; файл `.claude/agents/code-reviewer.md` существует, но как тип субагента **не зарегистрирован** (переносы строк в `description`) — `subagent_type: 'code-reviewer'` падает с `Agent type not found`.
   Ревьюеру давать: команду для получения diff, ссылку на план, список намеренных решений (чтобы не оспаривал уже обдуманное), что уже проверено (спеки/линтеры — чтобы не тратил проход), и способ запустить код. ⚠️ `bin/rb` работает только на прод-хосте `victory` (см. «Команды»); на openclaw-машине гонять код нечем — ревью там читает diff, но не запускает. Ревью, которое гоняет код, находит то, что чтение не находит: так был пойман сид, молча плодивший дубли.
 - **Hot-fix** — отдельная feature branch → PR → fast review → merge. Не push direct.
 - 🚨 **Зависимые части едут стеком PR, а не одним большим PR.** Обязательно, если верно любое из двух: (а) работа делится на слои, где следующий не собирается без предыдущего — миграция → сервис → UI; (б) diff перевалил ~500 строк или ~10 файлов. PR #16 (2532 строки, 29 файлов) — ровно этот случай.
@@ -232,7 +211,7 @@ Harness пишет план в общий `~/.claude/plans/`; `plan-sync.sh` з�
 
 ## Routing & delegation — авто-выбор агента/скилла
 
-⚠️ Имена ниже — это файлы `.claude/agents/*.md`, а **не** значения `subagent_type`. Ни одно из 17 не зарегистрировано: `subagent_type: 'topnlab-api-expert'` падает с `Agent type not found`. Читай нужный файл как инструкцию и выполняй сам либо передавай текстом общему субагенту.
+⚠️ Имена ниже — файлы `.claude/agents/*.md`; Claude Code регистрирует их как типы субагентов (`subagent_type: 'topnlab-api-expert'` работает). Исключение — `code-reviewer`: его `description` во frontmatter содержит буквальные переносы строк, и тип не регистрируется (`Agent type not found`) — ревью вызывай скиллом `/code-review`. Если типа нет в списке сессии, прочитай файл агента как инструкцию.
 
 Полная routing-таблица: `.claude/docs/delegation-map.md`. **Quick reference:**
 

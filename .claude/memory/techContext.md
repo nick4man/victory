@@ -236,7 +236,7 @@ bundle exec sidekiq -C config/sidekiq.yml
 🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
 них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
 упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит
-`views_count`. Разбор всех 19 записей — CLAUDE.md, секция «Планировщик один».
+`views_count`. Разбор всех 19 записей — `.claude/memory/progress.md`, секция «Удалённый `config/schedule.rb`».
 
 ### Переезд базы на bookworm — пересборка прод-БД
 

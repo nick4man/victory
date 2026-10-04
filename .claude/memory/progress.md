@@ -55,11 +55,35 @@
 
 ## Известные проблемы / tech debt
 
-- **Тесты**: 5 spec файлов на 328 модулей. Покрытие минимальное — рефакторинг крупных файлов рискованный. Агент `test-bootstrapper` + skill `rspec-bootstrap` помогают добавлять coverage инкрементально.
-- **Линтинг**: `.rubocop.yml` есть, но rubocop/brakeman/bundler-audit отсутствуют в Gemfile. Phase 3 — добавить.
+- **Тесты**: ~150 spec-файлов, ~1800 примеров, полный прогон в CI на каждый PR. Покрытие неравномерное — перед рефакторингом крупного файла проверь, есть ли на него спеки; агент `test-bootstrapper` + skill `rspec-bootstrap` добавляют coverage инкрементально.
+- **Линтинг**: rubocop, brakeman, bundler-audit в `Gemfile` и в CI (`.github/workflows/lint.yml`).
 - **Hot-spots по LOC**: `Property` модель ~710, `DashboardController` ~624, `PropertiesController` ~584. Кандидаты на декомпозицию через агента `rails-architect`.
 - **Hedonic valuation overshoot**: ранее наблюдалось завышение (Дубровичи 25.2М ₽ вместо 7М). `property-valuation-expert` агент компенсирует через CMA-аналоги.
 - **SEO gaps**: WebSite+SearchAction JSON-LD на главной отсутствует; Yandex.Metrika+GA4 ENV-vars в `.env.example` но не подключены в layout; lazy-loading images не систематический. Phase 2B — quick wins; агент `seo-content-curator` + skill `victory-seo-checklist` подключены.
+
+## Удалённый `config/schedule.rb` (12.09.26)
+
+Объявлял 19 записей и выглядел вторым планировщиком, но гема `whenever` в `Gemfile` нет —
+ни одна строка оттуда никогда не выполнялась. Разбор всех 19, чтобы не потерялся вместе с файлом:
+
+
+- **7 работают в другом месте** — `RefreshTopnlabStatsJob` (`sidekiq_cron.yml`),
+  Yandex.Webmaster ×3, `kpi:phase_a`, `lock-clean` (crontab хоста), бэкап
+  (`bin/backup` + systemd-таймер).
+- **3 рабочие, но без расписания** — `Telegram::WorkBot::Sla::WatchdogJob`,
+  `Sla::TasksWatchdogJob`, `topnlab:stages:refresh`. Включение SLA-сторожей — PR #64.
+- **2 существуют, но в текущем виде вредны** — `SendViewingRemindersJob` выбирает по
+  `preferred_date`/`reminder_email_sent`, а в `viewing_schedules` колонки
+  `scheduled_at`/`reminder_sent` (упадёт на первом прогоне);
+  `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по `PropertyView`,
+  а посетители анонимны (Devise выключен) — обнулит `views_count`. Сначала чинить.
+- **7 ссылаются на несуществующее** — классы `UserDigestJob`, `MarketAnalyticsUpdateJob`;
+  таски `db:sessions:trim`, `cache:clear_expired`, `sitemap:refresh` (sitemap строит
+  `SitemapController` на запросе); колонка `property_valuations.follow_up_email_sent`;
+  перевод `properties` в статус `expired`, которого в enum нет (`status` — integer).
+
+Возвращая любую — строка в `config/sidekiq_cron.yml`, а не воскрешение whenever,
+и только после проверки, что задача вообще отработает.
 
 ## Strategic future migration
 
