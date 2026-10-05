@@ -156,3 +156,17 @@ ssh chat 'crontab -l | sed -E "s#^\# 1.0-cutover: ##" | crontab - && docker star
 Найдено и исправлено по ходу: `env_file: .env` у Rails-служб жёстко указывал на боевой файл
 (→ `${RAILS_ENV_FILE:-.env}`); `bin/smoke` печатал `token=` в URL при FAIL (→ маскируется).
 Тома `victory-rc_*` оставлены до переключения.
+
+⚠️ Этот прогон шёл с `DISABLE_SSL=true`, и ревью PR показало, что он **не проверял**
+`force_ssl`: в проде внутренние http-POST на `/webhooks/*` получали бы 301 (исправлено
+в `production.rb` — `/webhooks/` исключён из ssl-редиректа вместе с `/health`).
+Правило для следующих прогонов RC: **`DISABLE_SSL` в `.env.rc` не ставить**, а в проверки
+добавить запрос без `X-Forwarded-Proto`:
+
+```bash
+docker run --rm --network victory-rc_default curlimages/curl:8.10.1 -s -o /dev/null \
+  -w '%{http_code}\n' -X POST http://web:3000/webhooks/zhk_ingest      # ожидается 401, не 301
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/        # ожидается 301 — редирект на сайте работает
+```
+
+Повторный прогон после правок ревью — ниже.

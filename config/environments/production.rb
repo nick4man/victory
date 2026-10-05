@@ -166,7 +166,11 @@ Rails.application.configure do
   # схема http. Без исключений первый получает 403, второй — 301 на https.
   health_path = ->(request) { request.path.start_with?('/health') }
   config.host_authorization = { exclude: health_path }
-  config.ssl_options = { redirect: { exclude: health_path } }
+  # Вебхуки от служб compose приходят по http изнутри docker-сети без
+  # X-Forwarded-Proto — редирект на https превратил бы их POST в GET (301) и
+  # молча сломал бы доставку; они защищены токеном, а не схемой.
+  internal_path = ->(request) { request.path.start_with?('/health', '/webhooks/') }
+  config.ssl_options = { redirect: { exclude: internal_path } }
 
   # Security headers — set once at the framework level so every response gets them.
   config.action_dispatch.default_headers = {

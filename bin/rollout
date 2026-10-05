@@ -42,17 +42,17 @@ compose() { VICTORY_TAG="$TAG" "$DOCKER" compose --env-file .env --env-file .env
 echo "выкатка $TAG (сейчас: ${PREV:-не записано}) в $PROD_DIR, службы: ${SERVICES:-все}"
 if [ "$YES" != 1 ]; then read -r -p 'продолжить? [y/N] ' ans; [ "$ans" = y ] || exit 1; fi
 
-# 1. образы
+# 1. образы: --ignore-buildable — db/news-db собираются из Dockerfile.postgres и в
+# реестре их нет; без флага pull падал бы на них всегда, и каждый rollout
+# пересобирал бы web локально вместо выкатки тега из реестра.
 # shellcheck disable=SC2086
-compose pull $SERVICES || compose build $SERVICES
+compose pull --ignore-buildable $SERVICES || compose build $SERVICES
 
 # 2. бэкап
 [ "$SKIP_BACKUP" = 1 ] || bin/backup db
 
-# 3. up — сохраняем per-service override, переписываем общий тег и sha
-{ grep -vE '^(VICTORY_TAG|GIT_COMMIT_SHA)=' .env.deploy || true; } > .env.deploy.new
-printf 'VICTORY_TAG=%s\nGIT_COMMIT_SHA=%s\n' "$TAG" "$(git rev-parse --short=7 HEAD)" >> .env.deploy.new
-mv .env.deploy.new .env.deploy
+# 3. up. Новый тег в .env.deploy записываем ТОЛЬКО после успешных проверок
+# (шаг 4): файл отвечает на вопрос «что выкачено», а не «что пытались».
 # shellcheck disable=SC2086
 compose up -d --remove-orphans $SERVICES
 
@@ -67,6 +67,9 @@ bin/smoke http://127.0.0.1:3000 "$ADMIN_TOKEN"
 sleep "${SIDEKIQ_SETTLE:-30}"
 compose ps --status running --services | grep -qx sidekiq || { echo 'sidekiq не работает' >&2; exit 1; }
 
-# 5. отметка
+# 5. отметка — сохраняем per-service override, переписываем общий тег и sha
+{ grep -vE '^(VICTORY_TAG|GIT_COMMIT_SHA)=' .env.deploy || true; } > .env.deploy.new
+printf 'VICTORY_TAG=%s\nGIT_COMMIT_SHA=%s\n' "$TAG" "$(git rev-parse --short=7 HEAD)" >> .env.deploy.new
+mv .env.deploy.new .env.deploy
 bin/prod-mark --force
 echo "выкачено $TAG (было: ${PREV:-—})"

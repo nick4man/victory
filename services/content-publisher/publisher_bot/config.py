@@ -22,6 +22,8 @@ class Config:
     approval_escalation_hours: int = int(os.getenv('APPROVAL_ESCALATION_HOURS', '48'))
     
     def __post_init__(self):
+        if not self.database_url:
+            raise RuntimeError('DATABASE_URL не задан — укажи его в .env.publisher (см. .env.example)')
         slots_str = os.getenv('PUBLISH_SLOTS', '09:00,13:00,19:00')
         self.publish_slots = slots_str.split(',')
 

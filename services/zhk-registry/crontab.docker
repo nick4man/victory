@@ -1,4 +1,5 @@
 # Обход справочника ЖК — раз в неделю, ночь с понедельника на вторник (MSK).
-# Зеркало crontab.example; вывод — в stdout контейнера (MAILTO заменяют
-# docker-логи и алерты следующего плана).
-0 3 * * 2 flock -n /tmp/zhk-registry.lock python3 /opt/zhk-registry/run.py
+# Зеркало crontab.example. MAILTO в контейнере нет: при ненулевом коде run.py
+# строка «zhk-registry: ПРОГОН УПАЛ» уходит в stdout контейнера — её ловит
+# docker logs и алертинг следующего плана (grep по этой строке).
+0 3 * * 2 flock -n /tmp/zhk-registry.lock python3 /opt/zhk-registry/run.py || echo "zhk-registry: ПРОГОН УПАЛ (код $?) — сводка могла не дойти, смотри лог выше"

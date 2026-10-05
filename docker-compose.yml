@@ -125,7 +125,8 @@ services:
       web:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "ps -o args= -p 1 | grep -q sidekiq"]
+      # В ruby:slim нет procps — читаем cmdline PID 1 из /proc.
+      test: ["CMD-SHELL", "tr '\\0' ' ' < /proc/1/cmdline | grep -q sidekiq"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -156,6 +157,10 @@ services:
     image: viktory-postgres-pgvector:pg15-postgis36
     restart: unless-stopped
     environment:
+      # ⚠️ Эти три значения compose берёт из .env/.env.deploy, а conveyor и
+      # publisher читают СВОИ файлы (.env.conveyor, .env.publisher). Имя, пользователь
+      # и пароль обязаны совпадать во всех трёх — иначе база создастся с одними
+      # кредами, а клиенты будут ходить с другими. Чек-лист — cutover-1.0.md, часть B.
       POSTGRES_DB: ${NEWS_DB_NAME:-news}
       POSTGRES_USER: ${NEWS_DB_USER:-news}
       # Пароль из .env.deploy; обязателен только профилю conveyor, поэтому без :? —
