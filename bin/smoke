@@ -10,7 +10,7 @@ check() { # имя, ожидаемый код (regex), url, [curl-опции...]
   local name=$1 want=$2 url=$3; shift 3
   local code
   code=$(curl -s -o "$BODY" -w '%{http_code}' --max-time 20 -H 'X-Forwarded-Proto: https' "$@" "$url")
-  if [[ "$code" =~ ^($want)$ ]]; then echo "ok   $code $name"; else echo "FAIL $code $name ($url)"; fail=1; fi
+  if [[ "$code" =~ ^($want)$ ]]; then echo "ok   $code $name"; else echo "FAIL $code $name (${url//token=*/token=***})"; fail=1; fi
 }
 check 'health'            200     "$BASE/health"
 check 'health/database'   200     "$BASE/health/database"

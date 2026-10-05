@@ -32,7 +32,9 @@ x-rails: &rails
       RUBY_VERSION: 3.4.10
   restart: unless-stopped
   env_file:
-    - .env
+    # Боевой .env по умолчанию; контрольный/staging-стек подставляет свой:
+    #   RAILS_ENV_FILE=.env.rc docker compose -p victory-rc --env-file .env.rc up -d
+    - ${RAILS_ENV_FILE:-.env}
   environment:
     # Переопределяет RAILS_ENV=development из .env: environment: сильнее env_file.
     RAILS_ENV: production
