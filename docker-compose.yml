@@ -1,3 +1,59 @@
+# Боевой стек АН «Виктори». Один файл — все службы, у каждой свой образ и свой тег.
+#
+#   docker compose up -d                       # web, sidekiq, db, redis, zhk-registry
+#   docker compose --profile conveyor up -d    # + конвейер новостей: news-db, conveyor, publisher
+#   docker compose --profile audit up -d       # + audit-engine (после репатриации, см. VENDOR.md)
+#
+# Теги: общий VICTORY_TAG (из .env.deploy, по умолчанию 1.0.0) и по-службный
+# override — WEB_TAG / CONVEYOR_TAG / PUBLISHER_TAG / ZHK_TAG. Обновить одну службу:
+#   ZHK_TAG=1.0.1 docker compose up -d --no-deps --pull always zhk-registry
+# Остальные контейнеры не пересоздаются. Подробно — docs/runbooks/release.md.
+#
+# Разработка (bind-mount, RAILS_ENV=development, как было до 1.0):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Имя проекта задано явно: тома pgdata/redisdata называются victory_pgdata и
+# victory_redisdata — это сегодняшние прод-тома, их нельзя потерять при
+# переезде с bind-mount. Контрольный стек поднимается с -p victory-rc и
+# получает свои тома.
+name: victory
+
+include:
+  # audit-engine: четыре контейнера и внутренняя сеть, все под профилем audit
+  # (живой контейнер пока поднят из архива openclaw на хосте chat — VENDOR.md).
+  - docker-compose.audit.yml
+
+x-rails: &rails
+  image: ${REGISTRY:-ghcr.io/nick4man}/victory-web:${WEB_TAG:-${VICTORY_TAG:-1.0.0}}
+  build:
+    context: .
+    target: prod
+    args:
+      RUBY_VERSION: 3.4.10
+  restart: unless-stopped
+  env_file:
+    - .env
+  environment:
+    # Переопределяет RAILS_ENV=development из .env: environment: сильнее env_file.
+    RAILS_ENV: production
+    RAILS_LOG_TO_STDOUT: '1'
+    RAILS_SERVE_STATIC_FILES: '1'
+    RAILS_EXTRA_HOSTS: web,localhost,127.0.0.1
+    PUMA_STDOUT_LOG: /dev/stdout
+    PUMA_STDERR_LOG: /dev/stderr
+    GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
+  volumes:
+    # Active Storage (3,4 ГБ, в т.ч. паспорта) — тот же каталог, что и до 1.0.
+    # Не named volume: иначе данные пришлось бы переносить, а это релиз-снимок.
+    - ${STORAGE_DIR:-./storage}:/app/storage
+    - rails_tmp:/app/tmp
+    - rails_log:/app/log
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
 services:
   db:
     # Custom: postgres:15-bookworm + apt postgis-3 и pgvector из pgdg.
@@ -36,51 +92,128 @@ services:
       retries: 10
 
   web:
-    build: .
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    env_file:
-      - .env
+    <<: *rails
     ports:
-      - "0.0.0.0:3000:3000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./:/app
-      - bundle:/usr/local/bundle
-      - rails_tmp:/app/tmp
-      - rails_log:/app/log
-    tty: true
-    stdin_open: true
+      # WEB_BIND сужается до внутреннего интерфейса следующим планом, после
+      # проверки, с какого адреса ходит Traefik (архитектурный документ, раздел 7).
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health/database"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
 
   sidekiq:
-    build: .
-    restart: unless-stopped
-    user: "${UID:-1000}:${GID:-1000}"
-    env_file:
-      - .env
+    <<: *rails
+    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+    # YAML-якорь не сливает хэши, поэтому environment: повторён целиком;
+    # SKIP_DB_PREPARE только здесь — миграции гонит web на старте, как и до 1.0.
     environment:
+      RAILS_ENV: production
+      RAILS_LOG_TO_STDOUT: '1'
+      RAILS_EXTRA_HOSTS: web,localhost,127.0.0.1
       SKIP_DB_PREPARE: "1"
+      GIT_COMMIT_SHA: ${GIT_COMMIT_SHA:-}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
       web:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps -o args= -p 1 | grep -q sidekiq"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Реестр ЖК. Без профиля: зависит только от вебхука Rails. Крон-строка из
+  # crontab хоста после переключения убирается (cutover-1.0.md), иначе обход
+  # пойдёт дважды.
+  zhk-registry:
+    image: ${REGISTRY:-ghcr.io/nick4man}/victory-zhk-registry:${ZHK_TAG:-${VICTORY_TAG:-1.0.0}}
+    build:
+      context: ./services/zhk-registry
+    restart: unless-stopped
+    env_file:
+      - .env.zhk
+    depends_on:
+      web:
+        condition: service_healthy
+
+  # --- Конвейер новостей: своя база news-db (схема — services/urgent-news-collector/schema),
+  # коллектор по расписанию (conveyor) и Telegram-публикатор очереди (publisher).
+  # Профиль conveyor: включается после переезда данных с chat
+  # (docs/runbooks/cutover-1.0.md), до этого там же работает прежняя копия.
+  news-db:
+    profiles: [conveyor]
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: viktory-postgres-pgvector:pg15-postgis36
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${NEWS_DB_NAME:-news}
+      POSTGRES_USER: ${NEWS_DB_USER:-news}
+      # Пароль из .env.deploy; обязателен только профилю conveyor, поэтому без :? —
+      # иначе падал бы любой `docker compose config`.
+      POSTGRES_PASSWORD: ${NEWS_DB_PASSWORD:-}
     volumes:
-      - ./:/app
-      - bundle:/usr/local/bundle
-      - rails_tmp:/app/tmp
-      - rails_log:/app/log
-    command: ["bundle", "exec", "sidekiq", "-C", "config/sidekiq.yml"]
+      - newsdb:/var/lib/postgresql/data
+      - ./services/urgent-news-collector/schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NEWS_DB_USER:-news} -d ${NEWS_DB_NAME:-news}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  conveyor:
+    profiles: [conveyor]
+    image: ${REGISTRY:-ghcr.io/nick4man}/victory-conveyor:${CONVEYOR_TAG:-${VICTORY_TAG:-1.0.0}}
+    build:
+      context: ./services/urgent-news-collector
+    restart: unless-stopped
+    env_file:
+      - path: .env.conveyor
+        required: false   # профиль выключен — файла может не быть
+    volumes:
+      # Контракт двух служб (MIRROR_SCRIPT) собирается здесь, а не в образе —
+      # services-check запрещает службе ссылаться на соседку.
+      - ./services/chat-host-cron/post_news_to_victory.sh:/opt/conveyor/mirror/post_news_to_victory.sh:ro
+      - conveyor_state:/opt/conveyor/state
+      - conveyor_published:/opt/conveyor/published
+      - conveyor_notifications:/opt/conveyor/notifications
+      - conveyor_logs:/opt/conveyor/logs
+    depends_on:
+      news-db:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+
+  publisher:
+    profiles: [conveyor]
+    image: ${REGISTRY:-ghcr.io/nick4man}/victory-publisher:${PUBLISHER_TAG:-${VICTORY_TAG:-1.0.0}}
+    build:
+      context: ./services/content-publisher
+    restart: unless-stopped
+    env_file:
+      - path: .env.publisher
+        required: false   # профиль выключен — файла может не быть
+    volumes:
+      - publisher_media:/app/media
+    depends_on:
+      news-db:
+        condition: service_healthy
 
 volumes:
   pgdata:
   redisdata:
-  bundle:
   rails_tmp:
   rails_log:
+  newsdb:
+  conveyor_state:
+  conveyor_published:
+  conveyor_notifications:
+  conveyor_logs:
+  publisher_media:

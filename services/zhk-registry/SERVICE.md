@@ -4,7 +4,7 @@ owner: victory
 kind: python-cron
 entrypoint: run.py
 tests: cd services/zhk-registry && python3 -m unittest discover -v
-deploy: user crontab on prod host, main checkout — see crontab.example
+deploy: compose-служба zhk-registry в корневом docker-compose.yml (образ victory-zhk-registry, supercronic по crontab.docker)
 depends_on: none
 ported_from: —
 port_status: done

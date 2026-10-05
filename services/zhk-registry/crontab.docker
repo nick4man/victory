@@ -1,0 +1,4 @@
+# Обход справочника ЖК — раз в неделю, ночь с понедельника на вторник (MSK).
+# Зеркало crontab.example; вывод — в stdout контейнера (MAILTO заменяют
+# docker-логи и алерты следующего плана).
+0 3 * * 2 flock -n /tmp/zhk-registry.lock python3 /opt/zhk-registry/run.py
