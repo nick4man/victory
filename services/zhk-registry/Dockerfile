@@ -29,4 +29,6 @@ RUN python3 -m unittest tests.test_erz tests.test_edinstvo tests.test_run -v
 RUN groupadd --gid 1000 app && useradd --uid 1000 --gid app --create-home app
 USER app
 
-CMD ["supercronic", "-passthrough-logs", "/opt/zhk-registry/crontab.docker"]
+# Путь абсолютный намеренно: как PID 1 supercronic пере-exec'ает себя по argv[0],
+# и с коротким именем падает «Failed to fork exec» на старте.
+CMD ["/usr/local/bin/supercronic", "-passthrough-logs", "/opt/zhk-registry/crontab.docker"]
