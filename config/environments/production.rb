@@ -157,6 +157,16 @@ Rails.application.configure do
     "www.#{app_domain}",
     /.*\.#{Regexp.escape(app_domain)}/
   ]
+  # Имена, под которыми приложение видят соседи по docker-сети и сам хост:
+  # `web` — для служб из services/ (zhk-registry шлёт вебхук на http://web:3000),
+  # `127.0.0.1` — для bin/rollout и healthcheck. Список через запятую; без него
+  # Rails отвечает 403 «Blocked host», и вебхук «работает», ничего не доставляя.
+  config.hosts += ENV.fetch('RAILS_EXTRA_HOSTS', '').split(',').map(&:strip).reject(&:empty?)
+  # /health* проверяют docker healthcheck и Traefik — у них Host произвольный и
+  # схема http. Без исключений первый получает 403, второй — 301 на https.
+  health_path = ->(request) { request.path.start_with?('/health') }
+  config.host_authorization = { exclude: health_path }
+  config.ssl_options = { redirect: { exclude: health_path } }
 
   # Security headers — set once at the framework level so every response gets them.
   config.action_dispatch.default_headers = {
