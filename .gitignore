@@ -328,3 +328,7 @@ ehthumbs.db
 # содержимое репозитория. Без этой строки они висят в `git status` как untracked
 # и один `git add -A` утаскивает их в историю навсегда.
 /.claude/worktrees/
+
+# Python-службы (services/*): байткод
+__pycache__/
+*.pyc
