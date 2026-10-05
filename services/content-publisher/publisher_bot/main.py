@@ -13,6 +13,11 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+# httpx на уровне INFO пишет полный URL каждого запроса к Telegram, а в нём —
+# токен бота (api.telegram.org/bot<token>/getUpdates). В docker-логах это
+# утечка секрета; 05.10.26 именно так токен и всплыл. WARNING оставляет ошибки.
+logging.getLogger('httpx').setLevel(logging.WARNING)
+logging.getLogger('httpcore').setLevel(logging.WARNING)
 
 async def main():
     # 1. Initialize DB
