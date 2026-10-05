@@ -133,12 +133,26 @@ ssh chat 'crontab -l | sed -E "s#^\# 1.0-cutover: ##" | crontab - && docker star
 - Следующий план: CI на ветке `dev`, dev-машина, `WEB_BIND` на внутренний интерфейс,
   переименование БД в `viktory_realty_production`, Kamal.
 
-## Прогон RC — ожидает
+## Прогон RC — 05.10.26 21:47–21:52
 
-Контрольный стек `victory-rc` (порт 3001, копия БД из `bin/backup`): `.env.rc` — копия
-боевого `.env` с override `RAILS_ENV=production`, `WEB_PORT=3001`, `WEB_BIND=127.0.0.1`,
-`DISABLE_SSL=true`, `STORAGE_DIR=/home/q/victory-rc-storage`, `SENTRY_DSN=`,
-`VICTORY_TAG=1.0.0`, плюс выключенные исходящие каналы (Topnlab, Telegram, SMTP).
-Дамп: `gpg --batch --decrypt --passphrase-file /etc/victory-backup/passphrase
-/var/backups/victory/db/<последний>.dump.gpg | pg_restore …`. Результат прогона — ниже,
-когда будет.
+Контрольный стек `victory-rc` (порт 3001). `.env.rc` — копия боевого `.env` с override
+`RAILS_ENV=production`, `WEB_PORT=3001`, `WEB_BIND=127.0.0.1`, `DISABLE_SSL=true`,
+`STORAGE_DIR=/home/q/victory-rc-storage`, `SENTRY_DSN=`, `VICTORY_TAG=1.0.0`;
+выключены `TOPNLAB_API_KEY`, `TELEGRAM_BOT_TOKEN`, `SMTP_PASSWORD` (`=disabled-in-rc`).
+Запуск: `RAILS_ENV_FILE=.env.rc docker compose -p victory-rc --env-file .env.rc …`.
+
+- образ `victory-web` sha-b1cfb39, дамп `viktory-05.10.26-0330.dump.gpg` →
+  `pg_restore` без ошибок: properties 135, articles 176, schema_migrations 119;
+- web: `Puma started. Environment: production`, health через 3 с, **без** `Created database`;
+- `bin/smoke http://127.0.0.1:3001 <token>` — **9/9 ok** (health, health/database, главная,
+  tailwind css, каталог, sitemap, robots, вебхук без токена → 401, admin health);
+- карточка объекта `/properties/<slug>` → 200; `/health` по http без `X-Forwarded-Proto` → 200
+  (редиректа нет); `POST http://web:3000/webhooks/zhk_ingest` из docker-сети → 401 от
+  контроллера (не 403 «Blocked host»);
+- `zhk-registry` в `DRY_RUN` против `http://web:3000`: `erz: нашли (DRY_RUN) 10`, без traceback;
+- sidekiq: `Booted Rails 8.1.3.1 application in production environment`, 22 cron-задачи,
+  остановлен через 45 с.
+
+Найдено и исправлено по ходу: `env_file: .env` у Rails-служб жёстко указывал на боевой файл
+(→ `${RAILS_ENV_FILE:-.env}`); `bin/smoke` печатал `token=` в URL при FAIL (→ маскируется).
+Тома `victory-rc_*` оставлены до переключения.
