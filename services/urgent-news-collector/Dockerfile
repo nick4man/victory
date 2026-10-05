@@ -21,10 +21,10 @@ RUN apt-get update -qq && \
 # не требует root. Версия и сумма пинуются; при обновлении сверить с
 # https://github.com/aptible/supercronic/releases
 ARG SUPERCRONIC_VERSION=v0.2.33
-ARG SUPERCRONIC_SHA256
+ARG SUPERCRONIC_SHA256=feefa310da569c81b99e1027b86b27b51e6ee9ab647747b49099645120cfc671
 ADD https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-linux-amd64 /usr/local/bin/supercronic
 RUN if [ -n "$SUPERCRONIC_SHA256" ]; then echo "${SUPERCRONIC_SHA256}  /usr/local/bin/supercronic" | sha256sum -c -; fi && \
-    chmod +x /usr/local/bin/supercronic
+    chmod 0755 /usr/local/bin/supercronic   # ADD по URL даёт 0600 — пользователю app нужен r+x
 
 WORKDIR ${CONVEYOR_HOME}
 COPY requirements.txt .
