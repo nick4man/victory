@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# bin/smoke <base_url> [admin_token] — проверки живого стека, код 0/1.
+# Ловит то, что ломается при смене окружения: хосты, https-редирект, ассеты,
+# БД, админка, вебхук с неверным токеном, sitemap, robots.
+set -uo pipefail
+BASE="${1:?usage: bin/smoke <base_url> [admin_token]}"; TOKEN="${2:-}"
+BODY=$(mktemp); trap 'rm -f "$BODY"' EXIT
+fail=0
+check() { # имя, ожидаемый код (regex), url, [curl-опции...]
+  local name=$1 want=$2 url=$3; shift 3
+  local code
+  code=$(curl -s -o "$BODY" -w '%{http_code}' --max-time 20 -H 'X-Forwarded-Proto: https' "$@" "$url")
+  if [[ "$code" =~ ^($want)$ ]]; then echo "ok   $code $name"; else echo "FAIL $code $name (${url//token=*/token=***})"; fail=1; fi
+}
+check 'health'            200     "$BASE/health"
+check 'health/database'   200     "$BASE/health/database"
+check 'главная'           200     "$BASE/"
+css=$(grep -o '/assets/tailwind-[^"]*\.css' "$BODY" | head -1)
+if [ -n "$css" ]; then check 'tailwind css' 200 "$BASE$css"; else echo 'FAIL --- на главной нет /assets/tailwind-*.css'; fail=1; fi
+check 'каталог'           200     "$BASE/properties"
+check 'sitemap'           200     "$BASE/sitemap.xml"
+check 'robots'            200     "$BASE/robots.txt"
+check 'вебхук без токена' '401|403' "$BASE/webhooks/zhk_ingest" -X POST -H 'Content-Type: application/json' -d '{}'
+if [ -n "$TOKEN" ]; then check 'admin health' 200 "$BASE/admin/health.json?token=$TOKEN"; fi
+if [ "$fail" = 0 ]; then echo 'SMOKE OK'; else echo 'SMOKE FAILED'; exit 1; fi

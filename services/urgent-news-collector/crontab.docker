@@ -1,0 +1,8 @@
+# Расписание конвейера внутри контейнера (supercronic). Зеркало crontab.example:
+# те же интервалы, пути /opt/conveyor, логи в stdout контейнера.
+# flock оставлен: холодный старт коллектора может идти дольше 30 минут.
+*/30 * * * * flock -n /tmp/urgent_collector.lock python3 /opt/conveyor/urgent_collector.py
+2,17,32,47 * * * * flock -n /tmp/urgent_trigger.lock python3 /opt/conveyor/urgent_trigger.py
+0 6-20 * * 1 flock -n /tmp/weekly_digest.lock python3 /opt/conveyor/weekly_digest_trigger.py
+0 6-12 * * 2 flock -n /tmp/weekly_digest.lock python3 /opt/conveyor/weekly_digest_trigger.py
+0 7 * * 2,4 python3 /opt/conveyor/bank_rates_trigger.py

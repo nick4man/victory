@@ -59,6 +59,7 @@ services:
   ruby:
     build:
       context: .
+      target: dev
       args:
         RUBY_VERSION: ${RUBY_TARGET:-3.4.10}
     # Тег включает версию — образы под разные Ruby живут рядом, не перетирая

@@ -4,7 +4,7 @@ owner: victory
 kind: python-cron
 entrypoint: urgent_collector.py
 tests: cd services/urgent-news-collector && python3 -m unittest discover
-deploy: ./deploy.sh в /opt/victory-conveyor, крон оттуда — см. crontab.example
+deploy: compose-служба conveyor (профиль conveyor) в корневом docker-compose.yml; до переезда данных — ./deploy.sh в /opt/victory-conveyor на chat (docs/runbooks/cutover-1.0.md)
 depends_on: none
 ported_from: openclaw (архив)
 port_status: done
