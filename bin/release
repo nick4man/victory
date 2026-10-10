@@ -4,6 +4,9 @@
 #   bin/release            собрать, тегировать <VERSION> и sha-<7>
 #   bin/release --push     + push в ${REGISTRY:-ghcr.io/nick4man}
 #   bin/release --check    только показать, что будет собрано
+#   bin/release --from-ci  без сборки: sha-<7> уже собран и запушен workflow
+#                          build.yml — натянуть на него тег <VERSION> прямо
+#                          в реестре (imagetools не тянет слои на хост)
 #
 # Версия — файл VERSION в корне; sha — HEAD текущего чекаута. Собирать из
 # чистого дерева на нужном коммите: образ с незакоммиченными правками
@@ -16,8 +19,8 @@ DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 REGISTRY="${REGISTRY:-ghcr.io/nick4man}"
 VERSION=$(tr -d '[:space:]' < VERSION)
 SHA=$(git rev-parse --short=7 HEAD)
-PUSH=0; CHECK=0
-for a in "$@"; do case "$a" in --push) PUSH=1;; --check) CHECK=1;; *) echo "неизвестный флаг $a" >&2; exit 2;; esac; done
+PUSH=0; CHECK=0; FROM_CI=0
+for a in "$@"; do case "$a" in --push) PUSH=1;; --check) CHECK=1;; --from-ci) FROM_CI=1;; *) echo "неизвестный флаг $a" >&2; exit 2;; esac; done
 
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "дерево не чистое — закоммить или отложить правки" >&2; exit 2; }
 
@@ -34,6 +37,20 @@ for svc in "${!IMAGES[@]}"; do
   echo "  $svc → $REGISTRY/${IMAGES[$svc]}:{$VERSION,sha-$SHA}"
 done
 [ "$CHECK" = 1 ] && exit 0
+
+if [ "$FROM_CI" = 1 ]; then
+  # Образ sha-$SHA собрал и запушил CI (build.yml). Здесь только проверяем,
+  # что он есть в реестре, и натягиваем на него VERSION-тег — слои на хост
+  # не скачиваются, docker login на ghcr по-прежнему нужен.
+  for svc in "${!IMAGES[@]}"; do
+    img="$REGISTRY/${IMAGES[$svc]}"
+    "$DOCKER" buildx imagetools inspect "$img:sha-$SHA" >/dev/null \
+      || { echo "$img:sha-$SHA нет в реестре — собери локально (bin/release --push)" >&2; exit 1; }
+    "$DOCKER" buildx imagetools create -t "$img:$VERSION" "$img:sha-$SHA"
+  done
+  echo "готово: тег $VERSION натянут на sha-$SHA в реестре (сборка — CI)"
+  exit 0
+fi
 
 # env-файлы служб без профиля обязаны существовать даже для build.
 touch .env.zhk

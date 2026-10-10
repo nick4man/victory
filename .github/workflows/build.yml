@@ -1,0 +1,185 @@
+name: Build images
+
+# Сборка docker-образов всех служб и публикация в GHCR.
+#
+# - push в main: собрать и запушить тег sha-<7>; если коммит менял VERSION —
+#   дополнительно тег <VERSION> (это и есть «релиз»).
+# - pull_request: только собрать (без push) + zeitwerk:check у web — проверка,
+#   что образ собирается и приложение грузится в production-режиме.
+# - workflow_dispatch: как push (sha + VERSION) — ручная пересборка.
+#
+# Выкатка образов — НЕ здесь: прод тянет образы сам (bin/rollout на хосте),
+# у CI нет доступа к прод-серверу. См. docs/ci-cd-pipeline-plan.md, фаза 1.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io/nick4man
+
+jobs:
+  prep:
+    name: Что собираем и с какими тегами
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.meta.outputs.sha }}
+      version: ${{ steps.meta.outputs.version }}
+      version_tag: ${{ steps.meta.outputs.version_tag }}
+      push: ${{ steps.meta.outputs.push }}
+      services: ${{ steps.meta.outputs.services }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: meta
+        run: |
+          set -euo pipefail
+          SHA=$(git rev-parse --short=7 HEAD)
+          VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = 'pull_request' ]; then
+            PUSH=0
+            DIFF_BASE="origin/${{ github.base_ref }}...HEAD"
+          else
+            PUSH=1
+            # push: github.event.before — прошлый tip main; dispatch: сравнивать
+            # не с чем, считаем VERSION изменившимся (ручной запуск = релиз).
+            DIFF_BASE="${{ github.event.before }}..${{ github.sha }}"
+            if [ "${{ github.event_name }}" = 'workflow_dispatch' ]; then
+              DIFF_BASE=''
+            fi
+          fi
+          echo "push=$PUSH" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$DIFF_BASE" ] || git diff --name-only "$DIFF_BASE" | grep -qx VERSION; then
+            echo "version_tag=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "version_tag=0" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Службы services/* собираем только когда их каталоги менялись
+          # (на PR сравниваем с base, на push — с before; dispatch = все).
+          # Матрица — JSON-массив объектов {service, context} для matrix.include.
+          SERVICES='[]'
+          for pair in conveyor:services/urgent-news-collector publisher:services/content-publisher zhk-registry:services/zhk-registry; do
+            svc=${pair%%:*}; dir=${pair#*:}
+            if [ -z "$DIFF_BASE" ] || git diff --name-only "$DIFF_BASE" -- "$dir" | grep -q .; then
+              SERVICES=$(printf '%s' "$SERVICES" | jq -c --arg s "$svc" --arg c "./$dir" '. + [{service: $s, context: $c}]')
+            fi
+          done
+          echo "services=$SERVICES" >> "$GITHUB_OUTPUT"
+
+  web:
+    name: Образ web (+ zeitwerk:check)
+    needs: prep
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: needs.prep.outputs.push == '1'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build victory-web (load)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: prod
+          load: true
+          push: false
+          tags: |
+            ${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      # Приложение обязано грузиться в production-режиме (eager load) — ловит
+      # то, что RSpec в test-окружении пропускает. Заглушки явно «не-токенные»:
+      # сеть образу не нужна, GitGuardian не должен сработать. БД не нужна:
+      # entrypoint (ждёт postgres и db:prepare) подменяем на голый bin/rails.
+      - name: zeitwerk:check в production-окружении
+        run: |
+          docker run --rm --entrypoint bin/rails \
+            -e RAILS_ENV=production \
+            -e SECRET_KEY_BASE_DUMMY=1 \
+            -e TELEGRAM_BOT_TOKEN=not-a-token-ci-boot-check \
+            -e OMNIROUTE_BASE_URL=http://llm.invalid/v1 \
+            -e OMNIROUTE_API_KEY=not-a-key-ci-boot-check \
+            "$REGISTRY/victory-web:sha-${{ needs.prep.outputs.sha }}" \
+            zeitwerk:check
+
+      # Пуш только после успешного zeitwerk:check — сломанный образ в реестр
+      # не попадает.
+      - name: Push тегов
+        if: needs.prep.outputs.push == '1'
+        run: |
+          set -euo pipefail
+          IMG="$REGISTRY/victory-web"
+          docker push "$IMG:sha-${{ needs.prep.outputs.sha }}"
+          if [ "${{ needs.prep.outputs.version_tag }}" = '1' ]; then
+            docker tag "$IMG:sha-${{ needs.prep.outputs.sha }}" "$IMG:${{ needs.prep.outputs.version }}"
+            docker push "$IMG:${{ needs.prep.outputs.version }}"
+          fi
+
+  services:
+    name: Образ ${{ matrix.service }}
+    needs: prep
+    if: needs.prep.outputs.services != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.prep.outputs.services) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: needs.prep.outputs.push == '1'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push victory-${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          load: ${{ needs.prep.outputs.push != '1' }}
+          push: ${{ needs.prep.outputs.push == '1' }}
+          tags: |
+            ${{ env.REGISTRY }}/victory-${{ matrix.service }}:sha-${{ needs.prep.outputs.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # VERSION-тег натягиваем на уже запушенный sha-образ прямо в реестре,
+      # без локальной сборки (imagetools не тянет слои на раннер).
+      - name: Тег VERSION
+        if: needs.prep.outputs.push == '1' && needs.prep.outputs.version_tag == '1'
+        run: |
+          docker buildx imagetools create \
+            -t "$REGISTRY/victory-${{ matrix.service }}:${{ needs.prep.outputs.version }}" \
+            "$REGISTRY/victory-${{ matrix.service }}:sha-${{ needs.prep.outputs.sha }}"
