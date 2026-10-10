@@ -7,10 +7,18 @@
 ## Собрать релиз
 
 1. На ветке релиза: `printf '1.0.1\n' > VERSION`, коммит, PR в `main`, ревью, merge.
-2. На прод-хосте, в чекауте `main` на нужном коммите: `bin/release --push`
+2. Workflow `.github/workflows/build.yml` на merge в `main` собирает и пушит в
+   GHCR тег `sha-<7>` каждой службы; коммит, меняющий `VERSION`, дополнительно
+   получает тег `<версия>`. То есть после merge релизного PR образы обычно уже
+   в реестре — шаг 3 нужен, только если VERSION-тег надо натянуть на более
+   ранний sha или CI не запушил.
+3. Довесить `<версия>` на уже собранный CI образ без локальной сборки:
+   `bin/release --from-ci` на прод-хосте в чекауте `main` на нужном коммите
+   (проверяет наличие `sha-<7>` в реестре и натягивает тег через imagetools).
+   Fallback без CI: `bin/release --push` — собрать локально и запушить
    (`--check` — только показать). Образы:
    `ghcr.io/nick4man/victory-{web,conveyor,publisher,zhk-registry}:{<версия>,sha-<7>}`.
-3. Тег в git: `git tag -a v<версия> -m 'release <версия>' && git -c http.version=HTTP/1.1 push origin v<версия>`.
+4. Тег в git: `git tag -a v<версия> -m 'release <версия>' && git -c http.version=HTTP/1.1 push origin v<версия>`.
 
 ## Выкатить
 
