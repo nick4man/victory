@@ -44,21 +44,22 @@ class DatabaseClient:
             rows = await conn.fetch(query)
             return [dict(row) for row in rows]
     
-    async def try_transition_status(self, post_id: int, from_status: str, to_status: str) -> bool:
+    async def try_transition_status(self, post_id: int, from_status: str, to_status: str, **extra_fields) -> bool:
         """
         Atomic conditional status transition: only updates if current status == from_status.
         Returns True if the row was updated (transition succeeded), False otherwise.
         This is the core deduplication primitive — it prevents two concurrent workers
-        from both publishing the same post.
+        from both publishing the same post. extra_fields (например scheduled_at)
+        пишутся в той же атомарной операции.
         """
-        query = """
-            UPDATE posts_queue
-            SET status = $3, updated_at = NOW()
-            WHERE id = $1 AND status = $2
-            RETURNING id
-        """
+        fields = ['status = $3', 'updated_at = NOW()']
+        values = [post_id, from_status, to_status]
+        for i, (key, value) in enumerate(extra_fields.items(), start=4):
+            fields.append(f"{key} = ${i}")
+            values.append(value)
+        query = f"UPDATE posts_queue SET {', '.join(fields)} WHERE id = $1 AND status = $2 RETURNING id"
         async with self.pool.acquire() as conn:
-            result = await conn.fetchrow(query, post_id, from_status, to_status)
+            result = await conn.fetchrow(query, *values)
             if result:
                 logger.info(f"[DEDUP] Post #{post_id}: {from_status} → {to_status}")
                 return True
