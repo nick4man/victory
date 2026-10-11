@@ -21,7 +21,8 @@ smoke + Playwright (workflow `.github/workflows/build.yml`), прежде чем
    (формат `user:pass`).
 3. **SSH-ключ для CI**: `ssh-keygen -t ed25519 -f ~/.ssh/victory-staging-ci -N ''`,
    публичный — в `~/.ssh/authorized_keys` с принудительной командой (ключ умеет
-   только выкатку, ничего больше):
+   только выкатку **на staging**, ничего больше — в т.ч. НЕ умеет `bin/rollout`,
+   это прод; прод-выкатка через CI — отдельная фаза и отдельный ключ):
    ```
    command="/home/q/victory/bin/deploy-gate",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA... staging-ci
    ```

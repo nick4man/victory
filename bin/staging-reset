@@ -75,7 +75,17 @@ if [ "$RESTORE_RC" -gt 1 ]; then
   tail -20 "$RESTORE_LOG" >&2
   exit 1
 fi
-grep -iE 'fatal|error' "$RESTORE_LOG" | grep -vE 'already exists|does not exist' >&2 || true
+# rc ≤ 1 не гарантирует чистоту: pg_restore пишет «errors ignored on restore: N»
+# и код 1, когда, например, не создал индекс (кейс 06.09.26 из bin/backup
+# verify — проверка врала зелёным четвёртые сутки). Судим по строкам
+# 'pg_restore: error:' вне списка безобидных, как боевой verify_restore_log.
+HARD_ERRORS=$(grep '^pg_restore: error:' "$RESTORE_LOG" \
+  | grep -Ev 'role "[^"]*" does not exist|must be owner of' || true)
+if [ -n "$HARD_ERRORS" ]; then
+  echo 'pg_restore: ошибки вне списка безобидных — restore считается сломанным:' >&2
+  echo "$HARD_ERRORS" >&2
+  exit 1
+fi
 
 # Санитизация копии: клиентские Telegram-привязки на стенде не нужны —
 # иначе client-bot из staging мог бы отвечать реальным людям, если его

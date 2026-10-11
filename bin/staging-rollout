@@ -16,8 +16,19 @@ cd "$PROD_DIR"
 [ -f .env.staging ] || { echo "нет $PROD_DIR/.env.staging (образец: .env.staging.example)" >&2; exit 2; }
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 
+# Если STORAGE_DIR из .env.staging пропадёт, интерполяция ${STORAGE_DIR:-./storage}
+# в docker-compose.yml молча смонтирует ПРОДОВСКИЙ storage (паспорта клиентов,
+# запись) в staging-контейнер — WEB_PORT в той же ситуации упал бы громко,
+# storage падает тихо. Гвардим до compose (ревью #111, P1).
+STORAGE_DIR_CONF=$(grep -E '^STORAGE_DIR=' .env.staging | cut -d= -f2- || true)
+if [ -z "$STORAGE_DIR_CONF" ] || [ "$STORAGE_DIR_CONF" = './storage' ]; then
+  echo ".env.staging: STORAGE_DIR обязан быть задан и не равен ./storage (продовский каталог)" >&2
+  exit 2
+fi
+
 WEB_PORT=$(grep -E '^WEB_PORT=' .env.staging | cut -d= -f2- || true)
 WEB_PORT=${WEB_PORT:-3002}
+[ "$WEB_PORT" != 3000 ] || { echo '.env.staging: WEB_PORT=3000 — это порт прода' >&2; exit 2; }
 
 compose() {
   VICTORY_TAG="$TAG" RAILS_ENV_FILE=.env.staging \
