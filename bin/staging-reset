@@ -17,6 +17,14 @@ PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
 cd "$PROD_DIR"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 
+# Тег образа — из журнала выкатки (пишет staging-rollout). Без него compose
+# не находит образ и молча СОБИРАЕТ его из чекаута хоста — 10+ минут
+# сборки вместо секундного перезапуска (найдено на стенде 11.10.26).
+[ -f .env.staging-deploy ] || { echo 'нет .env.staging-deploy — сначала bin/staging-rollout' >&2; exit 2; }
+VICTORY_TAG=$(grep -E '^VICTORY_TAG=' .env.staging-deploy | cut -d= -f2- || true)
+[ -n "$VICTORY_TAG" ] || { echo '.env.staging-deploy без VICTORY_TAG — сначала bin/staging-rollout' >&2; exit 2; }
+export VICTORY_TAG
+
 CONFIG_FILE="${BACKUP_CONFIG:-/etc/victory-backup/backup.env}"
 [ -r "$CONFIG_FILE" ] || { echo "нет конфига $CONFIG_FILE (образец: config/backup.env.example)" >&2; exit 2; }
 # shellcheck source=/dev/null
@@ -101,8 +109,13 @@ compose up -d web
 
 WEB_PORT=$(grep -E '^WEB_PORT=' .env.staging | cut -d= -f2- || true)
 WEB_PORT=${WEB_PORT:-3002}
+# Хелсчекаем там, где web реально слушает: WEB_BIND (WG-интерфейс),
+# а не 127.0.0.1 — иначе после сужения бинда health «не поднимался»
+# всегда (11.10.26).
+HEALTH_HOST=$(grep -E '^WEB_BIND=' .env.staging | cut -d= -f2- || true)
+HEALTH_HOST=${HEALTH_HOST:-127.0.0.1}
 for i in $(seq 1 30); do
-  curl -fsS --max-time 5 "http://127.0.0.1:$WEB_PORT/health/database" >/dev/null 2>&1 && break
+  curl -fsS --max-time 5 "http://$HEALTH_HOST:$WEB_PORT/health/database" >/dev/null 2>&1 && break
   sleep 3
   [ "$i" = 30 ] && { echo 'health не поднялся за 90 с' >&2; exit 1; }
 done
