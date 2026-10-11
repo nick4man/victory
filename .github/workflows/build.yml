@@ -24,7 +24,9 @@ permissions:
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Отменять можно только PR-проверки: убитый mid-push run оставляет коммит
+  # без sha-образа в реестре, и bin/rollout sha-<него> становится невозможен.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   REGISTRY: ghcr.io/nick4man
@@ -62,23 +64,30 @@ jobs:
             DIFF_BASE="${{ github.event.before }}..${{ github.sha }}"
             if [ "${{ github.event_name }}" = 'workflow_dispatch' ]; then
               DIFF_BASE=''
+            # force-push / первый push: before нулевой, diff не посчитать —
+            # считаем полным прогоном (все службы + VERSION-тег)
+            elif [ "${{ github.event.before }}" = '0000000000000000000000000000000000000000' ]; then
+              DIFF_BASE=''
             fi
           fi
           echo "push=$PUSH" >> "$GITHUB_OUTPUT"
 
           if [ -z "$DIFF_BASE" ] || git diff --name-only "$DIFF_BASE" | grep -qx VERSION; then
-            echo "version_tag=1" >> "$GITHUB_OUTPUT"
+            VERSION_TAG=1
           else
-            echo "version_tag=0" >> "$GITHUB_OUTPUT"
+            VERSION_TAG=0
           fi
+          echo "version_tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
 
           # Службы services/* собираем только когда их каталоги менялись
-          # (на PR сравниваем с base, на push — с before; dispatch = все).
-          # Матрица — JSON-массив объектов {service, context} для matrix.include.
+          # (на PR сравниваем с base, на push — с before). Релиз (VERSION_TAG=1)
+          # и dispatch = полный комплект: иначе <VERSION>-тег служб молча
+          # указывал бы на образ прошлого релиза, а bin/release --from-ci
+          # падал бы без свежего sha-тега.
           SERVICES='[]'
           for pair in conveyor:services/urgent-news-collector publisher:services/content-publisher zhk-registry:services/zhk-registry; do
             svc=${pair%%:*}; dir=${pair#*:}
-            if [ -z "$DIFF_BASE" ] || git diff --name-only "$DIFF_BASE" -- "$dir" | grep -q .; then
+            if [ -z "$DIFF_BASE" ] || [ "$VERSION_TAG" = '1' ] || git diff --name-only "$DIFF_BASE" -- "$dir" | grep -q .; then
               SERVICES=$(printf '%s' "$SERVICES" | jq -c --arg s "$svc" --arg c "./$dir" '. + [{service: $s, context: $c}]')
             fi
           done

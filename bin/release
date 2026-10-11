@@ -46,14 +46,19 @@ if [ "$FROM_CI" = 1 ]; then
     img="$REGISTRY/${IMAGES[$svc]}"
     "$DOCKER" buildx imagetools inspect "$img:sha-$SHA" >/dev/null \
       || { echo "$img:sha-$SHA нет в реестре — собери локально (bin/release --push)" >&2; exit 1; }
+    # Релизный тег неперезаписываем: повторный --from-ci на том же VERSION
+    # без проверки молча перетёр бы уже выкаченный релиз.
+    "$DOCKER" buildx imagetools inspect "$img:$VERSION" >/dev/null 2>&1 \
+      && { echo "$img:$VERSION уже есть в реестре — bump VERSION перед релизом" >&2; exit 1; }
     "$DOCKER" buildx imagetools create -t "$img:$VERSION" "$img:sha-$SHA"
   done
   echo "готово: тег $VERSION натянут на sha-$SHA в реестре (сборка — CI)"
   exit 0
 fi
 
-# env-файлы служб без профиля обязаны существовать даже для build.
-touch .env.zhk
+# env-файлы обязаны существовать даже для build (compose валидирует env_file);
+# пустой файл — ок, значения для сборки не нужны.
+touch .env .env.zhk
 export VICTORY_TAG="$VERSION" GIT_COMMIT_SHA="$SHA"
 # --profile conveyor: иначе compose не видит службы под профилем и не соберёт их.
 "$DOCKER" compose --profile conveyor build --pull web conveyor publisher zhk-registry
