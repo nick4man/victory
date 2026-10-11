@@ -1,0 +1,38 @@
+[
+  {
+    "project_name": "ЖК Полянка",
+    "content_type": "listing",
+    "request_text": "Предлагаем квартиры в новом корпусе с видом на парк. Отделка под ключ, рассрочка 0% на 12 месяцев.",
+    "deadline": "2026-04-20",
+    "is_urgent": true,
+    "requester": "Генерал",
+    "media_path": "/images/zhk-polyanka.jpg"
+  },
+  {
+    "project_name": "Рынок недвижимости Рязани",
+    "content_type": "article",
+    "request_text": "Аналитический обзор рынка недвижимости Рязани за первый квартал 2026 года. Динамика цен, популярные районы, прогнозы.",
+    "deadline": "2026-04-25",
+    "is_urgent": false,
+    "requester": "Аналитик",
+    "media_path": null
+  },
+  {
+    "project_name": "Строительные лайфхаки",
+    "content_type": "story",
+    "request_text": "Как правильно выбрать отделочные материалы для квартиры? 5 советов от экспертов.",
+    "deadline": "2026-04-18",
+    "is_urgent": false,
+    "requester": "Креатив",
+    "media_path": "/videos/tips.mp4"
+  },
+  {
+    "project_name": "Акция 'Весенняя распродажа'",
+    "content_type": "promo",
+    "request_text": "Скидка 10% на все квартиры в ЖК 'Солнечный' до конца месяца. Успейте купить!",
+    "deadline": "2026-04-30",
+    "is_urgent": true,
+    "requester": "Маркетинг",
+    "media_path": "/images/sale-banner.png"
+  }
+]

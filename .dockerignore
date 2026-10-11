@@ -16,3 +16,13 @@ coverage
 *.swp
 .DS_Store
 .claude
+# Не относится к рантайму Rails — в образ не едет (1.0)
+spec
+tests
+docs
+services
+tg-webhook-relay
+attached_assets
+public/assets
+*.md
+!README.md

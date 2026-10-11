@@ -1,7 +1,10 @@
 # Sidecar stack for СОДИКС audit-engine-v2 (Investment Audit mode).
 #
-# Compose with the main file:
-#   docker compose -f docker-compose.yml -f docker-compose.audit.yml up -d
+# Подключается из docker-compose.yml через include:, все службы под профилем
+# audit — живой контейнер audit-v2-api пока поднят из архива openclaw на хосте
+# chat (VENDOR.md), здесь стек стартует только явно:
+#   docker compose --profile audit up -d
+# Пустой AUDIT_DB_PASSWORD = стек не настроен; проверка — docs/runbooks/release.md.
 #
 # Topology:
 #   audit-internal (internal: true):
@@ -16,6 +19,7 @@
 
 services:
   audit-postgres:
+    profiles: [audit]
     build:
       context: ./services/audit-engine/engine
       dockerfile: Dockerfile.pgvector
@@ -24,7 +28,7 @@ services:
     environment:
       POSTGRES_DB: re_audit
       POSTGRES_USER: audit_user
-      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:?AUDIT_DB_PASSWORD must be set in .env.audit}
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:-}
     volumes:
       - audit_pgdata:/var/lib/postgresql/data
     # Intentionally NO host port. Engine talks to it via service DNS on
@@ -39,6 +43,7 @@ services:
       - audit-internal
 
   audit-redis:
+    profiles: [audit]
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
@@ -52,13 +57,15 @@ services:
       - audit-internal
 
   audit-api:
+    profiles: [audit]
     build:
       context: ./services/audit-engine/engine
       dockerfile: Dockerfile.api
     image: viktory-audit-engine:v2.0
     restart: unless-stopped
     env_file:
-      - .env.audit
+      - path: .env.audit
+        required: false   # профиль выключен — файла может не быть
     environment:
       DATABASE_URL: postgresql://audit_user:${AUDIT_DB_PASSWORD}@audit-postgres:5432/re_audit
       REDIS_URL: redis://audit-redis:6379/0
@@ -84,13 +91,15 @@ services:
       start_period: 60s
 
   audit-mc-worker:
+    profiles: [audit]
     build:
       context: ./services/audit-engine/engine
       dockerfile: Dockerfile.api
     image: viktory-audit-engine:v2.0
     restart: unless-stopped
     env_file:
-      - .env.audit
+      - path: .env.audit
+        required: false   # профиль выключен — файла может не быть
     environment:
       DATABASE_URL: postgresql://audit_user:${AUDIT_DB_PASSWORD}@audit-postgres:5432/re_audit
       REDIS_URL: redis://audit-redis:6379/0

@@ -1,0 +1,49 @@
+# Override для разработки и для отката с 1.0: воспроизводит стек, каким он был
+# до релиза — код bind-mount'ом, RAILS_ENV=development, стадия dev.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# В проде НЕ использовать с 1.0; оставлен как путь отката (docs/runbooks/cutover-1.0.md).
+services:
+  web:
+    image: victory-web:dev
+    build:
+      target: dev
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      RAILS_ENV: development
+      RAILS_LOG_TO_STDOUT: ''
+      RAILS_SERVE_STATIC_FILES: ''
+      PUMA_STDOUT_LOG: ''
+      PUMA_STDERR_LOG: ''
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+      - rails_tmp:/app/tmp
+      - rails_log:/app/log
+    healthcheck:
+      disable: true
+    tty: true
+    stdin_open: true
+
+  sidekiq:
+    image: victory-web:dev
+    build:
+      target: dev
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      RAILS_ENV: development
+      SKIP_DB_PREPARE: "1"
+    volumes:
+      - ./:/app
+      - bundle:/usr/local/bundle
+      - rails_tmp:/app/tmp
+      - rails_log:/app/log
+    depends_on:
+      web:
+        condition: service_started
+    healthcheck:
+      disable: true
+
+volumes:
+  bundle:

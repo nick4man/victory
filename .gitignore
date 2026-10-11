@@ -70,6 +70,11 @@
 .env.production
 .env.staging
 .env.audit
+.env.conveyor
+.env.zhk
+.env.publisher
+.env.rc
+.env.deploy
 .env.bak-*
 
 # Ignore node_modules
@@ -323,3 +328,7 @@ ehthumbs.db
 # содержимое репозитория. Без этой строки они висят в `git status` как untracked
 # и один `git add -A` утаскивает их в историю навсегда.
 /.claude/worktrees/
+
+# Python-службы (services/*): байткод
+__pycache__/
+*.pyc
