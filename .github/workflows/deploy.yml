@@ -1,0 +1,99 @@
+name: Deploy production
+
+# Выкатка на прод по подтверждению человека. Принцип «тянет, не толкает»:
+# у CI нет ни docker.sock, ни shell на проде — он дёргает bin/prod-gate по
+# SSH (forced command, умеет только `rollout <тег>`), а bin/rollout на хосте
+# сам делает pull образа из GHCR, бэкап, health, smoke и prod-mark.
+#
+# Подтверждение — GitHub environment `production` (required reviewers).
+# Настройка окружения, ключей и хоста — docs/runbooks/deploy-pipeline.md;
+# без неё workflow не запустится (нет секретов) — это ожидаемо.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег образа (sha-<7> или версия); пусто — последний зелёный sha из Build images'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Выкатки не параллелим и не отменяем: отмена на середине rollout —
+  # это неизвестное состояние стека. Вторая выкатка ждёт первую.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  resolve-tag:
+    name: Тег для выкатки
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - id: tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            SHA=$(gh run list --workflow build.yml --branch main --status success \
+              --limit 1 --json headSha -q '.[0].headSha // ""')
+            [ -n "$SHA" ] || { echo 'нет ни одного зелёного прогона build.yml на main' >&2; exit 1; }
+            TAG="sha-${SHA:0:7}"
+          fi
+          # То же правило, что в bin/prod-gate, — ранняя явная ошибка лучше
+          # отказа gate на двадцатой секунде джобы.
+          [[ "$TAG" =~ ^[0-9a-z][0-9a-z.-]{0,39}$ ]] || { echo "некорректный тег: $TAG" >&2; exit 2; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "выкатываем: $TAG"
+
+  deploy:
+    name: Выкатка на прод
+    needs: resolve-tag
+    # environment с required reviewers — здесь джоба встаёт на паузу
+    # до Approve владельца.
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH-ключ
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+
+      - name: prod-gate rollout
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+            "${{ vars.PROD_SSH_USER }}@${{ vars.PROD_HOST }}" \
+            "rollout ${{ needs.resolve-tag.outputs.tag }}"
+
+  post-check:
+    name: Внешние проверки после выкатки
+    needs: [resolve-tag, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      # С раннера, снаружи: через Traefik и DNS, как у посетителя. Локальный
+      # smoke внутри rollout это не заменяет — он не видит роутер и TLS.
+      - name: health и главная снаружи
+        run: |
+          set -uo pipefail
+          fail=0
+          for url in https://victory62.org/health https://victory62.org/health/database https://victory62.org/; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$url")
+            echo "$code $url"
+            [ "$code" = 200 ] || fail=1
+          done
+          [ "$fail" = 0 ] || exit 1
+
+      - name: Алерт в Telegram при не-200
+        if: failure()
+        run: |
+          curl -fsS --max-time 10 -X POST \
+            "https://api.telegram.org/bot${{ secrets.ALERT_TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id="${{ secrets.ALERT_TG_CHAT_ID }}" \
+            --data-urlencode text="⚠️ Пост-деплой проверка victory62.org НЕ прошла (тег ${{ needs.resolve-tag.outputs.tag }}). Прогон: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
