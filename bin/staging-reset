@@ -17,6 +17,14 @@ PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
 cd "$PROD_DIR"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
 
+# Тег образа — из журнала выкатки (пишет staging-rollout). Без него compose
+# не находит образ и молча СОБИРАЕТ его из чекаута хоста — 10+ минут
+# сборки вместо секундного перезапуска (найдено на стенде 11.10.26).
+[ -f .env.staging-deploy ] || { echo 'нет .env.staging-deploy — сначала bin/staging-rollout' >&2; exit 2; }
+VICTORY_TAG=$(grep -E '^VICTORY_TAG=' .env.staging-deploy | cut -d= -f2- || true)
+[ -n "$VICTORY_TAG" ] || { echo '.env.staging-deploy без VICTORY_TAG — сначала bin/staging-rollout' >&2; exit 2; }
+export VICTORY_TAG
+
 CONFIG_FILE="${BACKUP_CONFIG:-/etc/victory-backup/backup.env}"
 [ -r "$CONFIG_FILE" ] || { echo "нет конфига $CONFIG_FILE (образец: config/backup.env.example)" >&2; exit 2; }
 # shellcheck source=/dev/null
