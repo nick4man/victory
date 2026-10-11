@@ -266,8 +266,10 @@ def mirror_to_victory(meta_path: str, text_path: str) -> str | None:
         logger.warning("[victory62-mirror] VICTORY_NEWS_TOKEN not set; skipping")
         return None
     try:
+        # Через bash: файл монтируется из git-чекаут (mode 0644), прямой exec
+        # дал бы EACCES, а run_mirror молча ушёл бы в fallback без статьи на сайте.
         result = subprocess.run(
-            [mirror_script, meta_path, text_path],
+            ["bash", mirror_script, meta_path, text_path],
             capture_output=True, text=True, timeout=60, check=False,
         )
     except Exception as e:

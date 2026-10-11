@@ -84,7 +84,7 @@ curl -fsS http://127.0.0.1:3000/health/database
    Ожидается `5` (пять строк конвейера закомментированы), `publisher-bot` остановлен.
 2. Поднять базу и применить схему (initdb из `services/urgent-news-collector/schema/`):
    ```bash
-   cd /home/q/victory && docker compose --profile conveyor up -d news-db && sleep 10 && docker compose exec -T news-db psql -U news -d news -Atc '\dt' | cut -d'|' -f2 | tr '\n' ' '
+   cd /home/q/victory && docker compose --profile conveyor up -d --wait news-db && docker compose exec -T news-db psql -U news -d news -Atc '\dt' | cut -d'|' -f2 | tr '\n' ' '
    ```
    Ожидается: `content_revisions posts_queue system_flags urgent_events`.
 3. Данные — по ssh-трубе, без промежуточных файлов (`--data-only`, `--disable-triggers`
@@ -105,7 +105,7 @@ curl -fsS http://127.0.0.1:3000/health/database
    Логи 2 минуты: `docker compose logs -f conveyor publisher` — у publisher `Successfully connected
    to database`, `Telegram Bot started`; у conveyor `read crontab`. Ближайший тик коллектора —
    `*/30`; дождаться его и проверить `docker compose logs --since 5m conveyor | grep -ciE 'error|traceback'` → `0`.
-6. Зеркало на сайт: после первого `urgent_trigger` в логе `[victory62-mirror]` без `skipping`;
+6. Зеркало на сайт: после первого `urgent_trigger` в логе конкретная строка `[news_ingest] OK` (успех пишет её post_news_to_victory.sh на stderr; любая другая строка `[victory62-mirror]` — skipping или exception, статьи на сайте не будет);
    на сайте `/news` — новая запись.
 
 ### Откат B
