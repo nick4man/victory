@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# bin/deploy-gate — принудительная команда для SSH-ключей CI.
+#
+# Запись в authorized_keys на хосте victory (см. docs/runbooks/staging.md):
+#   command="/home/q/victory/bin/deploy-gate",no-agent-forwarding,no-port-forwarding,no-pty,no-user-rc ssh-ed25519 AAAA...
+#
+# Ключ с такой записью умеет ТОЛЬКО staging-выкатку: gate валидирует
+# SSH_ORIGINAL_COMMAND и запускает bin/staging-rollout. Произвольную команду
+# через этот ключ выполнить нельзя — это вся его функция.
+#
+# Сознательно НЕ разрешён 'rollout' (прод): компрометация одного секрета
+# STAGING_SSH_KEY не должна давать право нон-интерактивной выкатки в прод
+# (ревью #111, P1). Прод-выкатка через CI — фаза 3, отдельный ключ и gate.
+set -euo pipefail
+
+CMD="${SSH_ORIGINAL_COMMAND:-}"
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
+
+case "$CMD" in
+  'staging-rollout '*)
+    TAG="${CMD#staging-rollout }"; SCRIPT="$ROOT/bin/staging-rollout" ;;
+  *)
+    echo "deploy-gate: команда не разрешена: ${CMD:-<пусто>}" >&2
+    exit 2 ;;
+esac
+
+# Тег — только безопасные символы: он уходит аргументом в compose и docker.
+[[ "$TAG" =~ ^[0-9a-z][0-9a-z.-]{0,39}$ ]] || { echo "deploy-gate: некорректный тег: $TAG" >&2; exit 2; }
+
+exec "$SCRIPT" "$TAG"

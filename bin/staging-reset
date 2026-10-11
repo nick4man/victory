@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# bin/staging-reset [путь-к-дампу.dump.gpg] — перелить данные прода в staging-БД.
+#
+# Без аргумента берётся самый свежий дамп из BACKUP_ROOT/db (конфиг бэкапа —
+# /etc/victory-backup/backup.env, тот же, что у bin/backup). После restore —
+# санитизация копии (внешние привязки клиентов) и перезапуск web, чей
+# entrypoint сам гонит db:prepare — так на staging доезжают миграции образа.
+#
+# Стек victory-staging должен быть поднят (bin/staging-rollout).
+set -euo pipefail
+
+[ "$(hostname)" = victory ] || { echo "staging живёт на хосте victory (сейчас: $(hostname))" >&2; exit 2; }
+PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+cd "$PROD_DIR"
+DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
+
+CONFIG_FILE="${BACKUP_CONFIG:-/etc/victory-backup/backup.env}"
+[ -r "$CONFIG_FILE" ] || { echo "нет конфига $CONFIG_FILE (образец: config/backup.env.example)" >&2; exit 2; }
+# shellcheck source=/dev/null
+. "$CONFIG_FILE"
+: "${BACKUP_ROOT:?не задан BACKUP_ROOT}"
+: "${PASSPHRASE_FILE:?не задан PASSPHRASE_FILE}"
+
+DUMP="${1:-}"
+if [ -z "$DUMP" ]; then
+  # ls -t, как в bin/backup: имена дампов генерируются нами же
+  # (viktory-dd.MM.yy-HHMM.dump.gpg), «экзотики» не бывает.
+  # shellcheck disable=SC2012
+  DUMP=$(ls -t "$BACKUP_ROOT"/db/*.dump.gpg 2>/dev/null | head -1 || true)
+fi
+if [ -z "$DUMP" ] || [ ! -r "$DUMP" ]; then
+  echo "нет читаемого дампа: ${DUMP:-не найден в $BACKUP_ROOT/db}" >&2
+  exit 2
+fi
+
+DB_CONTAINER=$("$DOCKER" compose -p victory-staging ps -q db 2>/dev/null || true)
+[ -n "$DB_CONTAINER" ] || { echo 'staging-стек не поднят — сначала bin/staging-rollout' >&2; exit 2; }
+
+# Креды staging-БД — из её env-файла (compose создаёт БД по POSTGRES_*).
+[ -f .env.staging ] || { echo 'нет .env.staging' >&2; exit 2; }
+PG_USER=$(grep -E '^POSTGRES_USER=' .env.staging | cut -d= -f2- || true)
+PG_DB=$(grep -E '^POSTGRES_DB=' .env.staging | cut -d= -f2- || true)
+PG_USER=${PG_USER:-postgres}; PG_DB=${PG_DB:-viktory_realty_staging}
+
+echo "staging-reset: $(basename "$DUMP") → $PG_DB (контейнер $DB_CONTAINER)"
+
+compose() {
+  RAILS_ENV_FILE=.env.staging \
+    "$DOCKER" compose -p victory-staging \
+    -f docker-compose.yml -f docker-compose.staging.yml \
+    --env-file .env.staging "$@"
+}
+
+# web останавливаем на время restore: иначе он продолжает писать в базу,
+# которую мы пересоздаём.
+compose stop web
+
+# Чистая база вместо restore поверх: иначе строки, удалённые в проде после
+# дампа, на staging остаются навсегда.
+"$DOCKER" compose -p victory-staging exec -T db \
+  dropdb -U "$PG_USER" --if-exists "$PG_DB"
+"$DOCKER" compose -p victory-staging exec -T db \
+  createdb -U "$PG_USER" "$PG_DB"
+
+# Паттерн bin/backup verify: gpg в конвейер, stderr — в лог, решение по коду
+# pg_restore и по логу (pg_restore ругается и на безобидные различия).
+RESTORE_LOG=$(mktemp); trap 'rm -f "$RESTORE_LOG"' EXIT
+RESTORE_RC=0
+gpg --batch --quiet --decrypt --passphrase-file "$PASSPHRASE_FILE" "$DUMP" 2>>"$RESTORE_LOG" \
+  | "$DOCKER" compose -p victory-staging exec -T db \
+      pg_restore -U "$PG_USER" -d "$PG_DB" --no-owner --no-acl \
+  >>"$RESTORE_LOG" 2>&1 || RESTORE_RC=$?
+if [ "$RESTORE_RC" -gt 1 ]; then
+  echo "pg_restore завершился с кодом $RESTORE_RC — фатальные ошибки, лог:" >&2
+  tail -20 "$RESTORE_LOG" >&2
+  exit 1
+fi
+# rc ≤ 1 не гарантирует чистоту: pg_restore пишет «errors ignored on restore: N»
+# и код 1, когда, например, не создал индекс (кейс 06.09.26 из bin/backup
+# verify — проверка врала зелёным четвёртые сутки). Судим по строкам
+# 'pg_restore: error:' вне списка безобидных, как боевой verify_restore_log.
+HARD_ERRORS=$(grep '^pg_restore: error:' "$RESTORE_LOG" \
+  | grep -Ev 'role "[^"]*" does not exist|must be owner of' || true)
+if [ -n "$HARD_ERRORS" ]; then
+  echo 'pg_restore: ошибки вне списка безобидных — restore считается сломанным:' >&2
+  echo "$HARD_ERRORS" >&2
+  exit 1
+fi
+
+# Санитизация копии: клиентские Telegram-привязки на стенде не нужны —
+# иначе client-bot из staging мог бы отвечать реальным людям, если его
+# когда-нибудь включат по ошибке. Почта выключена на уровне staging.rb.
+"$DOCKER" compose -p victory-staging exec -T db \
+  psql -U "$PG_USER" -d "$PG_DB" -c 'UPDATE users SET tg_user_id = NULL WHERE tg_user_id IS NOT NULL'
+
+# Перезапуск web: entrypoint гонит db:prepare — миграции образа доезжают.
+compose up -d web
+
+WEB_PORT=$(grep -E '^WEB_PORT=' .env.staging | cut -d= -f2- || true)
+WEB_PORT=${WEB_PORT:-3002}
+for i in $(seq 1 30); do
+  curl -fsS --max-time 5 "http://127.0.0.1:$WEB_PORT/health/database" >/dev/null 2>&1 && break
+  sleep 3
+  [ "$i" = 30 ] && { echo 'health не поднялся за 90 с' >&2; exit 1; }
+done
+echo "staging-reset готов: $PG_DB ← $(basename "$DUMP")"

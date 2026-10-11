@@ -1,0 +1,21 @@
+# Staging-override поверх боевого compose. Отличие одно — окружение Rails;
+# всё остальное приезжает из --env-file .env.staging: compose интерполирует
+# из него WEB_PORT (3002), WEB_BIND, STORAGE_DIR и POSTGRES_* базового файла,
+# а имя проекта (-p victory-staging) автоматически даёт свои тома
+# (victory-staging_pgdata, victory-staging_redisdata) — изоляция от прода
+# полная, общих томов нет.
+#
+# Управление только через скрипты (они передают -f и --env-file сами):
+#   bin/staging-rollout sha-<7>   # выкатить образ: pull → up → health → smoke
+#   bin/staging-reset [дамп]      # перелить данные из бэкапа прода
+#
+# Поднимаются только db, redis, web: sidekiq на staging не нужен (cron-задачи
+# ходили бы по внешним API из копии прода), службы services/* — тоже.
+# Маршрут staging.dev.victory62.org → хост:3002 и basic-auth — на Traefik
+# роутера (вне репозитория), настройка в docs/runbooks/staging.md.
+services:
+  web:
+    environment:
+      # В базовом файле RAILS_ENV: production зашит в x-rails anchor;
+      # environment — mapping, override по ключу выигрывает.
+      RAILS_ENV: staging
