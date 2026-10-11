@@ -1,3 +1,5 @@
+name: Kimi Code
+
 # Триггеры: бот отвечает на @kimi в issue/PR-комментариях и ревью.
 on:
   issue_comment:
