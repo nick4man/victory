@@ -1,8 +1,11 @@
 name: Lint & security
 
 on:
+  # Без фильтра по базовой ветке намеренно: фильтр `branches: [main]` смотрит на
+  # БАЗУ pull request'а, поэтому стековые PR (база — нижний слой стека, а не main)
+  # не получали ни одной проверки, кроме внешних GitHub App. Обещанные CLAUDE.md
+  # проверки работали только для PR в main.
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -76,6 +79,18 @@ jobs:
       # который на раннере уже есть.
       - name: Run services-check
         run: python3 bin/services-check
+
+  paths:
+    name: Пути — относительные внутри репозитория
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Тот же принцип, что у services-check: только python3. Проверка держит
+      # инвариант из techContext.md — относительное внутри репозитория,
+      # абсолютное там, где потребитель не разворачивает ни cwd, ни тильду.
+      - name: Run paths-check
+        run: python3 bin/paths-check
 
   rspec:
     name: RSpec
