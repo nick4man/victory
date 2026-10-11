@@ -1,21 +1,10 @@
 import asyncio
 import logging
-import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from telegram.error import TelegramError
 from config import config
 from db_client import db
 from security import assert_allowed_target
-
-# Импорт модуля очистки (опционально)
-try:
-    sys.path.append('/opt/.openclaw/.openclaw/workspace/agents/python-senior')
-    from cleanup_manager import cleanup_after_publish
-    CLEANUP_AVAILABLE = True
-except ImportError as e:
-    logging.getLogger(__name__).warning(f"Модуль очистки недоступен: {e}")
-    CLEANUP_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -81,18 +70,8 @@ async def publish_post(bot, post_id: int):
             )
             
             logger.info(f"Successfully published post #{post_id} (tg_msg_id={message.message_id})")
-            
-            # Автоматическая очистка локальных файлов после публикации
-            if CLEANUP_AVAILABLE:
-                try:
-                    posts_queue_dir = Path(__file__).parent.parent / "posts_queue"
-                    # dry_run=False — реальное удаление
-                    result = await cleanup_after_publish(post_id, db, posts_queue_dir, dry_run=False)
-                    logger.info(f"Очистка файлов поста #{post_id}: удалено {len(result.get('deleted', []))} файлов")
-                except Exception as cleanup_err:
-                    logger.error(f"Ошибка при очистке файлов поста #{post_id}: {cleanup_err}")
-            else:
-                logger.warning(f"Модуль очистки недоступен, локальные файлы поста #{post_id} не удалены")
+            # Очистка локальных файлов поста — ответственность коллектора/оператора:
+            # внешний cleanup_manager (openclaw) в образе недоступен, правило служб — depends_on: none
             
             success = True
             break
