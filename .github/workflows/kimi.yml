@@ -1,0 +1,55 @@
+jobs:
+  kimi:
+    name: Kimi Code
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@kimi')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kimi')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kimi')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi')))
+    runs-on: ubuntu-latest
+
+    # Least privilege: читаем код/PR/issue, пишем комментарии и ветки kimi/*.
+    # contents: write нужен, если агент будет пушить ветки (branch_prefix ниже);
+    # для чистого Q&A-бота можно оставить contents: read.
+    # actions:read — бот видит логи красного CI, а не гадает о причине падения.
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+
+    # Один прогон Kimi на issue/PR; прогон в полёте не отменяем —
+    # недописанный тред хуже, чем очередь.
+    concurrency:
+      group: kimi-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Run Kimi Code
+        id: kimi
+        uses: xuwenhao/kimi-code-action@v0   # для продакшена запиньте на SHA коммита
+        with:
+          # API-ключ: Kimi Code Console (kimi_platform: code, модель k3 —
+          # нужен план Moderato+) или Open Platform — тогда
+          # kimi_platform: open-cn / open-intl и своя модель.
+          kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+          kimi_platform: code
+          kimi_model: k3
+
+          # Один комментарий на прогон вместо цепочки.
+          use_sticky_comment: true
+
+          # Ветки агента — kimi/* вместо claude/*.
+          branch_prefix: kimi/
+
+          # Лимиты и read-only Bash. --max-turns — потолок на runaway-прогон.
+          # Ruby/Postgres в раннере НЕТ — линтеры и спеки гоняет
+          # отдельный workflow «Lint & security».
+          kimi_args: |
+            --max-turns 50
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
