@@ -4,12 +4,14 @@
 # БД, админка, вебхук с неверным токеном, sitemap, robots.
 set -uo pipefail
 BASE="${1:?usage: bin/smoke <base_url> [admin_token]}"; TOKEN="${2:-}"
+# Staging за basic-auth Traefik: SMOKE_BASIC_AUTH='user:pass' пробрасывает -u.
+AUTH=(); [ -n "${SMOKE_BASIC_AUTH:-}" ] && AUTH=(-u "$SMOKE_BASIC_AUTH")
 BODY=$(mktemp); trap 'rm -f "$BODY"' EXIT
 fail=0
 check() { # имя, ожидаемый код (regex), url, [curl-опции...]
   local name=$1 want=$2 url=$3; shift 3
   local code
-  code=$(curl -s -o "$BODY" -w '%{http_code}' --max-time 20 -H 'X-Forwarded-Proto: https' "$@" "$url")
+  code=$(curl -s -o "$BODY" -w '%{http_code}' --max-time 20 -H 'X-Forwarded-Proto: https' "${AUTH[@]}" "$@" "$url")
   if [[ "$code" =~ ^($want)$ ]]; then echo "ok   $code $name"; else echo "FAIL $code $name (${url//token=*/token=***})"; fail=1; fi
 }
 check 'health'            200     "$BASE/health"

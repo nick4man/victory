@@ -37,6 +37,15 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
+    // Staging за basic-auth Traefik: учётка приезжает из CI
+    // (PLAYWRIGHT_BASIC_AUTH='user:pass'). Локально переменная не задана —
+    // поведение прежнее.
+    httpCredentials: process.env.PLAYWRIGHT_BASIC_AUTH
+      ? {
+          username: process.env.PLAYWRIGHT_BASIC_AUTH.split(':')[0],
+          password: process.env.PLAYWRIGHT_BASIC_AUTH.split(':').slice(1).join(':'),
+        }
+      : undefined,
     locale: 'ru-RU',
     timezoneId: 'Europe/Moscow',
     // Cyrillic-friendly font fallback chain — matches what the prod
