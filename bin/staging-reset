@@ -9,7 +9,10 @@
 # Стек victory-staging должен быть поднят (bin/staging-rollout).
 set -euo pipefail
 
-[ "$(hostname)" = victory ] || { echo "staging живёт на хосте victory (сейчас: $(hostname))" >&2; exit 2; }
+case "$(hostname)" in
+  victory|vps1*|deploy) ;;
+  *) echo "staging живёт на хосте victory/vps1 (сейчас: $(hostname))" >&2; exit 2 ;;
+esac
 PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
 cd "$PROD_DIR"
 DOCKER="${DOCKER_BIN:-/usr/bin/docker}"

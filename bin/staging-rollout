@@ -9,7 +9,10 @@ set -euo pipefail
 TAG="${1:?usage: bin/staging-rollout <тег>}"
 # Тег уходит аргументом в docker/compose — только безопасные символы.
 [[ "$TAG" =~ ^[0-9a-z][0-9a-z.-]{0,39}$ ]] || { echo "некорректный тег: $TAG" >&2; exit 2; }
-[ "$(hostname)" = victory ] || { echo "staging живёт на хосте victory (сейчас: $(hostname))" >&2; exit 2; }
+case "$(hostname)" in
+  victory|vps1*|deploy) ;;
+  *) echo "staging живёт на хосте victory/vps1 (сейчас: $(hostname))" >&2; exit 2 ;;
+esac
 
 PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
 cd "$PROD_DIR"
