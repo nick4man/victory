@@ -2,8 +2,73 @@
 
 > Обновляй этот файл вручную или при смене фазы. Здесь — только «живое».
 
-> Актуальность верхних секций: **07.09.26**. Ниже по файлу — датированные
-> исторические разборы, они не обновляются.
+> Актуальность верхних секций: **12.10.26** (релиз-1.0 + конвейер поставки в main,
+> staging работает; дальше — cutover прода и фаза 3).
+> Ниже по файлу — датированные исторические разборы, они не обновляются.
+
+## Состояние на 12.10.26 — что изменилось за сутки
+
+- **#110 и #111 влиты** (после ребейза стека на squash-мержи): сборка образов в GHCR
+  на каждый merge в main работает боем (проверено: `victory-web:sha-4eda061` в
+  реестре), staging-стенд и его CI-джобы в main.
+- **Следующие шаги конвейера**: (1) cutover прода на образы по
+  `docs/runbooks/cutover-1.0.md` — повторный RC-прогон с проверками force_ssl
+  (висячая строка в конце runbook'а), затем окно A и отдельно B;
+  (2) фаза 3 — выкатка на прод из GitHub с подтверждением. ⚠️ Прод-кейс
+  (`rollout`) из `bin/deploy-gate` при вводе staging **удалён** (ключ `staging-ci`
+  умеет только staging) — механизм прод-выкатки проектировать заново, не
+  рассчитывать на существующий gate.
+- План конвейера целиком — `docs/ci-cd-pipeline-plan.md` (в main).
+
+## Состояние на 11.10.26 — release 1.0 в main, конвейер поставки фазы 1+2 зелёный
+
+**Код в main** (все PR прошли обязательное code-review; мержи #109–#121):
+- **Release 1.0** (#109, + #112 P0-фиксы, + #113 P1-фиксы): единый `docker-compose.yml`,
+  multi-stage production-образы (web/conveyor/publisher/zhk-registry), конвейер
+  новостей перенесён в монорепу (`services/urgent-news-collector` + `content-publisher`),
+  schema-SQL в git (`*.sql` был в `.gitignore` — добавлено исключение).
+- **CI фаза 1** (#110): `build.yml` — сборка в GHCR на push в main (тег `sha-<7>`,
+  релизный `<VERSION>` при bump), zeitwerk:check в production до push, prep-джоба
+  по diff. Безопасность: `bin/release --from-ci` не перезаписывает VERSION-тег.
+- **Фаза 2** (#111 + #117–#121): staging-стенд + автовыкатка + smoke/Playwright.
+
+**Staging-стенд (работает, зелёный end-to-end):**
+- Хост: **vps1** (`ssh deploy`, `vps1.victory62.org`, внешний `93.95.229.192`), НЕ victory.
+  victory снаружи по SSH недоступен (внешний :22 роутера → vps1).
+- Сеть: WireGuard, vps1 = `10.10.0.160` (интерфейс `sod`), victory = `10.10.0.122`.
+  Web слушает `WEB_BIND=10.10.0.160:3002` **только** (публичный доступ закрыт).
+- Traefik (vds): роутер `staging-victory` → `http://10.10.0.160:3002`, middleware
+  `staging-basic-auth` (bcrypt, отдельный от `basic-auth`). Логин/пароль — в секрете
+  репозитория `STAGING_BASIC_AUTH`.
+- Автовыкатка: merge в main → build.yml → `deploy-gate` по SSH (forced command,
+  ключ `staging-ci` умеет ТОЛЬКО `staging-rollout`, прод-кейс удалён) →
+  `bin/staging-rollout` на vps1 → pull из GHCR → health → smoke; затем внешний
+  smoke + Playwright (`tests/visual/staging-smoke.spec.ts`, 10/10).
+- Данные: ключ `victory-dump-fetch` (forced `sftp-server -d /var/backups/victory/db`
+  на victory) → дамп в `~/staging-dumps/db` на vps1 → `bin/staging-reset`
+  (config `~/.staging-backup.env`, passphrase `~/.victory-backup-passphrase`).
+  Санитизация `users.tg_user_id` — работает.
+- Чекаут на vps1: `~/victory`, main; журнал выкатки `.env.staging-deploy`.
+
+**Прод НЕ переведён на release 1.0** — cutover pending:
+- Прод-стек по-прежнему на старой схеме; живой чекаут — **`chat:/opt/.openclaw/victory`**
+  (не victory-хост!). Порядок — `docs/runbooks/cutover-1.0.md`: этап A (`bin/rollout`
+  из GHCR + `bin/smoke`, минуты простоя), этап B (переезд конвейера: news-db из
+  schema-SQL, перелив данных, критерий `[news_ingest] OK`).
+
+**Баг-хвост (P2, не блокеры):** `bin/rollout` pull `--ignore-buildable` не тянет
+образы служб; publisher scheduler — tz-баг + карточки согласования только на старте
++ Markdown-экранирование; build.yml StrictHostKeyChecking accept-new (P3: пин в секрет);
+runbook `staging.md` местами говорит «хост victory»; `xuwenhao/kimi-code-action@v0`
+не запинен на SHA.
+
+**Kimi-бот в Actions**: `kimi.yml` (триггеры `@kimi` в issue/PR-комментариях и ревью)
+работает, отвечает sticky-комментарием. Ветки бота — `kimi/*`. Без `PLAYWRIGHT_BASE_URL`
+smoke-спек в `vr:test` пропускается.
+
+**Токены**: `gh` (OAuth) имеет `repo, workflow, read:packages` — проверка образов в
+GHCR через него. `GH_API_TOKEN` (fine-grained, в `~/.zshenv`) — полный доступ к репо,
+но **Packages API ему закрыт архитектурно** (документированное ограничение GitHub).
 
 ## Стек — коротко
 
@@ -13,13 +78,15 @@ Rails **8.1.3.1**, Ruby **3.4.10** в worktree-сессиях (Ruby 3.3 EOL 31.0
 
 ## Ветки и открытые PR
 
-`main` = прод, деплой автоматический. Прямой push в `main` запрещён, только PR.
+`main` = прод. Прямой push в `main` запрещён, только PR. CD: merge → сборка
+образов в GHCR + автовыкатка на staging; прод — `bin/rollout` вручную.
 
 | PR | Ветка | Что |
 |---|---|---|
-| #10 | `fix/topnlab-get-ids-nonarray-guard` | get-ids non-array 200 → fetch error, защита каталога от ложного archive |
-| #11 | `dev/seo` | A2 Фаза 1 — справочник ЖК, слой данных под лендинги `/zhk` |
-| #12 | `fix/seeds-phone-format` | формат телефона в `db/seeds.rb` |
+| #107 | `claude/crm-cards-12-qa-tail` | fix(crm_cards): хвост замечаний QA-прогона |
+| #108 | `docs/claude-md-refresh` | docs: CLAUDE.md сверен с репозиторием |
+
+(Релизный стек #109–#121 влит 11.10.26; актуальный список — `gh pr list`.)
 
 ## Текущая фаза
 
