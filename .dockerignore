@@ -26,3 +26,16 @@ attached_assets
 public/assets
 *.md
 !README.md
+# Данные и локальный шум: в registry-pushed образ не едет никогда (P0, ревью 11.10.26)
+backups
+inbox
+test-results
+.playwright-mcp
+.remember
+.serena
+.ruby-lsp.host-disabled
+.github
+.githooks
+.devcontainer
+.figma
+.config
