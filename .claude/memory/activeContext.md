@@ -2,23 +2,33 @@
 
 > Обновляй этот файл вручную или при смене фазы. Здесь — только «живое».
 
-> Актуальность верхних секций: **12.10.26** (релиз-1.0 + конвейер поставки в main,
-> staging работает; дальше — cutover прода и фаза 3).
+> Актуальность верхних секций: **12.10.26** (cutover прода на образы выполнен,
+> фаза 3 конвейера настроена; дальше — окно B и фаза 4).
 > Ниже по файлу — датированные исторические разборы, они не обновляются.
 
-## Состояние на 12.10.26 — что изменилось за сутки
+## Состояние на 12.10.26 (вечер) — cutover выполнен, конвейер замкнут
 
-- **#110 и #111 влиты** (после ребейза стека на squash-мержи): сборка образов в GHCR
-  на каждый merge в main работает боем (проверено: `victory-web:sha-4eda061` в
-  реестре), staging-стенд и его CI-джобы в main.
-- **Следующие шаги конвейера**: (1) cutover прода на образы по
-  `docs/runbooks/cutover-1.0.md` — повторный RC-прогон с проверками force_ssl
-  (висячая строка в конце runbook'а), затем окно A и отдельно B;
-  (2) фаза 3 — выкатка на прод из GitHub с подтверждением. ⚠️ Прод-кейс
-  (`rollout`) из `bin/deploy-gate` при вводе staging **удалён** (ключ `staging-ci`
-  умеет только staging) — механизм прод-выкатки проектировать заново, не
-  рассчитывать на существующий gate.
-- План конвейера целиком — `docs/ci-cd-pipeline-plan.md` (в main).
+- **Прод на образах** (cutover 1.0, окно A, 11:49–11:52 MSK): web/sidekiq —
+  `ghcr.io/nick4man/victory-web:sha-f613c87`, zhk-registry — `1.0.0`
+  (`ZHK_TAG=1.0.0` в `.env.deploy`), db не тронута. Простой ≈1 мин.
+  **`/home/q/victory` больше НЕ живой bind-mount** — это ops-каталог: правки
+  файлов там на сайт не попадают. Откат — `bin/rollout <предыдущий тег>`.
+  Записано в `docs/runbooks/cutover-1.0.md`.
+- **Фаза 3 в main (#124) и настроена**: `deploy.yml` + `bin/prod-gate`.
+  Environment `production` — required reviewers (владелец), секреты `PROD_SSH_KEY`
+  + `ALERT_TG_*`, переменные `PROD_HOST`, `PROD_SSH_USER`; ключ `prod-ci` на
+  victory с forced command, связка проверена боем. Выкатка: Actions → Deploy
+  production → Approve. Runbook — `docs/runbooks/deploy-pipeline.md`.
+- ⚠️ Урок дня: `rollout bogus` — **валидный** тег по regex gate; «тестовая»
+  команда из runbook реально выкатила локально собранный образ (благополучно,
+  перевыкатка на sha-тег сразу после). Пример в runbook исправлен.
+- Осталось по плану конвейера (`docs/ci-cd-pipeline-plan.md`): окно B (переезд
+  конвейера новостей с chat — отдельное окно), фаза 4 (гигиена:
+  strong_migrations, спек обхода GET-маршрутов, crontab в репо, ADR «почему не
+  Kamal», чистка корневых *.md).
+- Баг-хвост P2 прежний, плюс новое: предупреждение prod-mark «в прод-чекауте N
+  изменённых файлов» после cutover потеряло смысл (сайт работает из образа) —
+  кандидат на уборку.
 
 ## Состояние на 11.10.26 — release 1.0 в main, конвейер поставки фазы 1+2 зелёный
 
@@ -110,8 +120,10 @@ override через `export CLAUDE_SESSION`.
 | **seo** | `../victory-seo` | `dev/seo` | meta / JSON-LD / sitemap / Lighthouse |
 | **upgrade** | `../victory-upgrade` | `dev/upgrade` | Rails/Ruby EOL, спеки, session-coord |
 
-🚨 **main checkout** (корень, из которого выросли все worktree) — он же **живой прод-bind-mount** (`victory-web-1`
-→ `/app`, code-reload). Правка там уходит на сайт мгновенно. Только deploy/merge.
+🚨 **main checkout** (корень, из которого выросли все worktree) — до 12.10.26 был
+**живым прод-bind-mount**; после cutover это ops-каталог прода (compose/.env/bin),
+правки файлов на сайт не попадают — код едет через образы. Всё равно не ветвись
+и не коммить там без нужды: порядок — PR.
 
 Границы: write/edit/git — **только внутри своего worktree**. Чужие worktree и
 main checkout — read-only диагностика.

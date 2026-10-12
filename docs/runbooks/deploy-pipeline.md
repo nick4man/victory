@@ -30,10 +30,11 @@ Telegram.
    - переменные окружения: `PROD_HOST`, `PROD_SSH_USER`.
    Через CLI: `gh api repos/nick4man/victory/environments/production -X PUT`
    (reviewers настраиваются в UI или через API environments).
-3. Проверка связки без выкатки: заведомо старый тег выкатывать НЕ надо —
-   достаточно `ssh -i ~/.ssh/victory-prod-ci <user>@<host> "rollout bogus"`:
-   ответ `prod-gate: некорректный тег` значит, что ключ, gate и валидация
-   работают, а побочек нет.
+3. Проверка связки без выкатки: `ssh -i ~/.ssh/victory-prod-ci <user>@<host>
+   "rollout BOGUS!"` → ответ `prod-gate: некорректный тег` значит, что ключ, gate
+   и валидация работают, а побочек нет. ⚠️ Не проверяй строчными «осмысленными»
+   словами вроде `bogus` — они проходят regex тега, и выкатка случится
+   по-настоящему (инцидент 12.10.26, см. `docs/runbooks/cutover-1.0.md`).
 
 ## Эксплуатация
 

@@ -10,7 +10,7 @@
 |-----------|--------|-----------|
 | **CI/CD: сборка образов в GHCR** | ✅ с 11.10.26 | `build.yml`: push в main → образы `victory-{web,conveyor,publisher,zhk-registry}` (тег `sha-<7>`), zeitwerk:check в production до push; PR — проверка собираемости |
 | **Staging-стенд victory-staging** | ✅ с 11.10.26 | vps1 (`ssh deploy`), WG-only бинд `10.10.0.160:3002`, Traefik `staging.dev.victory62.org` + basic-auth, автовыкатка из CI через `deploy-gate`, smoke+Playwright зелёные, данные — prod-дамп с санитизацией |
-| **Release 1.0 (compose + prod-образы)** | ⏳ код в main, **выкатка НЕ выполнена** | Единый compose, `bin/{rollout,release,smoke}`, конвейер новостей в монорепе; cutover по `docs/runbooks/cutover-1.0.md` pending (прод-чекаут — `chat:/opt/.openclaw/victory`) |
+| **Release 1.0 (compose + prod-образы)** | ✅ с 12.10.26 (cutover окно A) | Прод на `victory-web:sha-f613c87` из GHCR, zhk-registry 1.0.0; `bin/{rollout,release,smoke}`; окно B (конвейер новостей с chat) pending |
 | **Kimi Code в GitHub Actions** | ✅ с 11.10.26 | `@kimi` в issue/PR-комментариях и ревью → sticky-ответ, ветки `kimi/*` |
 | Landing | ✅ active | `landing#index` корневой роут, full app layout с header/footer, news strip над featured properties |
 | Properties (каталог) | ✅ active | TopNLab MLS-синхронизация, поиск/карта/сравнение |
@@ -24,8 +24,8 @@
 | Telegram inbox | ✅ active | приём входящих в site, async photo download |
 | TG ↔ victory62 cross-link | ✅ Phase 8 deployed | bilateral notifications, QR codes на обоих отчётах |
 | Sidekiq + sidekiq-cron | ✅ active | контейнер `victory-sidekiq-1`; расписание в `config/sidekiq_cron.yml` (Topnlab sync каждые 30 мин и др.) |
-| Rails 8.1.3.1 / Ruby 3.4.10 | ✅ код и образы | `load_defaults` осознанно оставлен на 7.1; работающий прод-контейнер — на прежнем образе до cutover 1.0 |
-| **Прод-выкатка из CI (фаза 3 конвейера)** | ⏳ не начата | Подтверждение человеком → прод тянет образ. Прод-кейс из `bin/deploy-gate` удалён при вводе staging — механизм проектируется заново. План: `docs/ci-cd-pipeline-plan.md` |
+| Rails 8.1.3.1 / Ruby 3.4.10 | ✅ код, образы и прод-контейнер | `load_defaults` осознанно оставлен на 7.1; прод-контейнер на 3.4.10 с cutover 12.10.26 |
+| **Прод-выкатка из CI (фаза 3 конвейера)** | ✅ с 12.10.26 | `deploy.yml` (workflow_dispatch + environment `production` с required reviewers) → SSH `bin/prod-gate` (ключ `prod-ci`, forced command) → `bin/rollout`; внешний post-check + TG-алерт (TD-5 закрыт). Runbook — `docs/runbooks/deploy-pipeline.md` |
 
 ## Отключено / заглушки
 
