@@ -1,649 +1,258 @@
-# АН "Виктори" - Digital Platform 🏢
+# АН «Виктори» — digital-платформа агентства недвижимости
 
-> Современная digital-платформа для агентства недвижимости с онлайн-сервисами
+> Русскоязычная платформа агентства недвижимости (Рязань): публичный сайт, JSON API,
+> админка, два Telegram-бота и AI-функции.
 
-[![Ruby](https://img.shields.io/badge/Ruby-3.2.2-red.svg)](https://www.ruby-lang.org/)
-[![Rails](https://img.shields.io/badge/Rails-7.1.0-red.svg)](https://rubyonrails.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-7+-red.svg)](https://redis.io/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+**Production: https://victory62.org**
 
----
-
-## 📋 Оглавление
-
-- [О проекте](#о-проекте)
-- [Возможности](#возможности)
-- [Технологический стек](#технологический-стек)
-- [Требования](#требования)
-- [Установка](#установка)
-- [Конфигурация](#конфигурация)
-- [Запуск](#запуск)
-- [Тестирование](#тестирование)
-- [Deployment](#deployment)
-- [API Документация](#api-документация)
-- [Структура проекта](#структура-проекта)
-- [Участие в разработке](#участие-в-разработке)
-- [Лицензия](#лицензия)
+[![Ruby](https://img.shields.io/badge/Ruby-3.4.10-red.svg)](https://www.ruby-lang.org/)
+[![Rails](https://img.shields.io/badge/Rails-8.1-red.svg)](https://rubyonrails.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15%20%2B%20PostGIS%20%2B%20pgvector-blue.svg)](https://www.postgresql.org/)
 
 ---
 
-## 🎯 О проекте
+## О проекте
 
-**АН "Виктори"** - это современная digital-платформа для агентства недвижимости, которая предоставляет полный спектр онлайн-сервисов для покупки, продажи и аренды недвижимости.
+Rails-монолит с четырьмя входами:
 
-### Миссия
-Сделать процесс поиска и приобретения недвижимости максимально прозрачным, удобным и быстрым через использование современных технологий.
+| Вход | Где | Аутентификация |
+|---|---|---|
+| Публичный сайт | `landing#index` + `properties`, `news`, `valuations`, `cabinet` (`config/routes.rb`) | нет |
+| JSON API | `namespace :api { namespace :v1 }` | JWT |
+| Админка | `namespace :admin` | query-param `?token=$ADMIN_TOKEN` |
+| Вебхуки | `app/controllers/webhooks/` (topnlab, telegram, yookassa, amocrm, news_ingest, zhk_ingest…) | секрет из ENV; **пустой ENV = отказ** |
 
-### Целевая аудитория
-- **Покупатели** - люди, ищущие недвижимость для покупки
-- **Арендаторы** - те, кто хочет снять жилье
-- **Продавцы** - владельцы недвижимости, желающие продать
-- **Арендодатели** - собственники, сдающие недвижимость в аренду
-- **Инвесторы** - заинтересованные в инвестиционной недвижимости
+Ключевые особенности архитектуры:
 
----
+- **Каталог объектов — проекция внешней CRM Topnlab.** Источник правды — Topnlab;
+  `Property` наполняется `TopnlabSyncJob` (каждые 30 минут) и соседними sync-джобами.
+- **Доменная логика — в `app/services/`** (~69 каталогов: `llm/`, `telegram/`,
+  `topnlab/`, `crm/`, `mortgage/`, `property_dossier/`, `audit_engine/`…),
+  не в моделях и контроллерах. Plain-Ruby класс с `initialize` + `call`.
+- **Два Telegram-бота из одного Rails**: `telegram/work_bot/` (сотрудники —
+  фактический CRM-канал: команды, задачи, дайджесты, эскалации) и
+  `telegram/client_bot/` (клиенты). Общий вход — `Telegram::InboundProcessor`;
+  вебхук идёт через Cloudflare-релей `tg-webhook-relay/`.
+- **LLM — free-first цепочка провайдеров** (`app/services/llm/omni_client.rb`,
+  цепочки `LLM_CHAIN_CHAT/ANALYSIS/STAFF_ANALYSIS`, платные модели — последние).
+- **Эмбеддинги** — pgvector + gem `neighbor`; гео-запросы — PostGIS сырым SQL.
 
-## ✨ Возможности
+## Функционал
 
-### Для клиентов
+### Публичный сайт
 
-#### 🔍 Поиск недвижимости
-- Расширенные фильтры (тип, цена, площадь, район, метро)
-- Интерактивная карта с объектами
-- AI-рекомендации на основе истории просмотров
-- Сохранение поисков с уведомлениями о новых объектах
+- **Каталог недвижимости** `/properties`: фильтры (Ransack + PgSearch, русский словарь),
+  интерактивная карта (Яндекс.Карты), сравнение объектов, избранное, запись на показ,
+  автокомплит, история цены, **досье объекта** (premium PDF, 5 страниц).
+- **SEO-пирамида лендингов**: `/kupit/*`, `/snyat/*` (интент × тип × район × комнаты),
+  страницы городов; EN-лендинг `/foreign` с инвест-аудитом.
+- **Реестр ЖК** `/zhk` — жилые комплексы с привязкой объектов.
+- **Оценка недвижимости** `/valuations`: экспресс-оценка и инвестиционный аудит
+  (sidecar `audit-engine`, token-based страницы результатов).
+- **Сервисы** `/services/*`: ипотечный калькулятор (банки, программы, заявки),
+  депозитный калькулятор, «ипотека vs депозит», юридические и документные услуги,
+  виртуальные туры.
+- **Кабинет клиента** `/cabinet` (вход по magic-link): профиль, «мои объекты»,
+  документы, избранное, цифровой агентский договор с публичной проверкой
+  `/verify-contract/:token`.
+- **AI-чат-бот** `/chatbot` и онлайн-чат `/chat` с операторами (ActionCable,
+  tool-calling через `app/services/chat_tools/`).
+- **Контент**: блог `/blog`, новости `/news`, кейсы `/cases`, отзывы `/reviews`,
+  агенты `/agents/:slug`, FAQ, `/about/*`.
+- **Партнёрский портал** `/partners` (magic-link) и чужие YRL-объявления
+  `/external-listings/:id` с lead-capture.
+- Техническое: sitemap-index, robots.txt, IndexNow, фиды `feeds/{yrl,cian,avito}.xml`,
+  PWA (manifest, service worker, offline).
 
-#### 🏠 Просмотр объектов
-- Детальные описания с характеристиками
-- Фотогалереи высокого качества
-- Виртуальные 3D-туры
-- История изменения цены
-- Инфраструктура района
+### JSON API v1 (JWT)
 
-#### 💰 Финансовые инструменты
-- Калькулятор ипотеки с актуальными ставками
-- Подбор ипотечной программы
-- Онлайн-оценка недвижимости
-- Расчет окупаемости инвестиций
+`auth/{login,logout,refresh}`, `properties` (+search/featured/recent/similar),
+`profile`, `favorites`, `inquiries`, `saved_searches`, `mortgage_calculator/calculate`,
+`property_evaluation`, `recommendations`, `stats`, `addresses/autocomplete`
+(DaData-прокси). Полный список — `config/routes.rb`.
 
-#### 👤 Личный кабинет
-- Избранные объекты
-- История просмотров
-- Мои заявки с отслеживанием статуса
-- Сохраненные поиски
-- Внутренние сообщения с агентами
+### Админка `/admin`
 
-#### 📱 Коммуникация
-- Онлайн-чат с операторами
-- AI-чат-бот для быстрых ответов
-- Запись на показ объектов
-- Онлайн-консультации
-- Видеозвонки с агентами
+Дашборд, модерация отзывов, статьи (включая публикацию в Telegram), кейсы,
+живое редактирование SEO-копирайта (`landing_contents`), справочник ЖК и расхождения,
+управление объектами (force_publish/archive), статус Topnlab-синка, ставки банков,
+партнёрские агентства, пользователи (QR-активация), реферальная программа.
+Sidekiq::Web на `/sidekiq` под тем же токеном. Health-эндпоинты: `/health{,/database,/redis,/sidekiq}`.
 
-### Для владельцев недвижимости
+### Telegram-боты
 
-- **Онлайн-оценка** стоимости недвижимости
-- **Размещение объявлений** с модерацией
-- **Виртуальные туры** для привлечения покупателей
-- **Аналитика** просмотров и интереса
+- **Work-bot** (`app/services/telegram/work_bot/`, ~45 файлов): команды, задачи и
+  TaskBatch с SLA, дайджесты диспетчерской, director-dashboard, KPI, детектор аномалий,
+  голосовой/фото-intake, отчёты показов.
+- **Client-bot** (`telegram/client_bot/`): активация, привязка к кабинету, приём
+  фото/текста.
 
-### Для агентов
+### Фон и периодика
 
-- **CRM-интеграция** (AmoCRM)
-- **Управление заявками**
-- **Планирование показов**
-- **Отчеты и аналитика**
-- **База клиентов**
+Sidekiq 7 + sidekiq-cron (`config/sidekiq_cron.yml`, ~21 активная задача, время MSK):
+синк Topnlab (каталог, сотрудники, заявки, собственники), YRL-фиды конкурентов,
+ставки банков, KPI-снапшоты и дайджесты, SLA-напоминания, детектор аномалий,
+cleanup-задачи. Планировщик один — только этот файл (`config/schedule.rb` удалён,
+гема `whenever` нет).
 
-### Для администраторов
+## Технологический стек
 
-- **ActiveAdmin** панель управления
-- **Модерация** объявлений и отзывов
-- **Управление пользователями**
-- **Аналитика и метрики**
-- **Управление контентом**
+| Слой | Технология |
+|---|---|
+| Framework | Rails **8.1.3.1** (`load_defaults` пока 7.1) |
+| Язык | Ruby **3.4.10** |
+| БД | PostgreSQL 15 + **PostGIS 3.6** + **pgvector 0.8.6** (образ `Dockerfile.postgres`) |
+| Server | Puma 7.2, порт 3000 в Docker |
+| Фон | Sidekiq 7 + sidekiq-cron, Redis 7 |
+| Frontend | Importmap + Stimulus + Turbo (Hotwire), Tailwind (`tailwindcss-rails`), ERB; сборщика JS нет |
+| Поиск | Ransack + PgSearch + FriendlyId |
+| LLM/HTTP | Faraday + Stoplight; самописные клиенты: `llm/omni_client.rb`, Tavily, Firecrawl, DaData, Yandex Vision, Google Embedding |
+| PDF/медиа | Prawn + prawn-table, rqrcode, redcarpet, image_processing (libvips), Active Storage (`:local`) |
+| Платежи | ЮKassa (вебхук `webhooks/yookassa`) |
+| Мониторинг | Sentry (при заданном `SENTRY_DSN`, PII strip) |
+| Тесты | RSpec, FactoryBot, Shoulda Matchers, WebMock, DatabaseCleaner; Playwright (visual regression); Python unittest |
+| Качество | RuboCop, Brakeman, bundler-audit, CodeQL, GitGuardian |
 
----
+Аутентификация: **Devise фактически отключён** (гем в Bundle, но не используется) —
+вход в кабинет по magic-link, API по JWT, админка по `ADMIN_TOKEN`. Pundit отключён.
 
-## 🛠 Технологический стек
+## `services/` — подсистемы вне Rails
 
-### Backend
-- **Ruby** 3.2.2
-- **Ruby on Rails** 7.1.0
-- **PostgreSQL** 15+ (основная БД)
-- **Redis** 7+ (кэш, сессии, очереди)
-- **Sidekiq** (фоновые задачи)
+Отдельные маленькие службы в одном репозитории (манифест — `SERVICE.md` в каждом
+каталоге, правила проверяет `python3 bin/services-check`):
 
-### Frontend
-- **Tailwind CSS** 2.0 (стилизация)
-- **Stimulus.js** (интерактивность)
-- **Turbo** (SPA-навигация)
-- **esbuild** (сборка JS)
+| Служба | Язык | Назначение |
+|---|---|---|
+| `audit-engine/` | Python (FastAPI) | инвестиционный аудит (EI / Монте-Карло / PDF), sidecar |
+| `urgent-news-collector/` | Python | конвейер срочных новостей и ставок банков → `/webhooks/news_ingest` |
+| `content-publisher/` | Python | Telegram-публикатор очереди новостей (@rznvictory) |
+| `zhk-registry/` | Python | обход ЕРЗ/сайтов застройщиков → `/webhooks/zhk_ingest` |
+| `chat-host-cron/` | bash | cron-обвязка (монтируется в контейнер `conveyor`) |
+| `web-comparables/` | текст скилла | подбор аналогов (кода нет) |
+| `tg-webhook-relay/` (корень) | Cloudflare Worker | релей Telegram-вебхуков → `victory62.org` |
 
-### Аутентификация
-- **Devise** (основная аутентификация)
-- **Pundit** (авторизация)
-- **Omniauth** (Google, Yandex OAuth)
+## Установка и запуск (development)
 
-### Файлы и медиа
-- **ActiveStorage** (загрузка файлов)
-- **ImageMagick/Vips** (обработка изображений)
-- **AWS S3** (хранилище для production)
-
-### API и интеграции
-- **Яндекс.Карты** (геолокация и карты)
-- **AmoCRM** (CRM-система)
-- **SMSC.ru** (SMS-уведомления)
-- **Telegram API** (уведомления)
-- **reCAPTCHA v3** (защита от ботов)
-
-### Поиск и фильтрация
-- **Ransack** (расширенный поиск)
-- **PgSearch** (полнотекстовый поиск)
-- **Geocoder** (геокодирование)
-
-### SEO и аналитика
-- **Meta-tags** (динамические мета-теги)
-- **FriendlyId** (человекопонятные URL)
-- **Sitemap Generator** (sitemap.xml)
-- **Ahoy Matey** (внутренняя аналитика)
-- **Яндекс.Метрика / Google Analytics**
-
-### Мониторинг и качество
-- **Sentry** (отслеживание ошибок)
-- **Scout APM** (мониторинг производительности)
-- **Bullet** (детектор N+1 запросов)
-- **Rubocop** (линтер кода)
-- **Brakeman** (security scanner)
-
-### Тестирование
-- **RSpec** (unit и integration тесты)
-- **FactoryBot** (фикстуры)
-- **Capybara** (E2E тестирование)
-- **SimpleCov** (покрытие кода)
-
----
-
-## 📦 Требования
-
-### Системные требования
-
-- **Ruby** 3.2.2 или выше
-- **Rails** 7.1.0 или выше
-- **PostgreSQL** 15+ 
-- **Redis** 7.0+
-- **Node.js** 18+ (для сборки assets)
-- **Yarn** или npm
-- **ImageMagick** или **libvips** (для обработки изображений)
-
-### Опциональные зависимости
-
-- **wkhtmltopdf** (для генерации PDF)
-- **Docker** & **Docker Compose** (для контейнеризации)
-
----
-
-## 🚀 Установка
-
-### 1. Клонирование репозитория
+Требования: Ruby 3.4.10, PostgreSQL 15 с PostGIS + pgvector (проще всего — образ
+`Dockerfile.postgres`), Redis 7. Node.js нужен только для dev-инструментов
+(Playwright, Figma Code Connect).
 
 ```bash
-git clone https://github.com/yourusername/viktory_realty.git
-cd viktory_realty
-```
-
-### 2. Установка Ruby зависимостей
-
-```bash
+git clone git@github.com:nick4man/victory.git
+cd victory
 bundle install
+cp .env.example .env          # заполнить обязательные переменные
+bin/rails db:create db:migrate
+bin/rails db:seed             # опционально
+bin/rails server              # http://localhost:3000
+bundle exec sidekiq -C config/sidekiq.yml   # фоновые задачи, отдельный терминал
 ```
 
-### 3. Установка JavaScript зависимостей
+На прод-хосте `victory` (Ruby только в контейнере) все Ruby-команды — через `bin/rb`:
 
 ```bash
-yarn install
-# или
-npm install
+bin/rb bundle install
+bin/rb bin/rails db:migrate
 ```
 
-### 4. Установка PostgreSQL и Redis
+Обязательные ENV: `DATABASE_*`, `REDIS_URL`, `SECRET_KEY_BASE`, `ADMIN_TOKEN`,
+`JWT_SECRET_KEY`. Интеграции (по мере необходимости): `TELEGRAM_*`, `OMNIROUTE_*` /
+`LLM_CHAIN_*`, `DADATA_*`, `YANDEX_MAPS_API_KEY`, `SMTP_*`, токены вебхуков
+(`NEWS_INGEST_TOKEN`, `ZHK_INGEST_TOKEN`, …). Полный список — `.env.example`
+(163 переменные; часть помечена как мёртвый груз — см. комментарии в файле).
 
-**На macOS (Homebrew):**
-```bash
-brew install postgresql@15 redis
-brew services start postgresql@15
-brew services start redis
-```
-
-**На Ubuntu/Debian:**
-```bash
-sudo apt-get update
-sudo apt-get install postgresql-15 postgresql-contrib redis-server
-sudo systemctl start postgresql
-sudo systemctl start redis
-```
-
-**На Windows:**
-Используйте установщики с официальных сайтов или Docker.
-
-### 5. Конфигурация окружения
-
-Скопируйте пример файла окружения:
+## Тестирование
 
 ```bash
-cp .env.example .env
+bundle exec rspec                              # полный прогон (~150 spec-файлов)
+bundle exec rspec spec/models/property_spec.rb # файл / :строка
+
+# На прод-хосте (поднимает PostGIS+pgvector образ):
+bin/rb --db bundle exec rspec
+
+# Качество и безопасность:
+bundle exec rubocop --parallel
+bundle exec brakeman --exit-on-warn --quiet
+bundle exec bundle-audit update && bundle exec bundle-audit check
+
+# Правила служб services/ (только python3):
+python3 bin/services-check
+
+# Python-юниты служб:
+cd services/urgent-news-collector && python3 -m unittest discover -v
+
+# Visual regression (Playwright, снапшоты коммитятся; нужен dev-сервер на :3000):
+npm run vr:test    # проверка против базовых
+npm run vr:update  # переснять базовые (ревью диффа обязателен)
 ```
 
-Отредактируйте `.env` и заполните необходимые значения:
+Тестовая БД требует расширения `postgis`, `vector`, `pg_trgm`, `unaccent`
+(`db/structure.sql`) — CI и `bin/rb` поднимают `Dockerfile.postgres`.
 
-```bash
-# Минимальная конфигурация для разработки
-DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=postgres
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY_BASE=$(rails secret)
-```
+## CI/CD и деплой
 
-### 6. Создание и настройка базы данных
+- **`main` = production, direct push запрещён.** Работа — в `dev/<session>` /
+  feature-ветках, путь в прод — только PR.
+- На PR: RuboCop, Brakeman, bundler-audit, `services-check`, RSpec, сборка
+  prod-образа + `zeitwerk:check` (`.github/workflows/lint.yml`, `build.yml`),
+  CodeQL, GitGuardian. Code-review diff — обязательный этап каждого PR.
+- **CD**: merge в `main` → `build.yml` собирает и пушит образы
+  `ghcr.io/nick4man/victory-*:sha-<7>` (тег `<VERSION>` — при изменении файла VERSION)
+  и автоматически выкатывает на staging.
+- **Прод — ручная выкатка**: `bin/rollout <тег>` на прод-хосте
+  (бэкап → pull → health → smoke). Runbook и откат — `docs/runbooks/release.md`.
+- **Бэкап**: `bin/backup` + systemd-таймер (`deploy/systemd/`, пример конфига —
+  `config/backup.env.example`).
+- Контейнеры (`docker-compose.yml`): `db` (PostGIS+pgvector), `redis`, `web`,
+  `sidekiq`, `zhk-registry`; профиль `conveyor` — `news-db`, `conveyor`, `publisher`;
+  профиль `audit` — `docker-compose.audit.yml`.
 
-```bash
-# Создание баз данных
-rails db:create
-
-# Запуск миграций
-rails db:migrate
-
-# Загрузка тестовых данных (опционально)
-rails db:seed
-```
-
-### 7. Компиляция assets
-
-```bash
-rails assets:precompile
-```
-
----
-
-## ⚙️ Конфигурация
-
-### Основные конфигурационные файлы
-
-- **`.env`** - переменные окружения
-- **`config/database.yml`** - настройки базы данных
-- **`config/credentials.yml.enc`** - зашифрованные секреты
-- **`config/routes.rb`** - маршруты приложения
-- **`config/initializers/`** - инициализаторы
-
-### Переменные окружения
-
-Основные переменные описаны в `.env.example`. Обязательные для работы:
-
-| Переменная | Описание | Обязательная |
-|------------|----------|--------------|
-| `DATABASE_URL` или `DATABASE_*` | Подключение к PostgreSQL | ✅ |
-| `REDIS_URL` | Подключение к Redis | ✅ |
-| `SECRET_KEY_BASE` | Секретный ключ приложения | ✅ |
-| `YANDEX_MAPS_API_KEY` | API ключ Яндекс.Карт | ✅ |
-| `SMTP_*` | Настройки почты | ⚠️ |
-| `RECAPTCHA_*` | reCAPTCHA ключи | ⚠️ |
-
-### Генерация секретных ключей
-
-```bash
-# Генерация SECRET_KEY_BASE
-rails secret
-
-# Генерация DEVISE_SECRET_KEY
-rails secret
-```
-
----
-
-## 🏃 Запуск
-
-### Development режим
-
-#### Запуск веб-сервера
-
-```bash
-rails server
-# или
-rails s
-```
-
-Приложение будет доступно по адресу: `http://localhost:3000`
-
-#### Запуск Sidekiq (для фоновых задач)
-
-В отдельном терминале:
-
-```bash
-bundle exec sidekiq
-```
-
-#### Запуск всех сервисов одновременно (с Foreman)
-
-Создайте `Procfile.dev`:
+## Структура проекта
 
 ```
-web: rails server -p 3000
-sidekiq: bundle exec sidekiq
-css: yarn build:css --watch
-```
-
-Затем:
-
-```bash
-gem install foreman
-foreman start -f Procfile.dev
-```
-
-### Production режим
-
-```bash
-RAILS_ENV=production rails assets:precompile
-RAILS_ENV=production rails db:migrate
-RAILS_ENV=production rails server -e production
-```
-
----
-
-## 🧪 Тестирование
-
-### Запуск всех тестов
-
-```bash
-bundle exec rspec
-```
-
-### Запуск конкретных тестов
-
-```bash
-# Тесты моделей
-bundle exec rspec spec/models
-
-# Тесты контроллеров
-bundle exec rspec spec/controllers
-
-# Конкретный файл
-bundle exec rspec spec/models/property_spec.rb
-
-# Конкретный тест
-bundle exec rspec spec/models/property_spec.rb:42
-```
-
-### Покрытие кода
-
-```bash
-COVERAGE=true bundle exec rspec
-open coverage/index.html
-```
-
-### Проверка качества кода
-
-```bash
-# Rubocop
-bundle exec rubocop
-
-# С автоисправлением
-bundle exec rubocop -A
-
-# Brakeman (security)
-bundle exec brakeman
-
-# Bundle Audit (уязвимости в gem)
-bundle exec bundle-audit check --update
-```
-
----
-
-## 🚢 Deployment
-
-### С использованием Capistrano
-
-```bash
-# Первый деплой
-cap production deploy:initial
-
-# Обычный деплой
-cap production deploy
-
-# Откат
-cap production deploy:rollback
-```
-
-### С использованием Docker
-
-```bash
-# Сборка образа
-docker-compose build
-
-# Запуск контейнеров
-docker-compose up -d
-
-# Миграции
-docker-compose run web rails db:migrate
-
-# Остановка
-docker-compose down
-```
-
-### Manual deployment
-
-```bash
-# На сервере
-git pull origin main
-bundle install
-yarn install
-rails db:migrate
-rails assets:precompile
-sudo systemctl restart viktory_realty
-```
-
----
-
-## 📚 API Документация
-
-API доступно по адресу `/api/v1/`
-
-### Аутентификация
-
-API использует JWT для аутентификации:
-
-```bash
-POST /api/v1/auth/login
-{
-  "email": "user@example.com",
-  "password": "password"
-}
-
-# Response
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9...",
-  "user": { ... }
-}
-```
-
-Добавьте токен в заголовки запросов:
-
-```
-Authorization: Bearer YOUR_JWT_TOKEN
-```
-
-### Основные эндпоинты
-
-#### Недвижимость
-
-```bash
-# Список объектов
-GET /api/v1/properties
-GET /api/v1/properties?deal_type=sale&property_type=apartment
-
-# Детали объекта
-GET /api/v1/properties/:id
-
-# Поиск
-GET /api/v1/properties/search?q=москва&min_price=5000000
-```
-
-#### Пользователь
-
-```bash
-# Профиль
-GET /api/v1/profile
-
-# Избранное
-GET /api/v1/favorites
-POST /api/v1/favorites
-DELETE /api/v1/favorites/:id
-```
-
-Полная документация доступна по адресу: `/api/docs` (после установки Swagger)
-
----
-
-## 📁 Структура проекта
-
-```
-viktory_realty/
+victory/
 ├── app/
-│   ├── assets/                 # Статические ресурсы
-│   ├── channels/              # ActionCable каналы
-│   ├── controllers/           # Контроллеры
-│   │   ├── api/v1/           # API контроллеры
-│   │   └── concerns/         # Общие модули
-│   ├── helpers/               # Хелперы
-│   ├── jobs/                  # Фоновые задачи (Sidekiq)
-│   ├── mailers/               # Email шаблоны
-│   ├── models/                # Модели данных
-│   │   └── concerns/         # Общие модули моделей
-│   ├── services/              # Сервисные объекты
-│   ├── serializers/           # API сериализаторы
-│   └── views/                 # Представления
-│       ├── layouts/          # Layouts
-│       ├── properties/       # Страницы недвижимости
-│       └── shared/           # Переиспользуемые partials
-├── bin/                       # Исполняемые скрипты
-├── config/                    # Конфигурация
-│   ├── environments/         # Окружения (dev, test, prod)
-│   ├── initializers/         # Инициализаторы
-│   └── locales/              # Переводы (i18n)
-├── db/                        # База данных
-│   ├── migrate/              # Миграции
-│   └── seeds/                # Seed файлы
-├── lib/                       # Дополнительные библиотеки
-│   └── tasks/                # Rake задачи
-├── log/                       # Логи
-├── public/                    # Публичные файлы
-├── spec/                      # Тесты (RSpec)
-│   ├── factories/            # FactoryBot фабрики
-│   ├── models/               # Тесты моделей
-│   ├── requests/             # Request спеки
-│   └── support/              # Вспомогательные файлы
-├── storage/                   # ActiveStorage файлы
-├── tmp/                       # Временные файлы
-├── .env.example               # Пример переменных окружения
-├── .gitignore                 # Git ignore
-├── .rubocop.yml               # Rubocop конфигурация
-├── Gemfile                    # Ruby зависимости
-├── Gemfile.lock               # Lock файл зависимостей
-├── README.md                  # Этот файл
-├── Rakefile                   # Rake задачи
-└── config.ru                  # Rack конфигурация
+│   ├── controllers/      # сайт + api/v1 + admin + webhooks/
+│   ├── models/           # AR-модели (soft delete через deleted_at)
+│   ├── services/         # доменная логика (~69 каталогов: llm/, telegram/, topnlab/…)
+│   ├── jobs/, mailers/, channels/, helpers/, javascript/, views/, assets/
+├── bin/                  # ~24 скрипта: rb, rollout, backup, release, smoke…
+├── config/               # routes.rb (~900 строк), sidekiq_cron.yml, database.yml…
+├── db/                   # migrate/, seeds/, structure.sql
+├── deploy/systemd/       # юниты бэкапа
+├── docs/                 # runbooks/, регламенты, правила документации
+├── lib/tasks/            # ~31 rake-задача
+├── services/             # подсистемы вне Rails (Python/bash), SERVICE.md в каждой
+├── spec/                 # RSpec: models, services (основная масса), requests, jobs, mailers
+├── tests/visual/         # Playwright visual regression (снапшоты коммитятся)
+├── tg-webhook-relay/     # Cloudflare Worker для Telegram-вебхуков
+├── Dockerfile, Dockerfile.postgres, docker-compose*.yml
+└── VERSION               # версия релизной линии (сейчас 1.0.0)
 ```
 
----
+## Документация
 
-## 🤝 Участие в разработке
+- **`AGENTS.md`** — стартовая точка для AI-агентов и источник правды о проекте.
+- **`.claude/memory/`** — memory-bank: `activeContext.md`, `systemPatterns.md`,
+  `techContext.md`, `progress.md`, `strategicVector.md`.
+- **`docs/runbooks/`** — эксплуатационные процедуры (release, staging, cutover…).
+- **`services/*/SERVICE.md`** — манифесты подсистем.
+- **`docs/documentation-rules.md`** — правила ведения документации.
 
-Мы приветствуем вклад в проект! Следуйте этим шагам:
+⚠️ Корневые `*.md` (`STATUS.md`, `DEPLOYMENT*.md`, `ROADMAP.md` и др.) —
+исторический шум, источником правды не являются.
 
-### 1. Fork проекта
+## Участие в разработке
 
-Создайте fork на GitHub.
+1. Ветка `dev/<session>` или `claude/<task>` от `main` — direct push в `main` запрещён.
+2. Конвенции кода — `AGENTS.md` и `.claude/memory/systemPatterns.md`
+   (soft delete через `deleted_at`, enums с `_prefix: true`, даты `dd.MM.yy`,
+   single quotes, `# frozen_string_literal: true`).
+3. CI должен быть зелёным; далее — обязательное code-review diff.
+4. Зависимые слои (миграция → сервис → UI) или diff > ~500 строк — стек PR через
+   `gh stack`.
 
-### 2. Создайте feature branch
+## Статус проекта
 
-```bash
-git checkout -b feature/AmazingFeature
-```
-
-### 3. Commit изменения
-
-```bash
-git commit -m 'Add some AmazingFeature'
-```
-
-Следуйте [Conventional Commits](https://www.conventionalcommits.org/):
-
-- `feat:` новая функциональность
-- `fix:` исправление бага
-- `docs:` документация
-- `style:` форматирование
-- `refactor:` рефакторинг
-- `test:` тесты
-- `chore:` рутинные задачи
-
-### 4. Push в branch
-
-```bash
-git push origin feature/AmazingFeature
-```
-
-### 5. Создайте Pull Request
-
-Опишите изменения и зачем они нужны.
-
-### Code Style
-
-- Следуйте [Ruby Style Guide](https://rubystyle.guide/)
-- Используйте Rubocop: `bundle exec rubocop`
-- Покрытие тестами: минимум 80%
-- Все тесты должны проходить
-
----
-
-## 📞 Контакты и поддержка
-
-- **Email:** support@viktory-realty.ru
-- **Telegram:** [@viktory_realty_support](https://t.me/viktory_realty_support)
-- **Телефон:** +7 (XXX) XXX-XX-XX
-- **Офис:** г. Москва, ул. Примерная, д. 1
-
-### Документация
-
-- [Wiki проекта](https://github.com/yourusername/viktory_realty/wiki)
-- [Roadmap](ROADMAP.md)
-- [Changelog](CHANGELOG.md)
-
----
-
-## 📄 Лицензия
-
-Этот проект лицензирован под MIT License - см. файл [LICENSE](LICENSE) для деталей.
-
----
-
-## 🙏 Благодарности
-
-- Ruby on Rails команде за отличный фреймворк
-- Всем контрибьюторам open-source библиотек
-- Нашим клиентам за обратную связь
-
----
-
-## 📈 Статус проекта
-
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-85%25-green)
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-
-**Текущая версия:** 2.0.0  
-**Статус:** 🟢 Active Development  
-**Последнее обновление:** 2024
-
----
-
-**Сделано с ❤️ командой АН "Виктори"**
+**Версия:** 1.0.0 (релизная линия с 11.10.26)
+**Статус:** active development, production — https://victory62.org
