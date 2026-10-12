@@ -1,7 +1,7 @@
 """Еженедельный дайджест рынка недвижимости — автономный конвейер.
 
-Запускается каждый понедельник в 09:00 МСК (06:00 UTC) через cron-job
-«Market Digest Pipeline (Monday)» (id 9a713339-… в cron/jobs.json архива openclaw).
+Запускается по системному crontab (crontab.example): пн 06–20 и вт 06–12
+ежечасно, окно догона — если понедельник пропущен, догоняет во вторник.
 
 Логика:
 1. Собирает факты прошедшей недели:
@@ -10,7 +10,9 @@
    - Макро-данные (cbr_key_rate, inflation, mortgage_rate) и свежие банковские оферы
 2. Подгружает party-line — последние market_digest посты, через get_party_line
    (триграммный поиск по postgres-local.posts_queue).
-3. Генерирует JSON-дайджест через Omniroute (cc/claude-sonnet-4-5-20250929):
+3. Генерирует JSON-дайджест через pipeline_utils.complete_with_fallbacks —
+   цепочка моделей из chains.json, снизу платный хвост с бюджетом
+   (опциональный single-model override: DIGEST_TRIGGER_MODEL):
    {body_html, topic_hashtags, short_summary, consistency_check}.
 4. Прогоняет body через sanitize_body_html, добавляет BRAND_TAGS + filter_topic_hashtags.
 5. Кладёт пост в production posts_queue (postgres-local) со status='SCHEDULED'

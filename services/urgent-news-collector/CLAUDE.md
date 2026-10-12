@@ -19,7 +19,7 @@ Python-конвейер новостей внутри Rails-репозитори
 ## Запуск тестов
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v   # 47 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains test_chains_config test_free_model_probe -v   # 79 тестов, без сети и БД
 ```
 
 Только **из каталога сервиса**: импорты плоские (`from urgent_relevance import ...`),
@@ -88,17 +88,19 @@ python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains 
   тишины и ~31 потерянного события.
 - **`URGENT_ELIGIBLE_TYPES` — ровно пять типов.** `MACRO_ECONOMICS` и `FX_RATE` исключены по
   замеру: 84 срочные публикации за 30 дней против 14.
-- **Порядок `MAIN_MODEL_CHAIN`** (`pipeline_utils.py`): сначала бесплатные, платный
-  `anthropic/claude-sonnet-4` последний и помечен в `PAID_MODELS`. Подняв его выше, ты включишь
+- **Порядок цепочки `main` в `chains.json`** (с 13.10.26 цепочки живут там, а не в
+  `pipeline_utils.py` — см. раздел ниже): сначала бесплатные, платный
+  `anthropic/claude-sonnet-4` последний и помечен `"paid": true`. Подняв его выше, ты включишь
   платную модель на кроне каждые 15 минут, молча.
 - **Две цепочки, а не одна** (с 13.09.26). Классификатор (`urgent_collector`) идёт по
-  `CLASSIFIER_CHAIN` — это `MAIN_MODEL_CHAIN` плюс бесплатные модели прямого OpenRouter
-  (`FREE_CLASSIFIER_MODELS`) сразу после Google и **без платного Sonnet** (с 02.10.26):
+  `CLASSIFIER_CHAIN` — это `main` из `chains.json` плюс бесплатные модели прямого
+  OpenRouter (секция `classifier_extra`) сразу после Google и **без платного Sonnet**
+  (с 02.10.26):
   за 10 дней он классифицировал 670 новостей и выбрал месячный лимит общего ключа, после
   чего неделю не было платного резерва и у постов. Не возвращай его в классификатор —
   `test_model_chains` это проверяет. Посты и дайджест идут по `MAIN_MODEL_CHAIN`
   без них: на промпте поста бесплатные модели мешали русский с английским и выдумывали
-  цифры. Не переноси их в `MAIN_MODEL_CHAIN` — `test_model_chains` это проверяет.
+  цифры. Не переноси их в `main` — `test_model_chains` это проверяет.
   Бесплатным моделям OpenRouter нужен `reasoning: {enabled: false}`, иначе рассуждение
   съедает `max_tokens` и ответ приходит пустым.
 - **`URGENT_COLLECTOR_MODEL` / `URGENT_TRIGGER_MODEL` / `OMNIROUTE_MODEL` в `.env`.**
@@ -114,6 +116,56 @@ python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains 
   которая гоняла бы цепочку вечно. Два сбоя подряд останавливают
   весь прогон, чтобы не жечь квоту на остальные новости. Вернёшь запись в NOISE
   при ошибке — повторишь потерю 1950 новостей 07.09.26.
+
+## Цепочки моделей: chains.json, пробер, бюджет (13.10.26)
+
+Источник цепочек — `chains.json`, а не код. `MAIN_MODEL_CHAIN` /
+`FREE_CLASSIFIER_MODELS` / `PAID_MODELS` в `pipeline_utils.py` — уже
+материализованный конфиг, править их там бессмысленно. Порядок поиска файла
+(`resolve_chains_json_path`):
+
+1. env `CHAINS_JSON_PATH`;
+2. `$CONVEYOR_HOME/chains.json`, если существует (боевой оверрайд);
+3. `chains.json` рядом с `pipeline_utils.py` — деплоится вместе с кодом, основной
+   способ править вручную;
+4. встроенные дефолты `_DEFAULT_*` — на битый или отсутствующий файл: warning
+   в лог и дефолты, исключений нет.
+
+⚠️ Конфиг читается один раз **при импорте** `pipeline_utils`, а `.env` скрипты
+подтягивают уже после `import`. Поэтому оверрайд через `$CONVEYOR_HOME/chains.json`
+сработает, только если `CONVEYOR_HOME` задан в окружении cron-задачи, а не в
+`.env`. Файл рядом с кодом (вариант 3) от этого не зависит — потому он и основной.
+
+Формат: секции `main` и `classifier_extra`, записи
+`{provider, model, timeout_s, paid, added_by?}`. Платные помечаются
+`"paid": true` и собираются в `PAID_MODELS`. Платная запись в `classifier_extra`
+в цепочку классификатора не попадёт: инвариант «в классификаторе платных нет»
+(02.10.26) важнее конфига, запись лишь уезжает в `PAID_MODELS` с warning.
+
+- **Телеметрия.** Каждая попытка вызова (успех/провал/сброс по бюджету) — одна
+  JSON-строка в `llm_usage.jsonl` (env `LLM_USAGE_LOG`, дефолт
+  `$CONVEYOR_HOME/logs/llm_usage.jsonl`). Best-effort: ошибка записи не роняет
+  конвейер. По этому логу считается, какие звенья реально работают.
+- **Бюджет платных.** `PAID_DAILY_LIMIT`=5, `PAID_MONTHLY_LIMIT`=20; счётчик в
+  `$CONVEYOR_HOME/state/paid_budget.json` (`PAID_BUDGET_STATE_PATH`). Исчерпание
+  бюджета = paid-звено пропускается. При успешном платном вызове и при исчерпании
+  бюджета — DM главреду (`CHANNEL_BOT_TOKEN` + `CHIEF_EDITOR_CHAT_ID`, без них —
+  молча). Мотив тот же, что у истории 13.09–22.09: Sonnet выбрал месячный лимит
+  ключа за 10 дней — платный резерв должен быть ограничен сам по себе.
+- **Автопробер** `free_model_probe.py` (cron: пн 05:40, `flock -n`) проверяет
+  кандидатов из `probe_candidates.json` и живость бесплатных звеньев: классификатор —
+  эталонными кейсами реальным промптом из `urgent_collector.py` (извлекается AST-ом),
+  генерация — с эвристиками брака (латиница, выдуманные цифры, длина). State
+  `$CONVEYOR_HOME/state/probe_state.json`: 3 подряд провала → disabled, 2 подряд
+  успеха → enabled. `chains.json` обновляет атомарно и трогает только записи
+  `added_by: "probe"` — ручные и платные никогда; both-кандидаты встают в `main`
+  строго перед платным хвостом. CLI: `--dry-run`, `--only provider/model`, `--limit N`.
+- **Сводка расхода** `llm_usage_report.py` (cron: пн 06:10, `--days 7 --telegram`,
+  после пробера): доля бесплатных вызовов, разбивка по моделям/цепочкам, сработки
+  платного хвоста, отказы по бюджету, топ ошибок. Краткая версия уходит главреду.
+
+Целевая метрика системы: **≥99% вызовов бесплатные, платный хвост ≤2 сработок
+в месяц**. Хуже — разбираться по `llm_usage.jsonl`, что за звенья отвалились.
 
 ## Контракт с Rails
 

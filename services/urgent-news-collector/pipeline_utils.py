@@ -327,7 +327,10 @@ OPENCLAW_JSON_PATH = os.environ.get(
     "/opt/.openclaw/.openclaw/openclaw.json",
 )
 
-MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
+# Встроенные дефолты (13.10.26): последний известный живой набор маршрутов.
+# Используются, только если chains.json не найден или битый — см.
+# _load_chains_config. Правки цепочек теперь делаются в chains.json, а не здесь.
+_DEFAULT_MAIN_CHAIN: list[tuple[str, str, int]] = [
     # provider,    model,                                                          timeout_s
     # Direct Google API — bypasses omniroute entirely. Free tier 1500 RPD/model/key.
     ("google",     "gemini-3-flash-preview",                                       30),
@@ -339,7 +342,7 @@ MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = [
     # PAID — last resort.
     ("openrouter", "anthropic/claude-sonnet-4",                                    60),
 ]
-PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")}
+_DEFAULT_PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")}
 
 # Бесплатные модели прямого OpenRouter — ТОЛЬКО для классификатора (13.09.26).
 # Отобраны прогоном промпта классификатора: ставка ЦБ → URGENT/KEY_RATE,
@@ -351,11 +354,133 @@ PAID_MODELS: set[tuple[str, str]] = {("openrouter", "anthropic/claude-sonnet-4")
 # их не пускать: на промпте срочного поста nemotron мешал русский с английским
 # («unanimously»), laguna выдумывала цифры («инфляция 4,3%, ВВП 0,8%»).
 # Короткий JSON-вердикт им по силам, публикация — нет.
-FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
+_DEFAULT_FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = [
     ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free",                       30),
     ("openrouter", "poolside/laguna-s-2.1:free",                                   30),
     ("openrouter", "poolside/laguna-xs-2.1:free",                                  30),
 ]
+
+
+def _bundled_chains_json_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "chains.json")
+
+
+def _builtin_chains() -> dict:
+    return {
+        "main": list(_DEFAULT_MAIN_CHAIN),
+        "free_classifier": list(_DEFAULT_FREE_CLASSIFIER_MODELS),
+        "paid": set(_DEFAULT_PAID_MODELS),
+    }
+
+
+def _parse_chain_steps(raw_steps, section: str, source: str) -> list[tuple[str, str, int, bool]]:
+    """Записи цепочки из JSON → (provider, model, timeout_s, paid).
+
+    Невалидные записи пропускаем с warning, а не роняем весь конфиг: одна
+    опечатка не должна оставить конвейер без цепочки (13.10.26).
+    """
+    steps: list[tuple[str, str, int, bool]] = []
+    if not isinstance(raw_steps, list):
+        return steps
+    for i, item in enumerate(raw_steps):
+        if not isinstance(item, dict):
+            logger.warning("[llm-chain] %s: запись #%d в %s не объект — пропускаю", section, i, source)
+            continue
+        provider = item.get("provider")
+        model = item.get("model")
+        timeout = item.get("timeout_s", 30)
+        if (not isinstance(provider, str) or not provider.strip()
+                or not isinstance(model, str) or not model.strip()):
+            logger.warning("[llm-chain] %s: запись #%d в %s без provider/model — пропускаю", section, i, source)
+            continue
+        # bool — подкласс int, поэтому отсекаем явно: "timeout_s": true — опечатка.
+        if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
+            logger.warning(
+                "[llm-chain] %s: запись #%d (%s/%s) в %s с невалидным timeout_s=%r — пропускаю",
+                section, i, provider, model, source, timeout,
+            )
+            continue
+        steps.append((provider, model, timeout, bool(item.get("paid", False))))
+    return steps
+
+
+def resolve_chains_json_path() -> str:
+    """Путь к chains.json по тому же порядку, что и _load_chains_config.
+
+    Вынесено 13.10.26 для free_model_probe.py: пробер обязан перезаписывать
+    тот файл, который реально читается конвейером, иначе его решения уйдут
+    «в никуда». Читать env нужно В МОМЕНТ ВЫЗОВА (см. комментарий у
+    conveyor_home): .env подтягивается после import pipeline_utils.
+    """
+    path = os.environ.get("CHAINS_JSON_PATH")
+    if path:
+        return path
+    conveyor_cfg = os.path.join(conveyor_home(), "chains.json")
+    return conveyor_cfg if os.path.exists(conveyor_cfg) else _bundled_chains_json_path()
+
+
+def _load_chains_config(path: str | None = None) -> dict:
+    """Загрузить цепочки моделей. Возвращает {"main", "free_classifier", "paid"}.
+
+    Порядок поиска файла (13.10.26) — см. resolve_chains_json_path():
+      1) явный аргумент path — для тестов;
+      2) env CHAINS_JSON_PATH;
+      3) $CONVEYOR_HOME/chains.json, если существует — боевой оверрайд;
+      4) chains.json рядом с pipeline_utils.py — деплоится вместе с кодом;
+      5) встроенные дефолты (_DEFAULT_*).
+
+    Битый файл → warning + дефолты, исключений нет: работающий конвейер
+    важнее строгости конфигурации. Конфиг читается один раз при импорте
+    модуля; перезагрузки на лету нет — cron-процессы короткоживущие, новая
+    редакция подхватится следующим запуском. Внимание: .env вызывающие
+    скрипты подтягивают ПОСЛЕ import pipeline_utils, поэтому оверрайд через
+    $CONVEYOR_HOME/chains.json сработает, только если CONVEYOR_HOME задан в
+    окружении cron-задачи, а не в .env. Файл рядом с кодом (вариант 4) от
+    этого не зависит — он и есть основной способ править цепочки.
+    """
+    if path is None:
+        path = resolve_chains_json_path()
+    raw = None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        logger.info("[llm-chain] chains config %s не найден — встроенные дефолты", path)
+    except Exception as e:
+        logger.warning("[llm-chain] не могу прочитать chains config %s: %s — встроенные дефолты", path, e)
+    if not isinstance(raw, dict):
+        return _builtin_chains()
+    main_raw = _parse_chain_steps(raw.get("main"), "main", path)
+    if not main_raw:
+        logger.warning("[llm-chain] chains config %s: секция main пуста/невалидна — встроенные дефолты", path)
+        return _builtin_chains()
+    free_raw = _parse_chain_steps(raw.get("classifier_extra"), "classifier_extra", path)
+    paid = {(p, m) for p, m, _, is_paid in main_raw if is_paid}
+    free_classifier: list[tuple[str, str, int]] = []
+    for p, m, t, is_paid in free_raw:
+        if is_paid:
+            # Инвариант «в классификаторе платных нет» (02.10.26) важнее конфига:
+            # платную запись из classifier_extra выносим в PAID_MODELS и не даём
+            # ей попасть в CLASSIFIER_CHAIN.
+            logger.warning(
+                "[llm-chain] %s: classifier_extra содержит платную %s/%s — "
+                "в цепочку классификатора не включаю", path, p, m,
+            )
+            paid.add((p, m))
+            continue
+        free_classifier.append((p, m, t))
+    return {
+        "main": [(p, m, t) for p, m, t, _ in main_raw],
+        "free_classifier": free_classifier,
+        "paid": paid,
+    }
+
+
+_CHAINS = _load_chains_config()
+
+MAIN_MODEL_CHAIN: list[tuple[str, str, int]] = _CHAINS["main"]
+PAID_MODELS: set[tuple[str, str]] = _CHAINS["paid"]
+FREE_CLASSIFIER_MODELS: list[tuple[str, str, int]] = _CHAINS["free_classifier"]
 
 # Цепочка классификатора: бесплатные OpenRouter встают сразу после Google,
 # до мёртвых сейчас cloudflare/omniroute. Платного хвоста здесь НЕТ (02.10.26):
@@ -572,6 +697,124 @@ def _call_openai_compatible(provider, model, messages, temperature, max_tokens, 
     return content
 
 
+# ============================================================================
+# Телеметрия вызовов LLM + бюджет платных моделей (13.10.26).
+# Каждая попытка (успех/провал/сброс по бюджету) — одна JSON-строка в
+# llm_usage.jsonl: по ней считаем, какие звенья реально работают, а какие
+# только тратят таймаут. Платные звенья дополнительно ограничены счётчиком
+# день/месяц в state-файле — повтор истории 13.09–22.09, когда Sonnet
+# классифицировал 670 новостей и выбрал месячный лимит ключа OpenRouter.
+# ============================================================================
+
+def llm_usage_log_path() -> str:
+    return os.environ.get(
+        "LLM_USAGE_LOG", os.path.join(conveyor_home(), "logs", "llm_usage.jsonl")
+    )
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _log_llm_usage(record: dict) -> None:
+    """Одна JSON-строка на попытку вызова LLM. Best-effort: любая ошибка
+    записи глотается в debug — телеметрия не должна ронять конвейер."""
+    try:
+        path = llm_usage_log_path()
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.debug("[llm-usage] cannot write usage log: %s", e)
+
+
+def _chain_name(chain: list) -> str:
+    """Имя цепочки для телеметрии: main / classifier / custom."""
+    if chain is CLASSIFIER_CHAIN or chain == CLASSIFIER_CHAIN:
+        return "classifier"
+    if chain is MAIN_MODEL_CHAIN or chain == MAIN_MODEL_CHAIN:
+        return "main"
+    return "custom"
+
+
+def paid_budget_state_path() -> str:
+    return os.environ.get(
+        "PAID_BUDGET_STATE_PATH", os.path.join(conveyor_home(), "state", "paid_budget.json")
+    )
+
+
+def _paid_limits() -> tuple[int, int]:
+    def _int_env(name: str, default: int) -> int:
+        try:
+            return int(os.environ.get(name) or default)
+        except ValueError:
+            return default
+    return _int_env("PAID_DAILY_LIMIT", 5), _int_env("PAID_MONTHLY_LIMIT", 20)
+
+
+def _read_paid_budget() -> dict:
+    """Прочитать счётчик платных вызовов; сутки/месяц сбрасываются сменой ключа."""
+    now = datetime.now(timezone.utc)
+    state = {
+        "day": now.strftime("%Y-%m-%d"), "day_count": 0,
+        "month": now.strftime("%Y-%m"), "month_count": 0,
+    }
+    try:
+        with open(paid_budget_state_path(), "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        if isinstance(raw, dict):
+            if raw.get("day") == state["day"]:
+                state["day_count"] = int(raw.get("day_count", 0))
+            if raw.get("month") == state["month"]:
+                state["month_count"] = int(raw.get("month_count", 0))
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        logger.warning("[llm-chain] cannot read paid budget state: %s", e)
+    return state
+
+
+def _write_paid_budget(state: dict) -> None:
+    """tmp-файл + rename: параллельный читатель не должен увидеть половину JSON.
+    Жёсткой атомарности между процессами нет — flock снаружи обеспечивает cron."""
+    try:
+        path = paid_budget_state_path()
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        tmp = f"{path}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False)
+        os.replace(tmp, path)
+    except Exception as e:
+        logger.warning("[llm-chain] cannot write paid budget state: %s", e)
+
+
+def _paid_budget_exhausted(state: dict) -> bool:
+    daily, monthly = _paid_limits()
+    return state["day_count"] >= daily or state["month_count"] >= monthly
+
+
+def _notify_telegram(text: str) -> None:
+    """DM главреду через бота канала (тот же CHANNEL_BOT_TOKEN, что у дайджеста).
+    Best-effort: без токенов — молча пропускаем, исключений не бросаем никогда."""
+    token = os.environ.get("CHANNEL_BOT_TOKEN")
+    chat_id = os.environ.get("CHIEF_EDITOR_CHAT_ID")
+    if not token or not chat_id:
+        return
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data={"chat_id": chat_id, "text": text, "parse_mode": "HTML",
+                  "disable_web_page_preview": True},
+            timeout=10,
+        )
+    except Exception as e:
+        logger.warning("[llm-chain] telegram notify failed: %s", e)
+
+
 def complete_with_fallbacks(
     messages: list[dict],
     *,
@@ -588,9 +831,14 @@ def complete_with_fallbacks(
     остатка цепочки. Это страховка от пирамидальных таймаутов (7 моделей × 30 с).
     """
     use_chain = chain if chain is not None else MAIN_MODEL_CHAIN
+    chain_name = _chain_name(use_chain)
     last_err: Exception | None = None
     attempts: list[str] = []
     t0 = time.monotonic()
+    # Счётчик платных вызовов читаем лениво — только если дошли до paid-звена;
+    # «бюджет исчерпан» в Telegram шлём один раз за прогон, а не на каждое звено.
+    budget_state: dict | None = None
+    budget_notice_sent = False
     for provider, model, timeout in use_chain:
         if overall_deadline_s is not None:
             elapsed = time.monotonic() - t0
@@ -604,8 +852,45 @@ def complete_with_fallbacks(
                     f"last error: {last_err}"
                 )
         label = f"{provider}/{model}"
-        if (provider, model) in PAID_MODELS:
-            logger.warning("[llm-chain] falling back to PAID model %s after: %s", label, ", ".join(attempts[-3:]) or "—")
+        is_paid = (provider, model) in PAID_MODELS
+        if is_paid:
+            if budget_state is None:
+                budget_state = _read_paid_budget()
+            daily, monthly = _paid_limits()
+            if _paid_budget_exhausted(budget_state):
+                # Лимит выбран — звено пропускаем как обычный skip: в attempts
+                # не добавляем (вызова не было), но в usage-лог след оставляем.
+                logger.warning(
+                    "[llm-chain] paid budget exhausted (day %d/%d, month %d/%d) — skip %s",
+                    budget_state["day_count"], daily,
+                    budget_state["month_count"], monthly, label,
+                )
+                _log_llm_usage({
+                    "ts": _utc_now_iso(), "chain": chain_name,
+                    "provider": provider, "model": model,
+                    "ok": False, "paid": True, "err": "paid budget exhausted",
+                })
+                if not budget_notice_sent:
+                    budget_notice_sent = True
+                    _notify_telegram(
+                        f"🚫 <b>Платная LLM отключена бюджетом</b>\n\n"
+                        f"<b>Модель:</b> {label}\n"
+                        f"<b>Цепочка:</b> {chain_name}\n"
+                        f"<b>Бесплатные звенья отказали:</b> {', '.join(attempts[-3:]) or '—'}\n"
+                        f"<b>Счётчик:</b> день {budget_state['day_count']}/{daily}, "
+                        f"месяц {budget_state['month_count']}/{monthly}"
+                    )
+                continue
+            logger.warning(
+                "[llm-chain] falling back to PAID model %s after: %s",
+                label, ", ".join(attempts[-3:]) or "—",
+            )
+            # Считаем попытку, а не только успех: платный запрос стоит денег,
+            # даже если ответ оборвался (13.10.26).
+            budget_state["day_count"] += 1
+            budget_state["month_count"] += 1
+            _write_paid_budget(budget_state)
+        t_call = time.monotonic()
         try:
             if provider == "omniroute":
                 content = _call_omniroute_sse(model, messages, temperature, max_tokens, timeout)
@@ -615,11 +900,33 @@ def complete_with_fallbacks(
                 content = _call_openai_compatible(provider, model, messages, temperature, max_tokens, timeout)
             if parse_fn is not None:
                 parse_fn(content)
+            latency_s = round(time.monotonic() - t_call, 1)
             logger.info("[llm-chain] %s ok", label)
+            _log_llm_usage({
+                "ts": _utc_now_iso(), "chain": chain_name,
+                "provider": provider, "model": model,
+                "ok": True, "latency_s": latency_s, "paid": is_paid,
+            })
+            if is_paid:
+                _notify_telegram(
+                    f"💸 <b>Платный вызов LLM</b>\n\n"
+                    f"<b>Модель:</b> {label}\n"
+                    f"<b>Цепочка:</b> {chain_name}\n"
+                    f"<b>Бесплатные звенья отказали:</b> {', '.join(attempts[-3:]) or '—'}\n"
+                    f"<b>Счётчик:</b> день {budget_state['day_count']}/{daily}, "
+                    f"месяц {budget_state['month_count']}/{monthly}"
+                )
             return label, content
         except Exception as e:
+            latency_s = round(time.monotonic() - t_call, 1)
             err_short = str(e)[:200].replace("\n", " ")
             logger.warning("[llm-chain] %s skipped: %s", label, err_short)
+            _log_llm_usage({
+                "ts": _utc_now_iso(), "chain": chain_name,
+                "provider": provider, "model": model,
+                "ok": False, "latency_s": latency_s, "paid": is_paid,
+                "err": err_short,
+            })
             attempts.append(label)
             last_err = e
             continue

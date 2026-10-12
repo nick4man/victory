@@ -74,10 +74,15 @@ KEY_RATE  LAW_UPDATE  TAX_CHANGE  MORTGAGE_POLICY  CAPITAL_CONTROL
 ## Отказоустойчивость LLM
 
 `complete_with_fallbacks` в `pipeline_utils.py` обходит цепочку провайдеров
-сверху вниз до первого валидного ответа: три бесплатные модели Google, затем
-Cloudflare и omniroute и последним — платный
-`anthropic/claude-sonnet-4`. Платное звено помечено в `PAID_MODELS` и
-дёргается только когда всё бесплатное отказало. Так идут посты и дайджест.
+сверху вниз до первого валидного ответа. Сами цепочки живут в `chains.json`
+(секции `main` и `classifier_extra`; битый/отсутствующий файл → встроенные
+дефолты): три бесплатные модели Google, затем Cloudflare и omniroute и последним —
+платный `anthropic/claude-sonnet-4`. Платные записи помечены `"paid": true`,
+ограничены бюджетом день/месяц (`PAID_DAILY_LIMIT`=5, `PAID_MONTHLY_LIMIT`=20)
+и дёргаются только когда всё бесплатное отказало. Каждая попытка пишется в
+телеметрию `llm_usage.jsonl`; сводку за неделю шлёт `llm_usage_report.py`,
+живость бесплатных звеньев раз в неделю проверяет `free_model_probe.py`
+(оба по крону, см. `crontab.example`). Так идут посты и дайджест.
 Классификатор (`CLASSIFIER_CHAIN`) после Google пробует бесплатные модели
 прямого OpenRouter, а платного звена у него нет: при отказе всего бесплатного
 новость ждёт следующего прогона.
@@ -107,7 +112,7 @@ mkdir -p logs             # cron не создаёт каталог под ре�
 ## Проверка
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v     # 47 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains test_chains_config test_free_model_probe -v     # 79 тестов, без сети и БД
 ```
 
 Тесты гейта релевантности и повторов классификации зависимостей не требуют — системного `python3`

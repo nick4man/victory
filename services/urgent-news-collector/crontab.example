@@ -29,3 +29,14 @@
 
 # Ставки банков — вторник и четверг утром.
 0 7 * * 2,4 /opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/bank_rates_trigger.py >> /opt/victory-conveyor/logs/bank_rates.log 2>&1
+
+# Автопробер бесплатных LLM — понедельник 05:40 (13.10.26). Проверяет
+# кандидатов из probe_candidates.json и живость бесплатных звеньев,
+# обновляет chains.json (только записи added_by="probe"). До начала
+# рабочего дня конвейера, чтобы свежие цепочки подхватились утренними прогонами.
+40 5 * * 1 /usr/bin/flock -n /tmp/free_model_probe.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/free_model_probe.py >> /opt/victory-conveyor/logs/free_model_probe.log 2>&1"
+
+# Недельная сводка расхода LLM — понедельник 06:10, после пробера: видно,
+# сколько вызовов он нажёг и как жили звенья за неделю. Краткая версия
+# уходит главреду в Telegram.
+10 6 * * 1 /usr/bin/flock -n /tmp/llm_usage_report.lock -c "/opt/victory-conveyor/.venv/bin/python3 /opt/victory-conveyor/llm_usage_report.py --days 7 --telegram >> /opt/victory-conveyor/logs/llm_usage_report.log 2>&1"

@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "main": [
+    {"provider": "google", "model": "gemini-3-flash-preview", "timeout_s": 30, "paid": false},
+    {"provider": "google", "model": "gemini-2.5-flash", "timeout_s": 30, "paid": false},
+    {"provider": "google", "model": "gemini-2.5-flash-lite", "timeout_s": 30, "paid": false},
+    {"provider": "cloudflare", "model": "@cf/meta/llama-3.3-70b-instruct-fp8-fast", "timeout_s": 30, "paid": false},
+    {"provider": "omniroute", "model": "openrouter/google/gemini-2.0-flash-exp:free", "timeout_s": 45, "paid": false},
+    {"provider": "openrouter", "model": "anthropic/claude-sonnet-4", "timeout_s": 60, "paid": true}
+  ],
+  "classifier_extra": [
+    {"provider": "openrouter", "model": "nvidia/nemotron-3-super-120b-a12b:free", "timeout_s": 30},
+    {"provider": "openrouter", "model": "poolside/laguna-s-2.1:free", "timeout_s": 30},
+    {"provider": "openrouter", "model": "poolside/laguna-xs-2.1:free", "timeout_s": 30}
+  ]
+}

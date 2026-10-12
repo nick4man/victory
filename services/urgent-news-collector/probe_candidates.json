@@ -1,0 +1,12 @@
+{
+  "comment": "Кандидаты для free_model_probe.py (13.10.26). Состав — из истории снятых моделей (см. комментарий «Removed from chain» в pipeline_utils.py): когда-то были отключены за 429/таймауты, у провайдеров лимиты плавают, поэтому раз в неделю проверяем, не ожил ли кто. role=both только моделям уровня 70B+: генерация срочного поста им по силам. glm-4.5-air (облегчённая) и qwen3-coder (кодерская) — только classifier, см. историю с laguna/nemotron: короткий JSON-вердикт малым моделям по силам, публикация — нет.",
+  "candidates": [
+    {"provider": "openrouter", "model": "google/gemma-4-31b-it:free", "timeout_s": 30, "role": "classifier"},
+    {"provider": "openrouter", "model": "z-ai/glm-4.5-air:free", "timeout_s": 30, "role": "classifier"},
+    {"provider": "openrouter", "model": "openai/gpt-oss-120b:free", "timeout_s": 45, "role": "both"},
+    {"provider": "openrouter", "model": "qwen/qwen3-coder:free", "timeout_s": 45, "role": "classifier"},
+    {"provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct:free", "timeout_s": 45, "role": "both"},
+    {"provider": "openrouter", "model": "deepseek/deepseek-chat-v3-0324:free", "timeout_s": 45, "role": "both"},
+    {"provider": "omniroute", "model": "cerebras/qwen-3-235b-a22b-instruct-2507", "timeout_s": 45, "role": "both"}
+  ]
+}
