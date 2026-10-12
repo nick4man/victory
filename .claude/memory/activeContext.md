@@ -17,7 +17,9 @@
 - **Фаза 3 в main (#124) и настроена**: `deploy.yml` + `bin/prod-gate`.
   Environment `production` — required reviewers (владелец), секреты `PROD_SSH_KEY`
   + `ALERT_TG_*`, переменные `PROD_HOST`, `PROD_SSH_USER`; ключ `prod-ci` на
-  victory с forced command, связка проверена боем. Выкатка: Actions → Deploy
+  victory с forced command, связка проверена боем. Victory снаружи по SSH
+  недоступен — раннер ходит через bastion на vps1 (ключ `bastion-ci`,
+  `permitopen="10.10.0.122:22",no-pty`) и дальше по WG. Выкатка: Actions → Deploy
   production → Approve. Runbook — `docs/runbooks/deploy-pipeline.md`.
 - ⚠️ Урок дня: `rollout bogus` — **валидный** тег по regex gate; «тестовая»
   команда из runbook реально выкатила локально собранный образ (благополучно,
