@@ -75,9 +75,12 @@ KEY_RATE  LAW_UPDATE  TAX_CHANGE  MORTGAGE_POLICY  CAPITAL_CONTROL
 
 `complete_with_fallbacks` в `pipeline_utils.py` обходит цепочку провайдеров
 сверху вниз до первого валидного ответа: три бесплатные модели Google, затем
-Cloudflare и omniroute, затем Gemini Pro и последним — платный
+Cloudflare и omniroute и последним — платный
 `anthropic/claude-sonnet-4`. Платное звено помечено в `PAID_MODELS` и
-дёргается только когда всё бесплатное отказало.
+дёргается только когда всё бесплатное отказало. Так идут посты и дайджест.
+Классификатор (`CLASSIFIER_CHAIN`) после Google пробует бесплатные модели
+прямого OpenRouter, а платного звена у него нет: при отказе всего бесплатного
+новость ждёт следующего прогона.
 
 ## Данные
 
@@ -104,7 +107,7 @@ mkdir -p logs             # cron не создаёт каталог под ре�
 ## Проверка
 
 ```bash
-python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v     # 46 тестов, без сети и БД
+python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains -v     # 47 тестов, без сети и БД
 ```
 
 Тесты гейта релевантности и повторов классификации зависимостей не требуют — системного `python3`

@@ -19,10 +19,14 @@ else:
 
 @unittest.skipIf(p is None, SKIP_REASON)
 class TestChains(unittest.TestCase):
-    def test_paid_model_is_last_everywhere(self):
-        for chain in (p.MAIN_MODEL_CHAIN, p.CLASSIFIER_CHAIN):
-            paid = [i for i, (prov, model, _) in enumerate(chain) if (prov, model) in p.PAID_MODELS]
-            self.assertEqual(paid, [len(chain) - 1])
+    def test_paid_model_is_last_in_main_chain(self):
+        chain = p.MAIN_MODEL_CHAIN
+        paid = [i for i, (prov, model, _) in enumerate(chain) if (prov, model) in p.PAID_MODELS]
+        self.assertEqual(paid, [len(chain) - 1])
+
+    def test_classifier_chain_has_no_paid_models(self):
+        for prov, model, _ in p.CLASSIFIER_CHAIN:
+            self.assertNotIn((prov, model), p.PAID_MODELS)
 
     def test_free_classifier_models_never_write_posts(self):
         main = {(prov, model) for prov, model, _ in p.MAIN_MODEL_CHAIN}
@@ -34,9 +38,10 @@ class TestChains(unittest.TestCase):
             self.assertTrue(model.endswith(":free"), model)
             self.assertNotIn((prov, model), p.PAID_MODELS)
 
-    def test_classifier_chain_keeps_every_main_step(self):
+    def test_classifier_chain_keeps_every_free_main_step(self):
         classifier = [step for step in p.CLASSIFIER_CHAIN if step not in p.FREE_CLASSIFIER_MODELS]
-        self.assertEqual(classifier, p.MAIN_MODEL_CHAIN)
+        free_main = [step for step in p.MAIN_MODEL_CHAIN if (step[0], step[1]) not in p.PAID_MODELS]
+        self.assertEqual(classifier, free_main)
 
     def test_google_goes_first_in_classifier(self):
         n = sum(1 for step in p.MAIN_MODEL_CHAIN if step[0] == "google")
