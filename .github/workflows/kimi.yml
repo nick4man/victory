@@ -1,7 +1,12 @@
 name: Kimi Code
 
-# Триггеры: бот отвечает на @kimi в issue/PR-комментариях и ревью.
+# Два режима в одном workflow:
+# 1) review — авторевью каждого PR (code-review diff — обязательный этап
+#    каждого PR по AGENTS.md, здесь он автоматизирован);
+# 2) kimi — бот отвечает на @kimi в issue/PR-комментариях и ревью.
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   issue_comment:
     types: [created]
   issues:
@@ -10,10 +15,77 @@ on:
     types: [created]
   pull_request_review:
     types: [submitted]
-  pull_request:
-    types: [created]
 
 jobs:
+  review:
+    name: Kimi Review
+    # Только события PR; черновики пропускаем (ready_for_review подхватит).
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+
+    # Новый push в PR отменяет устаревшее ревью в полёте.
+    concurrency:
+      group: kimi-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Run Kimi Review
+        uses: xuwenhao/kimi-code-action@v0 # для продакшена запиньте на SHA коммита
+        with:
+          kimi_api_key: ${{ secrets.KIMI_API_KEY }}
+          kimi_platform: code
+          kimi_model: k3
+
+          # Трекинг-прогресс одним sticky-комментарием.
+          track_progress: true
+          use_sticky_comment: true
+
+          # Наличие prompt переводит action в automation-режим (без @kimi).
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Проведи code review этого PR на русском языке. Сначала прочти
+            AGENTS.md и .claude/memory/systemPatterns.md — это источник правды
+            о проекте (Rails-монолит, доменная логика в app/services/).
+
+            Фокус ревью:
+            1. Безопасность: вебхук-контроллеры при пустом ENV-секрете обязаны
+               отказывать (не пропускать); admin-доступ только через
+               ?token=ADMIN_TOKEN; сырые PostGIS-запросы — на SQL-инъекции;
+               секреты и PII в коде/логах.
+            2. Конвенции: soft delete через deleted_at (без paranoia/discard),
+               enums с _prefix: true, даты dd.MM.yy, single quotes,
+               # frozen_string_literal: true, цены через price_formatted.
+            3. Инвариант каталога: Property — проекция Topnlab; правки,
+               ломающие sync-логику (в т.ч. пропуск архивации при неполном
+               обходе), — блокер.
+            4. LLM: free-first цепочки (LLM_CHAIN_*), платные модели — только
+               last-resort; перестановка платной модели вверх — замечание.
+            5. Тесты: изменена доменная логика — жди spec'и в spec/services
+               или соседних; сеть в спеках закрыта WebMock.
+            6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
+               services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
+
+            Замечания — inline-комментариями к конкретным строкам diff.
+            Итог — одним верхнеуровневым комментарием: вердикт
+            (можно мерджить / нужны правки), список блокеров, список нит-пиков.
+
+          # Read-only обзор diff + постинг комментариев; ветки не пушим.
+          kimi_args: |
+            --max-turns 50
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
+
   kimi:
     name: Kimi Code
     if: |
