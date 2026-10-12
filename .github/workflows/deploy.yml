@@ -5,8 +5,13 @@ name: Deploy production
 # SSH (forced command, умеет только `rollout <тег>`), а bin/rollout на хосте
 # сам делает pull образа из GHCR, бэкап, health, smoke и prod-mark.
 #
+# До victory снаружи нет SSH (внешний :22 роутера ведёт на vps1), поэтому
+# раннер ходит через bastion на vps1 (ключ bastion-ci ограничен
+# permitopen="10.10.0.122:22",no-pty — только TCP-проброс, без shell) и дальше
+# по WireGuard на 10.10.0.122, где prod-gate ждёт свой отдельный ключ prod-ci.
+#
 # Подтверждение — GitHub environment `production` (required reviewers).
-# Настройка окружения, ключей и хоста — docs/runbooks/deploy-pipeline.md;
+# Настройка окружения, ключей и хостов — docs/runbooks/deploy-pipeline.md;
 # без неё workflow не запустится (нет секретов) — это ожидаемо.
 
 on:
@@ -61,16 +66,28 @@ jobs:
     environment: production
     runs-on: ubuntu-latest
     steps:
-      - name: SSH-ключ
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PROD_SSH_KEY }}
+      - name: SSH-ключи (bastion + prod)
+        env:
+          BASTION_KEY: ${{ secrets.BASTION_SSH_KEY }}
+          PROD_KEY: ${{ secrets.PROD_SSH_KEY }}
+        run: |
+          install -m 700 -d "$RUNNER_TEMP/ssh"
+          printf '%s\n' "$BASTION_KEY" > "$RUNNER_TEMP/ssh/bastion"
+          printf '%s\n' "$PROD_KEY" > "$RUNNER_TEMP/ssh/prod"
+          chmod 600 "$RUNNER_TEMP/ssh/bastion" "$RUNNER_TEMP/ssh/prod"
 
       - name: prod-gate rollout
+        env:
+          BASTION: ${{ vars.BASTION_SSH_USER }}@${{ vars.BASTION_HOST }}
+          PROD: ${{ vars.PROD_SSH_USER }}@${{ vars.PROD_HOST }}
+          TAG: ${{ needs.resolve-tag.outputs.tag }}
         run: |
+          # ProxyCommand, а не ssh-agent: bastion и prod — разные ключи с разными
+          # ограничениями, явные -i снимают вопрос порядка ключей в агенте.
           ssh -o StrictHostKeyChecking=accept-new \
-            "${{ vars.PROD_SSH_USER }}@${{ vars.PROD_HOST }}" \
-            "rollout ${{ needs.resolve-tag.outputs.tag }}"
+            -o ProxyCommand="ssh -i $RUNNER_TEMP/ssh/bastion -o StrictHostKeyChecking=accept-new -W %h:%p $BASTION" \
+            -i "$RUNNER_TEMP/ssh/prod" \
+            "$PROD" "rollout $TAG"
 
   post-check:
     name: Внешние проверки после выкатки
