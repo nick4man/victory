@@ -22,6 +22,11 @@
 
 ## Выкатить
 
+Через CI (с подтверждением): Actions → Deploy production → Run workflow
+(тег пустой = последний зелёный sha из Build images) → Approve в environment
+`production`. Настройка и детали — `docs/runbooks/deploy-pipeline.md`.
+
+Вручную на хосте (тот же механизм, CI лишь вызывает его):
 `bin/rollout <версия>` — бэкап → pull → `compose up -d` → health → `bin/smoke` → `bin/prod-mark`.
 Простой web ≈ 30–60 с (стоп старого контейнера, старт нового, `db:prepare`).
 Со включённым конвейером: `bin/rollout <версия> --profile conveyor`.
