@@ -169,4 +169,32 @@ docker run --rm --network victory-rc_default curlimages/curl:8.10.1 -s -o /dev/n
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/        # ожидается 301 — редирект на сайте работает
 ```
 
-Повторный прогон после правок ревью — ниже.
+Повторный прогон после правок ревью — 12.10.26 11:36–11:47 (против `sha-f613c87`):
+
+- `.env.rc` без `DISABLE_SSL`; дамп `viktory-12.10.26-1133.dump.gpg` → pg_restore
+  без ошибок: properties 137, articles 180, schema_migrations 119;
+- web: `Puma started. Environment: production`, health 200 за ~5 с, `Created database` нет;
+- `bin/smoke http://127.0.0.1:3001` — **9/9 ok**;
+- force_ssl: `POST /webhooks/zhk_ingest` без `X-Forwarded-Proto` → **401** (не 301),
+  `GET /` по http → **301** на https, главная и карточка с `X-Forwarded-Proto: https` → 200;
+- sidekiq: `Booted Rails 8.1.3.1 application in production environment`, 22 cron-задачи.
+
+## Cutover выполнен — 12.10.26, окно A (11:49–11:52 MSK)
+
+- Свежий бэкап за час: `viktory-12.10.26-1133.dump.gpg` + secrets.
+- `bin/rollout sha-f613c87 --yes --skip-backup`: web/sidekiq на
+  `ghcr.io/nick4man/victory-web:sha-f613c87`, zhk-registry на `1.0.0` (служба не
+  менялась с `4944990`, в GHCR sha-тега нет — `ZHK_TAG=1.0.0` в `.env.deploy`),
+  db не тронута. Smoke 9/9 внутри rollout, sidekiq жив.
+- Снаружи: `/health`, `/health/database`, `/`, карточка объекта, `/news` → 200;
+  логи web без `Blocked host`/500. prod-mark: ветка `prod` → `f613c87`,
+  тег `deploy/12.10.26-1152`.
+- ⚠️ Урок: проверка связки из `deploy-pipeline.md` использовала `rollout bogus`
+  как «заведомо невалидный» тег — но `bogus` проходит regex
+  `^[0-9a-z][0-9a-z.-]{0,39}$`, и выкатка реально случилась (благополучно: образ
+  собрался локально из того же дерева, smoke зелёный, затем перевыкатка на
+  sha-тег). Пример в runbook исправлен на действительно невалидный тег.
+- Тег `v1.0.0` (п.7 окна A) не ставился: выкачен sha-тег, а не VERSION.
+- Окно B (конвейер новостей с chat) — отдельным окном, предусловия выше.
+- RC-стек остановлен, тома `victory-rc_*` оставлены до завтра, затем снести
+  (раздел «После всего»).

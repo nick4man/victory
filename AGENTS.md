@@ -87,9 +87,10 @@ Rails-монолит. Четыре входа, и только первый — 
 
 Не отчитывайся «тесты прошли», не прогнав их там, где Ruby есть.
 
-⚠️ **`/opt/.openclaw/victory` = main checkout, live-prod bind-mount** (`victory-web-1` →
-`/app`, `RAILS_ENV=development` + code-reload): правка там мгновенно уходит на живой
-сайт. Источник правды по worktree — `git worktree list`, не таблицы в доках.
+✅ С cutover'а 12.10.26 **живого bind-mount больше нет**: прод-стек работает из
+образов GHCR, `/home/q/victory` — ops-каталог (compose, `.env*`, `bin/*`), правки
+файлов там на сайт не попадают сами. Источник правды по worktree —
+`git worktree list`, не таблицы в доках.
 
 ## Команды
 
@@ -176,6 +177,7 @@ Devise — вернуть gem в Gemfile и пройти ревью.
 - **CD (с 11.10.26)**: merge в `main` → `build.yml` собирает и пушит образы
   `ghcr.io/nick4man/victory-*:sha-<7>` (тег `<VERSION>` — при изменении файла VERSION)
   и автоматически выкатывает на staging. **Прод не едет сам**: выкатка —
+  workflow `Deploy production` (Approve в environment `production`) или
   `bin/rollout <тег>` на прод-хосте (см. «Деплой»).
 - На PR приезжают проверки:
   - `.github/workflows/lint.yml` — RuboCop, Brakeman (`--exit-on-warn`), bundler-audit,
@@ -283,11 +285,12 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   теги `sha-<7>` и `<VERSION>`. Сборка — в CI (`build.yml`) на merge в `main`;
   локальный fallback — `bin/release --push`; довесить `<VERSION>` на собранный
   CI sha-образ — `bin/release --from-ci`.
-- **Выкатка на прод**: `bin/rollout <тег>` на хосте `victory` (бэкап → pull →
-  health → `bin/smoke` → `bin/prod-mark`). Runbook — `docs/runbooks/release.md`,
-  откат — там же. 🚨 **До cutover 1.0 прод работает на СТАРОМ стеке** (bind-mount
-  `./:/app`, `RAILS_ENV=development`): main-чекаут `/home/q/victory` живой, правки
-  уходят на сайт мгновенно. Переключение — `docs/runbooks/cutover-1.0.md` (pending).
+- **Выкатка на прод** (cutover 1.0 выполнен 12.10.26, прод на образах): Actions →
+  `Deploy production` → Approve в environment `production` → SSH `bin/prod-gate` →
+  `bin/rollout <тег>` на хосте `victory` (бэкап → pull → health → `bin/smoke` →
+  `bin/prod-mark` → внешние проверки с раннера). Вручную на хосте — тот же
+  `bin/rollout`. Runbook — `docs/runbooks/deploy-pipeline.md`, откат —
+  `docs/runbooks/release.md`.
 - **Staging**: хост vps1 (`ssh deploy`), compose-проект `victory-staging`
   (`docker-compose.staging.yml`, `RAILS_ENV=staging`, свои тома/БД/storage).
   Автовыкатка из CI: `bin/deploy-gate` (SSH forced command) → `bin/staging-rollout`;
