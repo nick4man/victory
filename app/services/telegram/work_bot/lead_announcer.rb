@@ -97,6 +97,7 @@ module Telegram
         rows = routing_keyboard_for(topic_key)[:inline_keyboard]
         rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
         rows << stage_row if @lead.open?
+        rows << work_row if @lead.open?
         { inline_keyboard: rows }
       end
 
@@ -220,6 +221,15 @@ module Telegram
         [
           { text: '📅 Показ',   callback_data: "stage:#{@lead.id}:show" },
           { text: '✍️ Договор', callback_data: "stage:#{@lead.id}:contract" }
+        ]
+      end
+
+      # Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
+      # поэтому «нет reply на якорь» исчезает как класс ошибки.
+      def work_row
+        [
+          { text: '📝 Задача',      callback_data: "wiz:s:task:#{@lead.id}" },
+          { text: '❌ Закрыть лид', callback_data: "wiz:s:close:#{@lead.id}" }
         ]
       end
 

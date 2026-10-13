@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# bin/rollout <тег> [--yes] [--services web,sidekiq] [--skip-backup] [--profile conveyor]
+#
+# Выкатить образы заданного тега в боевой compose-проект `victory`:
+#   1. предполёт — хост victory, .env на месте, образы с тегом доступны (pull,
+#      при неудаче — локальная сборка);
+#   2. бэкап БД (bin/backup db) — всегда, кроме --skip-backup;
+#   3. docker compose up -d — только перечисленные службы (по умолчанию все без
+#      профилей); db/redis не трогаются, если их конфиг не менялся;
+#   4. health + bin/smoke + sidekiq жив;
+#   5. bin/prod-mark — ветка prod и тег deploy/<дата>.
+#
+# Откат = bin/rollout <предыдущий тег>. Миграции назад не едут — см.
+# docs/runbooks/release.md, раздел «Откат».
+#
+# Тег пишется в .env.deploy (VICTORY_TAG=…), compose читает его через --env-file
+# поверх .env: так состояние «что выкачено» лежит в файле рядом со стеком, а не
+# в истории shell. Override на службу (WEB_TAG=…) тоже живёт там и сильнее тега
+# из аргумента.
+set -euo pipefail
+
+TAG="${1:?usage: bin/rollout <тег> [--yes] [--services a,b] [--skip-backup] [--profile conveyor]}"; shift
+YES=0; SERVICES=''; SKIP_BACKUP=0; PROFILES=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes) YES=1;; --skip-backup) SKIP_BACKUP=1;;
+    --services) SERVICES="${2//,/ }"; shift;;
+    --profile) PROFILES+=(--profile "$2"); shift;;
+    *) echo "неизвестный флаг $1" >&2; exit 2;;
+  esac; shift
+done
+
+[ "$(hostname)" = victory ] || { echo "выкатка только на прод-хосте victory (сейчас: $(hostname))" >&2; exit 2; }
+PROD_DIR="${VICTORY_PROD_DIR:-/home/q/victory}"
+cd "$PROD_DIR"
+DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
+[ -f .env ] || { echo "нет $PROD_DIR/.env" >&2; exit 2; }
+touch .env.deploy .env.zhk
+PREV=$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2- || true)
+compose() { VICTORY_TAG="$TAG" "$DOCKER" compose --env-file .env --env-file .env.deploy "${PROFILES[@]}" "$@"; }
+
+echo "выкатка $TAG (сейчас: ${PREV:-не записано}) в $PROD_DIR, службы: ${SERVICES:-все}"
+if [ "$YES" != 1 ]; then read -r -p 'продолжить? [y/N] ' ans; [ "$ans" = y ] || exit 1; fi
+
+# 1. образы: --ignore-buildable — db/news-db собираются из Dockerfile.postgres и в
+# реестре их нет; без флага pull падал бы на них всегда, и каждый rollout
+# пересобирал бы web локально вместо выкатки тега из реестра.
+# shellcheck disable=SC2086
+compose pull --ignore-buildable $SERVICES || compose build $SERVICES
+
+# 2. бэкап
+[ "$SKIP_BACKUP" = 1 ] || bin/backup db
+
+# 3. up. Новый тег в .env.deploy записываем ТОЛЬКО после успешных проверок
+# (шаг 4): файл отвечает на вопрос «что выкачено», а не «что пытались».
+# shellcheck disable=SC2086
+compose up -d --remove-orphans $SERVICES
+
+# 4. проверки
+for i in $(seq 1 30); do
+  curl -fsS --max-time 5 http://127.0.0.1:3000/health/database >/dev/null 2>&1 && break
+  sleep 3
+  [ "$i" = 30 ] && { echo 'health не поднялся за 90 с — docker compose logs web' >&2; exit 1; }
+done
+ADMIN_TOKEN=$(grep -E '^ADMIN_TOKEN=' .env | cut -d= -f2- || true)
+bin/smoke http://127.0.0.1:3000 "$ADMIN_TOKEN"
+sleep "${SIDEKIQ_SETTLE:-30}"
+compose ps --status running --services | grep -qx sidekiq || { echo 'sidekiq не работает' >&2; exit 1; }
+
+# 5. отметка — сохраняем per-service override, переписываем общий тег и sha
+{ grep -vE '^(VICTORY_TAG|GIT_COMMIT_SHA)=' .env.deploy || true; } > .env.deploy.new
+printf 'VICTORY_TAG=%s\nGIT_COMMIT_SHA=%s\n' "$TAG" "$(git rev-parse --short=7 HEAD)" >> .env.deploy.new
+mv .env.deploy.new .env.deploy
+bin/prod-mark --force
+echo "выкачено $TAG (было: ${PREV:-—})"

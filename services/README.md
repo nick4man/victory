@@ -8,6 +8,8 @@ Ruby-объекты доменной логики внутри Rails.
 | `audit-engine/` | Python (FastAPI) | не начат | 31.03.27 |
 | `chat-host-cron/` | bash | завершён | — |
 | `urgent-news-collector/` | Python | завершён | — |
+| `content-publisher/` | Python (Telegram-публикатор очереди) | завершён 05.10.26 | — |
+| `zhk-registry/` | Python | свой, перенос не нужен | — |
 | `web-comparables/` | текст скилла, кода нет | завершён | — |
 
 Владелец у всех один — **victory**. Подробности каждой службы — в её
@@ -46,6 +48,18 @@ bin/services-check
 
 Нужен только `python3` — Ruby не требуется намеренно: проверка обязана
 работать и там, где Ruby на машине нет. Гоняется в CI на каждый PR.
+
+## Упаковка (с 1.0)
+
+Каждая исполняемая служба — свой образ и своя служба в корневом
+`docker-compose.yml`: `zhk-registry` (без профиля), `conveyor` и `publisher`
+(профиль `conveyor`, общая база `news-db`), audit-engine через `include:` под
+профилем `audit`. Расписание — `crontab.docker` внутри образа (supercronic по
+абсолютному пути: как PID 1 он пере-exec'ает себя по `argv[0]`), а не crontab
+хоста. `chat-host-cron` образом не становится: его единственный файл
+подключается в `conveyor` томом (контракт `MIRROR_SCRIPT`). Коллектор и
+публикатор друг о друге по-прежнему не знают — их связь только через таблицу
+`posts_queue`. Как обновить одну службу — `docs/runbooks/release.md`.
 
 ## openclaw: архив, а не апстрим
 

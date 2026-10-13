@@ -77,7 +77,7 @@ mise --version
 
 ```bash
 # Перейти в директорию проекта
-cd ~/victory
+cd <каталог, куда клонирован репозиторий>
 
 # Установить Ruby 3.2.2 (mise автоматически прочитает mise.toml)
 mise install ruby@3.2.2

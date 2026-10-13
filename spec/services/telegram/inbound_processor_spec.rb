@@ -35,4 +35,42 @@ RSpec.describe Telegram::InboundProcessor do
     expect(described_class.new(update).call).to eq(:show_report)
     expect(described_class.new(update).call).to eq(:duplicate)
   end
+
+  describe 'текстовый ответ мастеру' do
+    def text_update(text)
+      { 'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 32, 'from' => { 'id' => 501 },
+                       'chat' => { 'id' => 501, 'type' => 'private' }, 'text' => text } }
+    end
+
+    before do
+      agent.set_pending_action!(type: 'wizard', data: { flow: 'task', step: 'title', ctx: { lead: '1' } })
+    end
+
+    it 'при активном мастере уходит в Wizard::Engine, а не в LLM-Q&A' do
+      engine = instance_double(Telegram::WorkBot::Wizard::Engine, text: :handled)
+      expect(Telegram::WorkBot::Wizard::Engine).to receive(:new).and_return(engine)
+      expect(Telegram::WorkBot::DmQnaHandler).not_to receive(:call)
+
+      expect(described_class.new(text_update('Позвонить клиенту')).call).to eq(:handled)
+    end
+
+    it 'правку старого сообщения ответом на текущий шаг не считает' do
+      update = text_update('15.09.26')
+      update['edited_message'] = update.delete('message')
+      expect(Telegram::WorkBot::Wizard::Engine).not_to receive(:new)
+      allow(Telegram::WorkBot::Router).to receive(:new)
+        .and_return(instance_double(Telegram::WorkBot::Router, call: :handled))
+
+      described_class.new(update).call
+    end
+
+    it 'команду не перехватывает — передумавший сотрудник пишет /команду' do
+      expect(Telegram::WorkBot::Wizard::Engine).not_to receive(:new)
+      allow(Telegram::WorkBot::Router).to receive(:new)
+        .and_return(instance_double(Telegram::WorkBot::Router, call: :handled))
+
+      described_class.new(text_update('/help')).call
+    end
+  end
 end

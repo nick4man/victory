@@ -117,7 +117,7 @@ mise list       # Проверить установленные инструме
 **Цель:** Развернуть код приложения и установить зависимости
 
 #### Задачи:
-- [x] Проект находится в `~/victory`
+- [x] Проект развёрнут в чекауте на сервере (legacy-путь до перехода на Docker)
 - [x] Настроить владельца директории (уже настроено)
 - [x] Скопировать `.env.example` в `.env.production`
 - [x] Заполнить переменные окружения в `.env.production`
@@ -130,7 +130,7 @@ mise list       # Проверить установленные инструме
 ```bash
 ✅ DATABASE_NAME=viktory_realty_production
 ✅ DATABASE_USERNAME=viktory_realty
-✅ DATABASE_PASSWORD=viktory_realty_secure_password_2024
+✅ DATABASE_PASSWORD=... (вычищен 16.09.26 — лежал здесь открытым текстом)
 ✅ SECRET_KEY_BASE=... (сгенерирован)
 ✅ DEVISE_SECRET_KEY=... (сгенерирован)
 ⏳ SMTP_ADDRESS=smtp.yandex.ru (нужно настроить)

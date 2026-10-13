@@ -60,6 +60,7 @@
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
 | `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
 | `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | — | MCP-сервер `github` в `.mcp.json` (PR, issues, ревью). Не выставлен — сервер стартует, но ходит в API анонимно и упирается в лимит по IP (`API rate limit exceeded for <ip>`). Разовый `export` не помогает: shell между вызовами не сохраняется — переменная должна лежать в профиле оболочки. |
 
 ## DB и миграции
 
@@ -71,7 +72,7 @@
 
 Указатели worktree относительные с **обеих** сторон: `.git/worktrees/<id>/gitdir` →
 `../../../../victory-seo/.git`, а `<worktree>/.git` → `gitdir: ../victory/.git/worktrees/victory-seo`.
-Дерево `~/victory*` можно перенести целиком, не сломав ни один checkout.
+Дерево worktree можно перенести целиком, не сломав ни один checkout.
 
 Включено локально в `.git/config` main checkout (конфиг не коммитится):
 
@@ -123,10 +124,69 @@ git 2.39.5 в контейнерах продолжит отказываться
 
 История: 10.09.26 массовая замена `/home/q` → `~` по 51 файлу заехала и в git-метаданные.
 Тильду git не разворачивает, поэтому все 15 worktree разом стали `prunable`; тем же заходом
-были незаметно отключены две страховки — deny-правило `Edit(//home/q/victory/**)` в
-`.claude/settings.json` и live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
+были незаметно отключены две страховки — deny-правило на main checkout в
+`.claude/settings.json` (глоб сопоставляется буквально, `~` в нём не раскрывается) и
+live-prod guard в `bin/rb` (сравнение `$ROOT` с `'~/victory'`).
 Обе восстановлены в тот же день; секция описывает конфигурацию после починки.
 
+⚠️ «Относительное» ≠ тильда. Относительные пути уместны там, где есть cwd репозитория
+(доки, кросс-ссылки, команды из корня) или где корень вычисляется в рантайме
+(`git rev-parse --show-toplevel` / `--git-common-dir` — так сделано в `bin/rb`,
+`bin/prod-mark`, `.claude/hooks/lib/prod-state.sh`, `.claude/hooks/session-start.sh`).
+Что обязано остаться абсолютным — поимённо и с цифрами в таблице следующей секции,
+«Где абсолютный путь обязателен». Коротко: ни cwd, ни `$HOME` владельца чекаута тем
+потребителям недоступны. Плюс runbook'и прод-хоста ниже: путь прод-чекаута в них
+часть процедуры и совпадает с `APP_ROOT` в `/etc/victory-backup/backup.env`, откуда его
+читает `bin/backup` под root, поэтому «относительный» вариант рассинхронизировал бы их.
+(В самих юнитах `deploy/systemd/victory-backup-*` пути чекаута нет — `ExecStart` указывает
+на `/usr/local/bin/victory-backup`, копию скрипта.)
+
+## Где абсолютный путь обязателен (аудит 11.09.26, пересчёт 17.09.26)
+
+Пути внутри репозитория приведены к относительным. Исходный аудит: на коммите
+`af24d26` (им в `main` приехала секция выше) строк с путём прод-хоста было
+**247 в 47 файлах**, после перевода осталось **86 в 22**. Счёт привязан к коммиту
+намеренно — `main` движется, и цифра «было» без точки отсчёта устаревает на
+следующем же мерже.
+
+Она и устарела. К моменту, когда эта ветка догнала `main` (мерж 17.09.26),
+осталось **25 строк в 14 файлах**: часть перевёл сам `main` независимо от ветки —
+в первую очередь ушла самая большая группа аудита, 24 строки VDS-путей из
+`.claude/docs/vds-infra-cheatsheet.md`. Пересчитать:
+
+```bash
+git grep -c '/home/q' | awk -F: '{s+=$2} END{print s}'
+```
+
+Поле `$2`, а не `$3`: без ref-а `git grep -c` печатает `файл:число`, с ref-ом —
+`ref:файл:число`. Из 25 две строки — служебные: сама эта команда и рассказ про замену
+10.09.26 в секции выше. Настоящего остатка, который что-то ломает, если его тронуть, —
+**23 строки**, они и разложены по группам.
+
+| Группа | Строк | Почему относительное невозможно |
+|---|---|---|
+| Потребители, читающие строку буквально | 7 | exec-пути в `.mcp.json` (3), permission-глобы в `.claude/settings.json` (2), `APP_ROOT` в `config/backup.env.example` — его читает `bin/backup` под root, крон-строка в `services/zhk-registry/crontab.example`. Ни cwd, ни `$HOME` владельца чекаута им недоступны; тильду они не разворачивают — её разворачивает шелл, а здесь шелла нет |
+| Прод-хост: файлы вне чекаута и путь чекаута внутри процедуры | 11 | `document_pdf.md` (выгрузка API Topnlab) и `TZ_*.md` лежат снаружи намеренно, чтобы переживать `reset --hard`; каталог над чекаутом с правами 0700 в `bin/backup`; `git clone` в `docs/runbooks/restore.md` — относиться ещё не к чему; крон-строки хоста в `CLAUDE.md`; в этом же файле — `tee` дампа схемы, `sudo cp` скрипта бэкапа и описание прод-стека: все три шага отложенные, cwd предыдущего шага им уже не наследуется |
+| Объяснение, почему хардкода больше нет | 4 | Комментарии в `bin/prod-mark`, `.claude/hooks/lib/prod-state.sh`, `.claude/hooks/session-bootstrap.sh`, `services/zhk-registry/crontab.example` цитируют прежний путь, объясняя замену. Убрать — потерять причину |
+| Конкретный worktree конкретной машины | 1 | `activeContext.md` называет рабочий каталог живой задачи, а не шаблон |
+
+⚠️ Строка про `.mcp.json` — «невозможно» с оговоркой. Подстановку `${VAR}` этот файл
+умеет (так туда приходит `GITHUB_PERSONAL_ACCESS_TOKEN`), поэтому теоретически корень
+подставляется переменной. Но именно из-за хардкода серверы `postgres` и `rails-guides`
+не поднимаются нигде, кроме одной машины: в облачной сессии это `ENOENT` и
+`CONNECTION_CLOSED`. Переводить вслепую нельзя — нужно проверить, что переменная
+доехала до запуска MCP-сервера, а не только до хука. Отдельной задачей, с проверкой.
+
+🚨 **Не приводи этот остаток «к одному виду».** Тильда здесь не работает тем более: её
+разворачивает только шелл, а перечисленные потребители читают строку буквально. 10.09.26
+замена пути на `~` по 51 файлу положила git-метаданные всех 15 worktree, MCP-сервер
+`postgres`, deny-правило в `.claude/settings.json` и live-prod guard в `bin/rb` — разбор выше,
+в секции «Git — относительные пути worktree».
+
+Внутри репозитория корень вычисляется в рантайме, а не хардкодится: `git rev-parse
+--show-toplevel` для своего чекаута и `git rev-parse --git-common-dir` (его родитель) для main
+checkout. Сравнивая вычисленное с вычисленным, канонизируй обе стороны — `pwd -P`, не `pwd`:
+логический `pwd` вернёт путь через симлинк, и guard промахнётся.
 ## Команды
 
 ### Сервер
@@ -290,9 +350,9 @@ upsert в `properties`, а изменение `district` тянет за соб�
 sidekiq погашен шагом 4, база ещё на старом образе и старом glibc — ровно то
 состояние, с которым сравнивают. Три запроса — секунды, окно от них не вырастет.
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   ~/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' ~/victory/.env | cut -d= -f2-)
-/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee ~/db-baseline.txt
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
+/usr/bin/docker compose exec -T db psql -U "$PGU" -d "$DB" <<'SQL' | tee /home/q/db-baseline.txt
 SELECT district, count(*) FROM properties
  WHERE district IS NOT NULL AND district <> ''
  GROUP BY district ORDER BY count(*) DESC, district;
@@ -302,7 +362,8 @@ SELECT count(*) AS geo FROM properties
 SELECT count(*) AS embeddings FROM property_embeddings;
 SQL
 ```
-Файл держать вне `~/victory` — в чекауте его снесёт первый же `git clean -fd`.
+Файл держать **вне чекаута** (отсюда абсолютный `/home/q/...`, а не `tmp/`) — внутри его
+снесёт первый же `git clean -fd`.
 Те же три запроса пойдут ещё внутри окна, сразу после шага 8, и должны дать те же
 числа: проверка сравнивает «до/после», а не угаданный порог.
 
@@ -326,8 +387,8 @@ SQL
 
 **6. Расширения. ТОЧКА НЕВОЗВРАТА.**
 ```bash
-DB=$(grep  -m1 '^POSTGRES_DB='   ~/victory/.env | cut -d= -f2-)
-PGU=$(grep -m1 '^POSTGRES_USER=' ~/victory/.env | cut -d= -f2-)
+DB=$(grep  -m1 '^POSTGRES_DB='   .env | cut -d= -f2-)
+PGU=$(grep -m1 '^POSTGRES_USER=' .env | cut -d= -f2-)
 /usr/bin/docker compose exec -T db psql -v ON_ERROR_STOP=1 -U "$PGU" -d "$DB" <<'SQL'
 SELECT postgis_extensions_upgrade();
 ALTER EXTENSION vector UPDATE;
@@ -452,7 +513,7 @@ curl -sI https://victory62.org | head -1         # 200
 
 **10. Синхронизировать `/usr/local/bin/victory-backup` — до ближайшего воскресенья.**
 ```bash
-sudo cp ~/victory/bin/backup /usr/local/bin/victory-backup
+sudo cp /home/q/victory/bin/backup /usr/local/bin/victory-backup   # абсолютный: шаг отложенный, cwd из шага 3 уже не тот
 grep -n pg15 /usr/local/bin/victory-backup      # только pg15-postgis36
 ```
 Это не симлинк на чекаут, а отдельная копия (обычный файл от 11.08.26), застрявшая
@@ -492,7 +553,7 @@ YML
   up -d web sidekiq
 /usr/bin/docker inspect victory-db-1 --format '{{.Config.Image}}'   # снова pre-bookworm
 ```
-⚠️ Файл оверрайда — **вне** `~/victory`: в чекауте он ляжет untracked, и первый
+⚠️ Файл оверрайда — **вне чекаута** (отсюда абсолютный путь): внутри он ляжет untracked, и первый
 же `git clean -fd` снесёт откат. Путь абсолютный, `-f` его принимает.
 🚨 **Тег `pg15-postgis36` не перетегиваем.** Он прописан в `docker-compose.ruby.yml`,
 то есть его берут ВСЕ сессионные стеки `bin/rb`, и часть из них уже работает с
@@ -569,7 +630,7 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `pg15-postgis35`, хотя в чекауте `bin/backup` уже просит `pg15-postgis36` — отсюда
   шаг 10 и запрет удалять теги `pg15-postgis35`/`pre-bookworm`, пока копия не
   синхронизирована. Daily-таймер (03:31 UTC) `verify` не гоняет.
-- **Соседний стек `victory-victory`** (`~/victory-victory`, свой `pgdata`,
+- **Соседний стек `victory-victory`** (worktree `../victory-victory`, свой `pgdata`,
   свой compose-проект) тоже на `pg15-postgis35`. Это полноценный compose-стек, а не
   `bin/rb`, — `--nuke` к нему неприменим: ему нужна та же процедура либо явное
   решение оставить как есть.
@@ -580,9 +641,99 @@ pg_restore -U … -d … --clean --if-exists --no-owner --no-acl`), убедит
   `db/structure.sql` создаёт все семь расширений, — но `bin/backup verify` теперь
   проверяет `postgis` осмысленно.
 
+### Обычный деплой — `bin/deploy`
+
+Одна команда на прод-хосте из `~/victory` (ветка `main`):
+
+```bash
+bin/deploy --check   # план: коммиты, нужны ли миграции/рестарты/пересборка
+bin/deploy           # спросит и выкатит; --yes — без вопроса
+bin/deploy --rollback   # вернуть коммит, стоявший до последнего деплоя
+```
+
+Скрипт сам решает, что нужно по диффу `HEAD..origin/main`: sidekiq рестартует
+всегда (код не перечитывает), web — если тронуты `config/`, `lib/`, `db/`,
+`Gemfile`; `docker-compose.yml` — `up -d --no-deps web sidekiq` (restart
+конфиг не перечитывает); миграции — с бэкапом `bin/backup db` перед ними;
+изменения `Gemfile*`/`Dockerfile`/`.ruby-version`/`bin/docker-entrypoint`
+включают процедуру пересборки из раздела ниже, старые образы остаются под
+тегом `:pre-<sha>` — по нему `--rollback` возвращает рантайм. После — проверки
+(health, сайт, sidekiq живёт 30с без перезапуска, миграции, ошибки загрузки в
+логах) и `bin/prod-mark`. Отказывается на грязном дереве, при разошедшейся
+`main` и при занятом `victory_bundle`. Автоотката нет — при проваленных
+проверках печатает команду отката. Лок — `.git/victory-deploy.lock`.
+
+Первый запуск, пока `bin/deploy` ещё нет в прод-чекауте:
+`git fetch origin main && bash <(git show origin/main:bin/deploy)`.
+
+### `.env.production` — выведен из-под git 16.09.26
+
+Файл закоммитили **13.11.25**, в день создания репозитория, и он пролежал
+отслеживаемым ~10 месяцев в **публичном** репозитории. Вопреки расхожему
+«он же в .gitignore»: в ноябре 25-го блок «never commit secrets» перечислял
+только `.env`, `.env.local` и `.env.*.local` — ни один из паттернов
+`.env.production` не ловит. Строка `.env.production` появилась лишь **22.05.26**
+(`5f84ae4`), а к уже отслеживаемому файлу ignore не применяется, поэтому она
+ничего не изменила — отсюда вечное `M .env.production` в `git status` на проде.
+
+**Что было в закоммиченной версии.** 124 пары `KEY=VALUE`; из 31 чувствительного
+ключа 28 — заглушки или пусто (`SMTP_PASSWORD`, `AWS_SECRET_ACCESS_KEY`,
+`TELEGRAM_BOT_TOKEN`, `AMOCRM_*`, `STRIPE_*`, `YOOKASSA_*` и прочие). Непустые
+значения только у трёх:
+
+| Ключ | Длина | Что делать |
+|---|---|---|
+| `SECRET_KEY_BASE` | 128 | **ротировать** — подписывает сессии и cookie |
+| `DEVISE_SECRET_KEY` | 128 | ротировать по принципу (Devise отключён, но всё же) |
+| `DATABASE_PASSWORD` | 35 | **ротировать** — то же значение лежало открытым текстом ещё и в `ROADMAP.md` |
+
+**Почему это не пожар.** Файл никогда не грузился боевым стеком:
+`docker-compose.yml` у `web` и `sidekiq` объявляет `env_file: .env`, а гема
+`dotenv` в `Gemfile` нет вовсе — то есть автоподхвата `.env.production` тоже не
+происходит. Ссылаются на него только исторические корневые `*.md`
+(`DEPLOYMENT_SUMMARY.md`, `ROADMAP.md`) времён первых попыток деплоя. Похоже,
+это мёртвый артефакт ноября 25-го.
+
+⚠️ Но `ROADMAP.md` не просто ссылался — в нём **открытым текстом лежало само
+значение** `DATABASE_PASSWORD` (вычищено тем же коммитом 16.09.26). То есть
+вынос `.env.production` из индекса сам по себе пароль из публичного репозитория
+не убирал. Отсюда и «ротировать» в таблице выше вместо «сверить».
+
+🚨 **`git rm --cached` не «разутекает» значения.** Они остаются в истории, в
+каждом клоне и форке. Единственная настоящая мера — ротация трёх ключей выше.
+Переписывание истории для публичного репозитория, доступного для клонирования
+десять месяцев, смысла почти не имеет.
+
+⚠️ **Подводный камень при выкатке этого коммита.** На прод-хосте
+`.env.production` изменён локально. `git pull` коммита, который удаляет файл из
+индекса, либо удалит его из рабочего дерева, либо откажется словами «local
+changes would be overwritten». Перед выкаткой:
+
+Одного `cp` мало: `bin/deploy` проверяет дерево на грязь
+(`git status --porcelain --untracked-files=no`) **до** fetch и на изменённом
+`.env.production` просто остановится. Значит дерево надо сначала почистить —
+и ровно поэтому бэкап обязателен, а не «на всякий случай»:
+
+```bash
+cd ~/victory
+cp .env.production ~/env.production.$(date +%d.%m.%y).bak   # ОБЯЗАТЕЛЬНО: строкой ниже значения затираются
+git checkout -- .env.production                             # чистим дерево, иначе bin/deploy откажется
+bin/deploy                                                  # ff-merge; коммит убирает файл из индекса и из дерева
+cp ~/env.production.$(date +%d.%m.%y).bak .env.production   # возвращаем боевые значения
+git status --porcelain --untracked-files=no                 # пусто: файл больше не отслеживается
+```
+
+После этого `.env.production` на проде живёт как untracked, и хронический
+`M .env.production`, который годами ронял `bin/prod-mark` и `bin/deploy`,
+исчезает — это, помимо безопасности, второй выигрыш коммита.
+
+Шаблон для новых установок — `.env.example` (отслеживается). Боевые значения
+живут только на хостах и в git не возвращаются.
+
 ### Деплой смены Ruby/Rails — пересборка прод-образов
 
-Прод (`~/victory`, compose-проект `victory`) монтирует код bind-mount'ом с
+Прод (main checkout, на текущем прод-хосте `/home/q/victory`; compose-проект `victory`)
+монтирует код bind-mount'ом с
 code-reload, поэтому merge в main обновляет код сразу, а **гемы и рантайм — нет**:
 они живут в образах `victory-web`/`victory-sidekiq` и в named-volume
 `victory_bundle` (`/usr/local/bundle`, каталог `ruby/<ABI>`). Volume перекрывает
@@ -688,4 +839,4 @@ bin/prod-mark            # отметить в GitHub, что именно вы�
 - `~/.claude-shared/` — межсессионный обмен: `inbox/`, `events/`, `locks/`.
 - `.remember/logs/` — дневной журнал remember-плагина (лежит в main checkout).
 
-Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `~/.claude/plugins/installed_plugins.json`.
+Установленные плагины (user-level, не в репо): superpowers, context7, ruby-lsp, pyright-lsp, remember, code-review, feature-dev, telegram, vercel, figma, firecrawl, и др. См. `installed_plugins.json` в пользовательском `~/.claude/plugins/` (вне репозитория).

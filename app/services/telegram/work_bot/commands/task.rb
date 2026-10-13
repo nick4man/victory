@@ -9,11 +9,17 @@ module Telegram
       # по типу lead_ref.crm_id: для Inquiry/BuyerOrder → 'order'.
       #
       # Формат даты — строго dd.MM.yy (см. Formatters::DateFormat).
+      #
+      # Без даты и текста (`/task`, `/task 87`, reply `/task`) команда не
+      # отвечает форматом, а открывает мастер в личке — аргументы печатать
+      # не нужно. См. Wizard::TaskFlow.
       class Task < Base
         def handle
           # Phase 15 — resolve_lead! «съест» lead_id ЕСЛИ 1-й arg число.
           # После resolve_lead! @args = «dd.MM.yy <текст>» (как и было в group).
+          typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
+          return open_wizard('task', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('task 15.05.26 текст')) unless lead
 
           parts = @args.to_s.strip.split(/\s+/, 2)
@@ -25,42 +31,10 @@ module Telegram
           due_date = Formatters::DateFormat.parse(date_token)
           return reply("⚠️ Не понимаю дату <code>#{date_token}</code>. Формат: <code>dd.MM.yy</code> (например, 15.05.26).") unless due_date
 
-          build_task!(lead, due_date, title)
-          push_due_to_crm(lead, due_date)
+          LeadTaskCreator.new(lead, due_date: due_date, title: title, actor: tg_user,
+                                    tg_message_id: message['message_id']).call
 
-          reply("📅 Задача создана для лида ##{lead.id}: <b>#{escape(title)}</b> · до #{Formatters::DateFormat.fmt(due_date)}")
-        end
-
-        private
-
-        def build_task!(lead, due_date, title)
-          ::Task.create!(
-            lead_event: lead,
-            assignee: lead.assigned_to || tg_user,
-            created_by: tg_user,
-            title: title.to_s[0, 255],
-            due_at: due_date.in_time_zone.end_of_day,
-            topnlab_id: lead.lead_ref.try(:crm_id).to_i.nonzero?,
-            topnlab_type: 'order',
-            tg_message_id: message['message_id']
-          )
-        end
-
-        def push_due_to_crm(lead, due_date)
-          crm_id = lead.lead_ref.try(:crm_id)
-          return if crm_id.blank?
-
-          Topnlab::Client.new.patch_entity(
-            id: crm_id.to_i,
-            type: 'order',
-            fields: { fc_next_action_at: due_date.in_time_zone.end_of_day.iso8601 }
-          )
-        rescue StandardError => e
-          Rails.logger.warn("[Commands::Task] patch_entity failed: #{e.class}: #{e.message}")
-        end
-
-        def escape(text)
-          text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+          reply("📅 Задача создана для лида ##{lead.id}: <b>#{escape_html(title)}</b> · до #{Formatters::DateFormat.fmt(due_date)}")
         end
       end
     end

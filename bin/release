@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# bin/release — собрать образы всех служб и навесить теги релиза.
+#
+#   bin/release            собрать, тегировать <VERSION> и sha-<7>
+#   bin/release --push     + push в ${REGISTRY:-ghcr.io/nick4man}
+#   bin/release --check    только показать, что будет собрано
+#
+# Версия — файл VERSION в корне; sha — HEAD текущего чекаута. Собирать из
+# чистого дерева на нужном коммите: образ с незакоммиченными правками
+# получит тег коммита, в котором их нет.
+set -euo pipefail
+
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
+cd "$ROOT"
+DOCKER="${DOCKER_BIN:-/usr/bin/docker}"
+REGISTRY="${REGISTRY:-ghcr.io/nick4man}"
+VERSION=$(tr -d '[:space:]' < VERSION)
+SHA=$(git rev-parse --short=7 HEAD)
+PUSH=0; CHECK=0
+for a in "$@"; do case "$a" in --push) PUSH=1;; --check) CHECK=1;; *) echo "неизвестный флаг $a" >&2; exit 2;; esac; done
+
+[ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "дерево не чистое — закоммить или отложить правки" >&2; exit 2; }
+
+# служба compose → имя образа
+declare -A IMAGES=(
+  [web]=victory-web
+  [conveyor]=victory-conveyor
+  [publisher]=victory-publisher
+  [zhk-registry]=victory-zhk-registry
+)
+
+echo "релиз $VERSION (sha-$SHA) → $REGISTRY"
+for svc in "${!IMAGES[@]}"; do
+  echo "  $svc → $REGISTRY/${IMAGES[$svc]}:{$VERSION,sha-$SHA}"
+done
+[ "$CHECK" = 1 ] && exit 0
+
+# env-файлы служб без профиля обязаны существовать даже для build.
+touch .env.zhk
+export VICTORY_TAG="$VERSION" GIT_COMMIT_SHA="$SHA"
+# --profile conveyor: иначе compose не видит службы под профилем и не соберёт их.
+"$DOCKER" compose --profile conveyor build --pull web conveyor publisher zhk-registry
+
+for svc in "${!IMAGES[@]}"; do
+  img="$REGISTRY/${IMAGES[$svc]}"
+  "$DOCKER" tag "$img:$VERSION" "$img:sha-$SHA"
+  if [ "$PUSH" = 1 ]; then
+    "$DOCKER" push "$img:$VERSION"
+    "$DOCKER" push "$img:sha-$SHA"
+  fi
+done
+echo "готово: $VERSION / sha-$SHA$([ "$PUSH" = 1 ] && echo ', запушено' || echo ', локально')"

@@ -19,12 +19,14 @@ module Telegram
           ['/start',        :public,   'Регистрация: бот запоминает DM-чат для нотификаций'],
 
           # Staff — для зарегистрированных активных
+          ['/menu',         :staff,
+           'Меню «Что сделать?»: задача, закрытие лида, переоткрытие — кнопками, без аргументов'],
           ['/done',         :staff,
            'Отметить задачу выполненной: <code>/done 42</code> (или жми кнопку / ✅ реакцию на DM-карточку)'],
           ['/cancel',       :staff,
            'Отменить задачу: <code>/cancel 42 причина</code> (assignee или manager)'],
           ['/reopen',       :staff,
-           'Переоткрыть done/canceled задачу (окно 24ч): <code>/reopen 42</code>'],
+           'Переоткрыть done/canceled задачу (окно 24ч): <code>/reopen 42</code> или <code>/reopen</code> → выбор из списка'],
 
           # Manager — нужен is_manager=true
           ['/promote',      :manager,  'Активировать сотрудника: <code>/promote @username [manager]</code>'],
@@ -40,6 +42,8 @@ module Telegram
            '(или <code>/assign 87</code> → picker)'],
           ['/stage',        :manager,
            'Сменить стадию: reply + <code>/stage показ</code> ИЛИ DM <code>/stage 87 показ</code>'],
+          ['/unstage',      :manager,
+           'Откатить последнюю смену стадии: <code>/unstage</code> reply на карточку (если нажали не ту)'],
           ['/note',         :manager,
            'Заметка в CRM: reply + <code>/note текст</code> ИЛИ DM <code>/note 87 текст</code>'],
           ['/bargain',      :staff,
@@ -53,9 +57,9 @@ module Telegram
           ['/doc',          :staff,
            'Документы (reply на якорь): <code>/doc passport+ snils?</code> или <code>/doc</code> для status'],
           ['/task',         :manager,
-           'Задача: reply + <code>/task dd.MM.yy текст</code> ИЛИ DM <code>/task 87 dd.MM.yy текст</code>'],
+           'Задача: <code>/task</code> → мастер в личке; или reply + <code>/task dd.MM.yy текст</code> ИЛИ DM <code>/task 87 dd.MM.yy текст</code>'],
           ['/close',        :manager,
-           'Закрыть лид: reply + <code>/close выиграно</code> ИЛИ DM <code>/close 87 выиграно [причина:цена]</code>'],
+           'Закрыть лид: <code>/close</code> → мастер в личке; или reply + <code>/close выиграно</code> ИЛИ DM <code>/close 87 выиграно [причина:цена]</code>'],
           ['/reassign',     :manager,
            'Передать задачу другому: <code>/reassign 42 @username</code> (DM обоим — старому и новому)'],
           ['/deactivate',   :manager,
@@ -72,7 +76,9 @@ module Telegram
           # Director (Phase 7.2+) — для voice-distribution
           ['🎙 Voice DM', :director, 'Запиши голосовое в DM боту — бот распарсит и предложит подтвердить пакет задач'],
           ['/resume_batch', :director,
-           'Переоткрыть expired/cancelled пакет: <code>/resume_batch 42</code> (окно 24ч)']
+           'Переоткрыть expired/cancelled пакет: <code>/resume_batch 42</code> (окно 24ч)'],
+          ['/starttest',    :director,
+           'Разбудить песочницу карточек и получить список того, что в ней проверяем']
         ].freeze
 
         def handle

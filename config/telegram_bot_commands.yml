@@ -8,7 +8,8 @@
 #           (BotCommandScopeAllGroupChats)
 #   desc  — короткое описание для меню (≤256 chars, рекомендую ≤80)
 #
-# Лимит TG: 100 команд per scope per language_code. У нас 21, запас огромный.
+# Лимит TG: 100 команд per scope per language_code. Число здесь не пишем — оно
+# протухает при каждой новой команде; потолок сторожит command_registries_spec.
 
 commands:
   # === Public — доступны всем (включая незарегистрированных) ===
@@ -17,9 +18,10 @@ commands:
   - { cmd: start,        tier: public,   group: false, desc: 'Активировать DM-нотификации от бота' }
 
   # === Staff — для зарегистрированных сотрудников ===
+  - { cmd: menu,         tier: staff,    group: false, desc: 'Что сделать? — задача, закрытие, переоткрытие кнопками' }
   - { cmd: done,         tier: staff,    group: true,  desc: 'Выполнить задачу: /done <id>' }
   - { cmd: cancel,       tier: staff,    group: true,  desc: 'Отменить задачу: /cancel <id> [причина]' }
-  - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen <id>' }
+  - { cmd: reopen,       tier: staff,    group: true,  desc: 'Переоткрыть задачу (окно 24ч): /reopen — выбор из списка' }
   - { cmd: doc,          tier: staff,    group: false, desc: 'Документы по лиду (reply на якорь)' }
   - { cmd: segment,      tier: staff,    group: true,  desc: 'Сегмент покупателя: /segment наличные (reply на карточку)' }
   - { cmd: show,         tier: staff,    group: true,  desc: 'Отчёт о показе текстом: /show <lead_id> что сказали покупатели' }
@@ -31,10 +33,11 @@ commands:
   - { cmd: assign,       tier: manager,  group: true,  desc: 'Назначить агента (reply на якорь)' }
   - { cmd: route,        tier: manager,  group: true,  desc: 'Маршрутизировать лид в спец-топик' }
   - { cmd: stage,        tier: manager,  group: true,  desc: 'Сменить стадию лида' }
+  - { cmd: unstage,      tier: manager,  group: true,  desc: 'Откатить последнюю смену стадии (reply на карточку)' }
   - { cmd: note,         tier: manager,  group: true,  desc: 'Заметка в CRM (reply на якорь)' }
   - { cmd: lead,         tier: manager,  group: true,  desc: 'Создать лид вручную' }
-  - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close выиграно|проиграно' }
-  - { cmd: task,         tier: manager,  group: true,  desc: 'Задача с дедлайном: /task dd.MM.yy текст' }
+  - { cmd: close,        tier: manager,  group: true,  desc: 'Закрыть лид: /close — исход и причина кнопками' }
+  - { cmd: task,         tier: manager,  group: true,  desc: 'Задача с дедлайном: /task — мастер в личке' }
   - { cmd: reassign,     tier: manager,  group: false, desc: 'Передать задачу: /reassign <id> @user' }
   - { cmd: promote,      tier: manager,  group: false, desc: 'Активировать сотрудника' }
   - { cmd: demote,       tier: manager,  group: false, desc: 'Снять manager-привилегии' }
@@ -45,6 +48,7 @@ commands:
 
   # === Director — voice-distribution и admin ===
   - { cmd: resume_batch, tier: director, group: false, desc: 'Переоткрыть voice batch (окно 24ч)' }
+  - { cmd: starttest,    tier: director, group: false, desc: 'Разбудить песочницу и напомнить, что в ней проверяем' }
 
   # === Phase 15 — director DM control panel ===
   - { cmd: dashboard,    tier: manager,  group: false, desc: 'Полная сводка АН: лиды/задачи/сотрудники/KPI' }

@@ -3,7 +3,7 @@
 # Зачем: на хосте нет менеджера версий Ruby (ни chruby, ни rbenv, ни mise),
 # системный ruby не совпадает с пином в Gemfile — `bundle`/`rspec` напрямую в
 # worktree падают с «Your Ruby version is X, but your Gemfile specified Y».
-# Прод-контейнеры (project `victory`) примонтированы к ~/victory и для
+# Прод-контейнеры (project `victory`) примонтированы к main checkout и для
 # разработки недоступны.
 #
 # Запускать ТОЛЬКО через bin/rb — он подставляет -p (свой compose-проект на
@@ -59,6 +59,7 @@ services:
   ruby:
     build:
       context: .
+      target: dev
       args:
         RUBY_VERSION: ${RUBY_TARGET:-3.4.10}
     # Тег включает версию — образы под разные Ruby живут рядом, не перетирая

@@ -45,7 +45,10 @@ module Telegram
         'show_report' => 'Telegram::WorkBot::Callbacks::ShowReportCallback',
         # BOTTLENECK — «кто поедет на показ». Тёмный код: кнопки появляются
         # только при SHOW_ROUTING_ENABLED=true.
-        'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback'
+        'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback',
+        # Пошаговые мастера (задача, закрытие лида, переоткрытие) и меню
+        # «Что сделать?». Формат — см. Wizard::Engine.
+        'wiz' => 'Telegram::WorkBot::Callbacks::WizardCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

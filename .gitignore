@@ -23,6 +23,11 @@
 # untracked so worktrees don't fight over one committed file). See sessions/README.md.
 /.claude-session
 
+# Маркер прод-хоста: создаётся bin/prod-mark на той машине, где живёт прод.
+# Отслеживать нельзя — иначе прод-хостом объявится каждый клон, и сверка
+# отметки с живым чекаутом (.claude/hooks/lib/prod-state.sh) начнёт врать всем.
+/.victory-prod
+
 # Ignore all logfiles and tempfiles.
 /log/*
 /tmp/*
@@ -50,12 +55,26 @@
 /config/credentials/*.key
 
 # Ignore environment variables (never commit secrets)
+#
+# ⚠️ .env.production закоммитили 13.11.25, в день создания репозитория, и он
+# пролежал отслеживаемым ~10 месяцев в публичном репозитории. Строки ниже тогда
+# не было: блок называл только .env, .env.local и .env.*.local — ни один из
+# паттернов .env.production не ловит. Сама строка появилась 22.05.26 (5f84ae4),
+# но к уже отслеживаемому файлу ignore не применяется, так что она ничего не
+# изменила. Выведен из-под версионного контроля 16.09.26 (git rm --cached).
+# Не возвращать: шаблон для новых установок — .env.example, боевые значения
+# живут только на хостах.
 .env
 .env.local
 .env.*.local
 .env.production
 .env.staging
 .env.audit
+.env.conveyor
+.env.zhk
+.env.publisher
+.env.rc
+.env.deploy
 .env.bak-*
 
 # Ignore node_modules
@@ -309,3 +328,7 @@ ehthumbs.db
 # содержимое репозитория. Без этой строки они висят в `git status` как untracked
 # и один `git add -A` утаскивает их в историю навсегда.
 /.claude/worktrees/
+
+# Python-службы (services/*): байткод
+__pycache__/
+*.pyc
