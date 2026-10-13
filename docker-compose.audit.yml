@@ -105,6 +105,11 @@ services:
       REDIS_URL: redis://audit-redis:6379/0
       MC_USE_GPU: "false"
     command: ["python", "-m", "audit_engine.monte_carlo_worker"]
+    # Воркер не поднимает HTTP, а HEALTHCHECK из Dockerfile.api (curl :8000)
+    # наследуется и для него всегда красный (13.10.26). Живость воркера —
+    # по логам и разбору очереди, а не по healthcheck.
+    healthcheck:
+      disable: true
     depends_on:
       audit-postgres:
         condition: service_healthy

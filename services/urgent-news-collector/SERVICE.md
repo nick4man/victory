@@ -4,7 +4,7 @@ owner: victory
 kind: python-cron
 entrypoint: urgent_collector.py
 tests: cd services/urgent-news-collector && python3 -m unittest discover
-deploy: compose-служба conveyor (профиль conveyor) в корневом docker-compose.yml; до переезда данных — ./deploy.sh в /opt/victory-conveyor на chat (docs/runbooks/cutover-1.0.md)
+deploy: compose-служба conveyor (профиль conveyor) в корневом docker-compose.yml на хосте victory; данные переехали с chat 13.10.26 (docs/runbooks/cutover-1.0.md, окно B)
 depends_on: none
 ported_from: openclaw (архив)
 port_status: done

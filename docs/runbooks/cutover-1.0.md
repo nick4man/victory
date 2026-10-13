@@ -198,3 +198,48 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/        # ожи�
 - Окно B (конвейер новостей с chat) — отдельным окном, предусловия выше.
 - RC-стек остановлен, тома `victory-rc_*` оставлены до завтра, затем снести
   (раздел «После всего»).
+
+## Окна B и C выполнены — 13.10.26 (00:37–04:30 MSK)
+
+### Окно B (конвейер)
+
+- Чекаут `/home/q/victory` поднят до `678d5a6`+ (вкл. #129 — классификатор без
+  платного Sonnet); образы conveyor/publisher собраны на хосте, initdb news-db
+  предпроверен на scratch-проекте (риск `\restrict` на psql15 не подтвердился).
+- `.env.conveyor` / `.env.publisher` / `.env.deploy` заполнены; `NEWS_DB_PASSWORD`
+  общий для трёх файлов, `VICTORY_NEWS_TOKEN` совпал с `NEWS_INGEST_TOKEN`.
+- chat: 5 строк crontab закомментированы (маркер `1.0-cutover`, бэкап
+  `~/crontab.bak.13.10.26-*`), `publisher-bot` остановлен.
+- Данные по ssh-трубе, счётчики сошлись: `urgent_events` 21285, `posts_queue` 191,
+  `content_revisions` 1, `system_flags` 2; `setval` последовательностей выставлены.
+- ⚠️ Найдено по ходу: `urgent_events` не росла с 05.10 16:30 — контейнер
+  `audit-v2-postgres` был пересоздан из plain-образа postgis без pgvector, все
+  INSERT падали (`$libdir/vector`), дедуп `already_seen` ослеп, и каждые 30 минут
+  ~105 одних и тех же RSS-записей уходили на переклассификацию с платным хвостом
+  (658–883 вызова Sonnet/день 06–12.10 — причина сжигания ключа OpenRouter).
+- ⚠️ Пустые опциональные ключи в `.env.conveyor` (`SEEN_HEADLINE_WINDOW_DAYS=` и
+  т.п.) роняют коллектор (`int('')`) — пустые строки закомментированы.
+- conveyor поднят, тики supercronic идут, прогон без единого PAID-вызова.
+- `publisher` НЕ поднят: `CHANNEL_BOT_TOKEN` утёк 05.10 — ждём `/revoke` и новый
+  токен от @BotFather, затем `docker compose --profile conveyor up -d publisher`.
+
+### Окно C (audit-engine, выносилось за рамки исходного плана)
+
+- Стек поднят из репо (профиль `audit`): audit-postgres (PG16+pgvector),
+  audit-redis, audit-api, audit-mc-worker. Найден и влит фикс #130: SQLAlchemy 2.1
+  сменил дефолтный DBAPI на psycopg v3, в образе был только psycopg2 — alembic
+  падал на старте.
+- Дамп `re_audit` с chat (PG16→PG16): полный, по списку таблиц — БЕЗ таблиц
+  конвейера (`urgent_events`, `posts_queue`, `content_revisions`, `system_flags` —
+  они в `news-db`) и без мёртвых (`recipes`, `ingredients`, `location_scores`,
+  `financial_events`, `digests` — в коде их нет, на chat остались).
+- ⚠️ `pg_dump -t` не выгружает функции — `poi_sync_geom()` и
+  `update_updated_at_column()` перенесены вручную через `pg_get_functiondef`.
+- `alembic_version` выставлен в `k9a6b7c8d2e3` (= head репо). Том отчётов
+  (`audit-v2-stack_reports`) оказался пуст на обоих концах.
+- Smoke: `bin/audit-stack smoke` — полный расчёт (EI + Monte-Carlo 100k) OK;
+  из `web`: `curl http://audit-api:8000/api/v2/health` → ok. Rails `.env` уже
+  указывал на `http://audit-api:8000/api/v2` — переключение бесшовное,
+  перезапуск web не потребовался.
+- chat: `audit-v2-api`, `audit-v2-postgres`, `audit-v2-redis` остановлены
+  (не удалять неделю — откат). omniroute (chat:20128) остаётся по LAN.
