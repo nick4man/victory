@@ -80,5 +80,8 @@ openclaw на диске — разные вещи**: каталог
 audit-engine — тоже. Запрет продублирован в `.claude/settings.json`
 (`permissions.deny`) — и на скрипты, и на запись в каталог архива.
 
-⚠️ Хвост: живой контейнер `audit-v2-api` пока поднят из архива. Переезд стека
-отдельным шагом — `services/audit-engine/VENDOR.md`.
+✅ 13.10.26 хвост закрыт: стек audit-engine переехал на хост victory (профиль
+`audit` корневого compose, `bin/audit-stack`), данные `re_audit` перенесены
+дампом; контейнеры `audit-v2-*` на chat остановлены. Конвейер новостей в тот
+же день переехал в профиль `conveyor` — `deploy.sh` в `/opt/victory-conveyor`
+больше не боевой путь.

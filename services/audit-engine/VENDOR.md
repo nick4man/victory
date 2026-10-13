@@ -17,12 +17,10 @@
 > `scripts/check_cron_health.py`, которых в архиве нет. Встречное направление —
 > только `data/templates` и правки `docker-compose.yml` от 07.09.26.
 >
-> 🚨 Живой контейнер `audit-v2-api` при этом поднят **из архива**:
-> `docker inspect` показывает compose-project-dir в
-> `workspace-it-dept/devops/audit-v2-stack`. Переезд стека не сделан — смена
-> рабочего каталога меняет имя compose-проекта, а с ним и имена томов
-> (`audit-v2-stack_reports`). Без `name:` в compose или external-томов это
-> тихая потеря отчётов, поэтому отдельным шагом.
+> ✅ **13.10.26 хвост закрыт:** живой стек больше не из архива. Контейнеры
+> `victory-audit-*` подняты из этого репозитория на хосте victory (профиль
+> `audit`, тома `victory_audit_*`); `audit-v2-*` на chat остановлены и
+> оставлены на неделю для отката.
 
 This is a **vendored copy** of `audit-engine-v2` — a FastAPI-based property
 investment audit engine (Efficiency Index, Monte Carlo, hedonic regression,
