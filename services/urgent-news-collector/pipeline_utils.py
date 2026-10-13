@@ -415,8 +415,29 @@ def resolve_chains_json_path() -> str:
     path = os.environ.get("CHAINS_JSON_PATH")
     if path:
         return path
+    # Оверрайд на постоянном томе (docker: conveyor_state → /opt/conveyor/state)
+    # важнее $CONVEYOR_HOME/chains.json: в контейнере последний — это файл из
+    # образа (WORKDIR == CONVEYOR_HOME), перезаписываемый каждым rollout.
+    state_cfg = os.path.join(conveyor_home(), "state", "chains.json")
+    if os.path.exists(state_cfg):
+        return state_cfg
     conveyor_cfg = os.path.join(conveyor_home(), "chains.json")
     return conveyor_cfg if os.path.exists(conveyor_cfg) else _bundled_chains_json_path()
+
+
+def resolve_chains_json_write_path() -> str:
+    """Куда пробер ПИШЕТ chains.json (13.10.26, переезд 1.0).
+
+    Отличие от resolve_chains_json_path: когда оверрайда ещё нет, читается
+    бандленный chains.json из образа/деплоя, а писать нужно на постоянный том
+    state/ — иначе в контейнере правки пробера живут в слое образа и стираются
+    следующим rollout, а на хосте делают грязным git-чекаут. Если CHAINS_JSON_PATH
+    задан явно — пишем туда же, откуда читаем.
+    """
+    path = os.environ.get("CHAINS_JSON_PATH")
+    if path:
+        return path
+    return os.path.join(conveyor_home(), "state", "chains.json")
 
 
 def _load_chains_config(path: str | None = None) -> dict:
@@ -425,18 +446,24 @@ def _load_chains_config(path: str | None = None) -> dict:
     Порядок поиска файла (13.10.26) — см. resolve_chains_json_path():
       1) явный аргумент path — для тестов;
       2) env CHAINS_JSON_PATH;
-      3) $CONVEYOR_HOME/chains.json, если существует — боевой оверрайд;
-      4) chains.json рядом с pipeline_utils.py — деплоится вместе с кодом;
-      5) встроенные дефолты (_DEFAULT_*).
+      3) $CONVEYOR_HOME/state/chains.json, если существует — оверрайд пробера
+         на постоянном томе (в docker переживает rollout образа);
+      4) $CONVEYOR_HOME/chains.json, если существует — оверрайд на хосте
+         (в контейнере это тот же файл, что и п.5: WORKDIR == CONVEYOR_HOME);
+      5) chains.json рядом с pipeline_utils.py — деплоится вместе с кодом;
+      6) встроенные дефолты (_DEFAULT_*).
 
     Битый файл → warning + дефолты, исключений нет: работающий конвейер
     важнее строгости конфигурации. Конфиг читается один раз при импорте
     модуля; перезагрузки на лету нет — cron-процессы короткоживущие, новая
     редакция подхватится следующим запуском. Внимание: .env вызывающие
-    скрипты подтягивают ПОСЛЕ import pipeline_utils, поэтому оверрайд через
-    $CONVEYOR_HOME/chains.json сработает, только если CONVEYOR_HOME задан в
-    окружении cron-задачи, а не в .env. Файл рядом с кодом (вариант 4) от
-    этого не зависит — он и есть основной способ править цепочки.
+    скрипты подтягивают ПОСЛЕ import pipeline_utils, поэтому оверрайды через
+    $CONVEYOR_HOME/{state/,}chains.json сработают, только если CONVEYOR_HOME
+    задан в окружении cron-задачи, а не в .env (в docker-образе он задан
+    через ENV — там это работает всегда). Ручные правки вносятся в
+    бандленный chains.json (вариант 5) через git; файл в state/ (вариант 3)
+    принадлежит проберу — руками его не редактировать, удалить = вернуться
+    к бандленному.
     """
     if path is None:
         path = resolve_chains_json_path()

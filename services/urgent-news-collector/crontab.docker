@@ -6,3 +6,11 @@
 0 6-20 * * 1 flock -n /tmp/weekly_digest.lock python3 /opt/conveyor/weekly_digest_trigger.py
 0 6-12 * * 2 flock -n /tmp/weekly_digest.lock python3 /opt/conveyor/weekly_digest_trigger.py
 0 7 * * 2,4 python3 /opt/conveyor/bank_rates_trigger.py
+
+# Автопробер бесплатных LLM — пн 05:40 (13.10.26). Обновляет chains.json
+# на постоянном томе state/ (записи added_by="probe"), правки переживают rollout.
+40 5 * * 1 flock -n /tmp/free_model_probe.lock python3 /opt/conveyor/free_model_probe.py
+
+# Недельная сводка расхода LLM — пн 06:10, после пробера. Краткая версия
+# уходит главреду в Telegram.
+10 6 * * 1 flock -n /tmp/llm_usage_report.lock python3 /opt/conveyor/llm_usage_report.py --days 7 --telegram

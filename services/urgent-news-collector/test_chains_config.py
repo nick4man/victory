@@ -113,5 +113,64 @@ class TestChainsConfig(unittest.TestCase):
         self.assertEqual(cfg["paid"], p._DEFAULT_PAID_MODELS)
 
 
+@unittest.skipIf(p is None, SKIP_REASON)
+class TestChainsPathResolution(unittest.TestCase):
+    """Порядок resolve_chains_json_path / resolve_chains_json_write_path (13.10.26).
+
+    env читается в момент вызова — reload не нужен, достаточно подменить
+    CONVEYOR_HOME/CHAINS_JSON_PATH и восстановить после теста.
+    """
+
+    def setUp(self):
+        self._saved = {k: os.environ.get(k) for k in ("CONVEYOR_HOME", "CHAINS_JSON_PATH")}
+        os.environ.pop("CONVEYOR_HOME", None)
+        os.environ.pop("CHAINS_JSON_PATH", None)
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.addCleanup(self._restore_env)
+        self.home = self._tmp.name
+        os.environ["CONVEYOR_HOME"] = self.home
+
+    def _restore_env(self):
+        for k, v in self._saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _touch(self, *parts) -> str:
+        path = os.path.join(self.home, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{}")
+        return path
+
+    def test_state_override_shadows_conveyor_and_bundled(self):
+        state_cfg = self._touch("state", "chains.json")
+        self._touch("chains.json")
+        self.assertEqual(p.resolve_chains_json_path(), state_cfg)
+
+    def test_conveyor_cfg_when_no_state_override(self):
+        conveyor_cfg = self._touch("chains.json")
+        self.assertEqual(p.resolve_chains_json_path(), conveyor_cfg)
+
+    def test_bundled_when_conveyor_has_no_configs(self):
+        self.assertEqual(p.resolve_chains_json_path(), p._bundled_chains_json_path())
+
+    def test_write_path_is_state_volume_even_without_existing_override(self):
+        # В docker бандленный chains.json лежит в слое образа — писать туда
+        # бессмысленно (стирается rollout'ом), поэтому цель записи — state/.
+        self.assertEqual(
+            p.resolve_chains_json_write_path(),
+            os.path.join(self.home, "state", "chains.json"),
+        )
+
+    def test_explicit_env_path_wins_for_read_and_write(self):
+        explicit = self._touch("explicit.json")
+        os.environ["CHAINS_JSON_PATH"] = explicit
+        self.assertEqual(p.resolve_chains_json_path(), explicit)
+        self.assertEqual(p.resolve_chains_json_write_path(), explicit)
+
+
 if __name__ == "__main__":
     unittest.main()

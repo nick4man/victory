@@ -32,7 +32,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 # Тесты — часть сборки: образ с красными тестами не существует.
-RUN python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains
+# test_chains_config / test_free_model_probe — без сети (моки), безопасны в CI.
+RUN python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains test_chains_config test_free_model_probe
 
 RUN groupadd --gid 1000 app && useradd --uid 1000 --gid app --create-home app && \
     mkdir -p logs notifications published state mirror && chown -R app:app ${CONVEYOR_HOME}

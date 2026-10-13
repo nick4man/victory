@@ -47,6 +47,7 @@ from pipeline_utils import (  # noqa: E402
     complete_with_fallbacks,
     conveyor_home,
     resolve_chains_json_path,
+    resolve_chains_json_write_path,
 )
 
 logging.basicConfig(
@@ -590,7 +591,10 @@ def main() -> int:
     _load_env(os.path.join(SCRIPT_DIR, ".env"))
     t_start = time.monotonic()
     chains_path = resolve_chains_json_path()
-    logger.info("[probe] chains.json: %s", chains_path)
+    # Читаем действующий конфиг, пишем — на постоянный том state/ (в docker
+    # бандленный chains.json лежит в слое образа и стирается rollout'ом).
+    chains_write_path = resolve_chains_json_write_path()
+    logger.info("[probe] chains.json: читаю %s, пишу %s", chains_path, chains_write_path)
 
     probe_list = merge_probe_list(load_candidates(), current_free_links(chains_path))
     if args.only:
@@ -700,16 +704,18 @@ def main() -> int:
 
     if new_chains is not None and changes:
         try:
-            write_json_atomic(chains_path, new_chains)
-            logger.info("[probe] chains.json обновлён: %d изменений", len(changes))
+            write_json_atomic(chains_write_path, new_chains)
+            logger.info("[probe] chains.json обновлён (%s): %d изменений",
+                        chains_write_path, len(changes))
         except Exception as e:
-            logger.error("[probe] не могу записать %s: %s", chains_path, e)
+            logger.error("[probe] не могу записать %s: %s", chains_write_path, e)
 
     report = {
         "ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "dry_run": args.dry_run,
         "deadline_hit": deadline_hit,
         "chains_path": chains_path,
+        "chains_write_path": chains_write_path,
         "changes": changes,
         "results": results,
     }

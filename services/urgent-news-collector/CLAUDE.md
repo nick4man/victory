@@ -122,19 +122,34 @@ python3 -m unittest test_urgent_relevance test_classify_retry test_model_chains 
 Источник цепочек — `chains.json`, а не код. `MAIN_MODEL_CHAIN` /
 `FREE_CLASSIFIER_MODELS` / `PAID_MODELS` в `pipeline_utils.py` — уже
 материализованный конфиг, править их там бессмысленно. Порядок поиска файла
-(`resolve_chains_json_path`):
+(`resolve_chains_json_path`; переезд 1.0 добавил вариант 2):
 
 1. env `CHAINS_JSON_PATH`;
-2. `$CONVEYOR_HOME/chains.json`, если существует (боевой оверрайд);
-3. `chains.json` рядом с `pipeline_utils.py` — деплоится вместе с кодом, основной
-   способ править вручную;
-4. встроенные дефолты `_DEFAULT_*` — на битый или отсутствующий файл: warning
+2. `$CONVEYOR_HOME/state/chains.json`, если существует — оверрайд пробера на
+   постоянном томе (docker: volume `conveyor_state` → `/opt/conveyor/state`),
+   переживает rollout образа. Принадлежит проберу: руками не редактировать,
+   удалить = вернуться к бандленному;
+3. `$CONVEYOR_HOME/chains.json`, если существует (оверрайд на хосте; в
+   контейнере это тот же файл, что и п.4 — `WORKDIR == CONVEYOR_HOME`);
+4. `chains.json` рядом с `pipeline_utils.py` — едет в образ/деплой вместе
+   с кодом, основной способ править вручную (через git);
+5. встроенные дефолты `_DEFAULT_*` — на битый или отсутствующий файл: warning
    в лог и дефолты, исключений нет.
 
+Пробер ЧИТАЕТ действующий конфиг (порядок выше), а ПИШЕТ всегда в
+`state/chains.json` (`resolve_chains_json_write_path`) — иначе в контейнере
+его правки лежали бы в слое образа и стирались бы следующим rollout.
+
 ⚠️ Конфиг читается один раз **при импорте** `pipeline_utils`, а `.env` скрипты
-подтягивают уже после `import`. Поэтому оверрайд через `$CONVEYOR_HOME/chains.json`
-сработает, только если `CONVEYOR_HOME` задан в окружении cron-задачи, а не в
-`.env`. Файл рядом с кодом (вариант 3) от этого не зависит — потому он и основной.
+подтягивают уже после `import`. Поэтому оверрайды через `$CONVEYOR_HOME/...`
+сработают, только если `CONVEYOR_HOME` задан в окружении cron-задачи, а не в
+`.env` (в docker-образе он задан через `ENV CONVEYOR_HOME=/opt/conveyor` —
+там работает всегда). Файл рядом с кодом (вариант 4) от этого не зависит.
+
+⚠️ Docker (профиль `conveyor`, переезд 1.0): расписание — `crontab.docker`
+(supercronic), а не crontab хоста; `OMNIROUTE_BASE_URL` обязан быть LAN-адресом
+omniroute (он остаётся на chat, порт 20128), а не 127.0.0.1; фолбэка ключей
+на `openclaw.json` в контейнере нет — все ключи только из `.env.conveyor`.
 
 Формат: секции `main` и `classifier_extra`, записи
 `{provider, model, timeout_s, paid, added_by?}`. Платные помечаются
