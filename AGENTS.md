@@ -286,7 +286,8 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   локальный fallback — `bin/release --push`; довесить `<VERSION>` на собранный
   CI sha-образ — `bin/release --from-ci`.
 - **Выкатка на прод** (cutover 1.0 выполнен 12.10.26, прод на образах): Actions →
-  `Deploy production` → Approve в environment `production` → SSH `bin/prod-gate` →
+  `Deploy production` → Approve в environment `production` → SSH через bastion
+  vps1 (ProxyJump по WireGuard) → `bin/prod-gate` →
   `bin/rollout <тег>` на хосте `victory` (бэкап → pull → health → `bin/smoke` →
   `bin/prod-mark` → внешние проверки с раннера). Вручную на хосте — тот же
   `bin/rollout`. Runbook — `docs/runbooks/deploy-pipeline.md`, откат —
