@@ -117,6 +117,15 @@ services:
         condition: service_healthy
     networks:
       - audit-internal
+    # Dockerfile.api bakes an HTTP healthcheck (curl :8000) into the image,
+    # but the worker serves no HTTP — override with a PID-1 process check,
+    # otherwise the container flaps as "unhealthy" forever.
+    healthcheck:
+      test: ["CMD-SHELL", "grep -q monte_carlo_worker /proc/1/cmdline"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     # numpy is happy to eat every core. Cap so a runaway sim doesn't
     # starve Rails/Sidekiq. 1M MC simulations cost ~14s on 2 CPUs.
     deploy:
