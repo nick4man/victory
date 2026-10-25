@@ -9,9 +9,11 @@ module Telegram
     # default queue — high-priority; ack в TG нужен FAST.
     sidekiq_options queue: :default, retry: 1
 
-    def perform(payload_json)
+    # bot — чей вебхук принял апдейт ('main' | 'test'). Параметр со значением
+    # по умолчанию: джобы, уже лежащие в очереди с одним аргументом, работают.
+    def perform(payload_json, bot = 'main')
       payload = payload_json.is_a?(Hash) ? payload_json : JSON.parse(payload_json.to_s)
-      Telegram::InboundProcessor.new(payload).call
+      Telegram::BotContext.within(bot) { Telegram::InboundProcessor.new(payload).call }
     rescue StandardError => e
       Rails.logger.error("[Telegram::InboundProcessorJob] #{e.class}: #{e.message}")
       raise # let Sidekiq retry catch

@@ -30,6 +30,12 @@ module Telegram
       # HTTP 5xx, без guard'а один update обработался бы дважды. RecordNotUnique
       # → :duplicate без side-effects.
       return :duplicate if duplicate_update?
+      # Тестовый бот — песочница карточек CRM: личка и только сотрудники.
+      # Клиентский бот, группы и реакции он не обслуживает.
+      if Telegram::BotContext.test? && !sandbox_update?
+        ack_refused_sandbox_callback
+        return :ignored
+      end
 
       # Phase 2 — callback_query от inline-кнопок маршрутизации/назначения/спама.
       # Должен сработать ДО разбора message — это отдельный тип апдейта без message.
@@ -195,7 +201,8 @@ module Telegram
       update_id = @update['update_id']
       return false if update_id.blank?
 
-      TelegramWebhookAck.create!(update_id: update_id, processed_at: Time.current)
+      TelegramWebhookAck.create!(update_id: update_id, bot: Telegram::BotContext.bot || 'main',
+                                 processed_at: Time.current)
       false
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
       # RecordInvalid fires если уже есть запись (uniqueness validation, локаль-нейтрально).
@@ -208,6 +215,57 @@ module Telegram
     rescue StandardError => e
       Rails.logger.warn("[InboundProcessor#duplicate_update?] #{e.class}: #{e.message}")
       false
+    end
+
+    # Тестовый бот обслуживает только карточки CRM: меню, /cards, мастера
+    # crm_* и кнопки crm_card:. Остальное в рабочем боте работает на боевых
+    # данных (/assign, /close, задачи, голосовые) — в песочницу не пускаем.
+    SANDBOX_CALLBACK_RX = /\A(crm_card:|wiz:[spmb]:crm_|wiz:x\z|wiz:menu\z)/
+    SANDBOX_COMMANDS = %w[/start /help /menu /cards].freeze
+    # Non-text payload в «свободном» сообщении — voice/photo/etc ушли бы в
+    # VoiceIntakeProcessor/PhotoIntakeProcessor на боевых данных (платная
+    # транскрибация, чужой pipeline). Песочница принимает только текст.
+    SANDBOX_MEDIA_KEYS = %w[voice audio video video_note photo document contact location sticker].freeze
+
+    def sandbox_update?
+      callback = @update['callback_query']
+      source = callback || @update['message'] || @update['edited_message']
+      return false unless source
+
+      chat = callback ? source.dig('message', 'chat') : source['chat']
+      return false unless chat&.dig('type') == 'private'
+
+      staff = TelegramUser.active.find_by(tg_user_id: source.dig('from', 'id'))
+      return false unless staff
+      return callback['data'].to_s.match?(SANDBOX_CALLBACK_RX) if callback
+
+      text = source['text'].to_s.strip
+      return SANDBOX_COMMANDS.include?(text.split(/[\s@]/).first.to_s.downcase) if text.start_with?('/')
+      return false if text.blank? || SANDBOX_MEDIA_KEYS.any? { |key| source[key].present? }
+
+      # Свободный текст — только ответ на шаг мастера карточки, начатого в
+      # ЭТОМ боте: Engine.active? сверяет и тип состояния, и bot из data
+      # (см. Wizard::Engine.current_bot) — состояние из рабочего бота не в счёт.
+      Telegram::WorkBot::Wizard::Engine.active?(staff) &&
+        staff.pending_action.dig('data', 'flow').to_s.start_with?('crm_')
+    end
+
+    # Без ответа на callback_query у пользователя висит спиннер на кнопке —
+    # инвариант «каждый путь callback'а заканчивается ack(...)» касается и
+    # отказов песочницы, не только успешных путей. chat_id здесь не участвует
+    # (answerCallbackQuery его не принимает), поэтому guard_private_chat! в
+    # Client не мешает — отвечаем прямо из тестового контекста.
+    def ack_refused_sandbox_callback
+      cb = @update['callback_query']
+      return unless cb
+
+      chat = cb.dig('message', 'chat')
+      return unless chat&.dig('type') == 'private'
+      return unless TelegramUser.active.exists?(tg_user_id: cb.dig('from', 'id'))
+
+      Telegram::Client.new.answer_callback_query(cb['id'], text: 'В тестовом боте недоступно.')
+    rescue Telegram::Client::Error => e
+      Rails.logger.warn("[InboundProcessor#ack_refused_sandbox_callback] #{e.class}: #{e.message}")
     end
 
     # @return [Boolean] true если запись TelegramUser нашлась и была обновлена

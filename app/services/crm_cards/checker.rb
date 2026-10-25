@@ -19,6 +19,12 @@ module CrmCards
       new(card).call
     end
 
+    # Тестовый лид — только созданный мастером песочницы (CrmTestLeadFlow).
+    # Не staff_test: его ставит эвристика и настоящему клиенту.
+    def self.sandbox_lead?(lead)
+      lead.present? && lead.metadata.to_h['sandbox'] == true
+    end
+
     # Поля объекта, обязательные при данных значениях других полей. Нужны и
     # проверке, и мастеру: он спрашивает эти поля, а прочие необязательные
     # оставляет на «Изменить поле».
@@ -70,6 +76,11 @@ module CrmCards
       # сотрудника («Ирина»). Запрет по нему навсегда закрыл бы такому клиенту
       # дорогу в CRM — модератор видит пометку в карточке (CardView) и решает сам.
       errors = []
+      if @card.sandbox?
+        errors << ['lead', 'В песочнице — только тестовые лиды.'] unless self.class.sandbox_lead?(lead)
+      elsif self.class.sandbox_lead?(lead)
+        errors << ['lead', 'Лид из песочницы тестового бота — в CRM не выгружается.']
+      end
       errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
       errors << ['lead', 'Лид никому не назначен — сначала назначь ответственного.'] unless lead.assigned?
       if lead.first_contact_at.nil? && lead.current_stage == 'new'
