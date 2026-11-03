@@ -1,8 +1,21 @@
 # Outbound docker-контейнеров через sing-box — план
 
-Дата составления: 14.10.26. Статус: **текущая схема уже работает** (см. §1),
-документ описывает механику, гэпы и план доработок. Ничего из перечисленного
-в §4 на проде ещё не применено.
+Дата составления: 14.10.26. Статус: **шаги 0–3 §4 применены 04.11.26**
+(шаг 4 — опциональный, не делался). Проверка после применения — по §5.
+
+Изменения 04.11.26:
+
+- Шаг 1: `domain_suffix .ru/.su/.рф → direct` добавлен в `route.rules`
+  (бэкап `user.json.bak-04.11.26`).
+- Шаг 2: urltest `auto` — `interval: 5m`, `tolerance: 80`,
+  `interrupt_exist_connections: false`.
+- Шаг 3: `bin/tunnel-check` в репозитории, cron `*/15 * * * *` на хосте.
+- ⚠️ RU egress-IP хоста **сменился**: `37.112.103.28` → `176.212.188.178`
+  (Рязань, подтверждено через ip.mail.ru с хоста и из контейнеров).
+  Проверки §5 ожидают новый IP.
+- ⚠️ `yandex.ru/internet/api/v0/ip` перестал быть пригодным как IP-echo:
+  отдаёт `127.0.0.1` (проверено 04.11.26 с хоста и из контейнера, с разными
+  UA/параметрами). В §5 заменён на `ip.mail.ru` (noscript-блок «IP: <addr>»).
 
 ## 1. Текущее состояние (проверено 14.10.26)
 
@@ -15,7 +28,7 @@ inbound `tun` (`tun0`, `10.255.255.1/30`, `auto_route` + `strict_route`),
 
 | Контейнер | RU (`yandex.ru/internet/api/v0/ip`) | non-RU (`ifconfig.me`) |
 |---|---|---|
-| victory-web-1 | `37.112.103.28` (direct) | `93.95.229.192` (туннель) |
+| victory-web-1 | `37.112.103.28` (direct, на 14.10) | `93.95.229.192` (туннель) |
 | victory-sidekiq-1 | `37.112.103.28` (direct) | `93.95.229.192` (туннель) |
 | victory-conveyor-1 | `37.112.103.28` (direct) | — |
 | victory-publisher-1 | `37.112.103.28` (direct, проверка через python3) | — |
@@ -85,12 +98,15 @@ inbound `tun` (`tun0`, `10.255.255.1/30`, `auto_route` + `strict_route`),
 
 Каждый шаг — бэкап перед правкой, проверка после (§5), откат по §6.
 
-### Шаг 0. Доступ к логам (предусловие диагностики)
+### Шаг 0. Доступ к логам (предусловие диагностики) — ✅ 04.11.26
 
 ```bash
 sudo usermod -aG systemd-journal q   # перелогиниться
 journalctl -u sing-box@user -f
 ```
+
+Выполнено: пользователь `q` добавлен в `systemd-journal` (чтение через
+`sudo journalctl -u sing-box@user` работает, логи INFO с timestamp есть).
 
 ### Шаг 1. Явный direct для зон `.ru` / `.su` (и `.рф`)
 
@@ -158,9 +174,9 @@ fallback не делаем (отдельная задача, если понад
 # в publisher/zhk-registry — python3 -c urllib):
 docker exec victory-web-1 curl -s --max-time 8 https://ifconfig.me
 #   ожидание: 93.95.229.192 (туннель)
-docker exec victory-web-1 curl -s --max-time 8 \
-  'https://yandex.ru/internet/api/v0/ip' -H 'Accept: application/json'
-#   ожидание: "37.112.103.28" (RU direct)
+docker exec victory-web-1 curl -s --max-time 8 https://ip.mail.ru/ \
+  | grep -oE 'IP: [0-9.]+'
+#   ожидание: IP: 176.212.188.178 (RU direct)
 docker exec victory-web-1 curl -s -o /dev/null -w '%{http_code}\n' \
   --max-time 8 https://api.telegram.org/
 #   ожидание: 302
