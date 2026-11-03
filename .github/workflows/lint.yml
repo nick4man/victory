@@ -60,10 +60,9 @@ jobs:
           bundler-cache: true
 
       - name: Run bundler-audit
-        # Lock в репо не коммитится — резолвим на лету, затем `update` синкает
-        # локальную БУ уязвимостей перед проверкой.
+        # Lock в репо не коммитится — setup-ruby с bundler-cache выше уже
+        # сгенерировал его через bundle install.
         run: |
-          bundle lock
           bundle exec bundle-audit update
           bundle exec bundle-audit check
 

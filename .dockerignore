@@ -30,6 +30,10 @@ public/assets
 backups
 inbox
 test-results
+# Lock не коммитится — иначе локальный gitignored lock с диска попадёт в build
+# context и перезапишет свежерезолвленный в стадии build (BUNDLE_DEPLOYMENT=1
+# в проде тогда ловит GemNotFound)
+Gemfile.lock
 .playwright-mcp
 .remember
 .serena
