@@ -333,3 +333,7 @@ ehthumbs.db
 # Python-службы (services/*): байткод
 __pycache__/
 *.pyc
+.venv/
+
+# Без закоммиченного lock: версии гемов флоатят по ограничениям Gemfile
+Gemfile.lock

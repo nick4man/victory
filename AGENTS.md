@@ -35,7 +35,7 @@ Rails-монолит. Четыре входа, и только первый — 
 
 | Вход | Где | Аутентификация |
 |---|---|---|
-| Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, `config/routes.rb` (~891 строка) | нет (Devise выключен) |
+| Публичный сайт | `landing#index` + `properties`/`news`/`valuations`/`cabinet`, `config/routes.rb` (~914 строк) | нет (Devise выключен) |
 | JSON API | `namespace :api { namespace :v1 }` | JWT |
 | Админка | `namespace :admin` | query-param `?token=$ADMIN_TOKEN` |
 | Вебхуки | `app/controllers/webhooks/` — `topnlab`, `topnlab_reports`, `telegram`, `news_ingest`, `yookassa`, `amocrm`, `zhk_ingest` | у каждого свой секрет из ENV; **при пустом ENV контроллер отказывает, а не пропускает** |
@@ -160,7 +160,7 @@ Devise — вернуть gem в Gemfile и пройти ревью.
 
 ## Тестирование
 
-- **RSpec** (~1100 примеров): `spec/models`, `spec/services` (основная масса — доменная
+- **RSpec** (~1700 примеров): `spec/models`, `spec/services` (основная масса — доменная
   логика живёт в сервисах), `spec/requests` (включая `spec/requests/webhooks/`,
   `spec/requests/admin/`), `spec/jobs`, `spec/mailers`. FactoryBot + Faker (locale `ru`),
   Shoulda Matchers, DatabaseCleaner. Сеть в спеках закрыта **WebMock**, ActiveJob на

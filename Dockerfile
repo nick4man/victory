@@ -40,7 +40,7 @@ RUN apt-get update -qq && \
         libyaml-dev \
         git && \
     rm -rf /var/lib/apt/lists/*
-COPY Gemfile Gemfile.lock ./
+COPY Gemfile ./
 RUN bundle install
 
 # dev: прежний единственный образ. Гемы development/test на месте, ассеты не

@@ -60,8 +60,10 @@ jobs:
           bundler-cache: true
 
       - name: Run bundler-audit
-        # `update` syncs the local vulnerability DB before the check.
+        # Lock в репо не коммитится — резолвим на лету, затем `update` синкает
+        # локальную БУ уязвимостей перед проверкой.
         run: |
+          bundle lock
           bundle exec bundle-audit update
           bundle exec bundle-audit check
 
