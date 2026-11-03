@@ -44,7 +44,7 @@ jobs:
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: k3
+          kimi_model: kimi-for-coding
 
           # Трекинг-прогресс одним sticky-комментарием.
           track_progress: true
