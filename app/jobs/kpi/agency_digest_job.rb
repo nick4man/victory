@@ -26,16 +26,25 @@ module Kpi
 
     def send_to_directors(text)
       client = Telegram::Client.new
-      recipients = TelegramUser.directors.active + TelegramUser.where(role: 'admin').active
-      recipients.uniq.each do |r|
+      recipients = (TelegramUser.directors.active + TelegramUser.where(role: 'admin').active).uniq
+
+      attempted = 0
+      failed = 0
+      recipients.each do |r|
         chat_id = r.dm_chat_id || r.tg_user_id
         next if chat_id.blank?
 
+        attempted += 1
         client.send_message(text, chat_id: chat_id, parse_mode: 'HTML',
                                   disable_web_page_preview: true)
       rescue Telegram::Client::Error => e
+        failed += 1
         Rails.logger.warn("[Kpi::AgencyDigestJob] DM to #{r.mention} failed: #{e.message}")
       end
+
+      # Сеть до TG API лежала целиком — дайджест не ушёл никому. Raise, чтобы
+      # Sidekiq retry повторил позже, а не терять дневной дайджест молча.
+      raise "agency digest not delivered: #{failed}/#{attempted} sends failed" if attempted.positive? && failed == attempted
     end
   end
 end

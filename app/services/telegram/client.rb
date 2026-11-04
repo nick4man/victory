@@ -13,6 +13,18 @@ module Telegram
 
     BASE = 'https://api.telegram.org'
 
+    # Транзиентные сетевые ошибки. TG IP-диапазоны периодически режутся на
+    # хост-уровне (SSL EOF / connect timeout к api.telegram.org при живой сети),
+    # поэтому их оборачиваем в Telegram::Client::Error с ретраями — иначе они
+    # пролетали мимо `rescue Telegram::Client::Error` у callers и валили job'ы.
+    NETWORK_ERRORS = [
+      Net::OpenTimeout, Net::ReadTimeout, Timeout::Error,
+      OpenSSL::SSL::SSLError, Errno::ECONNRESET, Errno::ECONNREFUSED,
+      Errno::EHOSTUNREACH, Errno::ENETUNREACH, SocketError, EOFError
+    ].freeze
+
+    NETWORK_RETRIES = 2
+
     def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
       raise Error, 'TELEGRAM_BOT_TOKEN not set' if token.blank?
 
@@ -127,8 +139,10 @@ module Telegram
       uri = URI("#{BASE}/bot#{@token}/sendDocument")
       req = Net::HTTP::Post.new(uri, 'Content-Type' => "multipart/form-data; boundary=#{boundary}")
       req.body = parts
-      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true,
-                                                open_timeout: 5, read_timeout: 60) { |h| h.request(req) }
+      res = with_network_retry('sendDocument') do
+        Net::HTTP.start(uri.host, uri.port, use_ssl: true,
+                                            open_timeout: 5, read_timeout: 60) { |h| h.request(req) }
+      end
       data = begin
         JSON.parse(res.body)
       rescue StandardError
@@ -281,6 +295,7 @@ module Telegram
     # Не создаёт IO и не закрывает его — caller отвечает за lifecycle.
     def stream_to_io(remote_path, io)
       uri = URI("#{BASE}/file/bot#{@token}/#{remote_path}")
+      # Без ретрая: повторный запуск дописал бы тело файла в io второй раз.
       Net::HTTP.start(uri.host, uri.port, use_ssl: true,
                                           open_timeout: 5, read_timeout: 60) do |http|
         http.request(Net::HTTP::Get.new(uri)) do |response|
@@ -290,6 +305,25 @@ module Telegram
         end
       end
       io
+    rescue *NETWORK_ERRORS => e
+      raise Error, "Telegram file download network error: #{e.class}: #{e.message}"
+    end
+
+    # Выполняет HTTP-вызов с ретраями транзиентных сетевых ошибок (NETWORK_RETRIES
+    # дополнительных попыток с растущей паузой), затем оборачивает в Error.
+    def with_network_retry(label)
+      attempts = 0
+      begin
+        yield
+      rescue *NETWORK_ERRORS => e
+        attempts += 1
+        if attempts <= NETWORK_RETRIES
+          Rails.logger.warn("[Telegram::Client] #{label} network error #{e.class}, retry #{attempts}/#{NETWORK_RETRIES}")
+          sleep(attempts * 2)
+          retry
+        end
+        raise Error, "Telegram #{label}: network error after #{attempts} attempts: #{e.class}: #{e.message}"
+      end
     end
 
     def api_call(method, body = {}, retried: false)
@@ -297,8 +331,10 @@ module Telegram
       req = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json')
       req.body = JSON.generate(body) unless body.empty?
 
-      res = Net::HTTP.start(uri.host, uri.port, use_ssl: true,
-                                                open_timeout: 5, read_timeout: 30) { |h| h.request(req) }
+      res = with_network_retry(method) do
+        Net::HTTP.start(uri.host, uri.port, use_ssl: true,
+                                            open_timeout: 5, read_timeout: 30) { |h| h.request(req) }
+      end
       data = begin
         JSON.parse(res.body)
       rescue StandardError
