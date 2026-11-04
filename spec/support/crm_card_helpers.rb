@@ -5,7 +5,7 @@
 # содержимого config/crm_permissions.yml, которое правит руководитель.
 module CrmCardHelpers
   CRM_TEST_POSITIONS = {
-    '89884' => { 'title' => 'Генеральный директор', 'capabilities' => %w[create_lead create_object moderate] },
+    '89884' => { 'title' => 'Генеральный директор', 'capabilities' => %w[create_lead create_object moderate export] },
     '89879' => { 'title' => 'Агент', 'capabilities' => %w[create_lead create_object] },
     '89878' => { 'title' => 'Стажер', 'capabilities' => %w[create_lead] }
   }.freeze

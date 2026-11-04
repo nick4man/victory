@@ -19,6 +19,10 @@ module CrmCards
       { text: text(card), keyboard: keyboard(card, viewer, Permissions.for(viewer)) }
     end
 
+    # Лимит Telegram — 4096; оставляем запас на заголовок, который Notifier
+    # приписывает сверху.
+    TEXT_LIMIT = 3600
+
     def text(card)
       lines = [header(card),
                "Статус: #{CrmCard::STATUS_LABELS[card.status]}",
@@ -31,10 +35,14 @@ module CrmCards
         lines << "#{field.label}: #{value.nil? ? '—' : escape(plain_value(field, value))}"
       end
       lines << ''
+      lines.concat(note_lines(card))
       lines.concat(staff_test_lines(card))
       lines.concat(check_lines(card))
       lines.concat(status_lines(card))
-      lines.join("\n")
+      # Страховка от лимита Telegram: карточка, которая не влезла, не открывается
+      # вовсе, а отказ приходит уже на отправке и выглядит как «не удалось
+      # написать в личку». Лучше обрезанная карточка, чем никакой.
+      lines.join("\n").truncate(TEXT_LIMIT, omission: "\n<i>…карточка обрезана, полностью — в CRM</i>")
     end
 
     # Значение без HTML — для кнопок и для экранирования снаружи.
@@ -52,24 +60,50 @@ module CrmCards
 
       moderator = perms.can?(:moderate)
       owner = card.responsible&.id == viewer.id
-      case card.status
-      when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
-      when 'pending_review' then moderator_rows(card) if moderator
-      when 'approved' then approved_rows(card, owner, moderator)
-      when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
-      when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead? && card.crm_id.blank?
-      end || []
+      rows = case card.status
+             when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
+             when 'pending_review' then moderator_rows(card) if moderator
+             when 'approved' then approved_rows(card, owner, moderator, perms)
+             when 'exporting' then retry_rows(card, moderator)
+             # Сбой выгрузки — повтор без ожидания: ждать уже нечего.
+             when 'export_failed'
+               [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+                 moderator && card.kind_lead? && card.crm_id.blank?
+             end || []
+      # Заметку дописывают на любой стадии, включая уже выгруженную: работа с
+      # клиентом не заканчивается записью в CRM.
+      rows += [[button('📝 Добавить заметку', "wiz:s:crm_note:#{card.id}")]] if owner || moderator
+      rows
     end
 
-    # Объект вносит в CRM ответственный; заявка, не ушедшая в выгрузку за
-    # 15 минут (джоб не встал в очередь), — повторяется модератором. Если
-    # crm_id уже проставлен, Workflow#retry_export! всё равно откажет
-    # (заявка уже создана в CRM) — кнопку, которая всегда отвечает «нельзя»,
-    # не показываем вовсе (см. CardView doc-comment).
-    def approved_rows(card, owner, moderator)
-      return [[button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")]] if card.kind_object? && (owner || moderator)
+    def retry_rows(card, moderator)
+      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if
+        moderator && card.export_stale? && card.crm_id.blank?
+    end
 
-      [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
+    # Одобренная карточка ждёт решения руководителя: до него никаких кнопок
+    # выгрузки у автора нет. После разрешения объект вносит в CRM ответственный;
+    # заявка, не ушедшая в выгрузку за 15 минут (джоб не встал в очередь), —
+    # повторяется модератором. Если crm_id уже проставлен, Workflow#retry_export!
+    # всё равно откажет (заявка уже создана в CRM) — кнопку, которая всегда
+    # отвечает «нельзя», не показываем вовсе (см. CardView doc-comment).
+    def approved_rows(card, owner, moderator, perms)
+      rows = []
+      if card.released_at.blank?
+        rows << [button(release_label(card), "wiz:s:crm_release:#{card.id}")] if perms.can?(:export)
+        # Пока карточка не ушла в CRM, её ещё можно вернуть автору: за время
+        # ожидания решения лид мог закрыться, и выгружать станет нечего.
+        rows << [button('↩️ На доработку', "wiz:s:crm_rework:#{card.id}")] if moderator
+        return rows
+      end
+
+      rows << [button('📥 Внесено в CRM', "wiz:s:crm_manual:#{card.id}")] if card.kind_object? && (owner || moderator)
+      rows << [button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")] if moderator && card.export_stale? && card.crm_id.blank?
+      rows
+    end
+
+    def release_label(card)
+      card.kind_lead? ? '📤 Выгрузить в CRM' : '📤 Разрешить внесение'
     end
 
     def author_rows(card)
@@ -88,6 +122,31 @@ module CrmCards
     def header(card)
       title = "📋 <b>#{KIND_TITLES[card.kind]} · карточка ##{card.id}</b>"
       card.lead_event_id ? "#{title} · лид ##{card.lead_event_id}" : title
+    end
+
+    # Последние записи — свежие сверху. Полная история у лида и в CRM: в
+    # карточку кладём три и режем длину каждой, иначе сообщение перестанет
+    # влезать в лимит Telegram и карточка не откроется вовсе — ни у автора,
+    # ни у модератора, которому её отправили.
+    NOTES_SHOWN = 3
+    NOTE_PREVIEW = 300
+
+    def note_lines(card)
+      notes = card.notes.recent.limit(NOTES_SHOWN).to_a
+      return [] if notes.empty?
+
+      lines = ['📝 <b>Заметки</b>']
+      lines += notes.map { |n| note_line(n, card) }
+      total = card.notes.count
+      lines << "<i>…всего записей: #{total}</i>" if total > NOTES_SHOWN
+      lines << ''
+      lines
+    end
+
+    def note_line(note, card)
+      mark = '⏳ ' if card.crm_id.present? && !note.synced?
+      "• #{mark}#{Formatters::DateFormat.fmt_dt(note.created_at)} #{escape(note.author_name)}: " \
+        "#{escape(note.note.to_s.truncate(NOTE_PREVIEW))}"
     end
 
     # Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
@@ -110,11 +169,17 @@ module CrmCards
         card.check_errors.map { |e| "• #{escape(error_label(card, e['field']))}: #{escape(e['message'])}" }
     end
 
+    AWAITING_RELEASE_HINT = '⏳ Одобрена. Ждёт решения руководителя о выгрузке в CRM — вносить ничего не нужно.'
+
     def status_lines(card)
       case card.status
       when 'needs_rework'
         ['', "↩️ <b>Вернули на доработку</b> #{escape(card.reviewer&.mention)}: #{escape(card.last_rework_comment)}"]
       when 'approved'
+        # Пока руководитель не разрешил выгрузку, звать автора вносить объект
+        # в CRM нельзя: кнопки «Внесено в CRM» у него ещё нет, а внесёт он по
+        # этой подсказке руками — и разрешение окажется ни при чём.
+        return ['', AWAITING_RELEASE_HINT] if card.released_at.blank?
         return ['', MANUAL_EXPORT_HINT] if card.kind_object?
 
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []

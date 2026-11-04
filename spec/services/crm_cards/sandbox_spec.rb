@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe 'песочница карточек CRM (тестовый бот)' do
   let(:notifier) do
-    instance_double(CrmCards::Notifier, submitted: nil, returned: nil, approved: nil, exported: nil, export_failed: nil)
+    instance_double(CrmCards::Notifier, submitted: nil, returned: nil, approved: nil, released: nil, exported: nil, export_failed: nil)
   end
   let(:workflow) { CrmCards::Workflow.new(notifier: notifier) }
 
@@ -87,6 +87,7 @@ RSpec.describe 'песочница карточек CRM (тестовый бот
     in_test do
       workflow.submit!(card, actor: agent)
       workflow.approve!(card.reload, actor: director)
+      workflow.release_for_export!(card.reload, actor: director)
     end
     CrmCards::ExportJob.perform_now(card.id)
 

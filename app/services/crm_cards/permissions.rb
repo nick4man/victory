@@ -15,7 +15,7 @@ module CrmCards
   # Отказ по умолчанию и всегда с причиной — сотрудник должен понять, что
   # чинить, а не гадать, почему кнопка не работает.
   class Permissions
-    CAPABILITIES = %w[create_lead create_object moderate].freeze
+    CAPABILITIES = %w[create_lead create_object moderate export].freeze
     CONFIG_PATH = Rails.root.join('config/crm_permissions.yml').freeze
 
     Result = Struct.new(:capabilities, :crm_user, :position_title, :denial, keyword_init: true) do
@@ -28,12 +28,19 @@ module CrmCards
       new(tg_user).call
     end
 
+    # @return [Array<TelegramUser>] кому карточка уходит на модерацию
+    def self.moderators = holders_of(:moderate)
+
+    # @return [Array<TelegramUser>] кто решает, отправлять ли одобренное в CRM.
+    # Отдельно от модераторов намеренно: одобрить и выгрузить — разные решения.
+    def self.exporters = holders_of(:export)
+
     # @return [Array<TelegramUser>]
-    def self.moderators
+    def self.holders_of(capability)
       scope = ::TelegramUser.active.where.not(topnlab_user_id: nil)
       sandbox_ids = sandbox_capabilities.keys.map(&:to_i)
       scope = scope.or(::TelegramUser.active.where(tg_user_id: sandbox_ids)) if sandbox_ids.any?
-      scope.order(:id).select { |staff| self.for(staff).can?(:moderate) }
+      scope.order(:id).select { |staff| self.for(staff).can?(capability) }
     end
 
     # Только тестовый бот: права по списку TELEGRAM_TEST_CAPABILITIES —

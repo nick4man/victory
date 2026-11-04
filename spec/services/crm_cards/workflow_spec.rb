@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe CrmCards::Workflow do
   let(:notifier) do
-    instance_double(CrmCards::Notifier, submitted: nil, returned: nil, approved: nil, exported: nil, export_failed: nil)
+    instance_double(CrmCards::Notifier, submitted: nil, returned: nil, approved: nil, released: nil, exported: nil, export_failed: nil)
   end
   let(:exporter) { instance_double(CrmCards::LeadExporter) }
   let(:workflow) { described_class.new(notifier: notifier, exporter: exporter) }
@@ -136,10 +136,90 @@ RSpec.describe CrmCards::Workflow do
       expect(workflow.update_fields!(card, { 'name' => 'Анна Смирнова' }, actor: director)).to be_ok
     end
 
-    it 'одобрение заявки ставит выгрузку в очередь' do
-      expect { workflow.approve!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
-      expect(card.reload).to have_attributes(status: 'approved', reviewer_id: director.id, export_mode: 'api')
-      expect(notifier).to have_received(:approved).with(card)
+    it 'одобрение заявки выгрузку НЕ запускает — её разрешает руководитель' do
+      expect { workflow.approve!(card, actor: director) }.not_to have_enqueued_job(CrmCards::ExportJob)
+      expect(card.reload).to have_attributes(status: 'approved', reviewer_id: director.id, export_mode: 'api',
+                                             released_at: nil)
+      expect(notifier).to have_received(:approved).with(card, exporters: [director])
+    end
+
+    it 'разрешение руководителя ставит выгрузку в очередь и записывает, кто решил' do
+      workflow.approve!(card, actor: director)
+
+      expect { workflow.release_for_export!(card.reload, actor: director) }
+        .to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+      expect(card.reload).to have_attributes(released_by_id: director.id)
+      expect(card.released_at).to be_present
+      expect(notifier).to have_received(:released).with(card)
+    end
+
+    it 'без права выгрузки разрешить нельзя' do
+      workflow.approve!(card, actor: director)
+
+      expect(workflow.release_for_export!(card.reload, actor: agent).error).to include('руководитель')
+      expect(card.reload.released_at).to be_nil
+    end
+
+    it 'повторное разрешение не заводит вторую выгрузку' do
+      workflow.approve!(card, actor: director)
+      workflow.release_for_export!(card.reload, actor: director)
+
+      expect { workflow.release_for_export!(card.reload, actor: director) }
+        .not_to have_enqueued_job(CrmCards::ExportJob)
+    end
+
+    it 'лид изменился после показа подтверждения — выгрузки нет, решать заново' do
+      workflow.approve!(card, actor: director)
+      seen = card.reload.release_digest
+      # Пока руководитель думал, лид закрыли. Подтверждал он не это.
+      lead.update!(current_stage: 'closed_lost')
+
+      result = workflow.release_for_export!(card.reload, actor: director, expected: seen)
+
+      expect(result.error).to include('изменилась после того, как ты её открыл')
+      expect(card.reload.released_at).to be_nil
+    end
+
+    it 'замечания по лиду выгрузку не запрещают — решение за человеком' do
+      workflow.approve!(card, actor: director)
+      lead.update!(current_stage: 'closed_lost')
+      # Отпечаток снят уже после изменения: руководитель видит замечания и решает сам.
+      seen = card.reload.release_digest
+
+      expect(workflow.release_for_export!(card.reload, actor: director, expected: seen)).to be_ok
+      expect(card.reload.released_at).to be_present
+    end
+
+    it 'одобренную карточку, пока она не ушла в CRM, можно вернуть автору' do
+      workflow.approve!(card, actor: director)
+      lead.update!(current_stage: 'closed_lost')
+
+      result = workflow.return_for_rework!(card.reload, actor: director, comment: 'лид закрыли, карточка не нужна')
+
+      expect(result).to be_ok
+      expect(card.reload).to be_status_needs_rework
+    end
+
+    it 'ушедшую в CRM карточку вернуть уже нельзя' do
+      workflow.approve!(card, actor: director)
+      workflow.release_for_export!(card.reload, actor: director)
+
+      expect(workflow.return_for_rework!(card.reload, actor: director, comment: 'передумали').error)
+        .to include('вернуть на доработку нельзя')
+    end
+
+    it 'одобренная, но не разрешённая карточка застрявшей не считается' do
+      workflow.approve!(card, actor: director)
+      card.reload.update_columns(updated_at: 20.minutes.ago)
+
+      expect(card.reload).not_to be_export_stale
+    end
+
+    it 'одобренная, но не разрешённая заявка не выгружается' do
+      workflow.approve!(card, actor: director)
+
+      expect(workflow.export!(card.reload).error).to include('не разрешена')
+      expect(card.reload).to be_status_approved
     end
 
     it 'лид закрылся, пока карточка ждала, — одобрить нельзя' do
@@ -155,6 +235,7 @@ RSpec.describe CrmCards::Workflow do
     let(:card) do
       filled_card.tap { |c| workflow.submit!(c, actor: agent) }.reload
                  .tap { |c| workflow.approve!(c, actor: director) }.reload
+                 .tap { |c| workflow.release_for_export!(c, actor: director) }.reload
     end
     let(:outcome) { CrmCards::LeadExporter::Outcome.new(crm_id: '4455', warning: nil) }
 

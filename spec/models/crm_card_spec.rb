@@ -59,7 +59,11 @@ RSpec.describe CrmCard do
     card.update_columns(updated_at: 16.minutes.ago)
     expect(card.export_stale?).to be(true)
 
+    # Одобренная, но не разрешённая карточка ждёт человека, а не джоба.
     card.update_columns(status: 'approved')
+    expect(card.reload.export_stale?).to be(false)
+
+    card.update_columns(released_at: 16.minutes.ago, updated_at: 16.minutes.ago)
     expect(card.reload.export_stale?).to be(true)
 
     object = described_class.create!(kind: 'object', author: author, status: 'approved')
