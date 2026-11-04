@@ -127,7 +127,7 @@ jobs:
           # kimi_platform: open-cn / open-intl и своя модель.
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: kimi-for-coding 
+          kimi_model: kimi-for-coding
 
           # Один комментарий на прогон вместо цепочки.
           use_sticky_comment: true
