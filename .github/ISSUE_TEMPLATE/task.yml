@@ -1,0 +1,68 @@
+name: "Задача для агента"
+description: "Фича, доработка или рефакторинг, которые должен сделать Hermes-агент"
+title: "[task] "
+labels: ["agent:hermes"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Как это читается.** Hermes снимает issue с меткой `agent:hermes` каждые 5 минут, заводит карточку
+        на kanban-доске и запускает воркера. Воркер работает в ветке `kanban/issue-<N>-…` от выбранного
+        `dev/*`, открывает PR в этот `dev/*`; Kimi ревьюит, CI проверяет, при вердикте «MERGE» PR вливается сам.
+        В `main` `dev/*` мержит человек. Чем точнее критерии приёмки — тем меньше итераций.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Направление (базовая ветка)
+      description: В какую dev-ветку пойдёт PR. Определяет и контекст, и куда мержится результат.
+      options:
+        - "dev/chat — чат-виджет, Telegram-боты, лиды"
+        - "dev/seo — лендинги, ЖК, SEO, публичный сайт"
+        - "dev/upgrade — зависимости, Rails/Ruby, CI, инфраструктура"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Что нужно сделать
+      description: Поведение «как должно быть». Одна задача — одна issue; зависимые части — отдельные issue со ссылками.
+      placeholder: "Клиент, отправивший заявку из TG DM, получает подтверждение сразу после создания LeadEvent."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Критерии приёмки
+      description: Проверяемые пункты. Воркер обязан закрыть каждый и показать, чем проверил.
+      placeholder: |
+        - [ ] spec/services/... зелёный, добавлен кейс на ...
+        - [ ] `bin/rb --db bundle exec rspec spec/services/telegram` проходит
+        - [ ] поведение X не изменилось
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Где это живёт / что НЕ трогать
+      description: Файлы, сервисы, модели. Явные запреты экономят ревью-итерации.
+      placeholder: "app/services/telegram/client_bot/*, spec/… . Не трогать Lead::Intake и Topnlab sync."
+  - type: dropdown
+    id: size
+    attributes:
+      label: Размер
+      description: Больше ~500 строк / ~10 файлов — дробите на стек issue.
+      options:
+        - S — до 100 строк, 1–3 файла
+        - M — до 500 строк
+        - L — нужен стек из нескольких issue (укажите порядок в описании)
+    validations:
+      required: true
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: Поискал дубликаты в issues и открытых PR
+          required: true
+        - label: Задача не требует секретов, доступа к проду или ручных действий на хосте (иначе — метка `needs-human`)
+          required: true

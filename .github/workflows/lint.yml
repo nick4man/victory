@@ -2,7 +2,8 @@ name: Lint & security
 
 on:
   pull_request:
-    branches: [main]
+    # dev/* — интеграционные ветки агентного конвейера (docs/runbooks/agent-pipeline.md)
+    branches: [main, 'dev/**']
   push:
     branches: [main]
   workflow_dispatch:

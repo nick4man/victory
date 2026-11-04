@@ -1,0 +1,107 @@
+name: Automerge agent PRs
+
+# Автослияние PR агентов в интеграционные ветки dev/* без участия человека.
+# Условия — ВСЕ сразу (см. docs/runbooks/agent-pipeline.md):
+#   • base — dev/*, head — kanban/* | claude/* | kimi/*  (в main никогда);
+#   • на PR есть метка `automerge` (ставит конвейер при создании PR);
+#   • последнее ревью Kimi (kimi.yml, job «Kimi Review») закончилось строкой
+#     `VERDICT: MERGE`, и оно относится к текущему head SHA;
+#   • все check runs на head SHA завершены и зелёные, среди них есть
+#     обязательный набор: RuboCop, RSpec, Brakeman, bundler-audit, services-check,
+#     образ web, Kimi Review.
+# Запускаемся по завершении любого из трёх workflow — кто последним
+# позеленел, тот и мержит. Комментарии бота НЕ триггерят workflow (события от
+# GITHUB_TOKEN не порождают новых прогонов), поэтому слушаем workflow_run.
+on:
+  workflow_run:
+    workflows: ["Lint & security", "Build images", "Kimi Code"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  actions: read
+
+concurrency:
+  group: automerge-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    name: Слить PR агента в dev/*
+    # workflow_run для PR из форков тут не ожидается; PR из веток репозитория — да.
+    if: github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить условия и слить
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          # --- PR по head SHA --------------------------------------------------
+          PR_JSON=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq \
+            '[.[] | select(.state=="open")] | first // empty')
+          if [ -z "$PR_JSON" ]; then echo "нет открытого PR для $SHA"; exit 0; fi
+          NUM=$(jq -r .number <<<"$PR_JSON")
+          BASE=$(jq -r .base.ref <<<"$PR_JSON")
+          HEAD=$(jq -r .head.ref <<<"$PR_JSON")
+          DRAFT=$(jq -r .draft <<<"$PR_JSON")
+          LABELS=$(jq -r '[.labels[].name] | join(",")' <<<"$PR_JSON")
+          echo "PR #$NUM  $HEAD -> $BASE  labels=[$LABELS] draft=$DRAFT"
+
+          # --- политика веток / меток -------------------------------------------
+          case "$BASE" in dev/*) ;; *) echo "base '$BASE' не dev/* — пропуск"; exit 0;; esac
+          case "$HEAD" in kanban/*|claude/*|kimi/*) ;; *) echo "head '$HEAD' не агентская — пропуск"; exit 0;; esac
+          [[ ",$LABELS," == *",automerge,"* ]] || { echo "нет метки automerge — пропуск"; exit 0; }
+          [[ ",$LABELS," == *",needs-human,"* ]] && { echo "метка needs-human — стоп"; exit 0; }
+          [ "$DRAFT" = false ] || { echo "draft — пропуск"; exit 0; }
+
+          # --- вердикт Kimi: последний комментарий бота с VERDICT -------------
+          VERDICT_BODY=$(gh api "repos/$REPO/issues/$NUM/comments?per_page=100" --paginate --jq \
+            '[.[] | select(.user.login=="github-actions[bot]") | select(.body | test("VERDICT: (MERGE|CHANGES)"))] | last | .body // empty')
+          if [ -z "$VERDICT_BODY" ]; then echo "вердикта Kimi ещё нет — ждём"; exit 0; fi
+          VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' <<<"$VERDICT_BODY" | tail -1)
+          echo "вердикт: $VERDICT"
+          [ "$VERDICT" = "VERDICT: MERGE" ] || { echo "ревью требует правок — не мержим"; exit 0; }
+          # Вердикт должен быть про текущий head: ревью упоминает SHA коммита (короткий или полный).
+          SHORT=${SHA:0:7}
+          if ! grep -q "$SHORT" <<<"$VERDICT_BODY"; then
+            echo "вердикт не ссылается на head $SHORT — вероятно, устарел после нового пуша; ждём свежее ревью"
+            exit 0
+          fi
+
+          # --- check runs на head SHA --------------------------------------------
+          RUNS=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --paginate --jq '.check_runs')
+          # Берём последнюю попытку каждого check по имени.
+          RUNS=$(jq -c 'group_by(.name) | map(max_by(.started_at))' <<<"$RUNS")
+          jq -r '.[] | "\(.status)\t\(.conclusion)\t\(.name)"' <<<"$RUNS" | sort -k3
+
+          PENDING=$(jq -r '[.[] | select(.status!="completed")] | length' <<<"$RUNS")
+          [ "$PENDING" = 0 ] || { echo "$PENDING проверок ещё идут — ждём следующего workflow_run"; exit 0; }
+          RED=$(jq -r '[.[] | select(.conclusion!="success" and .conclusion!="skipped" and .conclusion!="neutral")] | map(.name) | join(", ")' <<<"$RUNS")
+          [ -z "$RED" ] || { echo "красные проверки: $RED — не мержим"; exit 0; }
+
+          for need in "RuboCop" "RSpec" "Brakeman (security)" "bundler-audit (CVEs in Gemfile.lock)" \
+                      "Учёт и границы служб" "Образ web (+ zeitwerk:check)" "Kimi Review"; do
+            OK=$(jq -r --arg n "$need" '[.[] | select(.name==$n and .conclusion=="success")] | length' <<<"$RUNS")
+            [ "$OK" -ge 1 ] || { echo "обязательная проверка «$need» не найдена/не зелёная — ждём"; exit 0; }
+          done
+
+          # --- mergeable? -------------------------------------------------------
+          for _ in 1 2 3 4 5; do
+            M=$(gh api "repos/$REPO/pulls/$NUM" --jq '.mergeable')
+            [ "$M" = "null" ] || break; sleep 5
+          done
+          [ "$M" = true ] || { echo "PR не mergeable ($M) — конфликт с $BASE, нужен ребейз"; \
+            gh pr comment "$NUM" --body "🤖 automerge: все условия выполнены, но PR конфликтует с \`$BASE\`. Нужен ребейз на свежий \`$BASE\`."; exit 0; }
+
+          # --- merge ------------------------------------------------------------
+          gh pr merge "$NUM" --squash --delete-branch \
+            --subject "$(jq -r .title <<<"$PR_JSON") (#$NUM)" \
+            --body "Автослияние в $BASE: CI зелёный, ревью Kimi — VERDICT: MERGE (head $SHORT)."
+          echo "PR #$NUM слит в $BASE"

@@ -15,7 +15,8 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # dev/* — интеграционные ветки агентного конвейера (docs/runbooks/agent-pipeline.md)
+    branches: [main, 'dev/**']
   workflow_dispatch:
 
 permissions:

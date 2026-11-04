@@ -1,0 +1,64 @@
+name: "Баг"
+description: "Что-то сломано на проде/стейджинге или в тестах"
+title: "[bug] "
+labels: ["bug", "agent:hermes"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Без воспроизведения агент не начнёт фикс — он сначала напишет падающий spec по шагам ниже.
+        Без шагов карточка уйдёт в `blocked: needs_input`.
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Направление (базовая ветка)
+      options:
+        - "dev/chat — чат-виджет, Telegram-боты, лиды"
+        - "dev/seo — лендинги, ЖК, SEO, публичный сайт"
+        - "dev/upgrade — зависимости, Rails/Ruby, CI, инфраструктура"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Что происходит
+      description: Факт, не интерпретация. Ошибка из логов — дословно (`journalctl`/Sentry/лог контейнера).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что должно происходить
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Шаги воспроизведения
+      placeholder: |
+        1. Написать боту в DM текст «…»
+        2. …
+        Данные: tg_user_id=…, property_id=…
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Где наблюдается
+      placeholder: "прод victory62.org, тег sha-abc1234 / staging / spec локально"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Логи / стек
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Перед отправкой
+      options:
+        - label: В логах нет секретов и персональных данных клиентов (телефоны, ФИО замаскированы)
+          required: true
+        - label: Поискал дубликаты в issues
+          required: true
