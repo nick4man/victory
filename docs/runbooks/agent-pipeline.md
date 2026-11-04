@@ -10,6 +10,8 @@ CI проверяет, PR сам вливается в интеграционн�
 ## Поток
 
 ```
+сырое пожелание → issue с agent:draft → cron victory-issue-drafts переписывает
+  тело по форме и ставит agent:triage (см. «Черновики agent:draft»)
 issue (форма .github/ISSUE_TEMPLATE/task.yml|bug.yml) → метка agent:triage
   │  человек проверяет и меняет метку на agent:hermes (это и есть авторизация запуска)
   │  cron Hermes на хосте victory, каждые 5 мин: ~/.hermes/scripts/gh-issues-to-kanban.py
@@ -35,6 +37,16 @@ dev/* → main: PR открывает человек, мержит челове�
 прочтения issue — хостовый синк берёт только её и дополнительно проверяет
 автора (`author_association` OWNER/MEMBER/COLLABORATOR) — issue чужого автора
 с `agent:hermes` получает `needs-human` и не идёт в работу.
+
+## Черновики `agent:draft`
+
+Сырое пожелание заводится как issue с меткой `agent:draft` (форма-черновик или
+вручную). Cron Hermes `victory-issue-drafts` (скилл `victory-issue-writer`)
+переписывает тело по форме task/bug, снимает `agent:draft`, ставит
+`agent:triage` и оставляет комментарий. Владелец проверяет текст и меняет
+`agent:triage` → `agent:hermes` (см. «Авторизация запуска»). Если запрос
+неясен, агент задаёт вопросы комментарием и ставит `needs-human`; метку
+`agent:hermes` агент никогда не ставит сам.
 
 ## Направления (dev/*)
 
