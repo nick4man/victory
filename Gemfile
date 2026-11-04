@@ -33,7 +33,7 @@ gem 'rails-html-sanitizer', '>= 1.7.2' # XSS (GHSA-cj75-f6xr-r4g7), ReDoS + shar
 gem 'crass', '>= 1.0.8' # DoS advisories (транзитивно через loofah)
 gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
 gem 'msgpack', '>= 1.8.2' # CVE-2026-54522 use-after-free (DFVULN-839)
-gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/json-schema)
+gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/capybara)
 
 # Assets
 gem 'sprockets-rails'
@@ -73,7 +73,7 @@ gem 'redis', '~> 5.0'
 gem 'kaminari', '~> 1.2'
 
 # Search
-gem 'ransack', '~> 4.4', '>= 4.4.3' # DoS + XSS advisories (04.11.26)
+gem 'ransack', '~> 4.4', '>= 4.4.4' # DoS + XSS advisories (04.11.26)
 gem 'pg_search', '~> 2.3'
 
 # URL slugs
