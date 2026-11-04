@@ -44,7 +44,7 @@ jobs:
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: k3
+          kimi_model: k3.1-pro
 
           # Трекинг-прогресс одним sticky-комментарием.
           track_progress: true
@@ -77,9 +77,10 @@ jobs:
             6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
                services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
 
-            Замечания — inline-комментариями к конкретным строкам diff.
+            Замечания — inline-комментариями к конкретным строкам diff и вызовом @kimi для отладки.
             Итог — одним верхнеуровневым комментарием: вердикт
             (можно мерджить / нужны правки), список блокеров, список нит-пиков.
+
 
           # Read-only обзор diff + постинг комментариев; ветки не пушим.
           kimi_args: |
@@ -126,7 +127,7 @@ jobs:
           # kimi_platform: open-cn / open-intl и своя модель.
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: k3
+          kimi_model: kimi-for-coding 
 
           # Один комментарий на прогон вместо цепочки.
           use_sticky_comment: true
@@ -139,4 +140,4 @@ jobs:
           # отдельный workflow «Lint & security».
           kimi_args: |
             --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(docker:*),Bash(gh:*)"
