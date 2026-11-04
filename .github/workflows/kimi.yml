@@ -140,4 +140,4 @@ jobs:
           # отдельный workflow «Lint & security».
           kimi_args: |
             --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(docker:*),Bash(gh:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(docker compose exec -T web:bin/rb *)"
