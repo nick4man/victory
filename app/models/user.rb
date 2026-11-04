@@ -401,7 +401,7 @@ class User < ApplicationRecord
 
   def set_preference(key, value)
     self.preferences ||= {}
-    self.preferences[key.to_s] = value
+    preferences[key.to_s] = value
     save
   end
 
@@ -413,13 +413,13 @@ class User < ApplicationRecord
 
   def enable_notification(type)
     self.notification_settings ||= {}
-    self.notification_settings[type.to_s] = true
+    notification_settings[type.to_s] = true
     save
   end
 
   def disable_notification(type)
     self.notification_settings ||= {}
-    self.notification_settings[type.to_s] = false
+    notification_settings[type.to_s] = false
     save
   end
 

@@ -125,7 +125,7 @@ RSpec.describe Telegram::WorkBot::Callbacks::PhotoDispositionCallback do
       expect(pa['step']).to eq('choose_share_staff')
 
       expect(tg_client).to have_received(:edit_message_text) do |text, **kwargs|
-        expect(text).to match(/Кому переслать/)
+        expect(text).to include('Кому переслать')
         callbacks = kwargs[:reply_markup][:inline_keyboard].flatten.map { |b| b[:callback_data] }
         expect(callbacks).to include("photo:share_to:#{staff.id}")
       end

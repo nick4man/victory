@@ -333,7 +333,7 @@ class Inquiry < ApplicationRecord
   # Metadata helpers
   def set_metadata(key, value)
     self.metadata ||= {}
-    self.metadata[key.to_s] = value
+    metadata[key.to_s] = value
     save
   end
 
