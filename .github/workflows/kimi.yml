@@ -77,14 +77,16 @@ jobs:
             6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
                services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
 
-            Замечания — inline-комментариями к конкретным строкам diff и вызовом @kimi для отладки.
+            Замечания — inline-комментариями к конкретным строкам diff.
             Итог — одним верхнеуровневым комментарием: вердикт
             (можно мерджить / нужны правки), список блокеров, список нит-пиков.
 
-
           # Read-only обзор diff + постинг комментариев; ветки не пушим.
+          # kimi -p работает в auto-режиме: --allowedTools сами ничего не
+          # запрещают, ограничивают только --disallowedTools (deny идут первыми).
           kimi_args: |
             --max-turns 50
+            --disallowedTools "Write,Edit,Bash(git push:*),Bash(git commit:*),Bash(docker:*),Bash(gh api:*),Bash(gh pr merge:*),Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh secret:*),Bash(gh workflow:*),Bash(gh release:*),Bash(curl:*),Bash(wget:*)"
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
 
   kimi:
@@ -122,8 +124,8 @@ jobs:
         id: kimi
         uses: xuwenhao/kimi-code-action@v0   # для продакшена запиньте на SHA коммита
         with:
-          # API-ключ: Kimi Code Console (kimi_platform: code, модель k3 —
-          # нужен план Moderato+) или Open Platform — тогда
+          # API-ключ: Kimi Code Console (kimi_platform: code; k3/k3.1-pro —
+          # план Moderato+, ниже — kimi-for-coding) или Open Platform — тогда
           # kimi_platform: open-cn / open-intl и своя модель.
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
@@ -135,9 +137,13 @@ jobs:
           # Ветки агента — kimi/* вместо claude/*.
           branch_prefix: kimi/
 
-          # Лимиты и read-only Bash. --max-turns — потолок на runaway-прогон.
-          # Ruby/Postgres в раннере НЕТ — линтеры и спеки гоняет
-          # отдельный workflow «Lint & security».
+          # Лимиты. --max-turns — потолок на runaway-прогон.
+          # Ruby/Postgres/стека в раннере НЕТ — линтеры и спеки гоняет
+          # отдельный workflow «Lint & security»; docker тут бесполезен и опасен
+          # (privileged-контейнер рядом с KIMI_API_KEY и токеном contents: write).
+          # kimi -p в auto-режиме: ограничивают только --disallowedTools, а
+          # --allowedTools — лишь исключения из них. gh — только read-only.
           kimi_args: |
             --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(docker:*),Bash(gh:*)"
+            --disallowedTools "Bash(docker:*),Bash(gh api:*),Bash(gh pr merge:*),Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh pr review:*),Bash(gh issue close:*),Bash(gh issue edit:*),Bash(gh secret:*),Bash(gh variable:*),Bash(gh workflow:*),Bash(gh release:*),Bash(gh repo:*),Bash(curl:*),Bash(wget:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(gh run view:*),Bash(gh run list:*),Bash(gh pr checks:*),Bash(gh pr view:*),Bash(gh pr diff:*)"
