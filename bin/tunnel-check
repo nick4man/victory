@@ -1,0 +1,163 @@
+#!/usr/bin/env bash
+# bin/tunnel-check — мониторинг туннельного пути прод-контейнеров (sing-box).
+#
+# Runbook: docs/runbooks/docker-outbound-tunnel.md §4 шаг 3. Три инварианта:
+#   1. TG через туннель доступен (api.telegram.org → 302);
+#   2. RU direct не сломан (RU-сервис видит RU egress-IP хоста);
+#   3. non-RU выход идёт через туннель (ifconfig.me → IP VLESS-сервера).
+#
+# При несовпадении — алерт в staff-чат work-bot'а (токены из
+# /etc/victory-backup/backup.env, тот же источник, что у bin/backup) + запись
+# в лог. Кольцевая зависимость алертинга (гэп №5 runbook): при полностью
+# мёртвом туннеле TG-алерт может не дойти — это принято, SMSC-fallback нет.
+#
+#   bin/tunnel-check            # проверка + алерт при отклонении
+#   bin/tunnel-check --quiet    # без вывода при успехе (для cron)
+#
+# Переопределение ожидаемых IP: TUNNEL_EXPECT_IP / RU_EXPECT_IP (env),
+# путей: TUNNEL_CHECK_LOG / TUNNEL_CHECK_STATE (env).
+#
+# Подавление флапа: алерт дублируется только при смене состояния
+# (state-файл рядом с логом): FAIL → алерт, повторный FAIL — только в лог,
+# восстановление → отдельное ✅-сообщение.
+
+set -u
+
+CONTAINERS='victory-web-1 victory-sidekiq-1'
+TIMEOUT=8
+LOG_FILE="${TUNNEL_CHECK_LOG:-/home/q/victory/log/tunnel-check-cron.log}"
+STATE_FILE="${TUNNEL_CHECK_STATE:-/home/q/victory/log/tunnel-check.state}"
+BACKUP_ENV="${BACKUP_CONFIG:-/etc/victory-backup/backup.env}"
+
+TUNNEL_EXPECT_IP="${TUNNEL_EXPECT_IP:-93.95.229.192}"
+RU_EXPECT_IP="${RU_EXPECT_IP:-176.212.188.178}"
+
+QUIET=''
+[ "${1:-}" = '--quiet' ] && QUIET=1
+
+# Каталога лога может не быть (чистый ops-каталог) — иначе printf из log()
+# сыплет ошибками в cron-mail.
+mkdir -p -- "$(dirname "$LOG_FILE")" 2>/dev/null || LOG_FILE='/tmp/tunnel-check-cron.log'
+mkdir -p -- "$(dirname "$STATE_FILE")" 2>/dev/null || STATE_FILE='/tmp/tunnel-check.state'
+
+log() {
+  printf '%s %s\n' "$(date '+%d.%m.%y %H:%M:%S')" "$*" >> "$LOG_FILE"
+}
+
+say() {
+  [ -n "$QUIET" ] || echo "$*"
+}
+
+# curl внутри контейнера с одним повтором: внешние IP-echo (ifconfig.me)
+# периодически режут по rate-limit, одиночный таймаут — ложный алерт.
+cexec_retry() {
+  local c="$1" url="$2" out='' tries=0
+  while [ -z "$out" ] && [ "$tries" -lt 3 ]; do
+    out=$(cexec "$c" "$url")
+    tries=$((tries + 1))
+  done
+  printf '%s' "$out"
+}
+
+# curl внутри контейнера; в web/sidekiq он есть.
+cexec() {
+  local c="$1"; shift
+  docker exec "$c" curl -s --max-time "$TIMEOUT" "$@" 2>/dev/null
+}
+
+# RU-IP как его видит RU-сервис: noscript-блок ip.mail.ru содержит
+# «IP: <addr>». yandex.ru/internet/api/v0/ip больше не годится — отдаёт
+# 127.0.0.1 (проверено 04.11.26).
+ru_ip() {
+  cexec_retry "$1" 'https://ip.mail.ru/' | grep -oE 'IP: [0-9.]+' | grep -oE '[0-9.]+' | head -1
+}
+
+alert() {
+  local text="$1"
+  if [ ! -r "$BACKUP_ENV" ]; then
+    log "АЛЕРТ: $text"
+    log '  отправка невозможна: нет доступа к backup.env'
+    return 0
+  fi
+  # shellcheck source=/dev/null
+  . "$BACKUP_ENV"
+  if [ -z "${TELEGRAM_BOT_TOKEN:-}" ] || [ -z "${TELEGRAM_STAFF_CHAT_ID:-}" ]; then
+    log "АЛЕРТ: $text"
+    log '  отправка невозможна: TELEGRAM_BOT_TOKEN/TELEGRAM_STAFF_CHAT_ID пусты'
+    return 0
+  fi
+  local code
+  code=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+    -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_STAFF_CHAT_ID}" \
+    --data-urlencode "text=${text}" 2>/dev/null) || code='нет ответа'
+  if [ "$code" = 200 ]; then
+    log "АЛЕРТ отправлен: $text"
+  else
+    log "АЛЕРТ: $text"
+    log "  НЕ УДАЛОСЬ отправить (HTTP $code)"
+  fi
+}
+
+problems=''
+
+for c in $CONTAINERS; do
+  if ! docker ps --format '{{.Names}}' | grep -qx "$c"; then
+    problems="$problems
+● $c — контейнер не запущен"
+    continue
+  fi
+
+  # TG 302: до 3 попыток — краткий дёрг туннеля (смена outbound urltest)
+  # иначе даёт одиночный 000/таймаут и ложный алерт. cexec_retry сюда не
+  # подходит: curl с -w печатает '000' даже при ошибке, вывод непустой.
+  tg_code=''
+  tg_tries=0
+  while [ "$tg_code" != 302 ] && [ "$tg_tries" -lt 3 ]; do
+    tg_code=$(cexec "$c" -o /dev/null -w '%{http_code}' 'https://api.telegram.org/')
+    tg_tries=$((tg_tries + 1))
+  done
+  if [ "$tg_code" != 302 ]; then
+    problems="$problems
+● $c — api.telegram.org: ожидался 302, получен '$tg_code' (туннель мёртв или TG недоступен)"
+  fi
+
+  ip=$(ru_ip "$c")
+  if [ "$ip" != "$RU_EXPECT_IP" ]; then
+    problems="$problems
+● $c — RU direct: ожидался $RU_EXPECT_IP, получен '${ip:-нет ответа}'"
+  fi
+
+  ip=$(cexec_retry "$c" 'https://ifconfig.me')
+  if [ "$ip" != "$TUNNEL_EXPECT_IP" ]; then
+    problems="$problems
+● $c — туннельный выход: ожидался $TUNNEL_EXPECT_IP, получен '${ip:-нет ответа}'"
+  fi
+done
+
+# Предыдущее состояние — для подавления флапа: алерт только на смену.
+prev=$(cat "$STATE_FILE" 2>/dev/null || true)
+
+if [ -n "$problems" ]; then
+  if [ "$prev" = 'FAIL' ]; then
+    # Состояние уже FAIL — алерт отправлен ранее, в чат не дублируем.
+    log "FAIL (алерт подавлен — уже отправлен)$problems"
+    exit 1
+  fi
+  text="🚨 tunnel-check: отклонения туннельного пути$problems
+
+Хост: $(hostname). Проверка: bin/tunnel-check, runbook docs/runbooks/docker-outbound-tunnel.md"
+  { printf '%s\n' 'FAIL' > "$STATE_FILE"; } 2>/dev/null || true
+  alert "$text"
+  say "$text"
+  exit 1
+fi
+
+if [ "$prev" = 'FAIL' ]; then
+  { printf '%s\n' 'OK' > "$STATE_FILE"; } 2>/dev/null || true
+  alert "✅ tunnel-check: туннельный путь восстановлен ($(hostname))"
+fi
+
+log 'OK'
+say 'tunnel-check: OK'
+exit 0
