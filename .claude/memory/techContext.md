@@ -236,8 +236,10 @@ bundle exec sidekiq -C config/sidekiq.yml
 
 Отдельно, **не про приложение**: cron Hermes-агента на хосте
 (`hermes cron list` → `gh-issues-to-kanban`, каждые 5 мин) синхронизирует
-GitHub issue с меткой `agent:hermes` в kanban-доску `victory` —
-`docs/runbooks/agent-pipeline.md`.
+GitHub issue с меткой `agent:hermes` в kanban-доску `victory`; job
+`victory-issue-drafts` (каждые 10 мин) переписывает черновики `agent:draft` по
+форме task/bug и меняет метку на `agent:triage` — запуск в работу (`agent:hermes`)
+только вручную владельцем. Подробно — `docs/runbooks/agent-pipeline.md`.
 
 🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
 них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`

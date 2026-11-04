@@ -4,14 +4,16 @@
 
 Цель: задачи ставятся как GitHub issue, Hermes-агенты их делают, Kimi ревьюит,
 CI проверяет, PR сам вливается в интеграционную ветку `dev/*`. Человек нужен
-в трёх местах: написать issue, после прочтения сменить метку `agent:triage` →
-`agent:hermes` (это авторизация запуска), и смержить `dev/*` → `main`.
+в трёх местах: написать issue (или черновик — см. «Черновики»), после прочтения
+сменить метку `agent:triage` → `agent:hermes` (это авторизация запуска), и
+смержить `dev/*` → `main`.
 
 ## Поток
 
 ```
-сырое пожелание → issue с agent:draft → cron victory-issue-drafts переписывает
-  тело по форме и ставит agent:triage (см. «Черновики agent:draft»)
+[необязательно] черновик (форма draft.yml) → метка agent:draft
+  │  cron Hermes victory-issue-drafts, каждые 10 мин: переписывает по форме task/bug
+  ▼
 issue (форма .github/ISSUE_TEMPLATE/task.yml|bug.yml) → метка agent:triage
   │  человек проверяет и меняет метку на agent:hermes (это и есть авторизация запуска)
   │  cron Hermes на хосте victory, каждые 5 мин: ~/.hermes/scripts/gh-issues-to-kanban.py
@@ -33,20 +35,23 @@ dev/* → main: PR открывает человек, мержит челове�
 
 ## Авторизация запуска
 
-Формы ставят только `agent:triage`. Метку `agent:hermes` ставит владелец после
+Формы task/bug ставят только `agent:triage`, форма-черновик — только
+`agent:draft`. Ни форма, ни агент-оформитель `agent:hermes` не ставят. Метку `agent:hermes` ставит владелец после
 прочтения issue — хостовый синк берёт только её и дополнительно проверяет
 автора (`author_association` OWNER/MEMBER/COLLABORATOR) — issue чужого автора
 с `agent:hermes` получает `needs-human` и не идёт в работу.
 
-## Черновики `agent:draft`
+## Черновики (`agent:draft`)
 
-Сырое пожелание заводится как issue с меткой `agent:draft` (форма-черновик или
-вручную). Cron Hermes `victory-issue-drafts` (скилл `victory-issue-writer`)
-переписывает тело по форме task/bug, снимает `agent:draft`, ставит
-`agent:triage` и оставляет комментарий. Владелец проверяет текст и меняет
-`agent:triage` → `agent:hermes` (см. «Авторизация запуска»). Если запрос
-неясен, агент задаёт вопросы комментарием и ставит `needs-human`; метку
-`agent:hermes` агент никогда не ставит сам.
+Сырое пожелание без структуры: форма «Черновик» (`.github/ISSUE_TEMPLATE/draft.yml`)
+или `gh issue create --label agent:draft`, либо сообщение Hermes в Telegram.
+Хостовый cron `victory-issue-drafts` (pre-check `~/.hermes/scripts/victory-issue-drafts.py`,
+скилл `victory-issue-writer`; без черновиков LLM не запускается) берёт только
+issue авторов OWNER/MEMBER/COLLABORATOR: переписывает тело по форме task/bug
+(направление, критерии приёмки, реальные пути), исходный текст — под спойлером,
+меняет `agent:draft` → `agent:triage`, комментирует. Неясный запрос — вопросы
+комментарием + `needs-human`. Дальше — обычная авторизация: владелец проверяет
+текст и сам ставит `agent:hermes`.
 
 ## Направления (dev/*)
 
