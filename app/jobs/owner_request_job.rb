@@ -78,8 +78,17 @@ class OwnerRequestJob < ApplicationJob
   # получил бы «объект не попадает на витрину» про проданный в мае участок, и
   # только четырнадцатым по счёту — вопрос, который действительно снимает
   # блокировку публикации.
+  #
+  # `signed_agency_contract_at: nil` — по той же причине, но случай хуже.
+  # Прогон 14.08.26: из 25 объектов в очереди 17 уже на витрине. Подпись им
+  # проставила миграция при внедрении гейта D5, записи о собственнике при этом
+  # не появилось — формально `owner_user_id` пуст, фактически объект
+  # опубликован. Агент получил бы «не попадает на витрину» про карточку,
+  # открытую на сайте. Собрать собственников по ним всё равно стоит, но это
+  # другая задача и другой текст, а не блокировка публикации.
   def pending_scope(agent)
     Property.where(user_id: agent.id, owner_user_id: nil, deleted_at: nil)
+            .where(signed_agency_contract_at: nil)
             .where(deal_state: Property::PUBLISHABLE_DEAL_STATES)
             .where.not(status: CLOSED_STATUSES)
             .where(owner_request_declined_at: nil)
