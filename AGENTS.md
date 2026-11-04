@@ -73,7 +73,9 @@ Rails-монолит. Четыре входа, и только первый — 
   после merge PR #137), правится `crontab -e`, **не** в репозитории.
 - Cron Hermes-агента на хосте (`hermes cron list`, job `gh-issues-to-kanban`, каждые
   5 мин) — **не** про приложение: синк GitHub issue → kanban для агентного конвейера,
-  скрипт `~/.hermes/scripts/gh-issues-to-kanban.py` вне репозитория.
+  скрипт `~/.hermes/scripts/gh-issues-to-kanban.py` вне репозитория. Рядом job
+  `victory-issue-drafts` (каждые 10 мин): черновики `agent:draft` → оформленная
+  issue с `agent:triage`; `agent:hermes` (запуск) по-прежнему ставит только человек.
 - 🚨 `config/schedule.rb` удалён 12.09.26 — гема `whenever` в `Gemfile` нет, ни одна
   его строка никогда не выполнялась. Не воскрешать. Часть старых задач
   (`SendViewingRemindersJob`, `UpdatePropertyStatisticsJob`) в текущем виде вредны —
