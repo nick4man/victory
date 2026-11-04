@@ -138,12 +138,12 @@ group :development do
   # Linters & security scanners — run locally via `bundle exec` and in CI
   # (.github/workflows/lint.yml). All three are require: false so they
   # don't load into the app process.
-  # Прямой пин rubocop: lock в репо не коммитится, без пина любой релиз
-  # rubocop ломает CI на новых копах (real case: 1.92, 03.11.26).
+  # Прямые пины RuboCop и плагинов до patch-уровня: lock в репо не коммитится,
+  # без пинов минорный релиз ломает CI на новых копах (real case: 1.92, 03.11.26).
   gem 'rubocop',             '~> 1.92.0', require: false  # core linter (pinned)
-  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
-  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
-  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  gem 'rubocop-rails',       '~> 2.38.0', require: false  # Rails-aware lint
+  gem 'rubocop-rspec',       '~> 3.10.0', require: false  # RSpec idioms
+  gem 'rubocop-performance', '~> 1.27.0', require: false  # perf cops
   gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
   gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
 end

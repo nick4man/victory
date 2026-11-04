@@ -34,6 +34,7 @@ test-results
 # context и перезапишет свежерезолвленный в стадии build (BUNDLE_DEPLOYMENT=1
 # в проде тогда ловит GemNotFound)
 Gemfile.lock
+Gemfile.lock.reference
 .playwright-mcp
 .remember
 .serena
