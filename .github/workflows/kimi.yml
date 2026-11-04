@@ -44,7 +44,7 @@ jobs:
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: k3
+          kimi_model: k3.1-pro
 
           # Трекинг-прогресс одним sticky-комментарием.
           track_progress: true
@@ -126,7 +126,7 @@ jobs:
           # kimi_platform: open-cn / open-intl и своя модель.
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
           kimi_platform: code
-          kimi_model: k3
+          kimi_model: k3.1-pro
 
           # Один комментарий на прогон вместо цепочки.
           use_sticky_comment: true
@@ -139,4 +139,4 @@ jobs:
           # отдельный workflow «Lint & security».
           kimi_args: |
             --max-turns 50
-            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
+            --allowedTools "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Bash(gh:*),Bash(docker compose:*)"
