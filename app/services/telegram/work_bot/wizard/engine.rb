@@ -45,6 +45,7 @@ module Telegram
           'crm_rework' => 'Telegram::WorkBot::Wizard::CrmCardReworkFlow',
           'crm_approve' => 'Telegram::WorkBot::Wizard::CrmCardApproveFlow',
           'crm_release' => 'Telegram::WorkBot::Wizard::CrmCardReleaseFlow',
+          'crm_note' => 'Telegram::WorkBot::Wizard::CrmCardNoteFlow',
           'crm_object' => 'Telegram::WorkBot::Wizard::CrmObjectCardFlow',
           'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
           'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
@@ -53,7 +54,8 @@ module Telegram
         # Какой шаг получает id, пришедший с кнопкой на карточке.
         SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
                       'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
-                      'crm_approve' => 'card', 'crm_release' => 'card', 'crm_manual' => 'card' }.freeze
+                      'crm_approve' => 'card', 'crm_release' => 'card',
+                      'crm_note' => 'card', 'crm_manual' => 'card' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize
@@ -71,6 +73,23 @@ module Telegram
         def self.active?(tg_user)
           pa = tg_user&.pending_action
           pa&.dig('type') == STATE_TYPE && (pa.dig('data', 'bot') || 'main') == current_bot
+        end
+
+        # Мастер истёк, пока человек отвечал. Говорим об этом один раз: след
+        # одноразовый и живёт час — дальше он молча пропадает, иначе однажды
+        # ответил бы «мастер истёк» на обычный вопрос через неделю.
+        #
+        # След своего бота: песочница не должна отвечать за рабочего бота и
+        # наоборот — состояние у них раздельное (см. .active?).
+        # @return [String, nil] текст для человека
+        def self.expired_notice(tg_user)
+          crumb = tg_user&.expired_action
+          return nil unless crumb.is_a?(Hash) && crumb['type'] == STATE_TYPE
+          return nil unless (crumb['bot'].presence || 'main') == current_bot
+
+          tg_user.take_expired_action!(crumb)
+          '⌛ Мастер истёк — ответ пришёл слишком поздно, и шаг уже закрыт. ' \
+            'Начни заново: /menu. Ничего из введённого не сохранилось.'
         end
 
         def self.current_bot
