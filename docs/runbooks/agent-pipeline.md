@@ -55,12 +55,17 @@ PR агентов начнут конфликтовать.
 - Метка `automerge` обязательна, метка `needs-human` блокирует.
 - Обязательные зелёные проверки: RuboCop, RSpec, Brakeman, bundler-audit,
   «Учёт и границы служб», «Образ web (+ zeitwerk:check)», «Kimi Review».
-- Вердикт Kimi: job «Kimi Review» сам разбирает свой итоговый комментарий
-  (первая строка `HEAD: <sha>`, последняя `VERDICT: …`) и публикует артефакт
-  `kimi-verdict` (HEAD / RUN / VERDICT) в своём run. automerge читает только
-  этот артефакт из run «Kimi Code» с event=pull_request на текущем head —
-  комментарии бота не читаются вовсе, так что интерактивный `@kimi` или
-  любой другой job gate не пройдёт. Новый push → новое ревью → новый артефакт.
+- Вердикт Kimi: job «Kimi Review» читает транскрипт агента на раннере
+  (`execution_file` action'а — туда пишет только он сам), берёт последние
+  `HEAD: <sha>` / `VERDICT: …` и публикует артефакт `kimi-verdict`
+  (HEAD / RUN / VERDICT). automerge читает только этот артефакт из run
+  `.github/workflows/kimi.yml` с event=pull_request на текущем head —
+  комментарии бота не читаются вовсе. Новый push → новое ревью → новый артефакт.
+- PR, меняющий что-либо в `.github/` (workflow, формы), автослиянию не
+  подлежит: снимается `automerge`, ставится `needs-human`. Иначе PR мог бы
+  переписать проверки, которыми сам проверяется.
+- Внешние проверки (CodeQL, GitGuardian) могут финишировать последними —
+  automerge слушает ещё и `check_suite: completed` и ждёт pending до 20 мин.
 - Merge атомарен к проверенному head (`--match-head-commit`); если head уехал —
   выход, следующий прогон проверит заново.
 - Конфликт с base → бот пишет комментарий «нужен ребейз», не мержит.

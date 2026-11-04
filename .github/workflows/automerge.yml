@@ -16,6 +16,10 @@ on:
   workflow_run:
     workflows: ["Lint & security", "Build images", "Kimi Code"]
     types: [completed]
+  # Внешние проверки (CodeQL, GitGuardian) — отдельные check suites; их
+  # завершение workflow_run не порождает, поэтому слушаем и check_suite.
+  check_suite:
+    types: [completed]
 
 permissions:
   contents: write
@@ -25,14 +29,16 @@ permissions:
   actions: read
 
 concurrency:
-  group: automerge-${{ github.event.workflow_run.head_sha }}
+  group: automerge-${{ github.event.workflow_run.head_sha || github.event.check_suite.head_sha }}
   cancel-in-progress: false
 
 jobs:
   automerge:
     name: Слить PR агента в dev/*
     # workflow_run для PR из форков тут не ожидается; PR из веток репозитория — да.
-    if: github.event.workflow_run.event == 'pull_request'
+    if: |
+      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request') ||
+      (github.event_name == 'check_suite' && github.event.check_suite.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Проверить условия и слить
@@ -41,15 +47,18 @@ jobs:
           # Job без checkout: gh pr/issue узнают репозиторий только из GH_REPO.
           GH_REPO: ${{ github.repository }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.event.check_suite.head_sha }}
         run: |
           set -euo pipefail
 
           # --- PR по head SHA --------------------------------------------------
           # gh api --jq не умеет --arg: SHA берём из окружения через env.SHA.
-          PR_JSON=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq \
-            '[.[] | select(.state=="open" and .head.sha==env.SHA and (.base.ref|startswith("dev/")))] | first // empty')
-          if [ -z "$PR_JSON" ]; then echo "нет открытого PR для $SHA"; exit 0; fi
+          PRS=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq \
+            '[.[] | select(.state=="open" and .head.sha==env.SHA and (.base.ref|startswith("dev/")))]')
+          N_PR=$(jq length <<<"$PRS")
+          [ "$N_PR" != 0 ] || { echo "нет открытого PR в dev/* для $SHA"; exit 0; }
+          [ "$N_PR" = 1 ] || { echo "для $SHA открыто $N_PR PR в dev/* — неоднозначно, человек"; exit 0; }
+          PR_JSON=$(jq '.[0]' <<<"$PRS")
           NUM=$(jq -r .number <<<"$PR_JSON")
           BASE=$(jq -r .base.ref <<<"$PR_JSON")
           HEAD=$(jq -r .head.ref <<<"$PR_JSON")
@@ -64,12 +73,26 @@ jobs:
           [[ ",$LABELS," == *",needs-human,"* ]] && { echo "метка needs-human — стоп"; exit 0; }
           [ "$DRAFT" = false ] || { echo "draft — пропуск"; exit 0; }
 
+          # --- PR не должен трогать свои же проверки ------------------------------
+          # pull_request-workflow берёт kimi.yml/lint.yml из ветки PR, т.е. PR мог бы
+          # переписать и ревью, и автослияние. Такие PR — только через человека.
+          WF_TOUCHED=$(gh api "repos/$REPO/pulls/$NUM/files?per_page=100" --paginate --jq \
+            '.[] | .filename | select(startswith(".github/"))' | head -20)
+          if [ -n "$WF_TOUCHED" ]; then
+            echo "PR меняет .github/: $WF_TOUCHED — автослияние запрещено"
+            gh pr edit "$NUM" --add-label needs-human --remove-label automerge
+            gh pr comment "$NUM" --body "🤖 automerge: PR меняет файлы в \`.github/\` (workflow/формы). Такие изменения вливает только человек — снял \`automerge\`, поставил \`needs-human\`."
+            exit 0
+          fi
+
           # --- вердикт Kimi: артефакт kimi-verdict из run «Kimi Code» на этом head ---
           # Артефакт создаёт только job «Kimi Review» (kimi.yml) в run с
           # event=pull_request; комментарии бота не читаем вовсе — их может
           # оставить любой job под тем же github-actions[bot].
+          # Привязка по пути файла workflow, не по display name — одноимённый
+          # workflow в другом файле не подойдёт.
           REVIEW_RUN=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=50" --jq \
-            '[.workflow_runs[] | select(.name=="Kimi Code" and .status=="completed")] | sort_by(.run_number) | last | .id // empty')
+            '[.workflow_runs[] | select(.path==".github/workflows/kimi.yml" and .status=="completed")] | sort_by(.run_number) | last | .id // empty')
           [ -n "$REVIEW_RUN" ] || { echo "прогон «Kimi Code» на $SHA ещё не завершён — ждём"; exit 0; }
           REVIEW_OK=$(gh api "repos/$REPO/actions/runs/$REVIEW_RUN/jobs" --jq \
             '[.jobs[] | select(.name=="Kimi Review" and .conclusion=="success")] | length')
@@ -93,8 +116,15 @@ jobs:
           RUNS=$(jq -c 'group_by(.name) | map(max_by(.started_at))' <<<"$RUNS")
           jq -r '.[] | "\(.status)\t\(.conclusion)\t\(.name)"' <<<"$RUNS" | sort -k3
 
-          PENDING=$(jq -r '[.[] | select(.status!="completed")] | length' <<<"$RUNS")
-          [ "$PENDING" = 0 ] || { echo "$PENDING проверок ещё идут — ждём следующего workflow_run"; exit 0; }
+          # Внешние проверки могут дойти позже нас — подождём до ~20 минут, перечитывая.
+          for _ in $(seq 1 20); do
+            PENDING=$(jq -r '[.[] | select(.status!="completed")] | length' <<<"$RUNS")
+            [ "$PENDING" = 0 ] && break
+            echo "$PENDING проверок ещё идут — ждём 60с"; sleep 60
+            RUNS=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --paginate --jq '.check_runs' | jq -s 'add' \
+              | jq -c 'group_by(.name) | map(max_by(.started_at))')
+          done
+          [ "$PENDING" = 0 ] || { echo "проверки не завершились за 20 мин — следующее событие продолжит"; exit 0; }
           RED=$(jq -r '[.[] | select(.conclusion!="success" and .conclusion!="skipped" and .conclusion!="neutral")] | map(.name) | join(", ")' <<<"$RUNS")
           [ -z "$RED" ] || { echo "красные проверки: $RED — не мержим"; exit 0; }
 
