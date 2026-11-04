@@ -29,7 +29,7 @@ module Telegram
             return render_picker(lead)
           end
 
-          # rubocop:disable-next-line Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
+          # rubocop:disable-next Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
           assignee = TelegramUser.find_by_username(username)
           return reply("⚠️ Сотрудник #{username} не зарегистрирован. Попроси его написать /whoami.") unless assignee
 

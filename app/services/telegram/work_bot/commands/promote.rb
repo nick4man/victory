@@ -20,7 +20,7 @@ module Telegram
           role   = parts[1]&.downcase
           return reply('Формат: <code>/promote @username [manager]</code>') if target.blank?
 
-          # rubocop:disable-next-line Rails/DynamicFindBy -- наш custom class method, не Rails dynamic finder
+          # rubocop:disable-next Rails/DynamicFindBy -- наш custom class method, не Rails dynamic finder
           tu = TelegramUser.find_by_username(target)
           unless tu
             return reply("⚠️ #{escape(target.sub(/\A@/, ''))} не найден в TelegramUser. " \

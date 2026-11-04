@@ -33,7 +33,7 @@ module Telegram
             return reply('Формат: <code>/link @username email@victory.ru [manager]</code>')
           end
 
-          # rubocop:disable-next-line Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
+          # rubocop:disable-next Rails/DynamicFindBy -- custom class method, не Rails dynamic finder
           tu = TelegramUser.find_by_username(username)
           unless tu
             return reply("⚠️ #{escape(username.sub(/\A@/, ''))} не зарегистрирован в боте. " \

@@ -9,7 +9,7 @@ require_relative '../config/environment'
 # Prevent database truncation if the environment is production.
 # Standard rspec-rails generated guard — abort останавливает test boot если
 # RAILS_ENV случайно production (защита от truncation прод-БД).
-# rubocop:disable-next-line Rails/Exit
+# rubocop:disable-next Rails/Exit
 abort('The Rails environment is running in production mode!') if Rails.env.production?
 
 require 'rspec/rails'
