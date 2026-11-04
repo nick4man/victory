@@ -1,0 +1,10 @@
+# Пустые issue без шаблона запрещены: агентный конвейер (docs/runbooks/agent-pipeline.md)
+# разбирает только структурированные поля формы.
+blank_issues_enabled: false
+contact_links:
+  - name: Вопрос по проекту / обсуждение
+    url: https://github.com/nick4man/victory/discussions
+    about: Вопросы, идеи без чёткого ТЗ и всё, что не задача для агента.
+  - name: Документация и runbook'и
+    url: https://github.com/nick4man/victory/tree/main/docs
+    about: Деплой, staging, релизы, восстановление — сначала посмотрите здесь.

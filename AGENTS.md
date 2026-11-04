@@ -71,6 +71,9 @@ Rails-монолит. Четыре входа, и только первый — 
 - Системный crontab хоста — 5 записей (Yandex.Webmaster ×3, `kpi:phase_a`,
   `bin/lock-clean`) + `bin/tunnel-check` каждые 15 мин (добавлен операционно
   после merge PR #137), правится `crontab -e`, **не** в репозитории.
+- Cron Hermes-агента на хосте (`hermes cron list`, job `gh-issues-to-kanban`, каждые
+  5 мин) — **не** про приложение: синк GitHub issue → kanban для агентного конвейера,
+  скрипт `~/.hermes/scripts/gh-issues-to-kanban.py` вне репозитория.
 - 🚨 `config/schedule.rb` удалён 12.09.26 — гема `whenever` в `Gemfile` нет, ни одна
   его строка никогда не выполнялась. Не воскрешать. Часть старых задач
   (`SendViewingRemindersJob`, `UpdatePropertyStatisticsJob`) в текущем виде вредны —
@@ -189,8 +192,12 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   - CodeQL (`ruby` / `python` / `javascript-typescript` / `actions`) — GitHub code
     scanning default setup, **файла в репозитории нет**;
   - GitGuardian Security Checks — GitHub App.
-- `.github/workflows/claude.yml` и `kimi.yml` — боты по `@claude`/`@kimi` в
-  issue/PR-комментариях; в PR-проверки **не входят**.
+- `.github/workflows/kimi.yml`, job **«Kimi Review»** — авторевью каждого PR; его вердикт
+  (`VERDICT: MERGE|CHANGES`) — обязательный gate автослияния в `dev/*` (`automerge.yml`).
+  Job `@kimi` и `claude.yml` (`@claude`) — интерактивные боты, в PR-проверки **не входят**.
+- **Агентный конвейер** (issue → kanban → PR → `dev/*`): `docs/runbooks/agent-pipeline.md`.
+  Issue с меткой `agent:hermes` (ставит человек после triage) подхватывает Hermes на хосте
+  `victory`; PR агентов идут только в `dev/*`, в `main` — человек.
 - 🚨 **Code-review на diff — обязательный этап каждого PR.** Порядок: код → CI зелёный →
   ревью → правки → merge. Ревьюеру давать: команду для diff, ссылку на план, список
   намеренных решений, что уже проверено, способ запустить код.
