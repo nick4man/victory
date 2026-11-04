@@ -38,6 +38,8 @@ jobs:
       - name: Проверить условия и слить
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Job без checkout: gh pr/issue узнают репозиторий только из GH_REPO.
+          GH_REPO: ${{ github.repository }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -45,8 +47,8 @@ jobs:
           set -euo pipefail
 
           # --- PR по head SHA --------------------------------------------------
-          PR_JSON=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq \
-            '[.[] | select(.state=="open")] | first // empty')
+          PR_JSON=$(gh api "repos/$REPO/commits/$SHA/pulls" --jq --arg sha "$SHA" \
+            '[.[] | select(.state=="open" and .head.sha==$sha)] | first // empty')
           if [ -z "$PR_JSON" ]; then echo "нет открытого PR для $SHA"; exit 0; fi
           NUM=$(jq -r .number <<<"$PR_JSON")
           BASE=$(jq -r .base.ref <<<"$PR_JSON")
@@ -104,9 +106,17 @@ jobs:
             [ "$OK" -ge 1 ] || { echo "обязательная проверка «$need» не найдена/не зелёная — ждём"; exit 0; }
           done
 
-          # --- head не уехал? ----------------------------------------------------
-          CUR=$(gh api "repos/$REPO/pulls/$NUM" --jq .head.sha)
+          # --- перечитать PR: head, base, метки, draft могли измениться за время проверок
+          PR_JSON=$(gh api "repos/$REPO/pulls/$NUM")
+          CUR=$(jq -r .head.sha <<<"$PR_JSON")
           [ "$CUR" = "$SHA" ] || { echo "head PR уже $CUR, проверяли $SHA — новый прогон разберётся"; exit 0; }
+          BASE=$(jq -r .base.ref <<<"$PR_JSON")
+          LABELS=$(jq -r '[.labels[].name] | join(",")' <<<"$PR_JSON")
+          case "$BASE" in dev/*) ;; *) echo "base сменился на '$BASE' — стоп"; exit 0;; esac
+          [[ ",$LABELS," == *",automerge,"* ]] || { echo "метку automerge сняли — стоп"; exit 0; }
+          [[ ",$LABELS," == *",needs-human,"* ]] && { echo "поставили needs-human — стоп"; exit 0; }
+          [ "$(jq -r .draft <<<"$PR_JSON")" = false ] || { echo "PR перевели в draft — стоп"; exit 0; }
+          [ "$(jq -r .state <<<"$PR_JSON")" = open ] || { echo "PR уже не open — стоп"; exit 0; }
 
           # --- mergeable? -------------------------------------------------------
           for _ in 1 2 3 4 5; do
