@@ -9,7 +9,8 @@
   (бэкап `user.json.bak-04.11.26`).
 - Шаг 2: urltest `auto` — `interval: 5m`, `tolerance: 80`,
   `interrupt_exist_connections: false`.
-- Шаг 3: `bin/tunnel-check` в репозитории, cron `*/15 * * * *` на хосте.
+- Шаг 3: `bin/tunnel-check` в репозитории; cron `*/15 * * * *` добавляется
+  на хосте вручную после merge (системный crontab в репозиторий не коммитится).
 - ⚠️ RU egress-IP хоста **сменился**: `37.112.103.28` → `176.212.188.178`
   (Рязань, подтверждено через ip.mail.ru с хоста и из контейнеров).
   Проверки §5 ожидают новый IP.
@@ -108,7 +109,7 @@ journalctl -u sing-box@user -f
 Выполнено: пользователь `q` добавлен в `systemd-journal` (чтение через
 `sudo journalctl -u sing-box@user` работает, логи INFO с timestamp есть).
 
-### Шаг 1. Явный direct для зон `.ru` / `.su` (и `.рф`)
+### Шаг 1. Явный direct для зон `.ru` / `.su` (и `.рф`) — ✅ 04.11.26
 
 В `/etc/sing-box/user.json`, в `route.rules`, **после** правила reject
 рекламы и **перед** rule_set `geosite-ru`/`geoip-ru` добавить:
@@ -125,7 +126,7 @@ journalctl -u sing-box@user -f
 применение: `sudo systemctl reload sing-box@user` (или restart — reload не
 рвёт существующие соединения).
 
-### Шаг 2. Стабилизация urltest
+### Шаг 2. Стабилизация urltest — ✅ 04.11.26
 
 В outbound `auto`:
 
@@ -145,21 +146,32 @@ journalctl -u sing-box@user -f
 (гэп №3). `interrupt_exist_connections: false` — дефолт в sing-box 1.13,
 фиксируем явно.
 
-### Шаг 3. Мониторинг туннельного пути
+### Шаг 3. Мониторинг туннельного пути — ✅ 04.11.26
 
-Скрипт `bin/tunnel-check` (в репозиторий, на хосте — в cron, 5 записей
-системного crontab уже есть по образцу): из `victory-web-1` и
-`victory-sidekiq-1` проверять
+Скрипт `bin/tunnel-check` (в репозитории). Из `victory-web-1` и
+`victory-sidekiq-1` проверяет:
 
 - `https://api.telegram.org/` → HTTP 302 (туннель жив, TG доступен);
-- `https://yandex.ru/internet/api/v0/ip` → тело `37.112.103.28` (RU direct
-  не сломан);
+- `https://ip.mail.ru/` → «IP: 176.212.188.178» в noscript-блоке (RU direct
+  не сломан; `yandex.ru/internet/api/v0/ip` больше не пригоден — отдаёт
+  `127.0.0.1`, см. изменения 04.11.26 выше);
 - `https://ifconfig.me` → `93.95.229.192` (выход = туннель).
 
-При несовпадении — алерт в work-bot директорам + запись в
-`log/tunnel-check-cron.log`. Учесть кольцевую зависимость (гэп №5): при
-полностью мёртвом туннеле TG-алерт может не дойти — это принимаем, SMSC
-fallback не делаем (отдельная задача, если понадобится).
+К IP-echo и TG-302 — до 3 повторов (ifconfig.me режет по rate-limit,
+одиночный таймаут TG при смене outbound urltest — без повторов были ложные
+алерты). При несовпадении — алерт в staff-чат work-bot'а (тот же канал, что
+у `bin/backup`) + запись в `log/tunnel-check-cron.log`. Алерт дублируется
+только при смене состояния (state-файл рядом с логом): повторный FAIL —
+только в лог, восстановление — отдельное ✅-сообщение.
+
+Cron добавляется на хосте вручную после merge (системный crontab в
+репозиторий не коммитится):
+
+    */15 * * * * /home/q/victory/bin/tunnel-check --quiet
+
+Учесть кольцевую зависимость (гэп №5): при полностью мёртвом туннеле
+TG-алерт может не дойти — это принимаем, SMSC fallback не делаем
+(отдельная задача, если понадобится).
 
 ### Шаг 4 (опционально). healthcheck-зависимость rollout
 

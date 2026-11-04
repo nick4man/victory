@@ -229,9 +229,10 @@ bundle exec sidekiq -C config/sidekiq.yml
 `config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
 
 - `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
-- системный crontab хоста — 5 записей, правится `crontab -e`: 4 через
-  `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`) и
-  `lock-clean`, который идёт прямо на хосте.
+- системный crontab хоста — 5 записей + `bin/tunnel-check` каждые 15 мин
+  (добавлен операционно после merge PR #137), правится `crontab -e`: 4 через
+  `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`),
+  `lock-clean` идёт прямо на хосте, `tunnel-check` — прямой вызов скрипта.
 
 🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
 них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
