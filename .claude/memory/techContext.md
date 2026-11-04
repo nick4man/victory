@@ -234,6 +234,11 @@ bundle exec sidekiq -C config/sidekiq.yml
   `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`),
   `lock-clean` идёт прямо на хосте, `tunnel-check` — прямой вызов скрипта.
 
+Отдельно, **не про приложение**: cron Hermes-агента на хосте
+(`hermes cron list` → `gh-issues-to-kanban`, каждые 5 мин) синхронизирует
+GitHub issue с меткой `agent:hermes` в kanban-доску `victory` —
+`docs/runbooks/agent-pipeline.md`.
+
 🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
 них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
 упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит

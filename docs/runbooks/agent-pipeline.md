@@ -1,5 +1,7 @@
 # Агентный конвейер: issue → kanban → PR → dev/* → main
 
+Дата последней проверки: 04.11.26
+
 Цель: задачи ставятся как GitHub issue, Hermes-агенты их делают, Kimi ревьюит,
 CI проверяет, PR сам вливается в интеграционную ветку `dev/*`. Человек нужен
 в двух местах: написать issue и смержить `dev/*` → `main`.
@@ -7,7 +9,8 @@ CI проверяет, PR сам вливается в интеграционн�
 ## Поток
 
 ```
-issue (форма .github/ISSUE_TEMPLATE/task.yml|bug.yml, метка agent:hermes)
+issue (форма .github/ISSUE_TEMPLATE/task.yml|bug.yml) → метка agent:triage
+  │  человек проверяет и меняет метку на agent:hermes (это и есть авторизация запуска)
   │  cron Hermes на хосте victory, каждые 5 мин: ~/.hermes/scripts/gh-issues-to-kanban.py
   ▼
 kanban-карточка (доска `victory`, assignee kb-backend, worktree /home/q/victory/.worktrees/<id>)
@@ -18,10 +21,19 @@ PR: lint.yml + build.yml (на dev/* тоже) + kimi.yml «Kimi Review»
   │  ревью заканчивается строкой VERDICT: MERGE | VERDICT: CHANGES
   ▼
 automerge.yml (workflow_run): все check runs зелёные + VERDICT: MERGE на текущем head
-  → squash-merge в dev/*, ветка удаляется, issue закрывается по Closes #N
+  → squash-merge (--match-head-commit) в dev/*, ветка удаляется;
+    issue закрывает сам workflow по `Closes #N` из тела PR (closing keywords
+    GitHub работают только для default branch, поэтому явно)
   ▼
 dev/* → main: PR открывает человек, мержит человек (main = прод, деплой — deploy.yml).
 ```
+
+## Авторизация запуска
+
+Формы ставят только `agent:triage`. Метку `agent:hermes` ставит владелец после
+прочтения issue — хостовый синк берёт только её и дополнительно проверяет
+автора (`author_association` OWNER/MEMBER/COLLABORATOR) — issue чужого автора
+с `agent:hermes` получает `needs-human` и не идёт в работу.
 
 ## Направления (dev/*)
 
@@ -42,9 +54,12 @@ PR агентов начнут конфликтовать.
 - Метка `automerge` обязательна, метка `needs-human` блокирует.
 - Обязательные зелёные проверки: RuboCop, RSpec, Brakeman, bundler-audit,
   «Учёт и границы служб», «Образ web (+ zeitwerk:check)», «Kimi Review».
-- Вердикт Kimi берётся из последнего комментария `github-actions[bot]`,
-  содержащего `VERDICT:`; он должен упоминать короткий sha текущего head —
-  иначе считается устаревшим и ждём новое ревью (новый push в PR запускает его сам).
+- Вердикт Kimi: берётся комментарий `github-actions[bot]`, ссылающийся на run
+  того прогона «Kimi Code», где job «Kimi Review» success на текущем head;
+  первая строка строго `HEAD: <полный sha head>`, последняя — `VERDICT: MERGE`.
+  Интерактивный `@kimi` (другой job) gate не проходит. Новый push → новое ревью.
+- Merge атомарен к проверенному head (`--match-head-commit`); если head уехал —
+  выход, следующий прогон проверит заново.
 - Конфликт с base → бот пишет комментарий «нужен ребейз», не мержит.
 
 ## Эксплуатация

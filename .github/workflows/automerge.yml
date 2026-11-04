@@ -20,6 +20,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write      # закрыть связанную issue — closing keywords для base dev/* GitHub игнорирует
   checks: read
   actions: read
 
@@ -61,22 +62,33 @@ jobs:
           [[ ",$LABELS," == *",needs-human,"* ]] && { echo "метка needs-human — стоп"; exit 0; }
           [ "$DRAFT" = false ] || { echo "draft — пропуск"; exit 0; }
 
-          # --- вердикт Kimi: последний комментарий бота с VERDICT -------------
+          # --- вердикт Kimi: строго из job «Kimi Review» на этом head -----------
+          # Комментарий должен быть от github-actions[bot], ссылаться на run_id того
+          # workflow_run «Kimi Code», чей job «Kimi Review» завершился success на $SHA,
+          # и иметь ПЕРВОЙ содержательной строкой `HEAD: $SHA`, ПОСЛЕДНЕЙ — `VERDICT: …`.
+          # Так интерактивный @kimi (тот же бот, другой job) gate не пройдёт.
+          REVIEW_RUN=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&event=pull_request&per_page=50" --jq \
+            '[.workflow_runs[] | select(.name=="Kimi Code" and .status=="completed")] | sort_by(.run_number) | last | .id // empty')
+          [ -n "$REVIEW_RUN" ] || { echo "прогон «Kimi Code» на $SHA ещё не завершён — ждём"; exit 0; }
+          REVIEW_OK=$(gh api "repos/$REPO/actions/runs/$REVIEW_RUN/jobs" --jq \
+            '[.jobs[] | select(.name=="Kimi Review" and .conclusion=="success")] | length')
+          [ "$REVIEW_OK" -ge 1 ] || { echo "job «Kimi Review» run $REVIEW_RUN не success — не мержим"; exit 0; }
+
           VERDICT_BODY=$(gh api "repos/$REPO/issues/$NUM/comments?per_page=100" --paginate --jq \
-            '[.[] | select(.user.login=="github-actions[bot]") | select(.body | test("VERDICT: (MERGE|CHANGES)"))] | last | .body // empty')
-          if [ -z "$VERDICT_BODY" ]; then echo "вердикта Kimi ещё нет — ждём"; exit 0; fi
-          VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' <<<"$VERDICT_BODY" | tail -1)
-          echo "вердикт: $VERDICT"
-          [ "$VERDICT" = "VERDICT: MERGE" ] || { echo "ревью требует правок — не мержим"; exit 0; }
-          # Вердикт должен быть про текущий head: ревью упоминает SHA коммита (короткий или полный).
+            ".[] | select(.user.login==\"github-actions[bot]\") | select(.body | contains(\"/actions/runs/$REVIEW_RUN\")) | .body" \
+            | tail -n +1)
+          [ -n "$VERDICT_BODY" ] || { echo "комментарий ревью для run $REVIEW_RUN не найден — ждём"; exit 0; }
+          # Первая содержательная строка после шапки action'а («Kimi finished… / ---») — HEAD:, последняя — VERDICT:.
+          FIRST=$(grep -m1 -E '^HEAD: ' <<<"$VERDICT_BODY" || true)
+          LAST=$(grep -v '^[[:space:]]*$' <<<"$VERDICT_BODY" | tail -1)
+          echo "ревью run=$REVIEW_RUN first='$FIRST' last='$LAST'"
+          [ "$FIRST" = "HEAD: $SHA" ] || { echo "ревью не про head $SHA — устарело, ждём свежее"; exit 0; }
+          [ "$LAST" = "VERDICT: MERGE" ] || { echo "вердикт не MERGE — не мержим"; exit 0; }
           SHORT=${SHA:0:7}
-          if ! grep -q "$SHORT" <<<"$VERDICT_BODY"; then
-            echo "вердикт не ссылается на head $SHORT — вероятно, устарел после нового пуша; ждём свежее ревью"
-            exit 0
-          fi
 
           # --- check runs на head SHA --------------------------------------------
-          RUNS=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --paginate --jq '.check_runs')
+          # --paginate отдаёт по массиву на страницу — склеиваем в один (jq -s add).
+          RUNS=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --paginate --jq '.check_runs' | jq -s 'add')
           # Берём последнюю попытку каждого check по имени.
           RUNS=$(jq -c 'group_by(.name) | map(max_by(.started_at))' <<<"$RUNS")
           jq -r '.[] | "\(.status)\t\(.conclusion)\t\(.name)"' <<<"$RUNS" | sort -k3
@@ -92,6 +104,10 @@ jobs:
             [ "$OK" -ge 1 ] || { echo "обязательная проверка «$need» не найдена/не зелёная — ждём"; exit 0; }
           done
 
+          # --- head не уехал? ----------------------------------------------------
+          CUR=$(gh api "repos/$REPO/pulls/$NUM" --jq .head.sha)
+          [ "$CUR" = "$SHA" ] || { echo "head PR уже $CUR, проверяли $SHA — новый прогон разберётся"; exit 0; }
+
           # --- mergeable? -------------------------------------------------------
           for _ in 1 2 3 4 5; do
             M=$(gh api "repos/$REPO/pulls/$NUM" --jq '.mergeable')
@@ -100,8 +116,15 @@ jobs:
           [ "$M" = true ] || { echo "PR не mergeable ($M) — конфликт с $BASE, нужен ребейз"; \
             gh pr comment "$NUM" --body "🤖 automerge: все условия выполнены, но PR конфликтует с \`$BASE\`. Нужен ребейз на свежий \`$BASE\`."; exit 0; }
 
-          # --- merge ------------------------------------------------------------
-          gh pr merge "$NUM" --squash --delete-branch \
+          # --- merge: атомарно к проверенному head -------------------------------
+          gh pr merge "$NUM" --squash --delete-branch --match-head-commit "$SHA" \
             --subject "$(jq -r .title <<<"$PR_JSON") (#$NUM)" \
             --body "Автослияние в $BASE: CI зелёный, ревью Kimi — VERDICT: MERGE (head $SHORT)."
           echo "PR #$NUM слит в $BASE"
+
+          # --- закрыть issue: closing keywords для base != default branch не работают
+          for ISSUE in $(grep -oiE '(closes|fixes|resolves) #[0-9]+' <<<"$(jq -r .body <<<"$PR_JSON")" | grep -oE '[0-9]+' | sort -u); do
+            gh issue close "$ISSUE" --reason completed \
+              --comment "🤖 Сделано в PR #$NUM, слит в \`$BASE\`. В прод попадёт с ближайшим мержем \`$BASE\` → \`main\`." || true
+            gh issue edit "$ISSUE" --remove-label in-progress 2>/dev/null || true
+          done
