@@ -40,6 +40,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Kimi Review
+        id: review
         uses: xuwenhao/kimi-code-action@v0 # для продакшена запиньте на SHA коммита
         with:
           kimi_api_key: ${{ secrets.KIMI_API_KEY }}
@@ -98,27 +99,30 @@ jobs:
             --disallowedTools "Write,Edit,Bash(git push:*),Bash(git commit:*),Bash(docker:*),Bash(gh api:*),Bash(gh pr merge:*),Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh secret:*),Bash(gh workflow:*),Bash(gh release:*),Bash(curl:*),Bash(wget:*)"
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
 
-      # Вердикт для automerge.yml — артефактом ЭТОГО прогона, а не комментарием.
-      # Комментарий бота может оставить любой job под тем же github-actions[bot]
-      # (в т.ч. интерактивный @kimi), артефакт kimi-verdict создаёт только этот
-      # job в run с event=pull_request. Берём sticky-комментарий, который ссылается
-      # на наш собственный run_id, — его написал только что отработавший шаг выше.
+      # Вердикт для automerge.yml — артефактом ЭТОГО прогона. Источник — не
+      # комментарии (их пишет любой job под тем же github-actions[bot], в т.ч.
+      # интерактивный @kimi), а транскрипт агента на диске раннера
+      # (execution_file): туда пишет только шаг ревью выше. Берём ПОСЛЕДНИЕ
+      # строки HEAD:/VERDICT: — финальный комментарий агента идёт последним,
+      # а процитированный в diff текст (например, сам automerge.yml) — раньше.
       - name: Publish verdict artifact
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          NUM: ${{ github.event.pull_request.number }}
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          BODY=$(gh api "repos/$GH_REPO/issues/$NUM/comments?per_page=100" --paginate --jq \
-            '.[] | select(.user.login=="github-actions[bot]") | select(.body | contains("/actions/runs/'"$GITHUB_RUN_ID"'")) | .body' \
-            | tail -n 400)
-          FIRST=$(grep -m1 -E '^HEAD: [0-9a-f]{40}$' <<<"$BODY" || true)
-          LAST=$(grep -v '^[[:space:]]*$' <<<"$BODY" | tail -1 || true)
           VERDICT=CHANGES
-          if [ "$FIRST" = "HEAD: $SHA" ] && [ "$LAST" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
+          if [ -n "${EXEC_FILE:-}" ] && [ -s "$EXEC_FILE" ]; then
+            # JSON-escaped текст: \n внутри строк — раскрываем, чтобы grep видел строки.
+            TXT=$(sed 's/\\n/\n/g' "$EXEC_FILE")
+            LAST_HEAD=$(grep -oE 'HEAD: [0-9a-f]{40}' <<<"$TXT" | tail -1 || true)
+            LAST_VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' <<<"$TXT" | tail -1 || true)
+            echo "из транскрипта: '$LAST_HEAD' / '$LAST_VERDICT'"
+            if [ "$LAST_HEAD" = "HEAD: $SHA" ] && [ "$LAST_VERDICT" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
+          else
+            echo "execution_file отсутствует — вердикт CHANGES по умолчанию"
+          fi
           mkdir -p verdict
           printf 'HEAD: %s\nRUN: %s\nVERDICT: %s\n' "$SHA" "$GITHUB_RUN_ID" "$VERDICT" > verdict/kimi-verdict.txt
           cat verdict/kimi-verdict.txt
