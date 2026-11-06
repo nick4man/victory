@@ -23,11 +23,7 @@ module Llm
     class Error < StandardError; end
 
     DEFAULT_CHAINS = {
-      # Первой — модель, у которой проверен полный цикл tool-calling через
-      # OmniRoute (06.11.26): gemini-3.x требует thought_signature, которую
-      # шлюз не отдаёт в OpenAI-формате → 400 на втором шаге после тула.
       chat: %w[
-        gemini/gemini-2.5-flash
         openrouter/meta-llama/llama-3.3-70b-instruct:free
         openrouter/qwen/qwen3-next-80b-a3b-instruct:free
         groq/llama-3.3-70b-versatile
