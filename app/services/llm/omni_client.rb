@@ -70,12 +70,25 @@ module Llm
       DEFAULT_CHAINS.fetch(key.to_sym, DEFAULT_CHAINS[:chat])
     end
 
-    def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
-      raise Error, 'OMNIROUTE_BASE_URL not set' if base_url.blank?
-      raise Error, 'OMNIROUTE_API_KEY not set'  if api_key.blank?
+    # Прямые провайдеры в обход OmniRoute: модель в цепочке с префиксом
+    # `kimi/` (например `kimi/kimi-for-coding-highspeed`) уходит напрямую в
+    # Kimi Code API (KIMI_BASE_URL, по умолчанию global region api.kimi.ai).
+    # Особенности API: temperature принимается только 1; Cloudflare режет
+    # запросы без User-Agent (403 / error 1010).
+    DIRECT_PROVIDERS = {
+      'kimi' => {
+        base_env: 'KIMI_BASE_URL', key_env: 'KIMI_API_KEY',
+        default_base: 'https://api.kimi.ai/coding/v1', fixed_temperature: 1
+      }
+    }.freeze
 
-      @base = base_url.to_s.chomp('/')
-      @key  = api_key
+    USER_AGENT = 'victory62-site/1.0'
+
+    def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
+      @base = base_url.to_s.chomp('/').presence
+      @key  = api_key.presence
+      raise Error, 'OMNIROUTE_BASE_URL not set' if @base.nil? && !direct_only_chains?
+      raise Error, 'OMNIROUTE_API_KEY not set'  if @key.nil? && !direct_only_chains?
     end
 
     # @param messages    [Array<Hash>] OpenAI-format chat messages.
@@ -114,16 +127,18 @@ module Llm
     # Per-model attempt. Raises on any failure (HTTP non-2xx, JSON parse,
     # empty content+no tool_calls) so the outer loop moves to the next.
     def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
-      uri = URI("#{@base}/chat/completions")
+      endpoint = endpoint_for(model)
+      uri = URI("#{endpoint[:base]}/chat/completions")
       req = Net::HTTP::Post.new(uri)
       req['Content-Type']  = 'application/json'
-      req['Authorization'] = "Bearer #{@key}"
+      req['Authorization'] = "Bearer #{endpoint[:key]}"
+      req['User-Agent']    = USER_AGENT
 
       body = {
-        model:       model,
+        model:       endpoint[:model],
         messages:    messages,
         max_tokens:  max_tokens,
-        temperature: temperature,
+        temperature: endpoint[:temperature] || temperature,
         stream:      false
       }
       body[:response_format] = response_format if response_format
@@ -148,6 +163,38 @@ module Llm
       raise Error, "empty content + no tool_calls; raw: #{data.inspect.truncate(300)}" if content.to_s.empty? && tool_calls.blank?
 
       { content: content, tool_calls: tool_calls, model: model }
+    end
+
+    # @return [Hash] { base:, key:, model:, temperature: } — куда и с чем слать запрос.
+    def endpoint_for(model)
+      prefix, rest = model.to_s.split('/', 2)
+      cfg = DIRECT_PROVIDERS[prefix]
+      if direct_model?(model)
+        key = ENV[cfg[:key_env]].presence
+        raise Error, "#{cfg[:key_env]} not set" unless key
+
+        base = (ENV[cfg[:base_env]].presence || cfg[:default_base]).chomp('/')
+        return { base: base, key: key, model: rest, temperature: cfg[:fixed_temperature] }
+      end
+
+      raise Error, 'OMNIROUTE_BASE_URL not set' unless @base && @key
+
+      { base: @base, key: @key, model: model, temperature: nil }
+    end
+
+    # Все цепочки из ENV состоят только из прямых провайдеров — OmniRoute
+    # тогда не обязателен (иначе без него клиент не создаётся, как раньше).
+    def direct_only_chains?
+      envs = ENV.select { |k, _| k.start_with?('LLM_CHAIN_') }.values
+      return false if envs.empty?
+
+      models = envs.flat_map { |v| v.split(',') }.map(&:strip).reject(&:empty?)
+      models.any? && models.all? { |m| direct_model?(m) }
+    end
+
+    def direct_model?(model)
+      prefix, rest = model.to_s.split('/', 2)
+      DIRECT_PROVIDERS.key?(prefix) && rest.present?
     end
 
     def parse_tool_calls(raw)
@@ -200,7 +247,7 @@ module Llm
       m = model.to_s
       return TIER_WEIGHTS['free']    if m.include?(':free')
       return TIER_WEIGHTS['premium'] if m.match?(/sonnet|gpt-4o|claude-opus/i)
-      return TIER_WEIGHTS['paid']    if m.match?(/haiku|deepseek-v4-flash/i)
+      return TIER_WEIGHTS['paid']    if m.match?(/haiku|deepseek-v4-flash|\Akimi\//i)
 
       TIER_WEIGHTS['cheap']
     end
