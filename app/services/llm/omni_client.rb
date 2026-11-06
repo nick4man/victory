@@ -188,8 +188,8 @@ module Llm
       envs = ENV.select { |k, _| k.start_with?('LLM_CHAIN_') }.values
       return false if envs.empty?
 
-      envs.flat_map { |v| v.split(',') }.map(&:strip).reject(&:empty?)
-          .all? { |m| DIRECT_PROVIDERS.key?(m.split('/', 2).first) }
+      models = envs.flat_map { |v| v.split(',') }.map(&:strip).reject(&:empty?)
+      models.any? && models.all? { |m| DIRECT_PROVIDERS.key?(m.split('/', 2).first) }
     end
 
     def parse_tool_calls(raw)

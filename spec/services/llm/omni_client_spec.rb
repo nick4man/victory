@@ -9,12 +9,14 @@ RSpec.describe Llm::OmniClient do
   end
 
   around do |ex|
-    keep = ENV.to_h.slice('KIMI_API_KEY', 'KIMI_BASE_URL', 'LLM_CHAIN_CHAT')
+    keep = ENV.to_h.select { |k, _| k.start_with?('LLM_CHAIN_') || k.start_with?('KIMI_') }
+    ENV.keys.grep(/\ALLM_CHAIN_/).each { |k| ENV.delete(k) }
     ENV['KIMI_API_KEY'] = 'kimi-secret'
     ENV.delete('KIMI_BASE_URL')
     ex.run
   ensure
-    %w[KIMI_API_KEY KIMI_BASE_URL LLM_CHAIN_CHAT].each { |k| keep.key?(k) ? ENV[k] = keep[k] : ENV.delete(k) }
+    ENV.keys.grep(/\A(LLM_CHAIN_|KIMI_)/).each { |k| ENV.delete(k) }
+    keep.each { |k, v| ENV[k] = v }
   end
 
   def client = described_class.new(base_url: omni, api_key: 'omni-secret')
@@ -78,5 +80,22 @@ RSpec.describe Llm::OmniClient do
     client.complete([{ role: 'user', content: 'hi' }])
 
     expect(omni_stub).to have_been_requested
+  end
+
+  describe 'конфиг OmniRoute в initialize' do
+    it 'без OmniRoute и с цепочками только из kimi/ — клиент создаётся' do
+      ENV['LLM_CHAIN_CHAT'] = 'kimi/k3'
+      expect { described_class.new(base_url: nil, api_key: nil) }.not_to raise_error
+    end
+
+    it 'без OmniRoute и с OmniRoute-моделью в цепочке — fail-fast, как раньше' do
+      ENV['LLM_CHAIN_CHAT'] = 'kimi/k3,gemini/gemini-2.5-flash'
+      expect { described_class.new(base_url: nil, api_key: nil) }.to raise_error(described_class::Error, /OMNIROUTE_BASE_URL/)
+    end
+
+    it 'без OmniRoute и с пустыми цепочками — fail-fast' do
+      ENV['LLM_CHAIN_CHAT'] = ' , '
+      expect { described_class.new(base_url: nil, api_key: nil) }.to raise_error(described_class::Error)
+    end
   end
 end
