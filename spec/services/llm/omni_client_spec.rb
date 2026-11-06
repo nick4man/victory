@@ -82,6 +82,10 @@ RSpec.describe Llm::OmniClient do
     expect(omni_stub).to have_been_requested
   end
 
+  it 'kimi/ учитывается в cost-телеметрии как платный' do
+    expect(client.send(:tier_weight, 'kimi/k3')).to eq(described_class::TIER_WEIGHTS['paid'])
+  end
+
   describe 'конфиг OmniRoute в initialize' do
     it 'без OmniRoute и с цепочками только из kimi/ — клиент создаётся' do
       ENV['LLM_CHAIN_CHAT'] = 'kimi/k3'
@@ -91,6 +95,11 @@ RSpec.describe Llm::OmniClient do
     it 'без OmniRoute и с OmniRoute-моделью в цепочке — fail-fast, как раньше' do
       ENV['LLM_CHAIN_CHAT'] = 'kimi/k3,gemini/gemini-2.5-flash'
       expect { described_class.new(base_url: nil, api_key: nil) }.to raise_error(described_class::Error, /OMNIROUTE_BASE_URL/)
+    end
+
+    it 'без OmniRoute и с кривым kimi/ без модели — fail-fast' do
+      ENV['LLM_CHAIN_CHAT'] = 'kimi/'
+      expect { described_class.new(base_url: nil, api_key: nil) }.to raise_error(described_class::Error)
     end
 
     it 'без OmniRoute и с пустыми цепочками — fail-fast' do

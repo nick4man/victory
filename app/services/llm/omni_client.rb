@@ -169,7 +169,7 @@ module Llm
     def endpoint_for(model)
       prefix, rest = model.to_s.split('/', 2)
       cfg = DIRECT_PROVIDERS[prefix]
-      if cfg && rest.present?
+      if direct_model?(model)
         key = ENV[cfg[:key_env]].presence
         raise Error, "#{cfg[:key_env]} not set" unless key
 
@@ -189,7 +189,12 @@ module Llm
       return false if envs.empty?
 
       models = envs.flat_map { |v| v.split(',') }.map(&:strip).reject(&:empty?)
-      models.any? && models.all? { |m| DIRECT_PROVIDERS.key?(m.split('/', 2).first) }
+      models.any? && models.all? { |m| direct_model?(m) }
+    end
+
+    def direct_model?(model)
+      prefix, rest = model.to_s.split('/', 2)
+      DIRECT_PROVIDERS.key?(prefix) && rest.present?
     end
 
     def parse_tool_calls(raw)
@@ -242,7 +247,7 @@ module Llm
       m = model.to_s
       return TIER_WEIGHTS['free']    if m.include?(':free')
       return TIER_WEIGHTS['premium'] if m.match?(/sonnet|gpt-4o|claude-opus/i)
-      return TIER_WEIGHTS['paid']    if m.match?(/haiku|deepseek-v4-flash/i)
+      return TIER_WEIGHTS['paid']    if m.match?(/haiku|deepseek-v4-flash|\Akimi\//i)
 
       TIER_WEIGHTS['cheap']
     end
