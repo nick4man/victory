@@ -122,6 +122,10 @@ module ExternalListings
         building_year:  integer(text(offer, './built-year')),
         condition:      text(offer, './renovation')&.downcase,
         district:       text(offer, './location/sub-locality-name'),
+        # Город каждого объявления — из фида (locality-name), иначе после
+        # разового бэкфилла все новые YRL-записи получали бы city = NULL
+        # и навсегда выпадали из выборок ComparableFinder (issue #172).
+        city:           ExternalListing.normalize_city(text(offer, './location/locality-name')),
         address:        build_address(offer),
         latitude:       numeric(text(offer, './location/latitude')),
         longitude:      numeric(text(offer, './location/longitude')),

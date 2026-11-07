@@ -69,9 +69,15 @@ module Valuations
 
     def donor_comp_count(city)
       # Property doesn't have a `city` column; we approximate via address ILIKE.
-      Property.published.where('address ILIKE ?', "%#{city}%").count
+      Property.published
+            .where('address ILIKE ?', "%#{city}%")
+            .where(deal_type: @v.deal_type)
+            .count
     end
 
+    # Продажа ≠ аренда: доноры строго того же типа сделки, что и subject —
+    # иначе арендные ₽/м² (auto-kept через cross_city_adapted) искажали бы
+    # sale-оценку (issue #172, правки по ревью).
     def comps_from_donor(city)
       pt_id = PropertyType.find_by(slug: realty_slug)&.id
       return [] unless pt_id
@@ -79,6 +85,7 @@ module Valuations
       Property.published
               .where(property_type_id: pt_id)
               .where('address ILIKE ?', "%#{city}%")
+              .where(deal_type: @v.deal_type)
               .where('price > 0 AND area > 0')
               .order(updated_at: :desc)
               .limit(20)

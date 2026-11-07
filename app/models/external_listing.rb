@@ -1,9 +1,16 @@
 # frozen_string_literal: true
 
 # External property listing — comparable data sourced from third-party feeds
-# (Yandex Realty YRL XML from other Ryazan agencies, future Avito API, etc.).
-# Read-only for the valuation pipeline: never edited by Rails users, only
-# refreshed by `ExternalListings::YrlParser` and friends.
+# (Yandex Realty YRL XML from other Ryazan agencies, agency sitemaps, future
+# Avito API, etc). Read-only for the valuation pipeline: never edited by
+# Rails users, only refreshed by `ExternalListings::YrlParser` and friends.
+#
+# `city` — город источника объявления: для agency_sitemap он приходит из
+# конфига агентства (config/agency_sitemaps.yml), для YRL — из фида
+# (location/locality-name), для websearch — только если подтверждён
+# содержимым самой карточки (иначе запись отклоняется, см.
+# Valuations::WebsearchCompFinder#persist). ComparableFinder отсекает
+# чужие города по этой колонке (issue #172).
 class ExternalListing < ApplicationRecord
   # `agency_sitemap` — scraped listings из agency-specific sitemap.xml
   # (см. Valuations::SitemapCompFinder + config/agency_sitemaps.yml).
@@ -20,6 +27,17 @@ class ExternalListing < ApplicationRecord
     'agent62'     => 'Агент 62',
     'lr62'        => 'Личный Риэлтор'
   }.freeze
+
+  # Единая нормализация города для всех сравнений (SQL и Ruby):
+  # обрезка пробелов и префикса «г. »/«г.»/«город » (только как отдельного
+  # токена — «Горно-Алтайск» и «Геленджик» не трогаем). Без downcase —
+  # сравнение case-insensitive на стороне запросов/casecmp, чтобы не
+  # переписывать уже сохранённые данные (issue #172, правки по ревью).
+  def self.normalize_city(value)
+    value.to_s.strip.sub(/\A(?:г\.\s*|город\.?\s+|г\s+)/i, '').strip.gsub(/\s+/, ' ')
+  end
+
+  before_validation :normalize_city_name
 
   # Wires `.near([lat,lng], km, units: :km)` for the ComparableFinder's
   # radius-based candidate search. Records arrive pre-geocoded from the
@@ -70,5 +88,11 @@ class ExternalListing < ApplicationRecord
     return nil if price.to_f.zero? || area.to_f.zero?
 
     (price.to_f / area.to_f).round
+  end
+
+  private
+
+  def normalize_city_name
+    self.city = self.class.normalize_city(city) if city.present?
   end
 end
