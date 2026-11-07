@@ -228,6 +228,9 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
+          # Объявление найдено под запрос конкретного города subject —
+          # атрибутируем ему этот город (issue #172).
+          city:          @v.city.to_s.presence,
           property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,

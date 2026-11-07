@@ -61,6 +61,12 @@ module Valuations
       total_persisted = 0
       config.each do |agency_key, cfg|
         next unless property_type_supported?(cfg)
+        # Sitemap-источники привязаны к городу агентства (см. `city` в
+        # config/agency_sitemaps.yml). Для оценок вне этого города discovery
+        # не просто бесполезен — вреден: рязанские объявления не должны
+        # попадать в аналоги для СПб/Москвы (issue #172). Город subject
+        # неизвестен — запускаем (критерий отсечки — «точно вне города»).
+        next unless agency_covers_subject_city?(cfg)
         next if cached_count(agency_key) >= 5
 
         listings = discover_listings(cfg)
@@ -70,7 +76,7 @@ module Valuations
                  when 'json_ld' then scrape_json_ld(listings, agency_key)
                  else scrape_and_parse(listings, agency_key)
                  end
-        persisted = persist(parsed, agency_key)
+        persisted = persist(parsed, agency_key, cfg)
         total_persisted += persisted
 
         Rails.logger.info(
@@ -84,6 +90,16 @@ module Valuations
     end
 
     private
+
+    def agency_covers_subject_city?(cfg)
+      agency_city = normalize_city(cfg['city'])
+      subject_city = normalize_city(@v.city)
+      agency_city.blank? || subject_city.blank? || agency_city.casecmp?(subject_city)
+    end
+
+    def normalize_city(value)
+      value.to_s.strip.sub(/\Aг\.?\s*/i, '')
+    end
 
     # Always enabled — json_ld method не требует API keys; только
     # firecrawl_llm fallback гейтится FIRECRAWL_API_KEY (если используется
@@ -327,7 +343,8 @@ module Valuations
       nil
     end
 
-    def persist(parsed_list, agency_key)
+    def persist(parsed_list, agency_key, cfg = nil)
+      cfg ||= load_config[agency_key] || {}
       count = 0
       parsed_list.each do |p|
         next unless sane?(p)
@@ -350,6 +367,9 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
+          # Город объявления — из парсинга страницы либо из конфига
+          # агентства (issue #172: без city чужие города не отсечь).
+          city:          p[:city].to_s.presence || normalize_city(cfg['city']).presence,
           property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,

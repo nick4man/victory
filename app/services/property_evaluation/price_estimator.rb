@@ -12,13 +12,20 @@ module PropertyEvaluation
       'designer'     => 1.18
     }.freeze
 
+    # Отсечение выбросов по ₽/м² до взвешенной медианы: значение,
+    # расходящееся с медианой выборки больше чем в OUTLIER_FACTOR раз
+    # (аренда 510 ₽/м² среди продаж ~100 тыс. ₽/м², case #124 из issue #172),
+    # отбрасывается. Применяется только к выборкам ≥ 3 — для меньших
+    # медиана статистически бессмысленна, фильтр оставляем вызывающей стороне.
+    OUTLIER_FACTOR = 3.0
+
     def initialize(valuation, comparables)
       @v = valuation
       @comps = comparables
     end
 
     def call
-      base_pps = weighted_median(@comps.map { |c| [c[:price_per_sqm], c[:weight]] })
+      base_pps = weighted_median(reject_outliers(@comps).map { |c| [c[:price_per_sqm], c[:weight]] })
       factors = {
         floor:     floor_factor,
         year:      year_factor,
@@ -60,6 +67,22 @@ module PropertyEvaluation
         return value if cum >= half
       end
       sorted.last.first
+    end
+
+    def reject_outliers(comps)
+      pps_values = comps.filter_map { |c| c[:price_per_sqm].to_f.nonzero? }
+      return comps if pps_values.size < 3
+
+      median = pps_values.sort[pps_values.size / 2]
+      filtered = comps.select do |c|
+        pps = c[:price_per_sqm].to_f
+        next true if pps <= 0
+
+        pps * OUTLIER_FACTOR >= median && pps <= median * OUTLIER_FACTOR
+      end
+      # Подстраховка: не отдаём пустую выборку, если все значения выглядели
+      # «выбросами» относительно друг друга — лучше шумная оценка, чем ноль.
+      filtered.empty? ? comps : filtered
     end
 
     def floor_factor

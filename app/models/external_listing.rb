@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
 # External property listing — comparable data sourced from third-party feeds
-# (Yandex Realty YRL XML from other Ryazan agencies, future Avito API, etc.).
-# Read-only for the valuation pipeline: never edited by Rails users, only
-# refreshed by `ExternalListings::YrlParser` and friends.
+# (Yandex Realty YRL XML from other Ryazan agencies, agency sitemaps, future
+# Avito API, etc). Read-only for the valuation pipeline: never edited by
+# Rails users, only refreshed by `ExternalListings::YrlParser` and friends.
+#
+# `city` — город источника объявления: для agency_sitemap он приходит из
+# конфига агентства (config/agency_sitemaps.yml), для websearch — из города
+# оценки, запустившей сбор. ComparableFinder отсекает чужие города по этой
+# колонке (issue #172).
 class ExternalListing < ApplicationRecord
   # `agency_sitemap` — scraped listings из agency-specific sitemap.xml
   # (см. Valuations::SitemapCompFinder + config/agency_sitemaps.yml).

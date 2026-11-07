@@ -21,6 +21,9 @@ module Valuations
     LIMIT       = 20
     MIN_COSINE  = 0.75   # below this — different segments, not useful
     SOURCE_TAG  = 'semantic'
+    # Аналог из чужого города / дальше этого радиуса не считается локальным
+    # (issue #172: cosine search выдавал рязанские квартиры для оценок в СПб).
+    MAX_RADIUS_KM = 50
 
     def self.call(valuation)
       new(valuation).call
@@ -115,6 +118,9 @@ module Valuations
     def build_comp(embedding_row)
       property = embedding_row.property
       return nil unless property && property.price.to_i.positive? && property.area.to_f.positive?
+      # Продажа ≠ аренда: семантическая близость не спасает, когда объект
+      # другого типа сделки (case #124: аренда 510 ₽/м² среди продаж).
+      return nil unless property.deal_type.to_s == @v.deal_type.to_s
 
       cos = if embedding_row.respond_to?(:neighbor_distance) && embedding_row.neighbor_distance
               1.0 - embedding_row.neighbor_distance.to_f
@@ -125,6 +131,8 @@ module Valuations
 
       pps = (property.price.to_f / property.area.to_f).round
       distance_km = distance_km_to(property)
+      return nil if distance_km && distance_km > MAX_RADIUS_KM
+      return nil unless same_city?(property)
 
       {
         title:           property.title.to_s.truncate(80),
@@ -152,6 +160,17 @@ module Valuations
       )
     rescue StandardError
       nil
+    end
+
+    # Пустой город у comp'а — «неизвестно», допускаем (радиус-гейт выше
+    # отсекает чужие регионы при наличии координат). Subject без города —
+    # фильтр не применяется вовсе.
+    def same_city?(property)
+      subject = @v.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
+      return true if subject.blank?
+
+      other = property.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
+      other.blank? || other.casecmp?(subject)
     end
 
     # Weight in the final weighted-median: high cosine + close geo → 0.6;

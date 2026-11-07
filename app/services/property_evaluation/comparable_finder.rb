@@ -28,6 +28,12 @@ module PropertyEvaluation
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room'
     }.freeze
 
+    # Жёсткий потолок расстояния для аналогов: comp дальше 50 км от subject
+    # (при известных координатах обеих сторон) не считается локальным.
+    # Раньше предела не было — в выборку попадали объекты за 100-200 км
+    # и размывали взвешенную медиану (issue #172).
+    MAX_RADIUS_KM = 50
+
     def initialize(valuation)
       @v = valuation
     end
@@ -60,6 +66,12 @@ module PropertyEvaluation
                          .for_type(slug)
                          .area_band(@v.total_area.to_f, tier.area_pct)
                          .rooms_band(@v.rooms.to_i, tier.rooms_delta)
+      # ExternalListing теперь хранит город источника (issue #172): для
+      # subject с известным городом чужие города отсекаем на уровне SQL.
+      # NULL city (legacy avito/cian из websearch) в выборку не попадают —
+      # происхождение неизвестно, доверять ему для чужого города нельзя.
+      subject_city = normalized_subject_city
+      s = s.where(city: subject_city) if subject_city.present?
       apply_geo(s, tier).limit(50)
     end
 
@@ -152,6 +164,10 @@ module PropertyEvaluation
       records.filter_map do |r|
         pps = compute_pps(r)
         next nil if pps <= 0
+        # Город и радиус — hard gates ДО взвешивания: сюда попадают comps
+        # из property/mls scopes, где apply_geo на tier 3/4 может пропустить
+        # чужой город/дальний объект (issue #172).
+        next nil unless same_city?(r)
 
         if apply_size_filter
           area = r.try(:area).to_f
@@ -160,10 +176,27 @@ module PropertyEvaluation
         end
 
         dist = distance_km_to(r)
+        next nil if dist && dist > MAX_RADIUS_KM
+
         { record: r, price_per_sqm: pps, distance_km: dist,
           weight: dist ? 1.0 / (1.0 + dist) : 0.5,
           source: source_label(r) }
       end.sort_by { |c| c[:distance_km] || Float::INFINITY }
+    end
+
+    # Город subject vs город comp'а. Пустой город у comp'а трактуем как
+    # «неизвестно» и допускаем запись — радиус-гейт выше всё равно отсечёт
+    # чужие регионы, когда у обеих сторон есть координаты.
+    def same_city?(record)
+      subject_city = normalized_subject_city
+      return true if subject_city.blank?
+
+      record_city = record.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
+      record_city.blank? || record_city.casecmp?(subject_city)
+    end
+
+    def normalized_subject_city
+      @normalized_subject_city ||= @v.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
     end
 
     # Label источника по record class. Используется downstream'ом

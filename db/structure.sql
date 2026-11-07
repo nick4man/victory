@@ -1098,7 +1098,8 @@ CREATE TABLE public.external_listings (
     closed_at timestamp(6) without time zone,
     raw_payload jsonb DEFAULT '{}'::jsonb,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    city character varying
 );
 
 
@@ -5144,6 +5145,13 @@ CREATE INDEX index_documents_on_verified_by_id ON public.documents USING btree (
 
 
 --
+-- Name: index_external_listings_on_city; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_external_listings_on_city ON public.external_listings USING btree (city);
+
+
+--
 -- Name: index_external_listings_on_closed_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7900,6 +7908,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261107233000'),
 ('20260914120000'),
 ('20260911100100'),
 ('20260911100000'),

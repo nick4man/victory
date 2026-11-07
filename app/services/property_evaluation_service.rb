@@ -49,6 +49,13 @@ class PropertyEvaluationService
   #     доверяем им как high-quality signal.
   AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
 
+  # Источники, дающие ЛОКАЛЬНЫЕ аналоги (тот же город/радиус subject).
+  # Используются для флага low_coverage: если в финальной выборке нет ни
+  # одного локального comp'а, оценка строится на city median / переносе из
+  # другого города / AI-генерации — бот обязан озвучить это как
+  # ориентировочную (issue #172).
+  LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+
   def initialize(valuation)
     @v = valuation
   end
@@ -148,7 +155,8 @@ class PropertyEvaluationService
         market_analysis:  build_market_analysis(comparables, estimate),
         recommendations:  build_recommendations,
         ai_filter:        ai_meta,
-        ai_summary:       ai_summary
+        ai_summary:       ai_summary,
+        low_coverage:     low_coverage?(comparables)
       )
     )
   rescue StandardError => e
@@ -268,6 +276,10 @@ class PropertyEvaluationService
     Math.sqrt(variance) / mean
   end
 
+  def low_coverage?(comps)
+    comps.none? { |c| LOCAL_COMP_SOURCES.include?(c[:source].to_s) }
+  end
+
   def fallback_estimate
     # Per-city median takes priority — calibrated to 50 large Russian
     # cities. If the city is unknown (or absent), fall back to the
@@ -300,6 +312,8 @@ class PropertyEvaluationService
       confidence_level:   conf,
       tier:               4,
       comparables:        [],
+      # Fallback = по определению нет локальных аналогов (все tier'ы пусты).
+      low_coverage:       true,
       adjustments:        {},
       market_analysis:    pps_from_city ?
                             "Похожих объектов в нашей базе нет. Используем медианную цену по городу #{@v.city} (#{pps.to_s(:delimited, delimiter: ' ') rescue pps} ₽/м²)." :
