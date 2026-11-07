@@ -58,6 +58,9 @@
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
 | `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
+| `OMNIROUTE_BASE_URL` + `OMNIROUTE_API_KEY` | — | LLM-шлюз OmniRoute (`Llm::OmniClient`); обязательны, если в `LLM_CHAIN_*` есть хоть одна модель не `kimi/…` |
+| `LLM_CHAIN_CHAT` / `LLM_CHAIN_ANALYSIS` / `LLM_CHAIN_STAFF_ANALYSIS` | `DEFAULT_CHAINS` (free-first) | порядок моделей через запятую; прод-override — осознанное исключение из free-first, причину писать в PR |
+| `KIMI_API_KEY` + `KIMI_BASE_URL` | — / `https://api.kimi.ai/coding/v1` (global) | прямой Kimi Code API для моделей `kimi/<id>` в цепочках (с 06.11.26, PR #171); temperature принудительно 1. Тариф Kimi Code — подписка, решение владельца использовать его для чата сайта |
 | `YANDEX_AI_STUDIO_API_KEY` + `YANDEX_CLOUD_FOLDER_ID` | — | Vision OCR для document intake |
 | `YANDEX_WEBMASTER_TOKEN` + `YANDEX_WEBMASTER_USER_ID` | — | Webmaster API (digest, recrawl) |
 | `GITHUB_PERSONAL_ACCESS_TOKEN` | — | MCP-сервер `github` в `.mcp.json` (PR, issues, ревью). Не выставлен — сервер стартует, но ходит в API анонимно и упирается в лимит по IP (`API rate limit exceeded for <ip>`). Разовый `export` не помогает: shell между вызовами не сохраняется — переменная должна лежать в профиле оболочки. |

@@ -16,8 +16,9 @@ production:
   url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
   channel_prefix: viktory_realty_cable_production
   
-  # Connection pool settings
-  pool: <%= ENV.fetch("RAILS_MAX_THREADS", 5) %>
+  # `pool:` здесь нельзя: адаптер отдаёт все ключи в Redis.new, а redis-client
+  # 0.29+ падает на неизвестном ключе (ArgumentError: unknown keyword: :pool) —
+  # каждое сообщение в чат сайта отдавало 500, websocket не поднимался.
   timeout: 5
   
   # Reconnect settings (removed - not supported in ActionCable with Redis 5.0)
