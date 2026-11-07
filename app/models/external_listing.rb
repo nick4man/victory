@@ -26,6 +26,16 @@ class ExternalListing < ApplicationRecord
     'lr62'        => 'Личный Риэлтор'
   }.freeze
 
+  # Единая нормализация города для всех сравнений (SQL и Ruby):
+  # обрезка пробелов и префикса «г.»/«город». Без downcase — сравнение
+  # case-insensitive на стороне запросов/casecmp, чтобы не переписывать
+  # уже сохранённые данные (issue #172, правки по ревью).
+  def self.normalize_city(value)
+    value.to_s.strip.sub(/\A(?:г|город)\.?\s*/i, '').gsub(/\s+/, ' ')
+  end
+
+  before_validation :normalize_city_name
+
   # Wires `.near([lat,lng], km, units: :km)` for the ComparableFinder's
   # radius-based candidate search. Records arrive pre-geocoded from the
   # source feed; reverse_geocoded_by is the matching declaration.
@@ -75,5 +85,11 @@ class ExternalListing < ApplicationRecord
     return nil if price.to_f.zero? || area.to_f.zero?
 
     (price.to_f / area.to_f).round
+  end
+
+  private
+
+  def normalize_city_name
+    self.city = self.class.normalize_city(city) if city.present?
   end
 end

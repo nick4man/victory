@@ -25,7 +25,8 @@ module PropertyEvaluation
     end
 
     def call
-      base_pps = weighted_median(reject_outliers(@comps).map { |c| [c[:price_per_sqm], c[:weight]] })
+      cleaned = reject_outliers(@comps)
+      base_pps = weighted_median(cleaned.map { |c| [c[:price_per_sqm], c[:weight]] })
       factors = {
         floor:     floor_factor,
         year:      year_factor,
@@ -41,7 +42,11 @@ module PropertyEvaluation
         estimated_price:    estimated,
         min_price:          (estimated * 0.92).round(-3),
         max_price:          (estimated * 1.08).round(-3),
-        adjustments:        factors
+        adjustments:        factors,
+        # Очищенный пул — вызывающая сторона обязана использовать его для
+        # всех downstream-расчётов (hedonic, bootstrap, confidence,
+        # сериализация), иначе выброс снова попадёт в оценку (issue #172).
+        comparables:        cleaned
       }
     end
 

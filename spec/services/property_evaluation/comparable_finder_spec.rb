@@ -83,5 +83,56 @@ RSpec.describe PropertyEvaluation::ComparableFinder do
 
       expect(result[:comparables].map { |c| c[:record] }).to include(property)
     end
+
+    it 'отбрасывает объект каталога без города и без координат (fail-close)' do
+      # Локальность не подтверждена ни городом, ни расстоянием — такой аналог
+      # не должен попадать в выборку и скрывать low_coverage (issue #172).
+      property = create(:property, :on_site, property_type_id: flat_type.id,
+                                             deal_type: :sale, area: 54, rooms: 2)
+      property.update_columns(city: nil, district: 'Канищево',
+                              latitude: nil, longitude: nil)
+
+      result = described_class.new(
+        build_valuation(city: 'Рязань', coords: [nil, nil], district: 'Канищево')
+      ).call
+
+      expect(result[:comparables].map { |c| c[:record] }).not_to include(property)
+    end
+
+    it 'оставляет объект каталога без города, но в радиусе 50 км' do
+      property = create_catalog_property(nil, [54.63, 39.72])
+
+      result = described_class.new(
+        build_valuation(city: 'Рязань', coords: [54.6292, 39.7187])
+      ).call
+
+      expect(result[:comparables].map { |c| c[:record] }).to include(property)
+    end
+  end
+
+  describe 'регистр города' do
+    it 'находит external_listing с городом в другом регистре' do
+      create_ryazan_sitemap_listings(2, city: 'рЯзанЬ')
+
+      result = described_class.new(
+        build_valuation(city: 'Рязань', coords: [54.6292, 39.7187], district: 'Канищево')
+      ).call
+
+      expect(result[:comparables].size).to eq(2)
+    end
+
+    it 'нормализует префикс «г.» у города external_listing при записи' do
+      listing = create(:external_listing, :agency_sitemap,
+                       property_type: 'flat', deal_type: 'sale',
+                       area: 54, rooms: 2, district: 'Канищево', city: 'г. Рязань')
+
+      expect(listing.reload.city).to eq('Рязань')
+
+      result = described_class.new(
+        build_valuation(city: 'Рязань', coords: [54.6292, 39.7187], district: 'Канищево')
+      ).call
+
+      expect(result[:comparables].map { |c| c[:record] }).to include(listing)
+    end
   end
 end

@@ -132,7 +132,7 @@ module Valuations
       pps = (property.price.to_f / property.area.to_f).round
       distance_km = distance_km_to(property)
       return nil if distance_km && distance_km > MAX_RADIUS_KM
-      return nil unless same_city?(property)
+      return nil unless same_city?(property, distance_km)
 
       {
         title:           property.title.to_s.truncate(80),
@@ -162,15 +162,19 @@ module Valuations
       nil
     end
 
-    # Пустой город у comp'а — «неизвестно», допускаем (радиус-гейт выше
-    # отсекает чужие регионы при наличии координат). Subject без города —
+    # Пустой город у comp'а — fail-close: допускаем только при вычисленном
+    # расстоянии ≤ MAX_RADIUS_KM; без координат локальность не подтверждена
+    # и аналог скрывал бы low_coverage (issue #172, согласовано с
+    # PropertyEvaluation::ComparableFinder#same_city?). Subject без города —
     # фильтр не применяется вовсе.
-    def same_city?(property)
-      subject = @v.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
+    def same_city?(property, distance_km = nil)
+      subject = ExternalListing.normalize_city(@v.city)
       return true if subject.blank?
 
-      other = property.city.to_s.strip.sub(/\Aг\.?\s*/i, '')
-      other.blank? || other.casecmp?(subject)
+      other = ExternalListing.normalize_city(property.city)
+      return distance_km.present? && distance_km <= MAX_RADIUS_KM if other.blank?
+
+      other.casecmp?(subject)
     end
 
     # Weight in the final weighted-median: high cosine + close geo → 0.6;

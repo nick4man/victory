@@ -98,7 +98,7 @@ module Valuations
     end
 
     def normalize_city(value)
-      value.to_s.strip.sub(/\Aг\.?\s*/i, '')
+      ExternalListing.normalize_city(value)
     end
 
     # Always enabled — json_ld method не требует API keys; только

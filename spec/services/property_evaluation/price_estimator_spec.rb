@@ -36,4 +36,13 @@ RSpec.describe PropertyEvaluation::PriceEstimator do
 
     expect(result[:base_price_per_sqm]).to eq(100_000)
   end
+
+  it 'возвращает очищенный пул без выброса для downstream-расчётов' do
+    comps = [comp(96_000), comp(98_000), comp(100_000), comp(102_000), comp(104_000), comp(510)]
+
+    result = described_class.new(valuation, comps).call
+
+    expect(result[:comparables].map { |c| c[:price_per_sqm] }).not_to include(510)
+    expect(result[:comparables].size).to eq(5)
+  end
 end

@@ -70,6 +70,27 @@ RSpec.describe Valuations::SemanticCompFinder do
     expect(described_class.call(valuation).size).to eq(1)
   end
 
+  it 'отбрасывает объект без города и без координат (fail-close)' do
+    # Локальность не подтверждена ни городом, ни расстоянием — аналог не
+    # должен скрывать low_coverage (issue #172, согласовано с ComparableFinder).
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [nil, nil]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'оставляет объект без города, но в радиусе 50 км' do
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [54.63, 39.72]))])
+
+    expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект без города дальше радиуса 50 км' do
+    # ~175 км от Рязани, город неизвестен — расстоянием тоже не локален
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [55.75, 37.61]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
   it 'не фильтрует по городу, если город subject неизвестен' do
     valuation.city = nil
     stub_nearest_neighbors([embedding_double(property_double(city: 'Санкт-Петербург', coords: [nil, nil]))])
