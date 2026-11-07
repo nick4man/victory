@@ -22,8 +22,8 @@ RSpec.describe ExternalListing do
       expect(described_class.normalize_city('Санкт  Петербург')).to eq('Санкт Петербург')
     end
 
-    it 'не снимает «г» без разделителя' do
-      expect(described_class.normalize_city('г.Рязань')).to eq('г.Рязань')
+    it 'снимает «г.» и без пробела после точки' do
+      expect(described_class.normalize_city('г.Рязань')).to eq('Рязань')
     end
   end
 

@@ -91,10 +91,22 @@ RSpec.describe Valuations::SemanticCompFinder do
     expect(described_class.call(valuation)).to be_empty
   end
 
-  it 'не фильтрует по городу, если город subject неизвестен' do
+  it 'принимает объект по расстоянию, если город subject неизвестен' do
+    # Город subject не извлечён — локальность подтверждает только расстояние.
     valuation.city = nil
-    stub_nearest_neighbors([embedding_double(property_double(city: 'Санкт-Петербург', coords: [nil, nil]))])
+    valuation.latitude = 59.9398
+    valuation.longitude = 30.3146
+    stub_nearest_neighbors([embedding_double(property_double(city: 'Санкт-Петербург', coords: [59.94, 30.31]))])
 
     expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект без расстояния при неизвестном городе subject (fail-close)' do
+    # Адрес вне геокодинга, city не извлечён: единственный сигнал локальности —
+    # расстояние. Без координат у comp он не подтверждён (issue #172).
+    valuation.city = nil
+    stub_nearest_neighbors([embedding_double(property_double(city: 'Рязань', coords: [nil, nil]))])
+
+    expect(described_class.call(valuation)).to be_empty
   end
 end

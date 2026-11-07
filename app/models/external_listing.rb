@@ -29,12 +29,12 @@ class ExternalListing < ApplicationRecord
   }.freeze
 
   # Единая нормализация города для всех сравнений (SQL и Ruby):
-  # обрезка пробелов и префикса «г. »/«город » (только как отдельного
+  # обрезка пробелов и префикса «г. »/«г.»/«город » (только как отдельного
   # токена — «Горно-Алтайск» и «Геленджик» не трогаем). Без downcase —
   # сравнение case-insensitive на стороне запросов/casecmp, чтобы не
   # переписывать уже сохранённые данные (issue #172, правки по ревью).
   def self.normalize_city(value)
-    value.to_s.strip.sub(/\A(?:г\.?|город\.?)\s+/i, '').strip.gsub(/\s+/, ' ')
+    value.to_s.strip.sub(/\A(?:г\.\s*|город\.?\s+|г\s+)/i, '').strip.gsub(/\s+/, ' ')
   end
 
   before_validation :normalize_city_name

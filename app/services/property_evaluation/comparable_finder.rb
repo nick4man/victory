@@ -185,13 +185,16 @@ module PropertyEvaluation
       end.sort_by { |c| c[:distance_km] || Float::INFINITY }
     end
 
-    # Город subject vs город comp'а. Пустой город у comp'а — fail-close:
-    # допускаем запись только при вычисленном расстоянии ≤ MAX_RADIUS_KM;
-    # без координат у любой из сторон локальность не подтверждена — и такой
-    # аналог скрывал бы low_coverage (issue #172, правки по ревью Kimi).
+    # Город subject vs город comp'а. Fail-close в обе стороны:
+    # - пустой город subject — локальность подтверждает только расстояние
+    #   ≤ MAX_RADIUS_KM; без координат у любой из сторон comp не локален
+    #   (websearch-записи без координат иначе проходили по кругу через
+    #   guess_city → Рязань, issue #172, правки по ревью Kimi);
+    # - пустой город comp'а — то же правило;
+    # - оба города известны — case-insensitive совпадение.
     def same_city?(record, distance_km = nil)
       subject_city = normalized_subject_city
-      return true if subject_city.blank?
+      return distance_km.present? && distance_km <= MAX_RADIUS_KM if subject_city.blank?
 
       record_city = ExternalListing.normalize_city(record.city)
       return distance_km.present? && distance_km <= MAX_RADIUS_KM if record_city.blank?

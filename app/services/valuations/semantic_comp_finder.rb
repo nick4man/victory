@@ -162,14 +162,13 @@ module Valuations
       nil
     end
 
-    # Пустой город у comp'а — fail-close: допускаем только при вычисленном
-    # расстоянии ≤ MAX_RADIUS_KM; без координат локальность не подтверждена
-    # и аналог скрывал бы low_coverage (issue #172, согласовано с
-    # PropertyEvaluation::ComparableFinder#same_city?). Subject без города —
-    # фильтр не применяется вовсе.
+    # Fail-close в обе стороны (согласовано с
+    # PropertyEvaluation::ComparableFinder#same_city?): пустой город subject
+    # или comp'а допускается только при вычисленном расстоянии ≤
+    # MAX_RADIUS_KM — иначе аналог скрывал бы low_coverage (issue #172).
     def same_city?(property, distance_km = nil)
       subject = ExternalListing.normalize_city(@v.city)
-      return true if subject.blank?
+      return distance_km.present? && distance_km <= MAX_RADIUS_KM if subject.blank?
 
       other = ExternalListing.normalize_city(property.city)
       return distance_km.present? && distance_km <= MAX_RADIUS_KM if other.blank?

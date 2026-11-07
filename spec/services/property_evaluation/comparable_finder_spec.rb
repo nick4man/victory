@@ -108,6 +108,30 @@ RSpec.describe PropertyEvaluation::ComparableFinder do
 
       expect(result[:comparables].map { |c| c[:record] }).to include(property)
     end
+
+    it 'принимает объект по расстоянию, если город subject неизвестен' do
+      property = create_catalog_property('Казань', [55.79, 49.12])
+
+      result = described_class.new(
+        build_valuation(city: nil, coords: [55.7887, 49.1221])
+      ).call
+
+      expect(result[:comparables].map { |c| c[:record] }).to include(property)
+    end
+
+    it 'отбрасывает объект без расстояния при неизвестном городе subject (fail-close)' do
+      # Websearch-записи без координат и без города не считаются локальными:
+      # иначе guess_city → Рязань пускал бы чужие города по кругу (issue #172).
+      listing = create(:external_listing, :agency_sitemap,
+                       property_type: 'flat', deal_type: 'sale',
+                       area: 54, rooms: 2, city: nil)
+
+      result = described_class.new(
+        build_valuation(city: nil, coords: [nil, nil])
+      ).call
+
+      expect(result[:comparables].map { |c| c[:record] }).not_to include(listing)
+    end
   end
 
   describe 'регистр города' do
