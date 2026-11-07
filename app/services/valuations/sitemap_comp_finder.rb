@@ -54,6 +54,10 @@ module Valuations
     # @return [Integer] total persisted ExternalListing rows across all agencies
     def call
       return 0 unless enabled?
+      # Sitemap-пайплайн парсит только продажи (prompt требует объявление
+      # о продаже), поэтому для rent-оценок сохранили бы продажу с
+      # deal_type='rent' — seeder запускается только для sale (issue #172).
+      return 0 unless @v.deal_type.to_s == 'sale'
 
       config = load_config
       return 0 if config.empty?

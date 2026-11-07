@@ -44,6 +44,11 @@ module Valuations
     # return value, but log line gives observability.
     def call
       return 0 unless enabled?
+      # Пайплайн ищет и парсит ТОЛЬКО продажу: build_query жёстко добавляет
+      # «продажа», prompt требует объявление о продаже. Для rent-оценок
+      # продажа сохранилась бы с deal_type='rent' и попала бы в выборку
+      # аренды (issue #172, правки по ревью Kimi).
+      return 0 unless @v.deal_type.to_s == 'sale'
 
       cached = cached_count
       if cached >= 5

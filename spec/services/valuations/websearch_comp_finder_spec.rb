@@ -83,4 +83,18 @@ RSpec.describe Valuations::WebsearchCompFinder do
         .to eq('Санкт-Петербург')
     end
   end
+
+  describe '#call — rent-оценки' do
+    it 'не запускает pipeline: поиск жёстко ищет продажу, а не аренду (issue #172)' do
+      rent_valuation = PropertyValuation.new(
+        property_type: 'apartment', deal_type: 'rent', audit_mode: 'express',
+        address: 'г. Рязань, ул. Ленина, д. 1', city: 'Рязань',
+        total_area: 54, rooms: 2, status: 'pending'
+      )
+      rent_finder = described_class.new(rent_valuation)
+      allow(rent_finder).to receive(:enabled?).and_return(true)
+
+      expect(rent_finder.call).to eq(0)
+    end
+  end
 end

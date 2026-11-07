@@ -3,9 +3,9 @@
 require 'rails_helper'
 
 RSpec.describe Valuations::SitemapCompFinder do
-  def build_valuation(city)
+  def build_valuation(city, deal_type: 'sale')
     PropertyValuation.new(
-      property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+      property_type: 'apartment', deal_type: deal_type, audit_mode: 'express',
       address: "г. #{city}, ул. Тестовая, д. 1", city: city,
       total_area: 54, rooms: 2, status: 'pending'
     )
@@ -40,6 +40,15 @@ RSpec.describe Valuations::SitemapCompFinder do
     described_class.new(build_valuation(nil)).call
 
     expect(Net::HTTP).to have_received(:start).with('961-961.ru', 443, any_args)
+  end
+
+  it 'не запускает pipeline для rent-оценок: парсер ищет только продажу (issue #172)' do
+    allow(Net::HTTP).to receive(:start).and_call_original
+
+    result = described_class.new(build_valuation('Рязань', deal_type: 'rent')).call
+
+    expect(result).to eq(0)
+    expect(Net::HTTP).not_to have_received(:start)
   end
 
   describe '#persist (private)' do
