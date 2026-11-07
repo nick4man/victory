@@ -201,11 +201,15 @@ module Valuations
       parsed_list.each do |p|
         next unless sane?(p)
 
-        # Город — из карточки объявления, а не из subject'а оценки:
-        # Tavily может вернуть объект чужого города уже на первом запросе,
-        # и приписывание ему города subject'а снова воспроизвело бы #172
-        # (объявление стало бы «локальным» и обошло бы AI-фильтр).
+        # Город — только из карточки объявления, а не из subject'а оценки:
+        # Tavily может вернуть объект чужого города, и приписывание ему
+        # города subject'а снова воспроизвело бы #172 (объявление стало бы
+        # «локальным» и обошло бы AI-фильтр через AUTO_KEPT_SOURCES).
         card_city = ExternalListing.normalize_city(p[:city])
+        if subject_city.present? && card_city.blank?
+          Rails.logger.info("[Websearch] skip listing without confirmed city: #{p[:source_url]}")
+          next
+        end
         if card_city.present? && subject_city.present? && !card_city.casecmp?(subject_city)
           Rails.logger.info("[Websearch] skip non-local listing #{p[:source_url]}: city #{card_city} != #{subject_city}")
           next
@@ -241,12 +245,11 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
-          # Приоритет: город из карточки > подтверждённый город существующей
-          # записи > город subject'а (для новой записи). Город subject'а
-          # никогда не перезаписывает уже сохранённое — иначе повторная
+          # Город подтверждает карточка (выше гейтит mismatch/пустоту);
+          # городом subject'а здесь ничего не дописываем — иначе повторная
           # оценка другого города перенесла бы запись в чужую выборку
           # (issue #172, правки по ревью).
-          city:          resolve_city(el, card_city, subject_city),
+          city:          resolve_city(el, card_city),
           property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,
@@ -261,13 +264,13 @@ module Valuations
       count
     end
 
-    # Приоритет города: подтверждённый карточкой > уже сохранённый у
-    # существующей записи > город subject'а (только для новой записи).
-    def resolve_city(record, card_city, subject_city)
+    # Город записи: карточка > уже сохранённое у существующей записи >
+    # nil (subject без города — локальность не заявлена, finder решит сам).
+    def resolve_city(record, card_city)
       return card_city if card_city.present?
       return record.city if record.persisted? && record.city.present?
 
-      subject_city.presence
+      nil
     end
 
     # Sanity-bounds: avoid garbage из LLM parsing — price 100k–1B ₽,

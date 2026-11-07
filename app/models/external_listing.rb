@@ -6,9 +6,11 @@
 # Rails users, only refreshed by `ExternalListings::YrlParser` and friends.
 #
 # `city` — город источника объявления: для agency_sitemap он приходит из
-# конфига агентства (config/agency_sitemaps.yml), для websearch — из города
-# оценки, запустившей сбор. ComparableFinder отсекает чужие города по этой
-# колонке (issue #172).
+# конфига агентства (config/agency_sitemaps.yml), для YRL — из фида
+# (location/locality-name), для websearch — только если подтверждён
+# содержимым самой карточки (иначе запись отклоняется, см.
+# Valuations::WebsearchCompFinder#persist). ComparableFinder отсекает
+# чужие города по этой колонке (issue #172).
 class ExternalListing < ApplicationRecord
   # `agency_sitemap` — scraped listings из agency-specific sitemap.xml
   # (см. Valuations::SitemapCompFinder + config/agency_sitemaps.yml).
@@ -27,11 +29,12 @@ class ExternalListing < ApplicationRecord
   }.freeze
 
   # Единая нормализация города для всех сравнений (SQL и Ruby):
-  # обрезка пробелов и префикса «г.»/«город». Без downcase — сравнение
-  # case-insensitive на стороне запросов/casecmp, чтобы не переписывать
-  # уже сохранённые данные (issue #172, правки по ревью).
+  # обрезка пробелов и префикса «г. »/«город » (только как отдельного
+  # токена — «Горно-Алтайск» и «Геленджик» не трогаем). Без downcase —
+  # сравнение case-insensitive на стороне запросов/casecmp, чтобы не
+  # переписывать уже сохранённые данные (issue #172, правки по ревью).
   def self.normalize_city(value)
-    value.to_s.strip.sub(/\A(?:г|город)\.?\s*/i, '').gsub(/\s+/, ' ')
+    value.to_s.strip.sub(/\A(?:г\.?|город\.?)\s+/i, '').strip.gsub(/\s+/, ' ')
   end
 
   before_validation :normalize_city_name

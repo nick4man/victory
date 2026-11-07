@@ -46,20 +46,34 @@ RSpec.describe Valuations::WebsearchCompFinder do
       expect(ExternalListing.where(source_id: '123456')).not_to exist
     end
 
-    it 'не перезаписывает подтверждённый город существующей записи городом subject' do
+    it 'не перезаписывает подтверждённый город существующей записи при subject без города' do
       create(:external_listing, source: 'cian', source_id: '123456', city: 'Рязань')
+      valuation_without_city = PropertyValuation.new(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+        address: 'ул. Безгородная, д. 1', city: nil,
+        total_area: 26.6, rooms: 1, status: 'pending'
+      )
 
-      count = finder.send(:persist, [parsed(city: '')])
+      count = described_class.new(valuation_without_city).send(:persist, [parsed(city: '')])
 
       expect(count).to eq(1)
       expect(ExternalListing.find_by!(source: 'cian', source_id: '123456').city).to eq('Рязань')
     end
 
-    it 'приписывает новой записи город subject, если карточка город не подтверждает' do
+    it 'отклоняет новую запись, если карточка город не подтверждает (fail-close)' do
       count = finder.send(:persist, [parsed(city: '')])
 
-      expect(count).to eq(1)
-      expect(ExternalListing.find_by!(source: 'cian', source_id: '123456').city).to eq('Санкт-Петербург')
+      expect(count).to eq(0)
+      expect(ExternalListing.where(source: 'cian', source_id: '123456')).not_to exist
+    end
+
+    it 'отклоняет legacy-запись с NULL city при persist без подтверждённого города' do
+      create(:external_listing, source: 'cian', source_id: '123456', city: nil)
+
+      count = finder.send(:persist, [parsed(city: '')])
+
+      expect(count).to eq(0)
+      expect(ExternalListing.find_by!(source: 'cian', source_id: '123456').city).to be_nil
     end
 
     it 'нормализует префикс «г.» у города из карточки' do

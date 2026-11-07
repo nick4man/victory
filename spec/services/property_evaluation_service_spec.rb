@@ -66,6 +66,40 @@ RSpec.describe PropertyEvaluationService do
       expect(received.map { |c| c[:price_per_sqm] }).not_to include(510)
       expect(result[:comparables].map { |c| c[:price_per_sqm] }).not_to include(510)
     end
+
+    it 'end-to-end: реальный CompositeEstimator/Hedonic не ломается выбросом' do
+      # 8 локальных аналогов ~100 тыс. ₽/м² с разными rooms/area + аренда
+      # 510 ₽/м². Без отсечения hedonic тянулся бы к выбросу (case #124).
+      rooms_area = [[1, 40.0], [1, 35.0], [2, 54.0], [2, 60.0],
+                    [2, 48.0], [3, 72.0], [3, 65.0], [2, 50.0]]
+      local_comps = rooms_area.each_with_index.map do |(rooms, area), i|
+        record = double('comp-record', id: i + 1, title: 'Квартира', price: 5_000_000,
+                                      rooms: rooms, area: area, district: 'Центральный', url: nil)
+        comp('external_listing', 96_000 + (i * 1_000), record: record, rooms: rooms, area: area)
+      end
+      outlier = comp('external_listing', 510,
+                     record: double('outlier-record', id: 99, title: 'Аренда', price: 25_000,
+                                                     rooms: 2, area: 54.0, district: 'Центральный', url: nil),
+                     rooms: 2, area: 54.0)
+
+      allow(PropertyEvaluation::CompositeEstimator).to receive(:call).and_call_original
+
+      clean = call_with(local_comps)
+      dirty = call_with(local_comps + [outlier])
+
+      expect(clean[:success]).to be(true)
+      expect(dirty[:success]).to be(true)
+      expect(dirty[:estimated_price])
+        .to be_within(clean[:estimated_price] * 0.15).of(clean[:estimated_price])
+      expect(dirty[:estimated_price]).to be > 2_000_000
+    end
+
+    def call_with(comps)
+      allow(PropertyEvaluation::ComparableFinder).to receive(:new)
+        .and_return(instance_double(PropertyEvaluation::ComparableFinder,
+                                    call: { tier: 1, comparables: comps }))
+      described_class.new(valuation).call
+    end
   end
 
   describe 'low_coverage' do
