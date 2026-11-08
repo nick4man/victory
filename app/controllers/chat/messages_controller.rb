@@ -7,6 +7,8 @@ module Chat
   #
   # Light rate-limit: 5 messages/minute per visitor_token via Redis.
   class MessagesController < ApplicationController
+    include Chat::PageContextParams
+
     skip_before_action :verify_authenticity_token, only: %i[create], raise: false
 
     RATE_LIMIT_PER_MINUTE = 5
@@ -26,11 +28,17 @@ module Chat
       return render(json: { error: 'empty_body' }, status: :unprocessable_entity) if body.empty?
       return render(json: { error: 'too_long' },   status: :unprocessable_entity) if body.length > 2000
 
+      # Контекст страницы на момент вопроса — виджет шлёт его с каждым POST,
+      # посетитель мог уйти на другую страницу после открытия чата.
+      page_ctx = extract_page_params
+      stamp_page(conv, page_ctx) if page_ctx
+
       msg = ChatMessage.create!(
         conversation: conv,
         role:         :user,
         body:         body,
-        author:       current_user
+        author:       current_user,
+        metadata:     page_ctx ? { page: page_ctx } : {}
       )
 
       ConversationChannel.broadcast_to(conv,
@@ -40,7 +48,10 @@ module Chat
 
       verdict = Llm::ScopeGuard.classify(body)
       if verdict == :allowed
-        LlmReplyJob.perform_later(conv.id)
+        # page-контекст передаём снимком конкретного сообщения: пока job
+        # в очереди, посетитель может отправить следующее сообщение уже с
+        # другой страницы — оно не должно перезаписать контекст этого.
+        LlmReplyJob.perform_later(conv.id, msg.id)
       else
         post_static_reply(conv, verdict, body)
       end

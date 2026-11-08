@@ -102,6 +102,8 @@ app/
     concerns/
       admin/
         uploads_block_images.rb
+      chat/
+        page_context_params.rb
       admin_token_auth.rb
       coming_soon_section.rb
       renders_not_found.rb
@@ -372,7 +374,6 @@ app/
         list_my_open_tasks.rb
         lookup_lead.rb
         lookup_task.rb
-        market_comparables.rb
         nextcloud_list_templates.rb
         nextcloud_lookup_deal.rb
         registry.rb
@@ -1650,52 +1651,6 @@ def ui_status_group(p)
 def build_stage_pipeline(properties)
 ⋮----
 def require_client_cabinet_user
-</file>
-
-<file path="app/controllers/chat/conversations_controller.rb">
-module Chat
-⋮----
-class ConversationsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
-⋮----
-def show
-⋮----
-def update
-⋮----
-private
-⋮----
-def current_or_create_conversation
-⋮----
-def seed_welcome(conv, page_ctx = nil)
-⋮----
-def extract_page_params
-⋮----
-def stamp_page(conv, page_ctx)
-⋮----
-def serialize(conv)
-⋮----
-def serialize_message(m)
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
-⋮----
-class MessagesController < ApplicationController
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
-⋮----
-RATE_LIMIT_PER_MINUTE = 5
-⋮----
-def create
-⋮----
-private
-⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
 </file>
 
 <file path="app/controllers/chat/presence_controller.rb">
@@ -3730,9 +3685,11 @@ def with_audit_lookup_retry(audit_id, attempts: 3)
 class LlmReplyJob < ApplicationJob
 queue_as :default
 ⋮----
-def perform(conversation_id)
+def perform(conversation_id, message_id = nil)
 ⋮----
 private
+⋮----
+def message_page_snapshot(conv, message_id)
 ⋮----
 def message_payload(m)
 </file>
@@ -7402,6 +7359,22 @@ def self.call(args = {})
 def self.find_property(query)
 </file>
 
+<file path="app/services/chat_tools/staff/registry.rb">
+module ChatTools
+module Staff
+⋮----
+module Registry
+HANDLERS = {
+⋮----
+module_function
+⋮----
+def schemas
+⋮----
+def call(name, args, asked_by: nil)
+⋮----
+def deep_symbolize(obj)
+</file>
+
 <file path="app/services/chat_tools/staff/search_all_leads.rb">
 module ChatTools
 module Staff
@@ -8861,29 +8834,6 @@ def parse_response(content)
 def normalize_intent(raw)
 </file>
 
-<file path="app/services/llm/page_context.rb">
-ROUTES = [
-⋮----
-def detect(path)
-</file>
-
-<file path="app/services/llm/page_greeting.rb">
-module Llm
-⋮----
-module PageGreeting
-DEFAULT = <<~RU.squish
-⋮----
-module_function
-⋮----
-def for(page_ctx)
-⋮----
-def build(kind, ctx)
-⋮----
-def catalog_greeting
-⋮----
-def property_greeting(ctx)
-</file>
-
 <file path="app/services/llm/question_classifier.rb">
 module Llm
 ⋮----
@@ -8926,6 +8876,51 @@ module_function
 def classify(text)
 ⋮----
 REPLIES = {
+</file>
+
+<file path="app/services/llm/staff_chat_responder.rb">
+module Llm
+⋮----
+class StaffChatResponder
+MAX_TOOL_ITERATIONS = 4
+⋮----
+Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
+⋮----
+def success? = error.nil?
+⋮----
+def self.call(...)
+⋮----
+def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
+⋮----
+def call
+⋮----
+private
+⋮----
+# --- Escalation path ---
+⋮----
+def handle_escalation(classification)
+⋮----
+def pick_manager
+⋮----
+def ping_manager(manager)
+⋮----
+"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
+⋮----
+def build_escalation_reply(manager)
+⋮----
+def handle_with_tools(classification)
+⋮----
+def handle_tool_calls(tool_calls, messages, used_tools)
+⋮----
+def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
+⋮----
+def log_to_bot_command_log(classification, used_tools)
+⋮----
+def empty_result(error)
+⋮----
+def system_prompt
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/llm/tool_runner.rb">
@@ -13627,6 +13622,72 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
+<file path="app/controllers/chat/conversations_controller.rb">
+module Chat
+⋮----
+class ConversationsController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
+⋮----
+def show
+⋮----
+def update
+⋮----
+private
+⋮----
+def current_or_create_conversation
+⋮----
+def seed_welcome(conv, page_ctx = nil)
+⋮----
+def serialize(conv)
+⋮----
+def serialize_message(m)
+</file>
+
+<file path="app/controllers/chat/messages_controller.rb">
+module Chat
+⋮----
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
+⋮----
+private
+⋮----
+def post_static_reply(conv, verdict, original_body)
+⋮----
+def record_security_event(conv, verdict, original_body)
+⋮----
+def rate_limited?
+⋮----
+def serialize(m)
+</file>
+
+<file path="app/controllers/concerns/chat/page_context_params.rb">
+module Chat
+⋮----
+module PageContextParams
+extend ActiveSupport::Concern
+⋮----
+CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
+CTX_VALUE_MAX = 100
+⋮----
+private
+⋮----
+def extract_page_params
+⋮----
+def clean_page_value(value, max)
+⋮----
+def sanitize_page_ctx(raw_ctx)
+⋮----
+def stamp_page(conv, page_ctx)
+</file>
+
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -13852,22 +13913,6 @@ def property_or_message_required
 # Mortgage inquiries carry program details in metadata, not a property
 # FK — exempt them from the property-or-message rule so /services/mortgage
 # applications validate cleanly.
-</file>
-
-<file path="app/services/chat_tools/staff/registry.rb">
-module ChatTools
-module Staff
-⋮----
-module Registry
-HANDLERS = {
-⋮----
-module_function
-⋮----
-def schemas
-⋮----
-def call(name, args, asked_by: nil)
-⋮----
-def deep_symbolize(obj)
 </file>
 
 <file path="app/services/chat_tools/estimate_property_valuation.rb">
@@ -14124,11 +14169,15 @@ module Llm
 class ChatResponder
 ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 ⋮----
-def initialize(conversation, runner: Llm::ToolRunner.new)
+def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
 ⋮----
 def call
 ⋮----
 def full_system_prompt
+⋮----
+private
+⋮----
+def current_page_ctx
 ⋮----
 def security_preamble
 ⋮----
@@ -14190,49 +14239,25 @@ def redis_connection
 require 'redis' unless defined?(Redis)
 </file>
 
-<file path="app/services/llm/staff_chat_responder.rb">
+<file path="app/services/llm/page_context.rb">
 module Llm
 ⋮----
-class StaffChatResponder
-MAX_TOOL_ITERATIONS = 4
+module PageContext
+CTX_KINDS = {
+</file>
+
+<file path="app/services/llm/page_greeting.rb">
+DEFAULT = <<~RU.squish
 ⋮----
-Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
+def for(page_ctx)
 ⋮----
-def success? = error.nil?
+def build(kind, ctx)
 ⋮----
-def self.call(...)
+def catalog_greeting
 ⋮----
-def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
+def property_greeting(ctx)
 ⋮----
-def call
-⋮----
-private
-⋮----
-# --- Escalation path ---
-⋮----
-def handle_escalation(classification)
-⋮----
-def pick_manager
-⋮----
-def ping_manager(manager)
-⋮----
-"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
-⋮----
-def build_escalation_reply(manager)
-⋮----
-def handle_with_tools(classification)
-⋮----
-def handle_tool_calls(tool_calls, messages, used_tools)
-⋮----
-def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
-⋮----
-def log_to_bot_command_log(classification, used_tools)
-⋮----
-def empty_result(error)
-⋮----
-def system_prompt
-⋮----
-def escape(text)
+def audit_greeting(ctx)
 </file>
 
 <file path="app/services/property_evaluation/comparable_finder.rb">
@@ -14276,8 +14301,6 @@ SIZE_BAND_PCT = 0.30
 ⋮----
 def enrich(records)
 ⋮----
-def external_band_area
-⋮----
 def same_city?(record, distance_km = nil)
 ⋮----
 def normalized_subject_city
@@ -14289,6 +14312,34 @@ def subject_area_for_filter
 def compute_pps(record)
 ⋮----
 def distance_km_to(r)
+</file>
+
+<file path="app/services/property_evaluation/price_estimator.rb">
+module PropertyEvaluation
+class PriceEstimator
+CONDITION_FACTOR = {
+⋮----
+OUTLIER_FACTOR = 3.0
+⋮----
+def initialize(valuation, comparables)
+⋮----
+def call
+⋮----
+private
+⋮----
+def subject_area
+⋮----
+def weighted_median(pairs)
+⋮----
+def reject_outliers(comps)
+⋮----
+def floor_factor
+⋮----
+def year_factor
+⋮----
+def condition_factor
+⋮----
+def amenities_factor
 </file>
 
 <file path="app/services/sandbox/codespace.rb">
@@ -14838,32 +14889,143 @@ def llm_parse(url, markdown)
 def sane?(p)
 </file>
 
-<file path="app/services/property_evaluation/price_estimator.rb">
-module PropertyEvaluation
-class PriceEstimator
-CONDITION_FACTOR = {
+<file path="app/services/valuations/websearch_comp_finder.rb">
+module Valuations
 ⋮----
-OUTLIER_FACTOR = 3.0
+class WebsearchCompFinder
+CACHE_TTL = 6.hours
+MAX_SEARCH_RESULTS = 8
+MAX_SCRAPES = 5
 ⋮----
-def initialize(valuation, comparables)
+REALTY_TYPE_TO_SLUG = {
+⋮----
+def initialize(valuation)
 ⋮----
 def call
 ⋮----
 private
 ⋮----
+def enabled?
+⋮----
+def cache_key
+⋮----
+def area_bracket_min
+⋮----
+def area_bracket_max
+⋮----
+def cached_count
+⋮----
+def tavily_search
+⋮----
+def build_query
+⋮----
+def guess_city
+⋮----
+def scrape_and_parse(tavily_results)
+⋮----
+def already_persisted?(url)
+⋮----
+PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
+⋮----
+def llm_parse(url, markdown)
+⋮----
+def persist(parsed_list)
+⋮----
+def resolve_city(record, card_city)
+⋮----
+def sane?(p)
+</file>
+
+<file path="app/services/property_evaluation_service.rb">
+class PropertyEvaluationService
+⋮----
+MIN_TIER1 = 3
+MIN_TIER2 = 2
+MIN_TIER3 = 1
+⋮----
+ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+⋮----
+AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+⋮----
+LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+# Effective area for the algorithm: total_area for buildings,
+# land_area (converted сотки → м²) for land plots.
 def subject_area
 ⋮----
-def weighted_median(pairs)
+private
 ⋮----
-def reject_outliers(comps)
+def valid?
 ⋮----
-def floor_factor
+# === Ensemble-based confidence ===
+# Старая tier-логика заменена на multi-source формулу: оценка строится
+# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
+# ai_synthesized / city anchor), и confidence учитывает (a) сколько
+# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
+# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
+# большинстве реалистичных сценариев.
+REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
 ⋮----
-def year_factor
+def confidence_for(pool, estimate = nil)
 ⋮----
-def condition_factor
+base = 0.50  # baseline: любая успешная оценка ≥ 50%
 ⋮----
-def amenities_factor
+base += 0.10 if real_count >= 1                # хотя бы один настоящий
+# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
+# модель строит bootstrap-CI и хедоник работает; засчитываем как
+# «полу-настоящий» сигнал.
+⋮----
+# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
+# с минимальным сравнением, даже если расходится с агрегатами.
+⋮----
+# condition хранится в колонке `condition`; геттер `property_condition` —
+# alias через `attribute`. Проверяем оба для совместимости.
+⋮----
+# Cap positive contributions ДО penalty — иначе сумма additions может
+# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+# min(1.25, 0.95) = 0.95 — penalty не виден).
+⋮----
+# PENALTY for high sample variance — coefficient of variation
+# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+# spans wide range, confidence shouldn't быть 0.95. Это решает
+# «honest math» проблему: 0.95 при spread 3x = nonsense.
+#
+# CV thresholds calibrated empirically:
+#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+#  - CV > 0.30 → notable heterogeneity — medium penalty
+#  - CV > 0.18 → some spread — small penalty
+⋮----
+# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+⋮----
+def estimators_agree?(comps)
+⋮----
+def pps_coefficient_of_variation(comps)
+⋮----
+def low_coverage?(comps)
+⋮----
+def fallback_estimate
+⋮----
+def serialize(comps)
+⋮----
+def compose_title(r)
+⋮----
+def comparable_url(r)
+⋮----
+def comparable_source(r)
+⋮----
+def build_market_analysis(comps, estimate)
+⋮----
+def build_recommendations
+⋮----
+def success(payload)
+⋮----
+def error(message)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/base.rb">
@@ -15062,55 +15224,6 @@ def client_photo_intake?(msg)
 def workbot_photo_text_continuation(msg)
 ⋮----
 def workbot_wizard_text(msg)
-</file>
-
-<file path="app/services/valuations/websearch_comp_finder.rb">
-module Valuations
-⋮----
-class WebsearchCompFinder
-CACHE_TTL = 6.hours
-MAX_SEARCH_RESULTS = 8
-MAX_SCRAPES = 5
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def enabled?
-⋮----
-def cache_key
-⋮----
-def area_bracket_min
-⋮----
-def area_bracket_max
-⋮----
-def band_area
-⋮----
-def cached_count
-⋮----
-def tavily_search
-⋮----
-def build_query
-⋮----
-def guess_city
-⋮----
-def scrape_and_parse(tavily_results)
-⋮----
-def already_persisted?(url)
-⋮----
-PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
-⋮----
-def llm_parse(url, markdown)
-⋮----
-def persist(parsed_list)
-⋮----
-def resolve_city(record, card_city)
-⋮----
-def sane?(p)
 </file>
 
 <file path="Gemfile">
@@ -15367,105 +15480,6 @@ def confirm_prompt
 def accept_reason(value, manual)
 </file>
 
-<file path="app/services/property_evaluation_service.rb">
-class PropertyEvaluationService
-⋮----
-MIN_TIER1 = 3
-MIN_TIER2 = 2
-MIN_TIER3 = 1
-⋮----
-ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
-⋮----
-AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
-⋮----
-LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
-⋮----
-def initialize(valuation, include_full_comparables: false)
-⋮----
-def call
-⋮----
-# Полный пул аналогов добавляем только когда запросил staff-тул
-# (include_full_comparables) — публичные оценки его не хранят (PR #184).
-def full_comparables_hash(comps)
-⋮----
-# Effective area в м² для ВСЕХ типов: total_area для строений,
-# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
-# (ComparableFinder#enrich переводит land-объявления площадок из соток),
-# поэтому fallback и CompositeEstimator работают в одной единице
-# (ревью Kimi, PR #184).
-def subject_area
-⋮----
-private
-⋮----
-def valid?
-⋮----
-# === Ensemble-based confidence ===
-# Старая tier-логика заменена на multi-source формулу: оценка строится
-# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
-# ai_synthesized / city anchor), и confidence учитывает (a) сколько
-# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
-# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
-# большинстве реалистичных сценариев.
-REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
-⋮----
-def confidence_for(pool, estimate = nil)
-⋮----
-base = 0.50  # baseline: любая успешная оценка ≥ 50%
-⋮----
-base += 0.10 if real_count >= 1                # хотя бы один настоящий
-# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
-# модель строит bootstrap-CI и хедоник работает; засчитываем как
-# «полу-настоящий» сигнал.
-⋮----
-# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
-# с минимальным сравнением, даже если расходится с агрегатами.
-⋮----
-# condition хранится в колонке `condition`; геттер `property_condition` —
-# alias через `attribute`. Проверяем оба для совместимости.
-⋮----
-# Cap positive contributions ДО penalty — иначе сумма additions может
-# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
-# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
-# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
-# min(1.25, 0.95) = 0.95 — penalty не виден).
-⋮----
-# PENALTY for high sample variance — coefficient of variation
-# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
-# spans wide range, confidence shouldn't быть 0.95. Это решает
-# «honest math» проблему: 0.95 при spread 3x = nonsense.
-#
-# CV thresholds calibrated empirically:
-#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
-#  - CV > 0.30 → notable heterogeneity — medium penalty
-#  - CV > 0.18 → some spread — small penalty
-⋮----
-# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
-⋮----
-def estimators_agree?(comps)
-⋮----
-def pps_coefficient_of_variation(comps)
-⋮----
-def low_coverage?(comps)
-⋮----
-def fallback_estimate
-⋮----
-def serialize(comps)
-⋮----
-def compose_title(r)
-⋮----
-def comparable_url(r)
-⋮----
-def comparable_source(r)
-⋮----
-def build_market_analysis(comps, estimate)
-⋮----
-def build_recommendations
-⋮----
-def success(payload)
-⋮----
-def error(message)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
 module Telegram
 module WorkBot
@@ -15540,47 +15554,6 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
-</file>
-
-<file path="app/services/chat_tools/staff/market_comparables.rb">
-module ChatTools
-module Staff
-⋮----
-module MarketComparables
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-MAX_COMPARABLES = 8
-⋮----
-def self.schema
-⋮----
-def self.call(args = {}, asked_by: nil)
-⋮----
-def self.resolve_caller(args, asked_by)
-⋮----
-def self.websearch_available?
-⋮----
-def self.build_valuation(args, caller)
-⋮----
-def self.valuation_metadata(caller)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.success_response(pv, result, websearch_ok)
-⋮----
-# Estimator в ₽/м² для всех типов (единая нормализация, PR #184);
-# для участков добавляем ₽/сотку — в ней думают сотрудники.
-⋮----
-def self.websearch_status(websearch_ok, pv, result)
-⋮----
-def self.market_note(status)
-⋮----
-def self.serialize_comparables(comps)
-⋮----
-def self.serialize_comparable(c)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.run_failure(pv, error_message)
 </file>
 
 </files>

@@ -124,6 +124,7 @@ app/controllers/chat/presence_controller.rb — module Chat, class PresenceContr
 app/controllers/chatbot/messages_controller.rb — module Chatbot, class MessagesController
 app/controllers/concerns/admin/uploads_block_images.rb — module Admin, module UploadsBlockImages
 app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
+app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
