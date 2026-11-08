@@ -64,8 +64,19 @@ module PropertyEvaluation
       s = ExternalListing.active.priced.recent(60)
                          .for_deal(@v.deal_type)
                          .for_type(slug)
-                         .area_band(external_band_area, tier.area_pct)
                          .rooms_band(@v.rooms.to_i, tier.rooms_delta)
+      # Площади land в источниках хранятся по-разному: websearch/большинство
+      # фидов — сотки в area, YRL — дом в м² в area + участок в land_area.
+      # Band для участков считаем по effective соткам (COALESCE), иначе
+      # YRL-аналог с area=800 м² отсекался бы band 6.8–9.2 (ревью Kimi,
+      # PR #184). Для остальных типов — обычный area_band по м².
+      if @v.property_type.to_s == 'land'
+        lo = external_band_area * (1 - tier.area_pct)
+        hi = external_band_area * (1 + tier.area_pct)
+        s = s.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?', lo, hi)
+      else
+        s = s.area_band(external_band_area, tier.area_pct)
+      end
       # ExternalListing хранит город источника (issue #172): для
       # subject с известным городом чужие города отсекаем на уровне SQL.
       # NULL city (legacy avito/cian из websearch) в выборку не попадают —
@@ -182,12 +193,14 @@ module PropertyEvaluation
         { record: r, price_per_sqm: pps, distance_km: dist,
           weight: dist ? 1.0 / (1.0 + dist) : 0.5,
           source: source_label(r) }.tap do |comp|
-          # Land-объявления площадок хранят площадь в сотках, а estimator
-          # нормализован к ₽/м² (subject_area участка = land_area × 100).
-          # Без перевода comp смешивал бы ₽/сотку с ₽/м² и цена участка
-          # искажалась на порядки (ревью Kimi, PR #184).
+          # Land-объявления: effective сотки в разных колонках по источнику —
+          # websearch хранит сотки в area, YRL — дом в м² в area + участок
+          # в land_area. Estimator нормализован к ₽/м² (subject_area участка
+          # = land_area × 100); без перевода comp смешивал бы ₽/сотку с
+          # ₽/м² и цена участка искажалась на порядки (ревью Kimi, PR #184).
           if @v.property_type.to_s == 'land' && r.is_a?(ExternalListing)
-            area_sqm = r.area.to_f * 100
+            sotki = r.land_area.to_f.positive? ? r.land_area : r.area
+            area_sqm = sotki.to_f * 100
             comp[:area] = area_sqm
             comp[:price_per_sqm] = (r.price.to_f / area_sqm).round if area_sqm.positive?
           end

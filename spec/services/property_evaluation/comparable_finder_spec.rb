@@ -194,5 +194,31 @@ RSpec.describe PropertyEvaluation::ComparableFinder do
       listing_comp = comps.find { |c| c[:record] == listing }
       expect(listing_comp[:area]).to eq(800.0) # сотки → м²
     end
+
+    # Ревью Kimi (PR #184, раунд 5): YRL хранит дом в м² (area) и участок
+    # отдельно в land_area (сотки), websearch — сотки прямо в area. Без
+    # source-aware нормализации YRL-аналог получал ₽/м², заниженный в 100 раз.
+    it 'YRL-аналог (area м² дома + land_area сотки) даёт тот же ₽/м², что websearch' do
+      yrl = create(:external_listing, source: 'yandex_yrl', source_id: 'yrl-land-1',
+                                    url: 'https://realty.yandex.ru/offer/land-1/',
+                                    property_type: 'land', deal_type: 'sale',
+                                    city: 'Рязань', district: 'Канищево',
+                                    area: 150.0, land_area: 8.0, rooms: 0,
+                                    price: 1_800_000,
+                                    fetched_at: Time.current, closed_at: nil)
+      websearch_like = create(:external_listing, source: 'cian', source_id: 'cian-land-1',
+                                                 url: 'https://ryazan.cian.ru/sale/land/999/',
+                                                 property_type: 'land', deal_type: 'sale',
+                                                 city: 'Рязань', district: 'Канищево',
+                                                 area: 8.0, rooms: 0, price: 1_800_000,
+                                                 fetched_at: Time.current, closed_at: nil)
+
+      result = described_class.new(build_land_valuation).call
+
+      comps = result[:comparables]
+      expect(comps.map { |c| c[:record] }).to include(yrl, websearch_like)
+      expect(comps.map { |c| c[:price_per_sqm] }.uniq).to eq([2250])
+      expect(comps.map { |c| c[:area] }.uniq).to eq([800.0])
+    end
   end
 end

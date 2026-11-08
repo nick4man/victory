@@ -351,15 +351,58 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       end
     end
 
+    # Ревью Kimi (PR #184, раунд 5): comp[:area] в м² терялась перед
+    # CompositeEstimator — hedonic/bootstrap снова читали record.area в
+    # сотках. Спек активирует ветку N ≥ MIN_HEDONIC реальным estimator'ом:
+    # 5 внешних land-аналогов (включая общий land_listing) с разной площадью —
+    # лог-регрессия разрешима, bootstrap-интервал считается.
+    context 'пул ≥ MIN_HEDONIC: реальный CompositeEstimator в м²-нормализации' do
+      before do
+        # 1.8M за 8 соток = 2_250 ₽/м²; площади в пределах band 6.8–9.2
+        { 7.0 => 1_575_000, 7.5 => 1_687_500, 8.5 => 1_912_500, 9.0 => 2_025_000 }.each do |sotki, price|
+          create(:external_listing,
+                 source: 'cian', url: "https://ryazan.cian.ru/sale/land/#{sotki}/",
+                 source_id: "land-#{sotki}",
+                 property_type: 'land', deal_type: 'sale',
+                 city: 'Рязань', district: 'Канищево',
+                 area: sotki, rooms: 0, price: price,
+                 fetched_at: Time.current, closed_at: nil)
+        end
+      end
+
+      it 'hedonic/bootstrap не искажают цену участка от смешения единиц' do
+        res = described_class.call(
+          {
+            'property_type' => 'land',
+            'address'       => 'Рязань, Канищево, Солотчинское шоссе, 1',
+            'city'          => 'Рязань',
+            'district'      => 'Канищево',
+            'total_area'    => 8
+          },
+          asked_by: agent
+        )
+
+        expect(res[:success]).to be(true)
+        # Все аналоги ~2_250 ₽/м² при 800 м² → ~1.8M. Смешение единиц
+        # (area в сотках как м²) давало бы экстраполяцию на порядки выше.
+        expect(res[:estimated_price]).to be > 1_400_000
+        expect(res[:estimated_price]).to be < 2_400_000
+        expect(res[:price_per_sqm]).to be > 1_800
+        expect(res[:price_per_sqm]).to be < 2_700
+      end
+    end
+
     # Ревью Kimi (PR #184, раунд 4): fallback-оценка участка должна быть
     # согласована с price_per_sqm — иначе цена и подпись единицы расходятся.
     it 'участок: пустой пул — fallback согласован (цена ≈ ₽/м² × площадь в м²)' do
+      # Другой город: общий let!(:land_listing) (Рязань/Канищево) отсекается
+      # city-gate — иначе fallback-ветка не гарантирована (ревью Kimi r5).
       res = described_class.call(
         {
           'property_type' => 'land',
-          'address'       => 'Рязань, Солотча, Центральная, 1',
-          'city'          => 'Рязань',
-          'district'      => 'Солотча',
+          'address'       => 'г. Касимов, ул. Центральная, 1',
+          'city'          => 'Касимов',
+          'district'      => 'Центр',
           'total_area'    => 8
         },
         asked_by: agent
