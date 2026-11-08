@@ -351,23 +351,42 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       end
     end
 
-    # Ревью Kimi (PR #184, раунд 5): comp[:area] в м² терялась перед
+    # Ревью Kimi (PR #184, раунды 5/7): comp[:area] в м² терялась перед
     # CompositeEstimator — hedonic/bootstrap снова читали record.area в
-    # сотках. Спек активирует ветку N ≥ MIN_HEDONIC реальным estimator'ом:
-    # 5 внешних land-аналогов (включая общий land_listing) с разной площадью —
-    # лог-регрессия разрешима, bootstrap-интервал считается.
+    # сотках. Спек активирует composite-ветку реальным estimator'ом: для
+    # Hedonic/BootstrapCi нужно MIN_SAMPLE = 8 аналогов с варьирующимися
+    # rooms/area/distance — иначе матрица вырождена и ветка молча skipped.
     context 'пул ≥ MIN_HEDONIC: реальный CompositeEstimator в м²-нормализации' do
       before do
-        # 1.8M за 8 соток = 2_250 ₽/м²; площади в пределах band 6.8–9.2
-        { 7.0 => 1_575_000, 7.5 => 1_687_500, 8.5 => 1_912_500, 9.0 => 2_025_000 }.each do |sotki, price|
-          create(:external_listing,
-                 source: 'cian', url: "https://ryazan.cian.ru/sale/land/#{sotki}/",
-                 source_id: "land-#{sotki}",
-                 property_type: 'land', deal_type: 'sale',
-                 city: 'Рязань', district: 'Канищево',
-                 area: sotki, rooms: 0, price: price,
-                 fetched_at: Time.current, closed_at: nil)
-        end
+        # Subject с координатами — иначе все distance_km = nil и дизайн-матрица
+        # hedonic вырождается (столбец distance константен). Все 8 аналогов —
+        # в пределах tier 1 (≤3 км, площади 6.8–9.2): ранний возврат tier 1
+        # с полным пулом 8 ≥ MIN_TIER1. Для land rooms_band не применяется
+        # (комнатность участков не определена) — rooms смешиваем 0/1, чтобы
+        # столбец rooms матрицы тоже варьировался.
+        allow(Geocoding::AddressLookup).to receive(:call)
+          .and_return(double(latitude: 54.6292, longitude: 39.7187,
+                             city: 'Рязань', district: 'Канищево'))
+
+        # 1.8M за 8 соток = 2_250 ₽/м². Координаты — 0.6–2.9 км от subject.
+        coords = [[54.6337, 39.7187], [54.6362, 39.7220], [54.6387, 39.7120],
+                  [54.6412, 39.7250], [54.6437, 39.7080], [54.6462, 39.7200],
+                  [54.6487, 39.7140], [54.6512, 39.7240]]
+        pending_coords = coords.each
+        { 7.0 => 1_575_000, 7.3 => 1_642_500, 7.6 => 1_710_000, 7.9 => 1_777_500,
+          8.2 => 1_845_000, 8.5 => 1_912_500, 8.8 => 1_980_000, 9.0 => 2_025_000 }
+          .each do |sotki, price|
+            rooms = [7.6, 8.2, 8.8].include?(sotki) ? 0 : 1
+            lat, lng = pending_coords.next
+            create(:external_listing,
+                   source: 'cian', url: "https://ryazan.cian.ru/sale/land/#{sotki}/",
+                   source_id: "land-#{sotki}",
+                   property_type: 'land', deal_type: 'sale',
+                   city: 'Рязань', district: 'Канищево',
+                   area: sotki, rooms: rooms, price: price,
+                   latitude: lat, longitude: lng,
+                   fetched_at: Time.current, closed_at: nil)
+          end
       end
 
       it 'hedonic/bootstrap не искажают цену участка от смешения единиц' do
@@ -389,6 +408,13 @@ RSpec.describe ChatTools::Staff::MarketComparables do
         expect(res[:estimated_price]).to be < 2_400_000
         expect(res[:price_per_sqm]).to be > 1_800
         expect(res[:price_per_sqm]).to be < 2_700
+
+        # Реальная composite-ветка: hedonic/bootstrap отработали, а не skipped
+        # по MIN_SAMPLE (Kimi r7). update_columns сериализует result в jsonb —
+        # ключи строковые.
+        pv = PropertyValuation.find_by!(token: res[:valuation_token])
+        expect(pv.evaluation_data).to include('composite', 'hedonic', 'bootstrap_ci')
+        expect(pv.evaluation_data['composite']['hedonic_pps']).to be > 1_800
       end
     end
 
