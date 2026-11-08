@@ -14,27 +14,40 @@ module ChatTools
     MAX_LIMIT     = 10
     PAGE_PATH     = '/services/mortgage'
 
+    # Канонические ипотечные типы engine (BankProductType). PRODUCT_TYPES шире:
+    # включает consumer_loan/deposit и legacy-алиасы — в выдачу чат-инструмента
+    # неипотечные продукты не должны попадать (ревью PR #181).
+    MORTGAGE_TYPES = %w[
+      mortgage
+      family_mortgage
+      it_mortgage
+      subsidized
+      refinance
+      far_east_mortgage
+      military_mortgage
+    ].freeze
+
     def self.schema
       {
         type: 'function',
         function: {
           name: 'list_mortgage_programs',
           description: <<~DESC.strip,
-            Подбирает актуальные ипотечные программы банков из каталога (семейная, IT, господдержка, Дальний Восток, военная, рыночная). Возвращает до #{MAX_LIMIT} программ: банк, продукт, тип, ставка, мин. первый взнос, срок, требования + сводку counts_by_type и ссылку на /services/mortgage.
+            Подбирает актуальные ипотечные программы банков из каталога (семейная, IT, господдержка, Дальний Восток, военная, рыночная, рефинансирование). Возвращает до #{MAX_LIMIT} программ: банк, продукт, тип, ставка от (rate_min), мин. первый взнос, срок, требования + сводку counts_by_type и ссылку на страницу калькулятора #{PAGE_PATH}.
 
             Вызывай когда пользователь спрашивает: «какие ипотечные программы есть», «какая ставка у банков», «что подойдёт семье с детьми», «IT-ипотека», «военная ипотека», «условия банков». НЕ эскалируй на агента — отвечай сам.
 
-            Подбор по ситуации: дети/маткапитал → product_type `family_mortgage`; IT-специалист → `it_mortgage`; военнослужащий → `military_mortgage`; Дальний Восток → `far_east_mortgage`; без льгот — без product_type.
+            Подбор по ситуации: дети/маткапитал → product_type `family_mortgage`; IT-специалист → `it_mortgage`; военнослужащий → `military_mortgage`; Дальний Восток → `far_east_mortgage`; без льгот — без параметра.
 
             После подбора, если известны цена объекта и первый взнос — посчитай платёж через calculate_mortgage, передав rate = rate_min выбранной программы. Для вопроса только «сколько платить в месяц» без интереса к программам — сразу calculate_mortgage.
           DESC
           parameters: {
             type: 'object',
             properties: {
-              product_type:     { type: 'string', enum: Mortgage::ProgramsService::PRODUCT_TYPES.keys,
-                                  description: 'Тип программы. Без параметра — все активные' },
+              product_type:     { type: 'string', enum: MORTGAGE_TYPES,
+                                  description: 'Тип программы. Без параметра — все активные ипотечные' },
               down_payment_pct: { type: 'number', description: 'Первый взнос в % — вернутся программы, где мин. взнос ≤ указанного' },
-              max_rate:         { type: 'number', description: 'Максимально приемлемая ставка % годовых — программы с rate_min ≤ max_rate' },
+              max_rate:         { type: 'number', description: 'Максимально приемлемая ставка % годовых — программы со ставкой от (rate_min) ≤ max_rate' },
               limit:            { type: 'integer', description: "Сколько программ вернуть (default #{DEFAULT_LIMIT}, max #{MAX_LIMIT})" }
             },
             additionalProperties: false
@@ -63,16 +76,19 @@ module ChatTools
 
     def self.filter(programs, args)
       type = args[:product_type].to_s
+      programs = programs.select { |p| MORTGAGE_TYPES.include?(p[:product_type].to_s) }
       programs = programs.select { |p| p[:product_type].to_s == type } if type.present?
 
-      if args[:down_payment_pct].to_f.positive?
+      # nil в каталоге — «условие неизвестно», не «подходит под любой порог»:
+      # при заданном фильтре такие записи исключаем, а 0 — валидное значение.
+      unless args[:down_payment_pct].nil?
         dp = args[:down_payment_pct].to_f
-        programs = programs.select { |p| p[:down_payment_min_pct].nil? || p[:down_payment_min_pct] <= dp }
+        programs = programs.reject { |p| p[:down_payment_min_pct].nil? || p[:down_payment_min_pct] > dp }
       end
 
-      if args[:max_rate].to_f.positive?
+      unless args[:max_rate].nil?
         max = args[:max_rate].to_f
-        programs = programs.select { |p| p[:rate_min].nil? || p[:rate_min] <= max }
+        programs = programs.reject { |p| p[:rate_min].nil? || p[:rate_min] > max }
       end
 
       programs.sort_by { |p| p[:rate_min] || Float::INFINITY }
@@ -92,7 +108,7 @@ module ChatTools
         bank:                 p[:bank_name],
         product:              p[:product_name],
         type_ru:              p[:product_type_ru],
-        rate:                 p[:rate_min],
+        rate_min:             p[:rate_min],
         down_payment_min_pct: p[:down_payment_min_pct],
         term:                 term_display(p),
         requirements:         requirements_display(p[:requirements])
@@ -110,18 +126,45 @@ module ChatTools
       "#{min}–#{max} лет"
     end
 
+    # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
+    # normalize его не меняет — Hash обрабатываем отдельно с локализацией
+    # известных ключей, неизвестные выводим как "ключ: значение".
     def self.requirements_display(requirements)
-      text = requirements.is_a?(Array) ? requirements.join('; ') : requirements.to_s
+      text =
+        case requirements
+        when Hash
+          requirements.filter_map { |k, v| requirement_label(k, v) }.join('; ')
+        when Array
+          requirements.join('; ')
+        else
+          requirements.to_s
+        end
       text.truncate(200)
     end
 
+    def self.requirement_label(key, value)
+      case key.to_s
+      when 'has_children_under_18' then 'Дети до 18 лет'
+      when 'is_it_specialist'      then 'Работа в IT'
+      when 'income_min'            then "Доход от #{ActiveSupport::NumberHelper.number_to_delimited(value.to_i)} ₽/мес"
+      when 'age_max'               then "Возраст до #{value} лет"
+      when 'region'                then "Регион: #{REGIONS[value.to_s] || value}"
+      when 'location'              then "Локация: #{LOCATIONS[value.to_s] || value}"
+      else "#{key}: #{value}"
+      end
+    end
+
+    REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
+    LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
+    private_constant :REGIONS, :LOCATIONS
+
+    # Только параметры, которые реально применяет MortgageCalculatorsController
+    # (build_form_state читает down_payment_pct; product_type/rate — нет,
+    # ссылку с ними нельзя выдавать как «отфильтрованную», ревью PR #181).
     def self.page_url(args)
-      params = {}
-      params[:product_type] = args[:product_type] if args[:product_type].present?
-      params[:down_payment_pct] = args[:down_payment_pct] if args[:down_payment_pct].to_f.positive?
-      params[:rate] = args[:max_rate] if args[:max_rate].to_f.positive?
-      query = params.to_query
-      query.empty? ? PAGE_PATH : "#{PAGE_PATH}?#{query}"
+      return PAGE_PATH if args[:down_payment_pct].nil?
+
+      "#{PAGE_PATH}?#{{ down_payment_pct: args[:down_payment_pct] }.to_query}"
     end
   end
 end
