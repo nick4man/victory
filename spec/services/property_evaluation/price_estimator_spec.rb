@@ -45,4 +45,21 @@ RSpec.describe PropertyEvaluation::PriceEstimator do
     expect(result[:comparables].map { |c| c[:price_per_sqm] }).not_to include(510)
     expect(result[:comparables].size).to eq(5)
   end
+
+  it 'выбрасывает неположительные ₽/м² из пула и медианы (LLM-выбросы, PR #177)' do
+    comps = [comp(-50_000), comp(0), comp(96_000), comp(100_000), comp(104_000)]
+
+    result = described_class.new(valuation, comps).call
+
+    expect(result[:base_price_per_sqm]).to eq(100_000)
+    expect(result[:estimated_price]).to be_positive
+    expect(result[:comparables].map { |c| c[:price_per_sqm] }).to all(be_positive)
+  end
+
+  it 'не даёт отрицательной оценки, когда все аналоги с неположительными ₽/м²' do
+    result = described_class.new(valuation, [comp(-10), comp(0)]).call
+
+    expect(result[:base_price_per_sqm]).to eq(0)
+    expect(result[:estimated_price]).to eq(0)
+  end
 end

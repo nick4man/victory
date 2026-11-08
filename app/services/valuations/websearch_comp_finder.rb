@@ -95,13 +95,20 @@ module Valuations
     end
 
     def cached_count
-      ExternalListing
-        .where(property_type: @v.property_type, deal_type: @v.deal_type)
-        .where(district: @v.district.presence || nil)
-        .where(area: area_bracket_min..area_bracket_max)
-        .where('fetched_at > ?', CACHE_TTL.ago)
-        .where(closed_at: nil)
-        .count
+      scope = ExternalListing
+              .where(property_type: @v.property_type, deal_type: @v.deal_type)
+              .where(district: @v.district.presence || nil)
+              .where(area: area_bracket_min..area_bracket_max)
+              .where('fetched_at > ?', CACHE_TTL.ago)
+              .where(closed_at: nil)
+      # Тот же city-gate, что в ComparableFinder (issue #172): свежие записи
+      # другого города не должны давать cache hit, иначе свежий поиск
+      # (tavily, платный) пропускаем, а ComparableFinder отбросит все
+      # закэшированные записи — локальные аналоги не запросятся до конца TTL
+      # (замечание из ревью PR #177).
+      city = ExternalListing.normalize_city(@v.city)
+      scope = scope.where('LOWER(city) = ?', city.downcase) if city.present?
+      scope.count
     end
 
     def tavily_search
