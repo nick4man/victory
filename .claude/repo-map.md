@@ -102,6 +102,8 @@ app/
     concerns/
       admin/
         uploads_block_images.rb
+      chat/
+        page_context_params.rb
       admin_token_auth.rb
       coming_soon_section.rb
       renders_not_found.rb
@@ -1649,52 +1651,6 @@ def ui_status_group(p)
 def build_stage_pipeline(properties)
 ⋮----
 def require_client_cabinet_user
-</file>
-
-<file path="app/controllers/chat/conversations_controller.rb">
-module Chat
-⋮----
-class ConversationsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
-⋮----
-def show
-⋮----
-def update
-⋮----
-private
-⋮----
-def current_or_create_conversation
-⋮----
-def seed_welcome(conv, page_ctx = nil)
-⋮----
-def extract_page_params
-⋮----
-def stamp_page(conv, page_ctx)
-⋮----
-def serialize(conv)
-⋮----
-def serialize_message(m)
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
-⋮----
-class MessagesController < ApplicationController
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
-⋮----
-RATE_LIMIT_PER_MINUTE = 5
-⋮----
-def create
-⋮----
-private
-⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
 </file>
 
 <file path="app/controllers/chat/presence_controller.rb">
@@ -3729,9 +3685,11 @@ def with_audit_lookup_retry(audit_id, attempts: 3)
 class LlmReplyJob < ApplicationJob
 queue_as :default
 ⋮----
-def perform(conversation_id)
+def perform(conversation_id, message_id = nil)
 ⋮----
 private
+⋮----
+def message_page_snapshot(conv, message_id)
 ⋮----
 def message_payload(m)
 </file>
@@ -8876,29 +8834,6 @@ def parse_response(content)
 def normalize_intent(raw)
 </file>
 
-<file path="app/services/llm/page_context.rb">
-ROUTES = [
-⋮----
-def detect(path)
-</file>
-
-<file path="app/services/llm/page_greeting.rb">
-module Llm
-⋮----
-module PageGreeting
-DEFAULT = <<~RU.squish
-⋮----
-module_function
-⋮----
-def for(page_ctx)
-⋮----
-def build(kind, ctx)
-⋮----
-def catalog_greeting
-⋮----
-def property_greeting(ctx)
-</file>
-
 <file path="app/services/llm/question_classifier.rb">
 module Llm
 ⋮----
@@ -13687,6 +13622,72 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
+<file path="app/controllers/chat/conversations_controller.rb">
+module Chat
+⋮----
+class ConversationsController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
+⋮----
+def show
+⋮----
+def update
+⋮----
+private
+⋮----
+def current_or_create_conversation
+⋮----
+def seed_welcome(conv, page_ctx = nil)
+⋮----
+def serialize(conv)
+⋮----
+def serialize_message(m)
+</file>
+
+<file path="app/controllers/chat/messages_controller.rb">
+module Chat
+⋮----
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
+⋮----
+private
+⋮----
+def post_static_reply(conv, verdict, original_body)
+⋮----
+def record_security_event(conv, verdict, original_body)
+⋮----
+def rate_limited?
+⋮----
+def serialize(m)
+</file>
+
+<file path="app/controllers/concerns/chat/page_context_params.rb">
+module Chat
+⋮----
+module PageContextParams
+extend ActiveSupport::Concern
+⋮----
+CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
+CTX_VALUE_MAX = 100
+⋮----
+private
+⋮----
+def extract_page_params
+⋮----
+def clean_page_value(value, max)
+⋮----
+def sanitize_page_ctx(raw_ctx)
+⋮----
+def stamp_page(conv, page_ctx)
+</file>
+
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -13955,6 +13956,12 @@ def self.call(args = {})
 ⋮----
 def self.filter(programs, args)
 ⋮----
+DERIVED_PROGRAM_MARKERS = {
+⋮----
+def self.type_match?(program, type)
+⋮----
+def self.requirement_value(program, key)
+⋮----
 def self.limit(args)
 ⋮----
 def self.counts_by_type(programs)
@@ -13964,15 +13971,17 @@ def self.present(p)
 def self.term_display(p)
 ⋮----
 # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
-# normalize его не меняет — Hash обрабатываем отдельно с локализацией
-# известных ключей, неизвестные выводим как "ключ: значение".
+# normalize его не меняет — Hash обрабатываем с локализацией известных
+# ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
+⋮----
 def self.requirements_display(requirements)
 ⋮----
 def self.requirement_label(key, value)
 ⋮----
 REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
 LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
-private_constant :REGIONS, :LOCATIONS
+PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
+private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 ⋮----
 def self.page_url(args)
 </file>
@@ -14160,11 +14169,15 @@ module Llm
 class ChatResponder
 ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 ⋮----
-def initialize(conversation, runner: Llm::ToolRunner.new)
+def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
 ⋮----
 def call
 ⋮----
 def full_system_prompt
+⋮----
+private
+⋮----
+def current_page_ctx
 ⋮----
 def security_preamble
 ⋮----
@@ -14224,6 +14237,27 @@ def tier_weight(model)
 def redis_connection
 ⋮----
 require 'redis' unless defined?(Redis)
+</file>
+
+<file path="app/services/llm/page_context.rb">
+module Llm
+⋮----
+module PageContext
+CTX_KINDS = {
+</file>
+
+<file path="app/services/llm/page_greeting.rb">
+DEFAULT = <<~RU.squish
+⋮----
+def for(page_ctx)
+⋮----
+def build(kind, ctx)
+⋮----
+def catalog_greeting
+⋮----
+def property_greeting(ctx)
+⋮----
+def audit_greeting(ctx)
 </file>
 
 <file path="app/services/property_evaluation/comparable_finder.rb">

@@ -10,33 +10,45 @@ module Chat
 
     # Ключи ctx — только идентификаторы видов страниц из хелпера
     # chat_page_context, не произвольный контент посетителя.
-    CTX_KEYS = %w[kind slug deal type district rooms token id].freeze
+    CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
     CTX_VALUE_MAX = 100
 
     private
 
     # Page payload from widget: { path:, query:, title:, h1:, referrer:, ctx: {} }
+    # Переводы строк вырезаем сразу: иначе сырой value может вставить в
+    # системный промпт псевдозаголовок (ScopeGuard проверяет только body).
     def extract_page_params
       raw = params[:page]
       return nil unless raw.respond_to?(:to_unsafe_h) || raw.is_a?(Hash)
       raw = raw.to_unsafe_h if raw.respond_to?(:to_unsafe_h)
       ctx = {
-        'path'     => raw['path'].to_s[0, 500].presence,
-        'query'    => raw['query'].to_s[0, 500].presence,
-        'title'    => raw['title'].to_s[0, 200].presence,
-        'h1'       => raw['h1'].to_s[0, 200].presence,
-        'referrer' => raw['referrer'].to_s[0, 500].presence,
+        'path'     => clean_page_value(raw['path'], 500),
+        'query'    => clean_page_value(raw['query'], 500),
+        'title'    => clean_page_value(raw['title'], 200),
+        'h1'       => clean_page_value(raw['h1'], 200),
+        'referrer' => clean_page_value(raw['referrer'], 500),
         'ctx'      => sanitize_page_ctx(raw['ctx'])
       }.compact
       ctx.presence
     end
 
+    def clean_page_value(value, max)
+      value.to_s.gsub(/[\r\n]+/, ' ')[0, max].presence
+    end
+
     def sanitize_page_ctx(raw_ctx)
-      return nil unless raw_ctx.respond_to?(:to_unsafe_h) || raw_ctx.is_a?(Hash)
-      raw_ctx = raw_ctx.to_unsafe_h if raw_ctx.respond_to?(:to_unsafe_h)
+      # GET bootstrap шлёт ctx строкой (page[ctx]=<json>), POST — хешем.
+      if raw_ctx.is_a?(String)
+        raw_ctx = (JSON.parse(raw_ctx) rescue nil)
+      elsif raw_ctx.respond_to?(:to_unsafe_h)
+        raw_ctx = raw_ctx.to_unsafe_h
+      end
+      return nil unless raw_ctx.is_a?(Hash)
+
       raw_ctx
         .slice(*CTX_KEYS)
-        .transform_values { |v| v.to_s[0, CTX_VALUE_MAX].presence }
+        .transform_values { |v| clean_page_value(v, CTX_VALUE_MAX) }
         .compact
         .presence
     end

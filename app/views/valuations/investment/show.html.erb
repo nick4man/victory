@@ -1,5 +1,5 @@
 <% content_for :title, "Результат аудита — АН Виктори" %>
-<%= chat_page_context(kind: 'investment_audit', id: @valuation.id) %>
+<%= chat_page_context(kind: 'investment_audit', id: @valuation.id, state: @valuation.status) %>
 
 <%
   # Verdict/strategy/confidence labels live in ValuationsHelper now —

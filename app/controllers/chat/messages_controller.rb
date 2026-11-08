@@ -37,7 +37,8 @@ module Chat
         conversation: conv,
         role:         :user,
         body:         body,
-        author:       current_user
+        author:       current_user,
+        metadata:     page_ctx ? { page: page_ctx } : {}
       )
 
       ConversationChannel.broadcast_to(conv,
@@ -47,7 +48,10 @@ module Chat
 
       verdict = Llm::ScopeGuard.classify(body)
       if verdict == :allowed
-        LlmReplyJob.perform_later(conv.id)
+        # page-контекст передаём снимком конкретного сообщения: пока job
+        # в очереди, посетитель может отправить следующее сообщение уже с
+        # другой страницы — оно не должно перезаписать контекст этого.
+        LlmReplyJob.perform_later(conv.id, msg.id)
       else
         post_static_reply(conv, verdict, body)
       end

@@ -142,8 +142,9 @@
 
   // Контекст страницы: общий для GET (bootstrap) и POST (каждое сообщение) —
   // посетитель может уйти на другую страницу между ними. h1 и ctx (JSON из
-  // #chat-page-context, если страница его отрендерила) — только в POST,
-  // чтобы bootstrap-запрос оставался прежним.
+  // #chat-page-context, если страница его отрендерила) уходят в оба запроса:
+  // приветствие на bootstrap'е тоже должно видеть вид страницы (ЖК, статус
+  // аудита). ctx — только если ≤2 КБ в сериализованном виде (контракт виджета).
   function pagePayload () {
     const payload = {};
     payload.path = window.location.pathname || '/';
@@ -153,7 +154,7 @@
     return payload;
   }
 
-  function messagePagePayload () {
+  function fullPagePayload () {
     const payload = pagePayload();
     const h1 = document.querySelector('h1');
     if (h1 && h1.textContent.trim()) payload.h1 = h1.textContent.trim().slice(0, 200);
@@ -161,16 +162,19 @@
     if (ctxEl) {
       try {
         const parsed = JSON.parse(ctxEl.textContent);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) payload.ctx = parsed;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) &&
+            JSON.stringify(parsed).length <= 2048) {
+          payload.ctx = parsed;
+        }
       } catch (e) { /* битый JSON — шлём без ctx */ }
     }
     return payload;
   }
 
   function pageQuery () {
-    const payload = pagePayload();
+    const payload = fullPagePayload();
     const params = new URLSearchParams();
-    Object.keys(payload).forEach((key) => params.set('page[' + key + ']', payload[key]));
+    Object.keys(payload).forEach((key) => params.set('page[' + key + ']', typeof payload[key] === 'object' ? JSON.stringify(payload[key]) : payload[key]));
     return params.toString();
   }
 
@@ -324,7 +328,7 @@
           csrf ? { 'X-CSRF-Token': csrf } : {}
         ),
         credentials: 'same-origin',
-        body: JSON.stringify({ body: body, page: messagePagePayload() })
+        body: JSON.stringify({ body: body, page: fullPagePayload() })
       });
       if (res.status === 429) {
         showError('Слишком много сообщений за минуту. Подождите.');
