@@ -100,6 +100,10 @@ module ChatTools
           status:           'completed',
           updated_at:       Time.current
         )
+        # update_columns обходит after_update_commit → завершённые staff-оценки
+        # не попадали бы в EmbedPropertyValuationJob. Метод публичный с #186
+        # (work_bot 2/3); guard — пока #186 не влит в dev/chat.
+        pv.enqueue_embedding if pv.respond_to?(:enqueue_embedding)
 
         success_response(pv, result, websearch_ok)
       rescue StandardError => e
