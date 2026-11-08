@@ -40,6 +40,8 @@ module ChatTools
             Подбор по ситуации: дети/маткапитал → product_type `family_mortgage`; IT-специалист → `it_mortgage`; военнослужащий → `military_mortgage`; Дальний Восток → `far_east_mortgage`; без льгот — без параметра.
 
             После подбора, если известны цена объекта и первый взнос — посчитай платёж через calculate_mortgage, передав rate = rate_min выбранной программы. Для вопроса только «сколько платить в месяц» без интереса к программам — сразу calculate_mortgage.
+
+            Если каталог вернул error `programs_unavailable` — честно сообщи, что программы банков сейчас недоступны, извинись и предложи помощь агента. Это единственный случай эскалации по ипотечным вопросам.
           DESC
           parameters: {
             type: 'object',
@@ -77,7 +79,7 @@ module ChatTools
     def self.filter(programs, args)
       type = args[:product_type].to_s
       programs = programs.select { |p| MORTGAGE_TYPES.include?(p[:product_type].to_s) }
-      programs = programs.select { |p| p[:product_type].to_s == type } if type.present?
+      programs = programs.select { |p| type_match?(p, type) } if type.present?
 
       # nil в каталоге — «условие неизвестно», не «подходит под любой порог»:
       # при заданном фильтре такие записи исключаем, а 0 — валидное значение.
@@ -92,6 +94,21 @@ module ChatTools
       end
 
       programs.sort_by { |p| p[:rate_min] || Float::INFINITY }
+    end
+
+    # Каталог хранит Дальневосточную ипотеку как subsidized с
+    # requirements.region = far_east (seed audit-engine), а не отдельным типом —
+    # иначе штатный фильтр far_east_mortgage её не находит.
+    def self.type_match?(program, type)
+      return true if program[:product_type].to_s == type
+      return false unless type == 'far_east_mortgage'
+
+      program[:product_type].to_s == 'subsidized' && region_of(program) == 'far_east'
+    end
+
+    def self.region_of(program)
+      req = program[:requirements]
+      req.is_a?(Hash) ? (req['region'] || req[:region]).to_s : ''
     end
 
     def self.limit(args)
@@ -128,7 +145,8 @@ module ChatTools
 
     # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
     # normalize его не меняет — Hash обрабатываем отдельно с локализацией
-    # известных ключей, неизвестные выводим как "ключ: значение".
+    # известных ключей; неизвестные (служебные метаданные scraper'ов: sravni_id,
+    # program_codes и т.п.) не показываем — filter_map их отбрасывает.
     def self.requirements_display(requirements)
       text =
         case requirements
@@ -150,7 +168,6 @@ module ChatTools
       when 'age_max'               then "Возраст до #{value} лет"
       when 'region'                then "Регион: #{REGIONS[value.to_s] || value}"
       when 'location'              then "Локация: #{LOCATIONS[value.to_s] || value}"
-      else "#{key}: #{value}"
       end
     end
 

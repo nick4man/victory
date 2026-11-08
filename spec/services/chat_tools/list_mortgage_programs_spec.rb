@@ -134,10 +134,31 @@ RSpec.describe ChatTools::ListMortgagePrograms do
   end
 
   it 'обрезает requirements до 200 символов' do
-    catalog.first[:requirements] = { 'comment' => 'а' * 300 }
+    catalog.first[:requirements] = ['а' * 500]
 
     sber = described_class.call[:programs].find { |p| p[:bank] == 'Сбер' }
     expect(sber[:requirements].size).to eq(200)
+  end
+
+  it 'не показывает служебные ключи requirements вне allowlist' do
+    catalog.first[:requirements] = { 'has_children_under_18' => true, 'sravni_id' => 'abc123',
+                                     'program_codes' => %w[X1 X2], 'derived_from_keyrate' => true }
+
+    sber = described_class.call[:programs].find { |p| p[:bank] == 'Сбер' }
+    expect(sber[:requirements]).to eq('Дети до 18 лет')
+  end
+
+  it 'находит Дальневосточную ипотеку, хранящуюся как subsidized с region=far_east' do
+    catalog << { bank_name: 'Дальневосточный', product_name: 'Дальневосточная ипотека',
+                 product_type: 'subsidized', product_type_ru: 'Господдержка', rate_min: 2.0, rate_max: 2.0,
+                 term_years_min: 1, term_years_max: 20, down_payment_min_pct: 20.0,
+                 max_loan_amount: 9_000_000, requirements: { 'region' => 'far_east', 'age_max' => 35 },
+                 source_url: '', active: true }
+
+    result = described_class.call(product_type: 'far_east_mortgage')
+
+    expect(result[:programs].map { |p| p[:bank] }).to eq(['Дальневосточный'])
+    expect(result[:programs].first[:requirements]).to eq('Регион: Дальний Восток; Возраст до 35 лет')
   end
 
   it 'возвращает ссылку на /services/mortgage только с реально применяемыми параметрами' do

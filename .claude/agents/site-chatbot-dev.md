@@ -19,7 +19,7 @@ Visitor message → ChatResponder
   → PageContext (what page is visitor on?)
   → OmniClient (LLM call with available tools)
     ↓ if tool_call
-  → ToolRunner (executes one of 14 chat_tools)
+  → ToolRunner (executes one of 16 chat_tools)
     ↓ result
   → OmniClient (LLM formats user-facing reply)
   → response back to chat widget
@@ -35,7 +35,7 @@ Visitor message → ChatResponder
 - **`page_context.rb`** — extracts visitor's current page context (URL, property, district, …)
 - **`page_greeting.rb`** — initial greeting based on page
 
-### Tools (`app/services/chat_tools/`, 14 files)
+### Tools (`app/services/chat_tools/`, 16 files)
 - `base.rb` — base class with `name`, `description`, `parameters` JSON Schema, `call`
 - `registry.rb` — collects all tools for OmniClient
 - `format.rb`, `url.rb` — helpers
@@ -46,10 +46,12 @@ Visitor message → ChatResponder
   - `get_property_details.rb` — single property fetch
   - `aggregate_market.rb` — market stats
   - `calculate_mortgage.rb` — mortgage calc with bank rates
+  - `list_mortgage_programs.rb` — bank mortgage program picker (family/IT/military/ДВ/subsidized/market) over Mortgage::ProgramsService catalog
   - `estimate_property_valuation.rb` — hedonic valuation
   - `run_investment_audit.rb` — audit-engine sidecar call
   - `get_landing_content.rb` — page content fetch
   - `submit_review.rb` — moderated review submission
+  - `qualify_lead.rb` — lead qualification after valuation
 
 ### Models
 - `Conversation` — chat session per visitor
