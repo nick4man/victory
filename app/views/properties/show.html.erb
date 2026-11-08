@@ -13,6 +13,7 @@
     the page never renders blank meta. Without per-property meta all 100+
     listings used the agency tagline → identical SERP snippets → CTR hit. %>
 <% content_for :title, @property.effective_seo_title %>
+<%= chat_page_context(kind: 'property', slug: @property.slug) %>
 <% content_for :seo_description, @property.effective_seo_description %>
 <%# Geo meta overrides — Yandex regional ranking expects the page's geo
     signals to match the property's actual location. Without these, every

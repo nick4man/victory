@@ -140,12 +140,37 @@
     open();
   });
 
+  // Контекст страницы: общий для GET (bootstrap) и POST (каждое сообщение) —
+  // посетитель может уйти на другую страницу между ними. h1 и ctx (JSON из
+  // #chat-page-context, если страница его отрендерила) — только в POST,
+  // чтобы bootstrap-запрос оставался прежним.
+  function pagePayload () {
+    const payload = {};
+    payload.path = window.location.pathname || '/';
+    if (window.location.search) payload.query = window.location.search.slice(0, 500);
+    if (document.title) payload.title = document.title.slice(0, 200);
+    if (document.referrer) payload.referrer = document.referrer.slice(0, 500);
+    return payload;
+  }
+
+  function messagePagePayload () {
+    const payload = pagePayload();
+    const h1 = document.querySelector('h1');
+    if (h1 && h1.textContent.trim()) payload.h1 = h1.textContent.trim().slice(0, 200);
+    const ctxEl = document.getElementById('chat-page-context');
+    if (ctxEl) {
+      try {
+        const parsed = JSON.parse(ctxEl.textContent);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) payload.ctx = parsed;
+      } catch (e) { /* битый JSON — шлём без ctx */ }
+    }
+    return payload;
+  }
+
   function pageQuery () {
+    const payload = pagePayload();
     const params = new URLSearchParams();
-    params.set('page[path]', window.location.pathname || '/');
-    if (window.location.search) params.set('page[query]', window.location.search.slice(0, 500));
-    if (document.title) params.set('page[title]', document.title.slice(0, 200));
-    if (document.referrer) params.set('page[referrer]', document.referrer.slice(0, 500));
+    Object.keys(payload).forEach((key) => params.set('page[' + key + ']', payload[key]));
     return params.toString();
   }
 
@@ -299,7 +324,7 @@
           csrf ? { 'X-CSRF-Token': csrf } : {}
         ),
         credentials: 'same-origin',
-        body: JSON.stringify({ body })
+        body: JSON.stringify({ body: body, page: messagePagePayload() })
       });
       if (res.status === 429) {
         showError('Слишком много сообщений за минуту. Подождите.');

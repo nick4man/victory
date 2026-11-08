@@ -7,6 +7,8 @@ module Chat
   #
   # Light rate-limit: 5 messages/minute per visitor_token via Redis.
   class MessagesController < ApplicationController
+    include Chat::PageContextParams
+
     skip_before_action :verify_authenticity_token, only: %i[create], raise: false
 
     RATE_LIMIT_PER_MINUTE = 5
@@ -25,6 +27,11 @@ module Chat
       body = params[:body].to_s.strip
       return render(json: { error: 'empty_body' }, status: :unprocessable_entity) if body.empty?
       return render(json: { error: 'too_long' },   status: :unprocessable_entity) if body.length > 2000
+
+      # Контекст страницы на момент вопроса — виджет шлёт его с каждым POST,
+      # посетитель мог уйти на другую страницу после открытия чата.
+      page_ctx = extract_page_params
+      stamp_page(conv, page_ctx) if page_ctx
 
       msg = ChatMessage.create!(
         conversation: conv,

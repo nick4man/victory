@@ -12,21 +12,29 @@ module Llm
 
     module_function
 
-    # @param page_ctx [Hash{String=>String}, nil] keys: path, query, title, referrer
+    # @param page_ctx [Hash{String=>String}, nil] keys: path, query, title, referrer, h1, ctx
     def for(page_ctx)
       return DEFAULT unless page_ctx
-      kind = Llm::PageContext.detect(page_ctx['path'])
+      kind = Llm::PageContext.detect(page_ctx['path'], page_ctx['ctx'])
       build(kind, page_ctx)
     end
 
     def build(kind, ctx)
       case kind
-      when :landing
+      when :home
         'Добрый день! Помогу подобрать недвижимость, оценить вашу или ответить на любой вопрос об агентстве. С чего начнём?'
       when :catalog
         catalog_greeting
       when :property_show
         property_greeting(ctx)
+      when :zhk
+        zhk_greeting(ctx)
+      when :landing
+        'Смотрите подборку объектов. Скажите бюджет или пожелания — уточню поиск по этому направлению.'
+      when :valuation_result
+        'Вижу, ваша оценка готова. Хотите обсудить результат, сравнить с рынком или получить полный отчёт PDF?'
+      when :investment_audit
+        'Вижу, инвестиционный аудит объекта готов. Объясню вердикт и стратегию или подскажу следующие шаги.'
       when :mortgage
         'Помогу с расчётом ипотеки. Можете ввести параметры выше или просто скажите бюджет и срок — подскажу варианты.'
       when :sell_valuation
@@ -51,6 +59,19 @@ module Llm
       else
         'Хотите узнать про этот объект больше — доступность, торг, юр. чистоту или записаться на просмотр?'
       end
+    end
+
+    def zhk_greeting(ctx)
+      slug = ctx.dig('ctx', 'slug').to_s
+      complex = ResidentialComplex.visible.friendly.find(slug) if slug.present?
+      name = complex&.display_name
+      if name
+        "Это жилой комплекс — #{name}. Рассказать про состав объектов, цены или подобрать похожие варианты?"
+      else
+        'Смотрите жилой комплекс. Рассказать про состав объектов, цены или подобрать похожие варианты?'
+      end
+    rescue ActiveRecord::RecordNotFound
+      'Смотрите жилой комплекс. Рассказать про состав объектов, цены или подобрать похожие варианты?'
     end
   end
 end
