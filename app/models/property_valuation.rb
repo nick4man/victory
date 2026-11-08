@@ -167,6 +167,15 @@ class PropertyValuation < ApplicationRecord
     I18n.l(created_at, format: :long)
   end
 
+  # work_bot 2/3: публичный enqueue эмбеддинга. Completion-path через
+  # update_columns (chat_tools) не запускает after_update_commit — такие
+  # пути обязаны вызвать метод явно после смены статуса.
+  def enqueue_embedding
+    EmbedPropertyValuationJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuation##{id}#enqueue_embedding] #{e.class} #{e.message}")
+  end
+
   # Short human-readable identifier — printed on PDF, shown in UI, used by
   # staff to look up an audit ("откройте отчёт №10042"). Falls back to id
   # for legacy rows that haven't been backfilled (should not happen — the
@@ -248,12 +257,9 @@ class PropertyValuation < ApplicationRecord
     Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
   end
 
-  # work_bot 2/3: enqueue embed для semantic поиска похожих оценок.
-  # Fail-safe — эмбеддинг не должен ломать основной флоу оценки.
+  # work_bot 2/3: callback-обёртка над публичным #enqueue_embedding.
   def enqueue_embed_on_completion
-    EmbedPropertyValuationJob.perform_later(id)
-  rescue StandardError => e
-    Rails.logger.warn("[PropertyValuation##{id}#enqueue_embed] #{e.class} #{e.message}")
+    enqueue_embedding
   end
 
   # A7 Phase 2: push completion в /cabinet через CabinetChannel.

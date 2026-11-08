@@ -71,6 +71,14 @@ RSpec.describe EmbedPropertyValuationJob do
         .not_to change { PropertyValuationEmbedding.count }
       expect(fake_client).not_to have_received(:embed)
     end
+
+    it 'поднимает ошибку записи — бэкфилл embeddings:valuations учтёт её в failed' do
+      allow(PropertyValuationEmbedding).to receive(:find_or_initialize_by)
+        .and_raise(ActiveRecord::ConnectionNotEstablished)
+
+      expect { described_class.new.perform(valuation.id) }
+        .to raise_error(ActiveRecord::ConnectionNotEstablished)
+    end
   end
 
   describe 'trigger — PropertyValuation after_commit' do

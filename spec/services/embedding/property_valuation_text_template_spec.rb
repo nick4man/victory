@@ -58,10 +58,28 @@ RSpec.describe Embedding::PropertyValuationTextTemplate do
     context 'без estimated_price — вилка min/max' do
       before { valuation.estimated_price = nil }
 
-      it 'показывает вилку вместо итоговой цены и не считает ₽/м²' do
-        expect(text).to include('Вилка оценки: 4 900 000 - 5 600 000 ₽')
+      it 'показывает вилку (форматтер модели) вместо итоговой цены и не считает ₽/м²' do
+        expect(text).to include('Вилка оценки: 4 900 000 ₽ - 5 600 000 ₽')
         expect(text).not_to include('Итоговая цена')
         expect(text).not_to include('Цена за м²')
+      end
+    end
+
+    context 'участок (land) — площадь в land_area (сотки), total_area nil' do
+      before do
+        valuation.property_type = 'land'
+        valuation.total_area = nil
+        valuation.rooms = nil
+        valuation.floor = nil
+        valuation.total_floors = nil
+        valuation.land_area = 8
+      end
+
+      it 'выводит площадь участка в сотках и считает ₽/м² от land_area в м²' do
+        expect(text).to include('Тип объекта: участок')
+        expect(text).to include('Площадь участка: 8.0 сот.')
+        expect(text).not_to include('Площадь:') # общая площадь не появляется
+        expect(text).to include('Цена за м²: 6 563 ₽') # 5 250 000 / 800 м²
       end
     end
 

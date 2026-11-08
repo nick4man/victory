@@ -42,6 +42,10 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     expect(call_tool[:low_coverage]).to be(false)
   end
 
+  it 'при завершении через update_columns ставит EmbedPropertyValuationJob явно' do
+    expect { call_tool }.to have_enqueued_job(EmbedPropertyValuationJob)
+  end
+
   describe '.schema' do
     it 'объясняет боту, как озвучивать низкое покрытие' do
       description = described_class.schema.dig(:function, :description)

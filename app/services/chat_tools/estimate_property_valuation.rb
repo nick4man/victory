@@ -96,6 +96,8 @@ module ChatTools
         status:           'completed',
         updated_at:       Time.current
       )
+      # update_columns обходит after_update_commit — эмбеддинг ставим явно
+      pv.enqueue_embedding
 
       compact_response(pv, result)
     rescue StandardError => e

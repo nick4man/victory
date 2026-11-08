@@ -37,9 +37,8 @@ class EmbedPropertyValuationJob < ApplicationJob
       embedding:    vector,
       embedded_at:  Time.current
     )
-  rescue ::Embedding::GoogleClient::Error
-    raise # retry_on
-  rescue StandardError => e
-    Rails.logger.warn("[EmbedPropertyValuationJob] valuation=#{property_valuation_id}: #{e.class} #{e.message}")
+    # Ошибки записи НЕ проглатываем: retry_on в ApplicationJob обрабатывает
+    # GoogleClient::Error, остальное поднимается — синхронный бэкфилл
+    # embeddings:valuations учтёт такую строку в failed.
   end
 end

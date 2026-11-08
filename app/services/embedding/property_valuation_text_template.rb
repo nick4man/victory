@@ -50,7 +50,7 @@ module Embedding
 
       parts << "Город: #{valuation.city}" if valuation.city.present?
       parts << "Район: #{valuation.district}" if valuation.district.present?
-      parts << "Площадь: #{valuation.total_area} м²" if valuation.total_area.present?
+      append_area(parts, valuation)
       parts << "Комнат: #{valuation.rooms}" if valuation.rooms.present?
       parts << "Этаж: #{valuation.floor} из #{valuation.total_floors}" if valuation.floor.present? && valuation.total_floors.present?
       parts << "Этаж: #{valuation.floor}" if valuation.floor.present? && valuation.total_floors.blank?
@@ -70,18 +70,39 @@ module Embedding
       parts.join("\n").truncate(2000)
     end
 
+    # Участок: площадь хранится в land_area (сотки), total_area может быть nil.
+    # Для остальных типов — total_area в м².
+    def self.append_area(parts, valuation)
+      if valuation.property_type == 'land'
+        parts << "Площадь участка: #{valuation.land_area} сот." if valuation.land_area.present?
+      elsif valuation.total_area.present?
+        parts << "Площадь: #{valuation.total_area} м²"
+      end
+    end
+
+    # Форматтеры цены — у модели (estimated_price_formatted / price_range_formatted),
+    # чтобы правила отображения валюты не разъезжались.
     def self.append_price(parts, valuation)
       if valuation.estimated_price.present?
-        parts << "Итоговая цена оценки: #{format_price(valuation.estimated_price)} ₽"
+        parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
       elsif valuation.min_price.present? && valuation.max_price.present?
-        parts << "Вилка оценки: #{format_price(valuation.min_price)} - #{format_price(valuation.max_price)} ₽"
+        parts << "Вилка оценки: #{valuation.price_range_formatted}"
       end
     end
 
     def self.append_price_per_sqm(parts, valuation)
-      return unless valuation.estimated_price.present? && valuation.total_area.to_f.positive?
+      area = effective_area(valuation)
+      return unless valuation.estimated_price.present? && area.to_f.positive?
 
-      parts << "Цена за м²: #{format_price(valuation.estimated_price.to_f / valuation.total_area.to_f)} ₽"
+      parts << "Цена за м²: #{format_price(valuation.estimated_price.to_f / area.to_f)} ₽"
+    end
+
+    # Для участка ₽/м² считаем от land_area в м² (хранится в сотках) — иначе
+    # вектор участка теряет ключевой признак сходства.
+    def self.effective_area(valuation)
+      return valuation.land_area_in_sqm if valuation.property_type == 'land'
+
+      valuation.total_area
     end
 
     def self.analogs_count(valuation)

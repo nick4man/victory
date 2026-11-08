@@ -230,6 +230,7 @@ app/
     embed_article_job.rb
     embed_lead_event_job.rb
     embed_property_job.rb
+    embed_property_valuation_job.rb
     embed_telegram_group_message_job.rb
     inquiry_notification_job.rb
     investment_audit_job.rb
@@ -312,6 +313,7 @@ app/
     price_history.rb
     property_embedding.rb
     property_type.rb
+    property_valuation_embedding.rb
     property_valuation.rb
     property_view.rb
     property.rb
@@ -433,6 +435,7 @@ app/
       google_client.rb
       lead_event_text_template.rb
       property_text_template.rb
+      property_valuation_text_template.rb
       telegram_group_message_text_template.rb
     external_listings/
       yrl_parser.rb
@@ -5252,43 +5255,6 @@ def active_properties_count
 private
 ⋮----
 def generate_slug
-</file>
-
-<file path="app/models/property_valuation.rb">
-TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
-TYPES_REQUIRING_LAND_AREA = %w[land].freeze
-⋮----
-def to_property_params
-⋮----
-def land_area_in_sqm
-⋮----
-def full_name
-⋮----
-def price_range_formatted
-⋮----
-def estimated_price_formatted
-⋮----
-def confidence_percentage
-⋮----
-def accuracy_level
-⋮----
-def created_at_formatted
-⋮----
-def report_label
-⋮----
-def generate_token
-⋮----
-def resolve_coordinates
-⋮----
-def normalize_phone
-⋮----
-def floor_not_greater_than_total
-⋮----
-def photos_limit
-⋮----
-Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
-⋮----
-def broadcast_cabinet_completion
 </file>
 
 <file path="app/models/property_view.rb">
@@ -13721,6 +13687,17 @@ def awake?
 def notify(chat_id, thread_id, text)
 </file>
 
+<file path="app/jobs/embed_property_valuation_job.rb">
+require 'digest'
+⋮----
+class EmbedPropertyValuationJob < ApplicationJob
+queue_as :low_priority
+⋮----
+retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
+⋮----
+def perform(property_valuation_id)
+</file>
+
 <file path="app/models/crm_card_transition.rb">
 class CrmCardTransition < ApplicationRecord
 belongs_to :crm_card, inverse_of: :transitions
@@ -13914,6 +13891,52 @@ def property_or_message_required
 # applications validate cleanly.
 </file>
 
+<file path="app/models/property_valuation_embedding.rb">
+class PropertyValuationEmbedding < ApplicationRecord
+has_neighbors :embedding
+⋮----
+belongs_to :property_valuation
+</file>
+
+<file path="app/models/property_valuation.rb">
+TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
+TYPES_REQUIRING_LAND_AREA = %w[land].freeze
+⋮----
+def to_property_params
+⋮----
+def land_area_in_sqm
+⋮----
+def full_name
+⋮----
+def price_range_formatted
+⋮----
+def estimated_price_formatted
+⋮----
+def confidence_percentage
+⋮----
+def accuracy_level
+⋮----
+def created_at_formatted
+⋮----
+def enqueue_embedding
+⋮----
+def report_label
+⋮----
+def generate_token
+⋮----
+def resolve_coordinates
+⋮----
+def normalize_phone
+⋮----
+def floor_not_greater_than_total
+⋮----
+def photos_limit
+⋮----
+Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
+⋮----
+def broadcast_cabinet_completion
+</file>
+
 <file path="app/services/chat_tools/estimate_property_valuation.rb">
 module ChatTools
 ⋮----
@@ -13955,6 +13978,12 @@ def self.call(args = {})
 ⋮----
 def self.filter(programs, args)
 ⋮----
+DERIVED_PROGRAM_MARKERS = {
+⋮----
+def self.type_match?(program, type)
+⋮----
+def self.requirement_value(program, key)
+⋮----
 def self.limit(args)
 ⋮----
 def self.counts_by_type(programs)
@@ -13964,15 +13993,17 @@ def self.present(p)
 def self.term_display(p)
 ⋮----
 # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
-# normalize его не меняет — Hash обрабатываем отдельно с локализацией
-# известных ключей, неизвестные выводим как "ключ: значение".
+# normalize его не меняет — Hash обрабатываем с локализацией известных
+# ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
+⋮----
 def self.requirements_display(requirements)
 ⋮----
 def self.requirement_label(key, value)
 ⋮----
 REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
 LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
-private_constant :REGIONS, :LOCATIONS
+PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
+private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 ⋮----
 def self.page_url(args)
 </file>
@@ -14116,6 +14147,31 @@ def for(kind)
 def field(kind, key)
 ⋮----
 def option_label(field, value)
+</file>
+
+<file path="app/services/embedding/property_valuation_text_template.rb">
+module Embedding
+⋮----
+module PropertyValuationTextTemplate
+PROPERTY_TYPE_LABELS = {
+⋮----
+DEAL_TYPE_LABELS = {
+⋮----
+CONDITION_LABELS = {
+⋮----
+def self.build(valuation)
+⋮----
+def self.append_area(parts, valuation)
+⋮----
+def self.append_price(parts, valuation)
+⋮----
+def self.append_price_per_sqm(parts, valuation)
+⋮----
+def self.effective_area(valuation)
+⋮----
+def self.analogs_count(valuation)
+⋮----
+def self.format_price(value)
 </file>
 
 <file path="app/services/external_listings/yrl_parser.rb">
