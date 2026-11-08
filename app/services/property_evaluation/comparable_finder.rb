@@ -64,7 +64,10 @@ module PropertyEvaluation
       s = ExternalListing.active.priced.recent(60)
                          .for_deal(@v.deal_type)
                          .for_type(slug)
-                         .rooms_band(@v.rooms.to_i, tier.rooms_delta)
+      # Комнатность для участков не определена (YRL-записи rooms=NULL,
+      # иначе rooms_band отсекал бы их на уровне SQL) — фильтр только для
+      # строений (регрессионный спек yrl_parser, ревью Kimi r6, PR #184).
+      s = s.rooms_band(@v.rooms.to_i, tier.rooms_delta) unless @v.property_type.to_s == 'land'
       # Площади land в источниках хранятся по-разному: websearch/большинство
       # фидов — сотки в area, YRL — дом в м² в area + участок в land_area.
       # Band для участков считаем по effective соткам (COALESCE), иначе
