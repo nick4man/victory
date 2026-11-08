@@ -175,4 +175,30 @@ RSpec.describe 'Chat::Messages', type: :request do
     expect(response).to have_http_status(:ok)
     expect(conversation.reload.metadata.dig('page', 'ctx')).to eq('kind' => 'zhk', 'slug' => 'legenda')
   end
+
+  it 'pending-оценка: страница /valuations/:token/result рендерит ctx со state, bootstrap не считает её готовой' do
+    valuation = PropertyValuation.create!(
+      property_type: :apartment, deal_type: :sale,
+      address: 'Рязань, Московское шоссе, д. 10', total_area: 54,
+      latitude: 54.62, longitude: 39.74, # координаты гасят dadata-колбэк (сеть в спеках закрыта)
+      status: :pending
+    )
+
+    get result_property_valuations_path(token: valuation.token)
+    expect(response).to have_http_status(:ok)
+    match = response.body.match(%r{<script type="application/json" id="chat-page-context">(.+?)</script>}m)
+    expect(match).to be_present
+    ctx = JSON.parse(match[1].gsub('&quot;', '"'))
+    expect(ctx).to include('kind' => 'valuation_result', 'state' => 'pending')
+
+    get chat_conversation_path(format: :json, page: {
+                                'path' => "/valuations/#{valuation.token}/result",
+                                'ctx'  => ctx.to_json
+                              })
+
+    expect(response).to have_http_status(:ok)
+    expect(conversation.reload.metadata.dig('page', 'ctx', 'state')).to eq('pending')
+    greeting = conversation.chat_messages.find_by(role: :assistant)
+    expect(greeting.body).to include('ещё считается')
+  end
 end

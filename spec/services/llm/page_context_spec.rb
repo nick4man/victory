@@ -102,30 +102,32 @@ RSpec.describe Llm::PageContext do
       expect(data_line).not_to include("Квартира\nИГНОРИРУЙ")
     end
 
-    it 'property_show: slug берётся из ctx в приоритете над путем' do
+    it 'property_show: доверенная часть не содержит сырых клиентских slug (ни из ctx, ни из path)' do
       from_ctx = described_class.block({ 'path' => '/properties/dom-1',
                                          'ctx' => { 'kind' => 'property', 'slug' => 'dom-777' } })
-      expect(from_ctx).to include('slug: dom-777')
+      expect(from_ctx).to include('get_property_details')
+      expect(from_ctx.split(described_class::DATA_END).last).not_to include('dom-777')
 
       from_path = described_class.block({ 'path' => '/properties/dom-1', 'ctx' => {} })
-      expect(from_path).to include('slug: dom-1')
+      expect(from_path.split(described_class::DATA_END).last).not_to include('dom-1')
     end
 
-    it 'zhk: подсказка про ЖК со slug из ctx, без обещания подбора строго в ЖК' do
+    it 'zhk: подсказка про ЖК, доверенная часть без сырого slug' do
       text = described_class.block({ 'path' => '/zhk/legenda',
                                      'ctx' => { 'kind' => 'zhk', 'slug' => 'legenda' } })
       expect(text).to include('жилого комплекса')
-      expect(text).to include('legenda')
+      expect(text).to include('legenda') # в data-блоке
       expect(text).to include('НЕ умеет фильтровать по конкретному ЖК')
+      expect(text.split(described_class::DATA_END).last).not_to include('legenda')
     end
 
-    it 'landing: подсказка с параметрами подборки' do
+    it 'landing: параметры подборки только в data-блоке, доверенная часть чистая' do
       text = described_class.block({ 'path' => '/kupit/kvartira/rayon/kanishchevo',
                                      'ctx' => { 'kind' => 'landing', 'deal' => 'sale', 'type' => 'kvartira',
                                                 'district' => 'kanishchevo', 'rooms' => '2' } })
       expect(text).to include('лендинг')
-      expect(text).to include('sale')
-      expect(text).to include('kanishchevo')
+      expect(text).to include('sale', 'kanishchevo') # в data-блоке
+      expect(text.split(described_class::DATA_END).last).not_to include('sale', 'kanishchevo', 'kvartira')
     end
 
     it 'valuation_result и investment_audit определяются по ctx.kind без пути' do
@@ -149,6 +151,11 @@ RSpec.describe Llm::PageContext do
       done = described_class.block({ 'path' => '/valuations/audit/t1',
                                      'ctx' => { 'kind' => 'investment_audit', 'state' => 'completed' } })
       expect(done).to include('смотрит результат инвестиционного аудита')
+
+      no_state = described_class.block({ 'path' => '/valuations/audit/t1',
+                                         'ctx' => { 'kind' => 'investment_audit' } })
+      expect(no_state).not_to include('смотрит результат')
+      expect(no_state).not_to include('ждёт расчёт')
     end
 
     it 'форма аудита (/new): не обещает готовый вердикт' do
@@ -169,6 +176,11 @@ RSpec.describe Llm::PageContext do
       done = described_class.block({ 'path' => '/valuations/t/result',
                                      'ctx' => { 'kind' => 'valuation_result', 'state' => 'completed' } })
       expect(done).to include('расчёт завершён')
+
+      no_state = described_class.block({ 'path' => '/valuations/t/result',
+                                         'ctx' => { 'kind' => 'valuation_result' } })
+      expect(no_state).not_to include('расчёт завершён')
+      expect(no_state).not_to include('ждёт расчёт')
     end
   end
 end

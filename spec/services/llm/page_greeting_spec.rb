@@ -55,6 +55,12 @@ RSpec.describe Llm::PageGreeting do
                                        'ctx' => { 'kind' => 'investment_audit', 'state' => 'completed' } })
       expect(greeting).to include('аудит объекта готов')
     end
+
+    it 'без state — нейтральный текст, не «готов»' do
+      greeting = described_class.for({ 'path' => '/valuations/audit/t1',
+                                       'ctx' => { 'kind' => 'investment_audit' } })
+      expect(greeting).not_to include('готов')
+    end
   end
 
   describe 'результат оценки' do
@@ -72,6 +78,12 @@ RSpec.describe Llm::PageGreeting do
       failed = described_class.for({ 'path' => '/valuations/t/result',
                                      'ctx' => { 'kind' => 'valuation_result', 'state' => 'failed' } })
       expect(failed).to include('не удался')
+    end
+
+    it 'без state — нейтральный текст, не «готова»' do
+      greeting = described_class.for({ 'path' => '/valuations/t/result',
+                                       'ctx' => { 'kind' => 'valuation_result' } })
+      expect(greeting).not_to include('готова')
     end
   end
 end
