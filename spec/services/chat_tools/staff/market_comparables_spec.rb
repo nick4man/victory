@@ -190,14 +190,14 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:market_note]).to include('аренды')
     end
 
-    it 'участок: площадь в сотках уходит И в land_area, И в total_area (comp-пайплайн)' do
+    it 'участок: сотки в land_area, total_area тул пишет в м² (единая нормализация estimator)' do
       res = call_tool({ 'property_type' => 'land', 'total_area' => 8, 'rooms' => nil })
 
       expect(res[:success]).to be(true)
       pv = PropertyValuation.order(:id).last
       expect(pv.property_type).to eq('land')
       expect(pv.land_area).to eq(8)
-      expect(pv.total_area).to eq(8)
+      expect(pv.total_area).to eq(800)
     end
 
     it 'сервис вернул failure — valuation failed + структурный error' do
@@ -290,10 +290,10 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(urls).to include('https://ryazan.cian.ru/sale/land/777/')
     end
 
-    # Ревью Kimi (PR #184, раунд 3): не только URL должен дойти — оценка
-    # по land-аналогу считается в сотках: 1_800_000 ₽ / 8 соток × 8 соток.
-    # Старое поведение (м² в subject_area) давало ~180_000_000 ₽.
-    it 'участок: estimated_price и price_per_sqm в сотках, без завышения ×100' do
+    # Ревью Kimi (PR #184, раунд 4): единая нормализация estimator к м² —
+    # внешний land-аналог хранит 8 соток, но enrich переводит его в ₽/м²:
+    # 1_800_000 ₽ / 800 м² × 800 м². Сотруднику тул отдаёт и ₽/сотку.
+    it 'участок: оценка в м²-нормализации, без завышения ×100; price_per_sotka для сотрудника' do
       res = described_class.call(
         {
           'property_type' => 'land',
@@ -307,8 +307,70 @@ RSpec.describe ChatTools::Staff::MarketComparables do
 
       expect(res[:success]).to be(true)
       expect(res[:estimated_price]).to be_within(150_000).of(1_800_000)
-      expect(res[:price_per_sqm]).to be_within(15_000).of(225_000)
-      expect(res[:price_unit]).to eq('сотка')
+      expect(res[:price_per_sqm]).to be_within(150).of(2_250)
+      expect(res[:price_per_sotka]).to be_within(15_000).of(225_000)
+      expect(res[:price_unit]).to eq('м²')
+    end
+
+    # Ревью Kimi (PR #184, раунд 4): смешанный пул — каталожный аналог в м² +
+    # внешнее land-объявление в сотках. Без нормализации enrich пул смешивал
+    # ₽/м² (каталог) с ₽/соткой (площадка) и цена искажалась на порядки.
+    context 'со смешанным пулом: каталожный аналог + внешнее land-объявление' do
+      let!(:land_type) { PropertyType.create!(name: 'Участок', slug: 'land') }
+      let!(:agency_plot) do
+        create(:property, :on_site,
+               property_type_id: land_type.id,
+               address: 'Рязань, Канищево, Солотчинское шоссе, 2',
+               city: 'Рязань', district: 'Канищево',
+               area: 800, price: 1_600_000, deal_type: 'sale', rooms: nil)
+      end
+
+      it 'оба источника нормализованы к ₽/м² — оценка в рынке обоих аналогов' do
+        res = described_class.call(
+          {
+            'property_type' => 'land',
+            'address'       => 'Рязань, Канищево, Солотчинское шоссе, 1',
+            'city'          => 'Рязань',
+            'district'      => 'Канищево',
+            'total_area'    => 8
+          },
+          asked_by: agent
+        )
+
+        expect(res[:success]).to be(true)
+        # Каталожный аналог реально в пуле — иначе тест не ловит смешение единиц.
+        expect(res[:comparables].map { |c| c[:url] })
+          .to include("/properties/#{agency_plot.to_param}")
+        # Каталог 2_000 ₽/м² + площадка 2_250 ₽/м² → оценка между 1.6M и 1.8M,
+        # а не абсурд от смешения единиц (например 1.6M/8 «м²» = 200_000 ₽/м²).
+        expect(res[:estimated_price]).to be > 1_500_000
+        expect(res[:estimated_price]).to be < 1_900_000
+        # Единая единица: estimated ≈ price_per_sqm × 800 м².
+        expect(res[:estimated_price].to_f).to be_within(res[:estimated_price] * 0.05)
+          .of(res[:price_per_sqm] * 800)
+      end
+    end
+
+    # Ревью Kimi (PR #184, раунд 4): fallback-оценка участка должна быть
+    # согласована с price_per_sqm — иначе цена и подпись единицы расходятся.
+    it 'участок: пустой пул — fallback согласован (цена ≈ ₽/м² × площадь в м²)' do
+      res = described_class.call(
+        {
+          'property_type' => 'land',
+          'address'       => 'Рязань, Солотча, Центральная, 1',
+          'city'          => 'Рязань',
+          'district'      => 'Солотча',
+          'total_area'    => 8
+        },
+        asked_by: agent
+      )
+
+      expect(res[:success]).to be(true)
+      expect(res[:price_per_sqm]).to be_positive
+      # Цена согласована с ₽/м² при площади 800 м² (допуск на округления).
+      expect(res[:estimated_price].to_f).to be_within(res[:estimated_price] * 0.05)
+        .of(res[:price_per_sqm] * 800)
+      expect(res[:price_unit]).to eq('м²')
     end
   end
 end

@@ -159,4 +159,40 @@ RSpec.describe PropertyEvaluation::ComparableFinder do
       expect(result[:comparables].map { |c| c[:record] }).to include(listing)
     end
   end
+
+  # Ревью Kimi (PR #184, раунд 4): каталог хранит land-площади в м²,
+  # объявления площадок — в сотках. Без нормализации comp-домена медиана
+  # смешивала ₽/м² с ₽/соткой и цена участка искажалась на порядки.
+  describe 'land: единая нормализация пула к ₽/м²' do
+    let!(:land_type) { PropertyType.create!(name: 'Земля', slug: 'land') }
+
+    def build_land_valuation
+      PropertyValuation.new(
+        property_type: 'land', deal_type: 'sale', audit_mode: 'express',
+        address: 'г. Рязань, Канищево', city: 'Рязань', district: 'Канищево',
+        land_area: 8, total_area: 800, status: 'pending'
+      )
+    end
+
+    it 'смешанный пул (каталог м² + площадка сотки) даёт одинаковый ₽/м²' do
+      catalog = create(:property, :on_site, property_type_id: land_type.id,
+                                            deal_type: :sale, area: 800, rooms: 0,
+                                            district: 'Канищево', city: 'Рязань',
+                                            price: 1_800_000)
+      listing = create(:external_listing, source: 'cian',
+                                          url: 'https://ryazan.cian.ru/sale/land/888/',
+                                          property_type: 'land', deal_type: 'sale',
+                                          city: 'Рязань', district: 'Канищево',
+                                          area: 8.0, rooms: 0, price: 1_800_000,
+                                          fetched_at: Time.current, closed_at: nil)
+
+      result = described_class.new(build_land_valuation).call
+
+      comps = result[:comparables]
+      expect(comps.map { |c| c[:record] }).to contain_exactly(catalog, listing)
+      expect(comps.map { |c| c[:price_per_sqm] }.uniq).to eq([2250])
+      listing_comp = comps.find { |c| c[:record] == listing }
+      expect(listing_comp[:area]).to eq(800.0) # сотки → м²
+    end
+  end
 end

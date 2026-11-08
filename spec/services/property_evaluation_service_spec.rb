@@ -144,15 +144,30 @@ RSpec.describe PropertyEvaluationService do
         .and_return(instance_double(PropertyEvaluation::ComparableFinder,
                                     call: { tier: 1, comparables: internal + [external] }))
 
-      result = described_class.new(valuation).call
+      result = described_class.new(valuation, include_full_comparables: true).call
 
       expect(result[:success]).to be(true)
       # Публичный отчёт — компактно, как раньше (first(5))
       expect(result[:comparables].size).to eq(5)
-      # Полный пул — для staff-тула market_comparables (external-first там)
+      # Полный пул — только по флагу staff-тула (external-first там)
       expect(result[:full_comparables].size).to eq(7)
       urls = result[:full_comparables].map { |c| c[:url] }
       expect(urls).to include('https://ryazan.cian.ru/sale/flat/294573918/')
+    end
+
+    it 'по умолчанию full_comparables в ответе нет (публичные оценки не хранят пул)' do
+      internal = Array.new(6) { |i| comp('agency', 100_000, title: "аналог #{i}") }
+      external = comp('external_listing', 100_000, title: 'внешний аналог',
+                      url: 'https://ryazan.cian.ru/sale/flat/294573918/')
+      allow(PropertyEvaluation::ComparableFinder).to receive(:new)
+        .and_return(instance_double(PropertyEvaluation::ComparableFinder,
+                                    call: { tier: 1, comparables: internal + [external] }))
+
+      result = described_class.new(valuation).call
+
+      expect(result[:success]).to be(true)
+      expect(result).not_to have_key(:full_comparables)
+      expect(result[:comparables].size).to eq(5)
     end
 
     it 'пробрасывает фактический исход websearch-поиска (websearch_count)' do

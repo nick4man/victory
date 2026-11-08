@@ -87,11 +87,17 @@ module Valuations
     end
 
     def area_bracket_min
-      (@v.total_area.to_f * 0.75).round(1)
+      # Band кэша в тех же единицах, что площади объявлений источника:
+      # для участков ExternalListing хранит сотки (ревью Kimi, PR #184).
+      (band_area * 0.75).round(1)
     end
 
     def area_bracket_max
-      (@v.total_area.to_f * 1.25).round(1)
+      (band_area * 1.25).round(1)
+    end
+
+    def band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
     end
 
     def cached_count

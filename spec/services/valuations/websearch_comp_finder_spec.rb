@@ -14,6 +14,27 @@ RSpec.describe Valuations::WebsearchCompFinder do
 
   let(:finder) { described_class.new(valuation) }
 
+  describe '#cached_count — единицы band для участков (ревью Kimi, PR #184)' do
+    let(:land_valuation) do
+      PropertyValuation.new(
+        property_type: 'land', deal_type: 'sale', audit_mode: 'express',
+        address: 'г. Рязань, Канищево', city: 'Рязань', district: 'Канищево',
+        total_area: 800, land_area: 8, rooms: 0, status: 'pending'
+      )
+    end
+    let(:land_finder) { described_class.new(land_valuation) }
+
+    it 'band кэша для участка — в сотках (land_area), как площади ExternalListing' do
+      expect(land_finder.send(:area_bracket_min)).to eq(6.0)
+      expect(land_finder.send(:area_bracket_max)).to eq(10.0)
+    end
+
+    it 'band для квартиры — в м² по total_area (прежнее поведение)' do
+      expect(finder.send(:area_bracket_min)).to eq(20.0)
+      expect(finder.send(:area_bracket_max)).to eq(33.3)
+    end
+  end
+
   def parsed(city: 'Санкт-Петербург', url: 'https://cian.ru/offer/123456')
     {
       source_url: url,

@@ -64,7 +64,7 @@ module PropertyEvaluation
       s = ExternalListing.active.priced.recent(60)
                          .for_deal(@v.deal_type)
                          .for_type(slug)
-                         .area_band(@v.total_area.to_f, tier.area_pct)
+                         .area_band(external_band_area, tier.area_pct)
                          .rooms_band(@v.rooms.to_i, tier.rooms_delta)
       # ExternalListing хранит город источника (issue #172): для
       # subject с известным городом чужие города отсекаем на уровне SQL.
@@ -181,8 +181,25 @@ module PropertyEvaluation
 
         { record: r, price_per_sqm: pps, distance_km: dist,
           weight: dist ? 1.0 / (1.0 + dist) : 0.5,
-          source: source_label(r) }
+          source: source_label(r) }.tap do |comp|
+          # Land-объявления площадок хранят площадь в сотках, а estimator
+          # нормализован к ₽/м² (subject_area участка = land_area × 100).
+          # Без перевода comp смешивал бы ₽/сотку с ₽/м² и цена участка
+          # искажалась на порядки (ревью Kimi, PR #184).
+          if @v.property_type.to_s == 'land' && r.is_a?(ExternalListing)
+            area_sqm = r.area.to_f * 100
+            comp[:area] = area_sqm
+            comp[:price_per_sqm] = (r.price.to_f / area_sqm).round if area_sqm.positive?
+          end
+        end
       end.sort_by { |c| c[:distance_km] || Float::INFINITY }
+    end
+
+    # Площадь subject в ЕДИНИЦАХ ХРАНЕНИЯ источника: ExternalListing хранит
+    # land-площади в сотках (парсер площадок), каталог/MLS — в м². Band
+    # должен быть в тех же единицах, что area записей источника.
+    def external_band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
     end
 
     # Город subject vs город comp'а. Fail-close в обе стороны:

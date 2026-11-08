@@ -46,7 +46,9 @@ module ChatTools
 
               Если в ответе low_coverage: true — обязательно предупреди
               сотрудника, что аналогов найдено мало и цена ориентировочная,
-              а не точная рыночная.
+              а не точная рыночная. Если есть market_note — передавай его
+              сотруднику дословно. price_per_sqm — всегда в ₽/м²; для
+              участков озвучивай price_per_sotka (₽/сотка).
             DESC
             parameters: {
               type: 'object',
@@ -88,7 +90,7 @@ module ChatTools
         Thread.current[:skip_workbot_push] = true
         pv.save!(validate: false)
 
-        result = PropertyEvaluationService.new(pv).call
+        result = PropertyEvaluationService.new(pv, include_full_comparables: true).call
         return run_failure(pv, result[:error]) unless result[:success]
 
         pv.update_columns(
@@ -128,13 +130,12 @@ module ChatTools
       end
 
       def self.build_valuation(args, caller)
-        # Участки: ценовой алгоритм читает land_area (сотки), а comp-пайплайн
-        # (ComparableFinder#external_scope, websearch-кэш, AiSyntheticComps) —
-        # total_area. В комп-домене площадь участков хранится в сотках (парсер
-        # объявлений так сохраняет), поэтому для land заполняем ОБА поля
-        # сотками: иначе area-band = 0..0 и внешние land-аналоги не доходят
-        # до ответа (ревью Kimi, PR #184).
+        # Estimator нормализован к м² для всех типов: для участка total_area
+        # пишем в м² (сотки × 100) — его читают AiSyntheticComps, SemanticCompFinder
+        # и CompositeEstimator. Comp-домен (area-band ExternalListing и websearch-
+        # кэш) читает land_area в сотках — парсер площадок так сохраняет (PR #184).
         land = args['property_type'].to_s == 'land'
+        sotki = args['total_area'].to_f
         PropertyValuation.new(
           property_type:      args['property_type'],
           deal_type:          args['deal_type'].presence || 'sale',
@@ -142,8 +143,8 @@ module ChatTools
           address:            args['address'],
           city:               args['city'].presence,
           district:           args['district'].presence,
-          total_area:         args['total_area'],
-          land_area:          land ? args['total_area'] : nil,
+          total_area:         land ? (sotki * 100) : args['total_area'],
+          land_area:          land ? sotki : nil,
           rooms:              args['rooms'],
           floor:              args['floor'],
           total_floors:       args['total_floors'],
@@ -196,9 +197,10 @@ module ChatTools
           min_price:        result[:min_price].to_i,
           max_price:        result[:max_price].to_i,
           price_per_sqm:    result[:price_per_sqm].to_i,
-          # Для участков price_per_sqm — за сотку (comp-домен), не за м² —
-          # иначе бот озвучит сотруднику абсурдные «225 000 ₽/м²».
-          price_unit:       pv.property_type.to_s == 'land' ? 'сотка' : 'м²',
+          # Estimator в ₽/м² для всех типов (единая нормализация, PR #184);
+          # для участков добавляем ₽/сотку — в ней думают сотрудники.
+          price_unit:       'м²',
+          price_per_sotka:  pv.property_type.to_s == 'land' ? (result[:price_per_sqm].to_f * 100).round : nil,
           confidence_level: result[:confidence_level].to_f,
           low_coverage:     result[:low_coverage] == true,
           websearch:        status,
