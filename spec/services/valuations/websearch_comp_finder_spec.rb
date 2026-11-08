@@ -97,4 +97,29 @@ RSpec.describe Valuations::WebsearchCompFinder do
       expect(rent_finder.call).to eq(0)
     end
   end
+
+  describe '#call — cache hit' do
+    before { allow(finder).to receive(:enabled?).and_return(true) }
+
+    def fresh_local(city:)
+      create(:external_listing,
+             property_type: 'flat', deal_type: 'sale', city: city,
+             district: 'Красногвардейский', area: 26.6,
+             fetched_at: Time.current, closed_at: nil)
+    end
+
+    it 'бьётся по slug-типу (flat, не apartment) и городу без платного поиска (PR #178)' do
+      5.times { fresh_local(city: 'Санкт-Петербург') }
+      allow(finder).to receive(:tavily_search).and_raise('платный поиск не должен вызываться')
+
+      expect(finder.call).to eq(5)
+    end
+
+    it 'не бьётся по записям другого города — свежий поиск запускается' do
+      5.times { fresh_local(city: 'Рязань') }
+      allow(finder).to receive(:tavily_search).and_return([])
+
+      expect(finder.call).to eq(0)
+    end
+  end
 end

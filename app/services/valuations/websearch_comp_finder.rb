@@ -96,7 +96,8 @@ module Valuations
 
     def cached_count
       scope = ExternalListing
-              .where(property_type: @v.property_type, deal_type: @v.deal_type)
+              .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type,
+                     deal_type: @v.deal_type)
               .where(district: @v.district.presence || nil)
               .where(area: area_bracket_min..area_bracket_max)
               .where('fetched_at > ?', CACHE_TTL.ago)
