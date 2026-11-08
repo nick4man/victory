@@ -142,10 +142,43 @@ RSpec.describe ChatTools::ListMortgagePrograms do
 
   it 'не показывает служебные ключи requirements вне allowlist' do
     catalog.first[:requirements] = { 'has_children_under_18' => true, 'sravni_id' => 'abc123',
-                                     'program_codes' => %w[X1 X2], 'derived_from_keyrate' => true }
+                                     'program_codes' => %w[X1 X2], 'derived_from_keyrate' => 16.6,
+                                     'maintained_manually' => true }
 
     sber = described_class.call[:programs].find { |p| p[:bank] == 'Сбер' }
     expect(sber[:requirements]).to eq('Дети до 18 лет')
+  end
+
+  it 'не показывает булевы флаги requirements со значением false' do
+    catalog.first[:requirements] = { 'has_children_under_18' => false, 'is_it_specialist' => false }
+
+    sber = described_class.call[:programs].find { |p| p[:bank] == 'Сбер' }
+    expect(sber[:requirements]).to eq('')
+  end
+
+  it 'локализует ключи manual-YAML формата requirements' do
+    catalog << { bank_name: 'Сбербанк', product_name: 'IT-ипотека', product_type: 'it_mortgage',
+                 product_type_ru: 'IT-ипотека', rate_min: 6.0, rate_max: 6.0,
+                 term_years_min: 1, term_years_max: 30, down_payment_min_pct: 20.5,
+                 max_loan_amount: 9_000_000,
+                 requirements: { 'type' => 'subsidized', 'program' => 'it', 'it_company_accreditation' => true,
+                                 'region_excluded' => %w[Moscow SPb], 'maintained_manually' => true },
+                 source_url: '', active: true }
+
+    sber = described_class.call[:programs].find { |p| p[:bank] == 'Сбербанк' }
+    expect(sber[:requirements]).to eq('Аккредитация IT-компании; Кроме регионов: Moscow, SPb')
+  end
+
+  it 'находит derived family/IT-программы, хранящиеся как mortgage с requirements.program' do
+    catalog << { bank_name: 'Рынок (ориентир)', product_name: 'Семейная ипотека (ориентир)',
+                 product_type: 'mortgage', product_type_ru: 'Готовое жильё',
+                 rate_min: 9.6, rate_max: 10.1, term_years_min: 1, term_years_max: 30,
+                 down_payment_min_pct: 20.0, max_loan_amount: nil,
+                 requirements: { 'program' => 'family', 'derived_from_keyrate' => 16.6 }, source_url: '', active: true }
+
+    result = described_class.call(product_type: 'family_mortgage')
+
+    expect(result[:programs].map { |p| p[:bank] }).to include('Рынок (ориентир)')
   end
 
   it 'находит Дальневосточную ипотеку, хранящуюся как subsidized с region=far_east' do

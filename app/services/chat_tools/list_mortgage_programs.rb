@@ -96,19 +96,31 @@ module ChatTools
       programs.sort_by { |p| p[:rate_min] || Float::INFINITY }
     end
 
-    # Каталог хранит Дальневосточную ипотеку как subsidized с
-    # requirements.region = far_east (seed audit-engine), а не отдельным типом —
-    # иначе штатный фильтр far_east_mortgage её не находит.
+    # Producer'ы хранят льготные программы в трёх формах: точный product_type
+    # (manual YAML), subsidized + requirements.region (seed audit-engine),
+    # mortgage + requirements.program (cbr-keyrate-derived в fetch_bank_offers)
+    # — фильтр по ситуации маппит все три, иначе штатные программы не находятся.
+    DERIVED_PROGRAM_MARKERS = {
+      'family_mortgage'   => 'family',
+      'it_mortgage'       => 'it',
+      'far_east_mortgage' => 'far_east'
+    }.freeze
+
     def self.type_match?(program, type)
       return true if program[:product_type].to_s == type
-      return false unless type == 'far_east_mortgage'
 
-      program[:product_type].to_s == 'subsidized' && region_of(program) == 'far_east'
+      marker = DERIVED_PROGRAM_MARKERS[type]
+      return false if marker.blank?
+
+      ptype = program[:product_type].to_s
+      (ptype == 'mortgage' && requirement_value(program, 'program') == marker) ||
+        (ptype == 'subsidized' && type == 'far_east_mortgage' &&
+          requirement_value(program, 'region') == 'far_east')
     end
 
-    def self.region_of(program)
+    def self.requirement_value(program, key)
       req = program[:requirements]
-      req.is_a?(Hash) ? (req['region'] || req[:region]).to_s : ''
+      req.is_a?(Hash) ? (req[key.to_s] || req[key.to_sym]).to_s : ''
     end
 
     def self.limit(args)
@@ -144,9 +156,11 @@ module ChatTools
     end
 
     # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
-    # normalize его не меняет — Hash обрабатываем отдельно с локализацией
-    # известных ключей; неизвестные (служебные метаданные scraper'ов: sravni_id,
-    # program_codes и т.п.) не показываем — filter_map их отбрасывает.
+    # normalize его не меняет — Hash обрабатываем с локализацией известных
+    # ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
+    # Служебные метаданные (sravni_id, program_codes, maintained_manually,
+    # derived_from_keyrate и т.п.) и булевы флаги со значением false
+    # не показываем — filter_map их отбрасывает.
     def self.requirements_display(requirements)
       text =
         case requirements
@@ -162,18 +176,23 @@ module ChatTools
 
     def self.requirement_label(key, value)
       case key.to_s
-      when 'has_children_under_18' then 'Дети до 18 лет'
-      when 'is_it_specialist'      then 'Работа в IT'
-      when 'income_min'            then "Доход от #{ActiveSupport::NumberHelper.number_to_delimited(value.to_i)} ₽/мес"
-      when 'age_max'               then "Возраст до #{value} лет"
-      when 'region'                then "Регион: #{REGIONS[value.to_s] || value}"
-      when 'location'              then "Локация: #{LOCATIONS[value.to_s] || value}"
+      when 'has_children_under_18'  then value ? 'Дети до 18 лет' : nil
+      when 'is_it_specialist'       then value ? 'Работа в IT' : nil
+      when 'it_company_accreditation' then value ? 'Аккредитация IT-компании' : nil
+      when 'family_children_count'  then "Детей не менее #{value}"
+      when 'income_min'             then "Доход от #{ActiveSupport::NumberHelper.number_to_delimited(value.to_i)} ₽/мес"
+      when 'age_max'                then "Возраст до #{value} лет"
+      when 'region'                 then "Регион: #{REGIONS[value.to_s] || value}"
+      when 'region_excluded'        then "Кроме регионов: #{Array(value).join(', ')}"
+      when 'property'               then PROPERTY_LABELS[value.to_s]
+      when 'location'               then "Локация: #{LOCATIONS[value.to_s] || value}"
       end
     end
 
     REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
     LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
-    private_constant :REGIONS, :LOCATIONS
+    PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
+    private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 
     # Только параметры, которые реально применяет MortgageCalculatorsController
     # (build_form_state читает down_payment_pct; product_type/rate — нет,

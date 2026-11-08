@@ -19,7 +19,7 @@ Visitor message → ChatResponder
   → PageContext (what page is visitor on?)
   → OmniClient (LLM call with available tools)
     ↓ if tool_call
-  → ToolRunner (executes one of 16 chat_tools)
+  → ToolRunner (executes one of 12 chat_tools — 16 files incl. helpers)
     ↓ result
   → OmniClient (LLM formats user-facing reply)
   → response back to chat widget
