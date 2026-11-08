@@ -94,6 +94,25 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:comparables].map { |c| c[:url].present? }).to eq([true, false, false])
     end
 
+    it 'внутренние comps (/properties/:id) НЕ помечаются external и идут в хвосте' do
+      allow(PropertyEvaluationService).to receive(:new).and_return(
+        double(call: service_result.merge(comparables: [
+          { title: 'Наш объект 1-комн.', url: '/properties/42',
+            price: 4_100_000, price_per_sqm: 107_000, area: 38.0, rooms: 1,
+            district: 'Канищево', source: 'agency', synthetic: false },
+          { title: 'ЦИАН 1-комн.', url: 'https://ryazan.cian.ru/sale/flat/294573918/',
+            price: 4_350_000, price_per_sqm: 114_473, area: 38.0, rooms: 1,
+            district: 'Канищево', source: 'external_listing', synthetic: false }
+        ]))
+      )
+
+      res = call_tool
+
+      expect(res[:comparables].map { |c| c[:url] })
+        .to eq(['https://ryazan.cian.ru/sale/flat/294573918/', '/properties/42'])
+      expect(res[:comparables].map { |c| c[:external] }).to eq([true, false])
+    end
+
     it 'сохраняет PropertyValuation с metadata source=work_bot и id сотрудника' do
       call_tool
 
@@ -128,6 +147,24 @@ RSpec.describe ChatTools::Staff::MarketComparables do
 
       expect(res[:websearch]).to eq('ok')
       expect(res[:market_note]).to be_nil
+    end
+
+    it 'для аренды: честный websearch=skipped_rent, а не ложный ok' do
+      res = call_tool({ 'deal_type' => 'rent' })
+
+      expect(res[:success]).to be(true)
+      expect(res[:websearch]).to eq('skipped_rent')
+      expect(res[:market_note]).to include('аренды')
+    end
+
+    it 'участок: площадь уходит в land_area (сотки), total_area пуст' do
+      res = call_tool({ 'property_type' => 'land', 'total_area' => 8, 'rooms' => nil })
+
+      expect(res[:success]).to be(true)
+      pv = PropertyValuation.order(:id).last
+      expect(pv.property_type).to eq('land')
+      expect(pv.land_area).to eq(8)
+      expect(pv.total_area).to be_nil
     end
 
     it 'сервис вернул failure — valuation failed + структурный error' do

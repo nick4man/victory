@@ -251,6 +251,7 @@ app/services/chat_tools/staff/kpi_for.rb — module ChatTools, module Staff, mod
 app/services/chat_tools/staff/list_my_open_tasks.rb — module ChatTools, module Staff, module ListMyOpenTasks
 app/services/chat_tools/staff/lookup_lead.rb — module ChatTools, module Staff, module LookupLead
 app/services/chat_tools/staff/lookup_task.rb — module ChatTools, module Staff, module LookupTask
+app/services/chat_tools/staff/market_comparables.rb — module ChatTools, module Staff, module MarketComparables
 app/services/chat_tools/staff/nextcloud_list_templates.rb — module ChatTools, module Staff, module NextcloudListTemplates
 app/services/chat_tools/staff/nextcloud_lookup_deal.rb — module ChatTools, module Staff, module NextcloudLookupDeal
 app/services/chat_tools/staff/registry.rb — module ChatTools, module Staff, module Registry

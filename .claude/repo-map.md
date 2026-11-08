@@ -372,6 +372,7 @@ app/
         list_my_open_tasks.rb
         lookup_lead.rb
         lookup_task.rb
+        market_comparables.rb
         nextcloud_list_templates.rb
         nextcloud_lookup_deal.rb
         registry.rb
@@ -7401,22 +7402,6 @@ def self.call(args = {})
 def self.find_property(query)
 </file>
 
-<file path="app/services/chat_tools/staff/registry.rb">
-module ChatTools
-module Staff
-⋮----
-module Registry
-HANDLERS = {
-⋮----
-module_function
-⋮----
-def schemas
-⋮----
-def call(name, args, asked_by: nil)
-⋮----
-def deep_symbolize(obj)
-</file>
-
 <file path="app/services/chat_tools/staff/search_all_leads.rb">
 module ChatTools
 module Staff
@@ -8941,51 +8926,6 @@ module_function
 def classify(text)
 ⋮----
 REPLIES = {
-</file>
-
-<file path="app/services/llm/staff_chat_responder.rb">
-module Llm
-⋮----
-class StaffChatResponder
-MAX_TOOL_ITERATIONS = 4
-⋮----
-Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
-⋮----
-def success? = error.nil?
-⋮----
-def self.call(...)
-⋮----
-def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
-⋮----
-def call
-⋮----
-private
-⋮----
-# --- Escalation path ---
-⋮----
-def handle_escalation(classification)
-⋮----
-def pick_manager
-⋮----
-def ping_manager(manager)
-⋮----
-"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
-⋮----
-def build_escalation_reply(manager)
-⋮----
-def handle_with_tools(classification)
-⋮----
-def handle_tool_calls(tool_calls, messages, used_tools)
-⋮----
-def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
-⋮----
-def log_to_bot_command_log(classification, used_tools)
-⋮----
-def empty_result(error)
-⋮----
-def system_prompt
-⋮----
-def escape(text)
 </file>
 
 <file path="app/services/llm/tool_runner.rb">
@@ -13914,6 +13854,63 @@ def property_or_message_required
 # applications validate cleanly.
 </file>
 
+<file path="app/services/chat_tools/staff/market_comparables.rb">
+module ChatTools
+module Staff
+⋮----
+module MarketComparables
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+MAX_COMPARABLES = 8
+⋮----
+def self.schema
+⋮----
+def self.call(args = {}, asked_by: nil)
+⋮----
+def self.resolve_caller(args, asked_by)
+⋮----
+def self.websearch_available?
+⋮----
+def self.build_valuation(args, caller)
+⋮----
+def self.valuation_metadata(caller)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.success_response(pv, result, websearch_ok)
+⋮----
+# Пайплайн площадок ищет только продажу (WebsearchCompFinder fail-close
+# для rent, issue #172) — для аренды честно сообщаем, что поиск не
+# выполнялся, а не отчитываемся ложным 'ok'.
+def self.websearch_status(websearch_ok, pv)
+⋮----
+def self.market_note(status)
+⋮----
+def self.serialize_comparables(comps)
+⋮----
+def self.serialize_comparable(c)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.run_failure(pv, error_message)
+</file>
+
+<file path="app/services/chat_tools/staff/registry.rb">
+module ChatTools
+module Staff
+⋮----
+module Registry
+HANDLERS = {
+⋮----
+module_function
+⋮----
+def schemas
+⋮----
+def call(name, args, asked_by: nil)
+⋮----
+def deep_symbolize(obj)
+</file>
+
 <file path="app/services/chat_tools/estimate_property_valuation.rb">
 module ChatTools
 ⋮----
@@ -13955,6 +13952,12 @@ def self.call(args = {})
 ⋮----
 def self.filter(programs, args)
 ⋮----
+DERIVED_PROGRAM_MARKERS = {
+⋮----
+def self.type_match?(program, type)
+⋮----
+def self.requirement_value(program, key)
+⋮----
 def self.limit(args)
 ⋮----
 def self.counts_by_type(programs)
@@ -13964,15 +13967,17 @@ def self.present(p)
 def self.term_display(p)
 ⋮----
 # Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
-# normalize его не меняет — Hash обрабатываем отдельно с локализацией
-# известных ключей, неизвестные выводим как "ключ: значение".
+# normalize его не меняет — Hash обрабатываем с локализацией известных
+# ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
+⋮----
 def self.requirements_display(requirements)
 ⋮----
 def self.requirement_label(key, value)
 ⋮----
 REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
 LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
-private_constant :REGIONS, :LOCATIONS
+PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
+private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 ⋮----
 def self.page_url(args)
 </file>
@@ -14224,6 +14229,51 @@ def tier_weight(model)
 def redis_connection
 ⋮----
 require 'redis' unless defined?(Redis)
+</file>
+
+<file path="app/services/llm/staff_chat_responder.rb">
+module Llm
+⋮----
+class StaffChatResponder
+MAX_TOOL_ITERATIONS = 4
+⋮----
+Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
+⋮----
+def success? = error.nil?
+⋮----
+def self.call(...)
+⋮----
+def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
+⋮----
+def call
+⋮----
+private
+⋮----
+# --- Escalation path ---
+⋮----
+def handle_escalation(classification)
+⋮----
+def pick_manager
+⋮----
+def ping_manager(manager)
+⋮----
+"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
+⋮----
+def build_escalation_reply(manager)
+⋮----
+def handle_with_tools(classification)
+⋮----
+def handle_tool_calls(tool_calls, messages, used_tools)
+⋮----
+def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
+⋮----
+def log_to_bot_command_log(classification, used_tools)
+⋮----
+def empty_result(error)
+⋮----
+def system_prompt
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/property_evaluation/comparable_finder.rb">

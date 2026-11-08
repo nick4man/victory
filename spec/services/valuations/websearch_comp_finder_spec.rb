@@ -214,10 +214,23 @@ RSpec.describe Valuations::WebsearchCompFinder do
         expect(cian.property_type).to eq('flat')
         expect(cian.deal_type).to eq('sale')
 
-        expect(ExternalListing.find_by!(url: EVAL['avito_sale_ryazan']['url']).source).to eq('avito')
-        expect(ExternalListing.find_by!(url: EVAL['yandex_sale_ryazan']['url']).source).to eq('yandex_yrl')
-        # domclick не имеет своего kind — маппится в cian
-        expect(ExternalListing.find_by!(url: EVAL['domclick_sale_ryazan']['url']).source).to eq('cian')
+        # Полные проверки парсинга для каждой площадки (ревью Kimi, PR #184):
+        # price/area/rooms/city, а не только source.
+        expected = {
+          'avito_sale_ryazan'    => 'avito',
+          'yandex_sale_ryazan'   => 'yandex_yrl',
+          'domclick_sale_ryazan' => 'cian' # domclick не имеет своего kind — маппится в cian
+        }
+        expected.each do |key, source|
+          el = ExternalListing.find_by!(url: EVAL[key]['url'])
+          llm = EVAL[key]['llm_result']
+          expect(el.source).to eq(source)
+          expect(el.price).to eq(llm['price'])
+          expect(el.area).to eq(llm['area'])
+          expect(el.rooms).to eq(llm['rooms'])
+          expect(el.city).to eq(llm['city'])
+          expect(el.deal_type).to eq('sale')
+        end
       end
     end
 

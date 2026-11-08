@@ -43,6 +43,10 @@ module ChatTools
               get_property_details; ипотеки — list_mortgage_programs.
               Если не хватает обязательных полей (property_type, address,
               total_area) — задай ОДИН уточняющий вопрос и вызови тул повторно.
+
+              Если в ответе low_coverage: true — обязательно предупреди
+              сотрудника, что аналогов найдено мало и цена ориентировочная,
+              а не точная рыночная.
             DESC
             parameters: {
               type: 'object',
@@ -120,6 +124,10 @@ module ChatTools
       end
 
       def self.build_valuation(args, caller)
+        # Участки: оценщик читает land_area (сотки), total_area для land
+        # игнорируется (PropertyEvaluationService#subject_area) — писать
+        # площадь в оба поля означало бы subject_area == 0 и вечный failed.
+        land = args['property_type'].to_s == 'land'
         PropertyValuation.new(
           property_type:      args['property_type'],
           deal_type:          args['deal_type'].presence || 'sale',
@@ -127,7 +135,8 @@ module ChatTools
           address:            args['address'],
           city:               args['city'].presence,
           district:           args['district'].presence,
-          total_area:         args['total_area'],
+          total_area:         land ? nil : args['total_area'],
+          land_area:          land ? args['total_area'] : nil,
           rooms:              args['rooms'],
           floor:              args['floor'],
           total_floors:       args['total_floors'],
@@ -169,6 +178,7 @@ module ChatTools
       end
 
       def self.success_response(pv, result, websearch_ok)
+        status = websearch_status(websearch_ok, pv)
         {
           success:          true,
           valuation_token:  pv.token,
@@ -181,39 +191,55 @@ module ChatTools
           price_per_sqm:    result[:price_per_sqm].to_i,
           confidence_level: result[:confidence_level].to_f,
           low_coverage:     result[:low_coverage] == true,
-          websearch:        websearch_ok ? 'ok' : 'unavailable',
-          market_note:      market_note(websearch_ok),
+          websearch:        status,
+          market_note:      market_note(status),
           comparables:      serialize_comparables(result[:comparables])
         }
       end
 
-      def self.market_note(websearch_ok)
-        return nil if websearch_ok
+      # Пайплайн площадок ищет только продажу (WebsearchCompFinder fail-close
+      # для rent, issue #172) — для аренды честно сообщаем, что поиск не
+      # выполнялся, а не отчитываемся ложным 'ok'.
+      def self.websearch_status(websearch_ok, pv)
+        return 'unavailable' unless websearch_ok
+        return 'skipped_rent' if pv.deal_type.to_s == 'rent'
 
-        'Поиск по площадкам недоступен (не заданы ключи Tavily/Firecrawl) — ' \
-          'оценка по внутренней базе, без свежих объявлений с площадок.'
+        'ok'
+      end
+
+      def self.market_note(status)
+        case status
+        when 'unavailable'
+          'Поиск по площадкам недоступен (не заданы ключи Tavily/Firecrawl) — ' \
+            'оценка по внутренней базе, без свежих объявлений с площадок.'
+        when 'skipped_rent'
+          'Поиск по площадкам выполняется только для продажи — для аренды ' \
+            'оценка по внутренней базе, без свежих объявлений с площадок.'
+        end
       end
 
       # Аналоги со ссылками вперёди: staff-запрос ценится именно ссылками
-      # на объявления (issue #173), внутренние comps без url — в хвосте.
+      # на объявления (issue #173); внутренние comps (относительные url вида
+      # /properties/:id) — в хвосте и не помечаются external.
       def self.serialize_comparables(comps)
         Array(comps)
           .map { |c| serialize_comparable(c) }
-          .sort_by { |c| c[:url].present? ? 0 : 1 }
+          .sort_by { |c| c[:external] ? 0 : 1 }
           .first(MAX_COMPARABLES)
       end
 
       def self.serialize_comparable(c)
+        url = c[:url].to_s.presence
         {
           title:         c[:title].to_s.truncate(120),
-          url:           c[:url].to_s.presence,
+          url:           url,
           price:         c[:price].to_i,
           price_per_sqm: c[:price_per_sqm].to_i,
           area:          c[:area].to_f,
           rooms:         c[:rooms],
           district:      c[:district].to_s,
           source:        c[:source].to_s,
-          external:      c[:url].to_s.present?
+          external:      url.to_s.start_with?('http')
         }
       end
 
