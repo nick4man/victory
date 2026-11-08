@@ -18,6 +18,7 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       confidence_level: 0.72,
       tier: 2,
       low_coverage: false,
+      websearch_count: 3,
       comparables: [
         { title: '1-комн. 38 м², Канищево', url: 'https://ryazan.cian.ru/sale/flat/294573918/',
           price: 4_350_000, price_per_sqm: 114_473, area: 38.0, rooms: 1,
@@ -142,11 +143,23 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:market_note]).to include('Поиск по площадкам недоступен')
     end
 
-    it 'с ключами: websearch=ok, note нет' do
+    it 'с ключами и свежими объявлениями: websearch=ok, note нет' do
       res = call_tool
 
       expect(res[:websearch]).to eq('ok')
       expect(res[:market_note]).to be_nil
+    end
+
+    it 'поиск не дал объявлений (ошибка/пусто): честный configured, а не ок' do
+      allow(PropertyEvaluationService).to receive(:new).and_return(
+        double(call: service_result.merge(websearch_count: 0))
+      )
+
+      res = call_tool
+
+      expect(res[:success]).to be(true)
+      expect(res[:websearch]).to eq('configured')
+      expect(res[:market_note]).to include('не получены')
     end
 
     it 'для аренды: честный websearch=skipped_rent, а не ложный ok' do
@@ -157,14 +170,14 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:market_note]).to include('аренды')
     end
 
-    it 'участок: площадь уходит в land_area (сотки), total_area пуст' do
+    it 'участок: площадь в сотках уходит И в land_area, И в total_area (comp-пайплайн)' do
       res = call_tool({ 'property_type' => 'land', 'total_area' => 8, 'rooms' => nil })
 
       expect(res[:success]).to be(true)
       pv = PropertyValuation.order(:id).last
       expect(pv.property_type).to eq('land')
       expect(pv.land_area).to eq(8)
-      expect(pv.total_area).to be_nil
+      expect(pv.total_area).to eq(8)
     end
 
     it 'сервис вернул failure — valuation failed + структурный error' do
@@ -208,6 +221,53 @@ RSpec.describe ChatTools::Staff::MarketComparables do
         asked_by: agent
       )
       expect(res[:success]).to be(true)
+    end
+  end
+
+  # Регрессионный интеграционный тест ревью Kimi (PR #184): без мока
+  # PropertyEvaluationService — реальный ComparableFinder должен пропустить
+  # внешний land-аналог (area-band по соткам) до ответа тула.
+  describe 'интеграция: реальный PropertyEvaluationService' do
+    let!(:land_listing) do
+      create(:external_listing,
+             source: 'cian', url: 'https://ryazan.cian.ru/sale/land/777/',
+             property_type: 'land', deal_type: 'sale',
+             city: 'Рязань', district: 'Канищево',
+             area: 8.0, rooms: 0, price: 1_800_000,
+             fetched_at: Time.current, closed_at: nil)
+    end
+
+    before do
+      allow(PropertyEvaluationService).to receive(:new).and_call_original
+      allow(Valuations::WebsearchCompFinder).to receive(:new)
+        .and_return(instance_double(Valuations::WebsearchCompFinder, call: 0))
+      allow(Valuations::SitemapCompFinder).to receive(:new)
+        .and_return(instance_double(Valuations::SitemapCompFinder, call: 0))
+      allow(Valuations::SemanticCompFinder).to receive(:call).and_return([])
+      allow(Valuations::CrossCityAdapter).to receive(:call).and_return([])
+      allow(Valuations::AiSyntheticComps).to receive(:call).and_return([])
+      allow(Valuations::AiExplainer).to receive(:new)
+        .and_return(instance_double(Valuations::AiExplainer, call: nil))
+      allow(Valuations::AiCompFilter).to receive(:new) do |_v, candidates|
+        instance_double(Valuations::AiCompFilter, call: candidates)
+      end
+    end
+
+    it 'участок: внешний land-аналог реально попадает в ответ' do
+      res = described_class.call(
+        {
+          'property_type' => 'land',
+          'address'       => 'Рязань, Канищево, Солотчинское шоссе, 1',
+          'city'          => 'Рязань',
+          'district'      => 'Канищево',
+          'total_area'    => 8
+        },
+        asked_by: agent
+      )
+
+      expect(res[:success]).to be(true)
+      urls = res[:comparables].map { |c| c[:url] }
+      expect(urls).to include('https://ryazan.cian.ru/sale/land/777/')
     end
   end
 end

@@ -124,9 +124,12 @@ module ChatTools
       end
 
       def self.build_valuation(args, caller)
-        # Участки: оценщик читает land_area (сотки), total_area для land
-        # игнорируется (PropertyEvaluationService#subject_area) — писать
-        # площадь в оба поля означало бы subject_area == 0 и вечный failed.
+        # Участки: ценовой алгоритм читает land_area (сотки), а comp-пайплайн
+        # (ComparableFinder#external_scope, websearch-кэш, AiSyntheticComps) —
+        # total_area. В комп-домене площадь участков хранится в сотках (парсер
+        # объявлений так сохраняет), поэтому для land заполняем ОБА поля
+        # сотками: иначе area-band = 0..0 и внешние land-аналоги не доходят
+        # до ответа (ревью Kimi, PR #184).
         land = args['property_type'].to_s == 'land'
         PropertyValuation.new(
           property_type:      args['property_type'],
@@ -135,7 +138,7 @@ module ChatTools
           address:            args['address'],
           city:               args['city'].presence,
           district:           args['district'].presence,
-          total_area:         land ? nil : args['total_area'],
+          total_area:         args['total_area'],
           land_area:          land ? args['total_area'] : nil,
           rooms:              args['rooms'],
           floor:              args['floor'],
@@ -178,7 +181,7 @@ module ChatTools
       end
 
       def self.success_response(pv, result, websearch_ok)
-        status = websearch_status(websearch_ok, pv)
+        status = websearch_status(websearch_ok, pv, result)
         {
           success:          true,
           valuation_token:  pv.token,
@@ -199,12 +202,14 @@ module ChatTools
 
       # Пайплайн площадок ищет только продажу (WebsearchCompFinder fail-close
       # для rent, issue #172) — для аренды честно сообщаем, что поиск не
-      # выполнялся, а не отчитываемся ложным 'ok'.
-      def self.websearch_status(websearch_ok, pv)
+      # выполнялся. Для продажи 'ok' означает, что поиск реально принёс
+      # свежие объявления (websearch_count из PropertyEvaluationService) —
+      # при ошибке/пустой выдаче честный 'configured', а не ложный 'ok'.
+      def self.websearch_status(websearch_ok, pv, result)
         return 'unavailable' unless websearch_ok
         return 'skipped_rent' if pv.deal_type.to_s == 'rent'
 
-        'ok'
+        result[:websearch_count].to_i.positive? ? 'ok' : 'configured'
       end
 
       def self.market_note(status)
@@ -215,6 +220,9 @@ module ChatTools
         when 'skipped_rent'
           'Поиск по площадкам выполняется только для продажи — для аренды ' \
             'оценка по внутренней базе, без свежих объявлений с площадок.'
+        when 'configured'
+          'Свежие объявления с площадок не получены (ошибка поиска или пустая ' \
+            'выдача) — оценка по внутренней базе.'
         end
       end
 

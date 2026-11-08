@@ -68,8 +68,10 @@ class PropertyEvaluationService
     #    Sonnet parse → persist to ExternalListing. Это side-effect ДО
     #    ComparableFinder, чтобы tier 1-4 уже подхватили свежие external
     #    listings через external_scope. Skipped gracefully if
-    #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы.
-    Valuations::WebsearchCompFinder.new(@v).call
+    #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы. Фактический исход
+    #    пробрасываем в результат — staff-тул market_comparables обязан
+    #    честно сказать, получены ли свежие объявления (ревью Kimi, PR #184).
+    websearch_count = Valuations::WebsearchCompFinder.new(@v).call
 
     # 0b. Sitemap-based seeder — agency-specific sitemaps (см. config/agency_sitemaps.yml).
     # Сейчас один источник — ЦАН (961-961.ru). Тот же downstream
@@ -106,7 +108,7 @@ class PropertyEvaluationService
     combined = base_pool + synth
 
     if combined.empty?
-      return success(fallback_estimate)
+      return success(fallback_estimate.merge(websearch_count: websearch_count))
     end
 
     # AI pre-filter — each comp passed through Llm::OmniClient to drop
@@ -156,12 +158,17 @@ class PropertyEvaluationService
     success(
       estimate_with_meta.merge(
         tier:             pool[:tier],
-        comparables:      serialize(cleaned_comparables.first(5)),
+        # Полный очищенный пул: staff-тул market_comparables применяет
+        # external-first до своего лимита; жёсткий first(5) отрезал ссылки
+        # на площадки, когда внутренних аналогов было больше пяти (ревью
+        # Kimi, PR #184). Пул к этому моменту уже очищен выбросами.
+        comparables:      serialize(cleaned_comparables),
         market_analysis:  build_market_analysis(cleaned_comparables, estimate),
         recommendations:  build_recommendations,
         ai_filter:        ai_meta,
         ai_summary:       ai_summary,
-        low_coverage:     low_coverage?(cleaned_comparables)
+        low_coverage:     low_coverage?(cleaned_comparables),
+        websearch_count:  websearch_count
       )
     )
   rescue StandardError => e
