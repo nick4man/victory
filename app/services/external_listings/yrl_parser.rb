@@ -115,7 +115,7 @@ module ExternalListings
         description:    text(offer, './description'),
         price:          price.to_i,
         area:           area,
-        land_area:      numeric(text(offer, './lot-area/value')),
+        land_area:      parse_land_area(offer),
         rooms:          integer(text(offer, './rooms')),
         floor:          integer(text(offer, './floor')),
         total_floors:   integer(text(offer, './floors-total')),
@@ -169,6 +169,28 @@ module ExternalListings
     def integer(value)
       n = numeric(value)
       n&.to_i
+    end
+
+    # <lot-area> в YRL приходит в разных единицах (сотка / кв. м / гектар /
+    # acre), а контракт ExternalListing.land_area — всегда сотки: band'и,
+    # кэши и ₽/м² ComparableFinder считают land_area сотками. Без нормализации
+    # кв. м попадали как есть и искажали ₽/м² в 100 раз (ревью Kimi, PR #184).
+    # unit опущен в фиде — по спецификации YRL дефолт «сотка».
+    def parse_land_area(offer)
+      value = numeric(text(offer, './lot-area/value'))
+      return nil if value.nil?
+
+      case text(offer, './lot-area/unit').to_s.downcase.strip
+      when 'кв. м', 'кв.м', 'м²', 'квадратный метр', 'square meter'
+        value / 100
+      when 'гектар', 'га', 'hectare', 'ha'
+        value * 100
+      when 'acre', 'акр'
+        value * 40.4686
+      else
+        # '' / 'сотка' / неизвестные единицы — прежнее поведение (как сотки)
+        value
+      end
     end
 
     # Yandex sometimes uses just `<category>квартира</category>` without

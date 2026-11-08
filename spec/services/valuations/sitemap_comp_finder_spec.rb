@@ -51,6 +51,41 @@ RSpec.describe Valuations::SitemapCompFinder do
     expect(Net::HTTP).not_to have_received(:start)
   end
 
+  describe '#cached_count — source-aware band для участков (ревью Kimi, PR #184)' do
+    def build_land_valuation
+      PropertyValuation.new(
+        property_type: 'land', deal_type: 'sale', audit_mode: 'express',
+        address: 'г. Рязань, Канищево', city: 'Рязань', district: 'Канищево',
+        total_area: 800, land_area: 8, rooms: 0, status: 'pending'
+      )
+    end
+
+    it 'участок: cache hit по effective соткам (COALESCE land_area/area)' do
+      # sitemap-запись: сотки в area — попадает через area
+      create(:external_listing, source: 'agency_sitemap', source_id: '961:1',
+                               property_type: 'land', deal_type: 'sale',
+                               area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # YRL-стиль: дом в м² в area + участок в сотках в land_area — через land_area
+      create(:external_listing, source: 'agency_sitemap', source_id: '961:2',
+                               property_type: 'land', deal_type: 'sale',
+                               area: 150.0, land_area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # Другой agency_key — source_id prefix-gate, не попадает
+      create(:external_listing, source: 'agency_sitemap', source_id: 'other:1',
+                               property_type: 'land', deal_type: 'sale',
+                               area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # Вне band 6.0–10.0 соток
+      create(:external_listing, source: 'agency_sitemap', source_id: '961:3',
+                               property_type: 'land', deal_type: 'sale',
+                               area: 30.0, rooms: 0, price: 5_000_000,
+                               fetched_at: Time.current, closed_at: nil)
+
+      expect(described_class.new(build_land_valuation).send(:cached_count, '961')).to eq(2)
+    end
+  end
+
   describe '#persist (private)' do
     it 'проставляет город агентства в city записи' do
       finder = described_class.new(build_valuation('Рязань'))

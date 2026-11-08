@@ -56,8 +56,12 @@ class PropertyEvaluationService
   # ориентировочную (issue #172).
   LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
 
-  def initialize(valuation)
+  def initialize(valuation, include_full_comparables: false)
     @v = valuation
+    # Полный пул аналогов нужен только staff-тулу market_comparables — для
+    # публичных оценок хранить его в evaluation_data незачем (ревью Kimi,
+    # PR #184).
+    @include_full_comparables = include_full_comparables
   end
 
   def call
@@ -68,8 +72,10 @@ class PropertyEvaluationService
     #    Sonnet parse → persist to ExternalListing. Это side-effect ДО
     #    ComparableFinder, чтобы tier 1-4 уже подхватили свежие external
     #    listings через external_scope. Skipped gracefully if
-    #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы.
-    Valuations::WebsearchCompFinder.new(@v).call
+    #    TAVILY_API_KEY/FIRECRAWL_API_KEY не заданы. Фактический исход
+    #    пробрасываем в результат — staff-тул market_comparables обязан
+    #    честно сказать, получены ли свежие объявления (ревью Kimi, PR #184).
+    websearch_count = Valuations::WebsearchCompFinder.new(@v).call
 
     # 0b. Sitemap-based seeder — agency-specific sitemaps (см. config/agency_sitemaps.yml).
     # Сейчас один источник — ЦАН (961-961.ru). Тот же downstream
@@ -106,7 +112,7 @@ class PropertyEvaluationService
     combined = base_pool + synth
 
     if combined.empty?
-      return success(fallback_estimate)
+      return success(fallback_estimate.merge(websearch_count: websearch_count))
     end
 
     # AI pre-filter — each comp passed through Llm::OmniClient to drop
@@ -156,13 +162,18 @@ class PropertyEvaluationService
     success(
       estimate_with_meta.merge(
         tier:             pool[:tier],
+        # Прежний компактный набор для публичного отчёта (result.html.erb
+        # рендерит первые 8 карточек — полный пул туда нельзя, ревью Kimi,
+        # PR #184). Staff-тул market_comparables запрашивает полный пул через
+        # include_full_comparables и применяет external-first до своего лимита.
         comparables:      serialize(cleaned_comparables.first(5)),
         market_analysis:  build_market_analysis(cleaned_comparables, estimate),
         recommendations:  build_recommendations,
         ai_filter:        ai_meta,
         ai_summary:       ai_summary,
-        low_coverage:     low_coverage?(cleaned_comparables)
-      )
+        low_coverage:     low_coverage?(cleaned_comparables),
+        websearch_count:  websearch_count
+      ).merge(full_comparables_hash(cleaned_comparables))
     )
   rescue StandardError => e
     Rails.logger.error("PropertyEvaluationService failure: #{e.class} #{e.message}\n" \
@@ -170,8 +181,19 @@ class PropertyEvaluationService
     error('Не удалось рассчитать оценку. Попробуйте позже.')
   end
 
-  # Effective area for the algorithm: total_area for buildings,
-  # land_area (converted сотки → м²) for land plots.
+  # Полный пул аналогов добавляем только когда запросил staff-тул
+  # (include_full_comparables) — публичные оценки его не хранят (PR #184).
+  def full_comparables_hash(comps)
+    return {} unless @include_full_comparables
+
+    { full_comparables: serialize(comps) }
+  end
+
+  # Effective area в м² для ВСЕХ типов: total_area для строений,
+  # land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
+  # (ComparableFinder#enrich переводит land-объявления площадок из соток),
+  # поэтому fallback и CompositeEstimator работают в одной единице
+  # (ревью Kimi, PR #184).
   def subject_area
     if @v.property_type.to_s == 'land'
       @v.respond_to?(:land_area_in_sqm) ? @v.land_area_in_sqm.to_f : @v.land_area.to_f * 100
@@ -294,6 +316,8 @@ class PropertyEvaluationService
           ABSOLUTE_FALLBACK_PRICE_PER_SQM[@v.property_type.to_s] ||
           200_000
 
+    # Fallback-константы и CityMedianPrice калиброваны в ₽/м²; subject_area
+    # участка — тоже в м² (единая единица estimator, PR #184).
     estimated = (pps * subject_area).round(-3)
 
     # Fallback также проходит через ensemble-confidence: точная регионная
@@ -339,7 +363,9 @@ class PropertyEvaluationService
           title:         r.try(:title) || compose_title(r),
           price:         r.price,
           price_per_sqm: c[:price_per_sqm],
-          area:          r.area,
+          # ComparableFinder#enrich нормализует land-объявления площадок
+          # к м² (comp[:area] override) — р.area у них в сотках (PR #184).
+          area:          c.key?(:area) ? c[:area] : r.area,
           rooms:         r.rooms,
           district:      r.try(:district),
           distance_km:   c[:distance_km]&.round(2),
