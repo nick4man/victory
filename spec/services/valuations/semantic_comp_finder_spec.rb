@@ -1,0 +1,112 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe Valuations::SemanticCompFinder do
+  # Subject: продажа 2-комн 54 м² в Рязани. Координаты Рязани ~54.6292/39.7187.
+
+  let(:valuation) do
+    PropertyValuation.new(
+      property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+      address: 'г. Рязань, ул. Тестовая, д. 1', city: 'Рязань',
+      total_area: 54, rooms: 2, status: 'pending',
+      latitude: 54.6292, longitude: 39.7187
+    )
+  end
+
+  def property_double(city: 'Рязань', deal_type: 'sale', coords: [54.63, 39.72])
+    instance_double(
+      Property,
+      price: 5_400_000, area: 54.0, rooms: 2, district: 'Канищево',
+      city: city, deal_type: deal_type,
+      latitude: coords.first, longitude: coords.last,
+      title: '2-комн. квартира, 54 м²', slug: 'test-property'
+    )
+  end
+
+  def embedding_double(property, distance: 0.1)
+    double('embedding', property: property, neighbor_distance: distance)
+  end
+
+  def stub_nearest_neighbors(embeddings)
+    relation = double('relation')
+    allow(relation).to receive_messages(includes: relation, limit: relation, to_a: embeddings)
+    allow(PropertyEmbedding).to receive(:nearest_neighbors).and_return(relation)
+  end
+
+  before do
+    allow_any_instance_of(described_class).to receive(:embed_text)
+      .and_return(Array.new(768, 0.1))
+  end
+
+  it 'включает ближний объект того же города и типа сделки' do
+    stub_nearest_neighbors([embedding_double(property_double)])
+
+    expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект с другим deal_type (аренда среди продаж)' do
+    stub_nearest_neighbors([embedding_double(property_double(deal_type: 'rent'))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'отбрасывает объект из другого города' do
+    stub_nearest_neighbors([embedding_double(property_double(city: 'Санкт-Петербург', coords: [59.94, 30.31]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'отбрасывает объект того же города дальше радиуса 50 км' do
+    # ~175 км от Рязани, city совпадает — должен отсечься по расстоянию
+    stub_nearest_neighbors([embedding_double(property_double(coords: [55.75, 37.61]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'оставляет объект без координат при совпадении города' do
+    stub_nearest_neighbors([embedding_double(property_double(coords: [nil, nil]))])
+
+    expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект без города и без координат (fail-close)' do
+    # Локальность не подтверждена ни городом, ни расстоянием — аналог не
+    # должен скрывать low_coverage (issue #172, согласовано с ComparableFinder).
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [nil, nil]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'оставляет объект без города, но в радиусе 50 км' do
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [54.63, 39.72]))])
+
+    expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект без города дальше радиуса 50 км' do
+    # ~175 км от Рязани, город неизвестен — расстоянием тоже не локален
+    stub_nearest_neighbors([embedding_double(property_double(city: nil, coords: [55.75, 37.61]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+
+  it 'принимает объект по расстоянию, если город subject неизвестен' do
+    # Город subject не извлечён — локальность подтверждает только расстояние.
+    valuation.city = nil
+    valuation.latitude = 59.9398
+    valuation.longitude = 30.3146
+    stub_nearest_neighbors([embedding_double(property_double(city: 'Санкт-Петербург', coords: [59.94, 30.31]))])
+
+    expect(described_class.call(valuation).size).to eq(1)
+  end
+
+  it 'отбрасывает объект без расстояния при неизвестном городе subject (fail-close)' do
+    # Адрес вне геокодинга, city не извлечён: единственный сигнал локальности —
+    # расстояние. Без координат у comp он не подтверждён (issue #172).
+    valuation.city = nil
+    stub_nearest_neighbors([embedding_double(property_double(city: 'Рязань', coords: [nil, nil]))])
+
+    expect(described_class.call(valuation)).to be_empty
+  end
+end

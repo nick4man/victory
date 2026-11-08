@@ -49,6 +49,13 @@ class PropertyEvaluationService
   #     доверяем им как high-quality signal.
   AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
 
+  # Источники, дающие ЛОКАЛЬНЫЕ аналоги (тот же город/радиус subject).
+  # Используются для флага low_coverage: если в финальной выборке нет ни
+  # одного локального comp'а, оценка строится на city median / переносе из
+  # другого города / AI-генерации — бот обязан озвучить это как
+  # ориентировочную (issue #172).
+  LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+
   def initialize(valuation)
     @v = valuation
   end
@@ -120,35 +127,41 @@ class PropertyEvaluationService
     Rails.logger.info("[PropertyEvaluation] ensemble #{ai_meta.inspect}")
 
     base_estimate = PropertyEvaluation::PriceEstimator.new(@v, comparables).call
+    # PriceEstimator отсекает выбросы ₽/м² — все downstream-расчёты
+    # (hedonic/bootstrap, confidence, сериализация, low_coverage) идут на
+    # очищенном пуле. Иначе выброс (аренда 510 ₽/м² среди продаж,
+    # case #124) снова искажал hedonic-регрессию и вилку (issue #172).
+    cleaned_comparables = base_estimate.delete(:comparables) || comparables
 
     # Layer hedonic regression + bootstrap CI on top of the median estimate.
     # If sample is too thin (< 8) or regression degenerates, returns
     # base_estimate unchanged.
     estimate = PropertyEvaluation::CompositeEstimator.call(
-      comparables: comparables,
+      comparables: cleaned_comparables,
       target_area: subject_area,
       target_rooms: @v.rooms.to_i,
       base_estimate: base_estimate
     )
     estimate_with_meta = estimate.merge(
-      confidence_level: confidence_for(pool.merge(comparables: comparables), estimate)
+      confidence_level: confidence_for(pool.merge(comparables: cleaned_comparables), estimate)
     )
 
     # AI narrative explanation — short Russian summary tailored to the
     # detected audience (buyer / seller). Best-effort: nil on failure,
     # the result page falls back to `market_analysis` text.
     ai_summary = Valuations::AiExplainer.new(
-      @v, estimate: estimate_with_meta, comparables: comparables
+      @v, estimate: estimate_with_meta, comparables: cleaned_comparables
     ).call
 
     success(
       estimate_with_meta.merge(
         tier:             pool[:tier],
-        comparables:      serialize(comparables.first(5)),
-        market_analysis:  build_market_analysis(comparables, estimate),
+        comparables:      serialize(cleaned_comparables.first(5)),
+        market_analysis:  build_market_analysis(cleaned_comparables, estimate),
         recommendations:  build_recommendations,
         ai_filter:        ai_meta,
-        ai_summary:       ai_summary
+        ai_summary:       ai_summary,
+        low_coverage:     low_coverage?(cleaned_comparables)
       )
     )
   rescue StandardError => e
@@ -268,6 +281,10 @@ class PropertyEvaluationService
     Math.sqrt(variance) / mean
   end
 
+  def low_coverage?(comps)
+    comps.none? { |c| LOCAL_COMP_SOURCES.include?(c[:source].to_s) }
+  end
+
   def fallback_estimate
     # Per-city median takes priority — calibrated to 50 large Russian
     # cities. If the city is unknown (or absent), fall back to the
@@ -300,6 +317,8 @@ class PropertyEvaluationService
       confidence_level:   conf,
       tier:               4,
       comparables:        [],
+      # Fallback = по определению нет локальных аналогов (все tier'ы пусты).
+      low_coverage:       true,
       adjustments:        {},
       market_analysis:    pps_from_city ?
                             "Похожих объектов в нашей базе нет. Используем медианную цену по городу #{@v.city} (#{pps.to_s(:delimited, delimiter: ' ') rescue pps} ₽/м²)." :
