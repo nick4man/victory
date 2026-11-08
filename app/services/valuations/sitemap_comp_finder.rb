@@ -128,15 +128,22 @@ module Valuations
     # Cache по same key как WebsearchCompFinder, но scoped к agency_key
     # через source_id prefix.
     def cached_count(agency_key)
-      ExternalListing
-        .where(source: SOURCE_KIND)
-        .where('source_id LIKE ?', "#{agency_key}:%")
-        .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type)
-        .where(deal_type: @v.deal_type)
-        .where(area: area_bracket_min..area_bracket_max)
-        .where('fetched_at > ?', CACHE_TTL.ago)
-        .where(closed_at: nil)
-        .count
+      scope = ExternalListing
+              .where(source: SOURCE_KIND)
+              .where('source_id LIKE ?', "#{agency_key}:%")
+              .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type)
+              .where(deal_type: @v.deal_type)
+              .where('fetched_at > ?', CACHE_TTL.ago)
+              .where(closed_at: nil)
+      # Участки: тот же source-aware band, что в WebsearchCompFinder#cached_count —
+      # effective сотки через COALESCE(land_area, area) против смешанных
+      # контрактов YRL (м² в area) и websearch/sitemap (сотки в area) (PR #184).
+      if @v.property_type.to_s == 'land'
+        scope.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?',
+                    area_bracket_min, area_bracket_max).count
+      else
+        scope.where(area: area_bracket_min..area_bracket_max).count
+      end
     end
 
     def area_bracket_min

@@ -47,8 +47,11 @@ module ChatTools
               Если в ответе low_coverage: true — обязательно предупреди
               сотрудника, что аналогов найдено мало и цена ориентировочная,
               а не точная рыночная. Если есть market_note — передавай его
-              сотруднику дословно. price_per_sqm — всегда в ₽/м²; для
-              участков озвучивай price_per_sotka (₽/сотка).
+              сотруднику дословно. Если websearch не 'ok' (unavailable /
+              skipped_rent / configured) — поиск по площадкам не выполнялся,
+              озвучь это через market_note, не заявляй о свежих объявлениях.
+              price_per_sqm — всегда в ₽/м² (поле price_unit); для участков
+              озвучивай price_per_sotka (₽/сотка).
             DESC
             parameters: {
               type: 'object',

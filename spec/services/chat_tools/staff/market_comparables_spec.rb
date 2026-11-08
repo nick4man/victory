@@ -410,6 +410,11 @@ RSpec.describe ChatTools::Staff::MarketComparables do
 
       expect(res[:success]).to be(true)
       expect(res[:price_per_sqm]).to be_positive
+      # Fallback по определению: пустой пул аналогов + low_coverage (ревью
+      # Kimi r5 — спек должен доказывать именно fallback-ветку, а не
+      # проскальзывание общего land_listing через city-gate tier 4).
+      expect(res[:low_coverage]).to be(true)
+      expect(res[:comparables]).to be_empty
       # Цена согласована с ₽/м² при площади 800 м² (допуск на округления).
       expect(res[:estimated_price].to_f).to be_within(res[:estimated_price] * 0.05)
         .of(res[:price_per_sqm] * 800)

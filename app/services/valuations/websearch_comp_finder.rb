@@ -105,9 +105,18 @@ module Valuations
               .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type,
                      deal_type: @v.deal_type)
               .where(district: @v.district.presence || nil)
-              .where(area: area_bracket_min..area_bracket_max)
               .where('fetched_at > ?', CACHE_TTL.ago)
               .where(closed_at: nil)
+      # Участки: в источниках смешаны два контракта площади — websearch хранит
+      # сотки в area, YRL — дом в м² в area + участок в сотках в land_area.
+      # Band кэша считаем по effective соткам (COALESCE), иначе YRL-записи
+      # давали бы вечный cache miss (ревью Kimi, PR #184).
+      scope = if @v.property_type.to_s == 'land'
+                scope.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?',
+                            area_bracket_min, area_bracket_max)
+              else
+                scope.where(area: area_bracket_min..area_bracket_max)
+              end
       # Тот же city-gate, что в ComparableFinder (issue #172): свежие записи
       # другого города не должны давать cache hit, иначе свежий поиск
       # (tavily, платный) пропускаем, а ComparableFinder отбросит все

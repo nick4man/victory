@@ -33,6 +33,39 @@ RSpec.describe Valuations::WebsearchCompFinder do
       expect(finder.send(:area_bracket_min)).to eq(20.0)
       expect(finder.send(:area_bracket_max)).to eq(33.3)
     end
+
+    # Ревью Kimi (PR #184, раунд 5): band кэша по effective соткам —
+    # YRL-записи хранят дом в м² в area + участок в сотках в land_area,
+    # websearch — сотки прямо в area. Старый band по голому area давал
+    # вечный cache miss для YRL и повторные платные Tavily-запросы.
+    it 'участок: cache hit считает effective сотки (YRL м² + cian сотки)' do
+      # YRL: дом 150 м² + участок 8 соток — попадает через land_area
+      create(:external_listing, source: 'yandex_yrl', source_id: 'yrl-land-1',
+                               property_type: 'land', deal_type: 'sale',
+                               city: 'Рязань', district: 'Канищево',
+                               area: 150.0, land_area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # websearch/cian: 8 соток прямо в area — попадает через area
+      create(:external_listing, source: 'cian', source_id: 'cian-land-1',
+                               property_type: 'land', deal_type: 'sale',
+                               city: 'Рязань', district: 'Канищево',
+                               area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # Другой район — district-gate, не должен попасть
+      create(:external_listing, source: 'cian', source_id: 'cian-land-2',
+                               property_type: 'land', deal_type: 'sale',
+                               city: 'Рязань', district: 'Солотча',
+                               area: 8.0, rooms: 0, price: 1_800_000,
+                               fetched_at: Time.current, closed_at: nil)
+      # Участок 30 соток — вне band 6.0–10.0
+      create(:external_listing, source: 'cian', source_id: 'cian-land-3',
+                               property_type: 'land', deal_type: 'sale',
+                               city: 'Рязань', district: 'Канищево',
+                               area: 30.0, rooms: 0, price: 5_000_000,
+                               fetched_at: Time.current, closed_at: nil)
+
+      expect(land_finder.send(:cached_count)).to eq(2)
+    end
   end
 
   def parsed(city: 'Санкт-Петербург', url: 'https://cian.ru/offer/123456')
