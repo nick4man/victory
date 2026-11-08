@@ -2079,7 +2079,8 @@ CREATE TABLE public.property_valuations (
     report_number bigint DEFAULT nextval('public.property_valuation_report_number_seq'::regclass) NOT NULL,
     metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
     staff_test boolean DEFAULT false NOT NULL,
-    staff_test_matched_by character varying(64)
+    staff_test_matched_by character varying(64),
+    visitor_token character varying
 );
 
 
@@ -6251,6 +6252,13 @@ CREATE INDEX index_property_valuations_on_user_id ON public.property_valuations 
 
 
 --
+-- Name: index_property_valuations_on_visitor_token; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_property_valuations_on_visitor_token ON public.property_valuations USING btree (visitor_token);
+
+
+--
 -- Name: index_property_views_on_created_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7905,9 +7913,10 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public, tiger, topology;
+SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261108210000'),
 ('20261107233000'),
 ('20260914120000'),
 ('20260911100100'),

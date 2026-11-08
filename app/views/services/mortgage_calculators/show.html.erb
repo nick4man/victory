@@ -82,6 +82,7 @@
         </div>
         <input type="text" id="mc-price" inputmode="numeric"
                value="<%= fmt_rub.call(@form_state[:price]) %>"
+               data-chat-state="price"
                class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors">
       </div>
 
@@ -93,6 +94,7 @@
         </div>
         <input type="text" id="mc-down" inputmode="numeric"
                value="<%= fmt_rub.call(@form_state[:down_payment]) %>"
+               data-chat-state="down_payment"
                class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors mb-3">
         <input type="range" id="mc-down-slider" min="0" max="90" step="1"
                value="<%= @form_state[:down_payment_pct].to_i %>"
@@ -106,7 +108,7 @@
       <div>
         <div class="flex items-center justify-between mb-2">
           <label for="mc-term" class="text-xs tracking-[0.2em] text-muted-foreground">СРОК, ЛЕТ</label>
-          <span class="text-xs text-foreground" data-mc-term-display><%= @form_state[:term_years] %></span>
+          <span class="text-xs text-foreground" data-mc-term-display data-chat-state="term_years"><%= @form_state[:term_years] %></span>
         </div>
         <input type="range" id="mc-term" min="1" max="30" step="1"
                value="<%= @form_state[:term_years] %>"
@@ -127,6 +129,7 @@
         </div>
         <input type="number" id="mc-rate" inputmode="decimal" step="0.1" min="0" max="50"
                value="<%= fmt_rate.call(@form_state[:rate]) %>"
+               data-chat-state="rate"
                class="w-full h-12 px-4 bg-background border border-border text-foreground text-base focus:border-foreground focus:outline-none transition-colors">
       </div>
     </div>
@@ -134,7 +137,7 @@
     <%# RIGHT — result (2/5 col, sticky on lg+) %>
     <div class="lg:col-span-2 bg-foreground text-background p-6 lg:p-8 lg:sticky lg:top-24 self-start">
       <p class="text-[10px] tracking-[0.4em] text-background/70 mb-4">ЕЖЕМЕСЯЧНЫЙ ПЛАТЁЖ</p>
-      <p class="text-4xl md:text-5xl font-light tracking-tight mb-6" data-mc-monthly>—</p>
+      <p class="text-4xl md:text-5xl font-light tracking-tight mb-6" data-mc-monthly data-chat-state="monthly_payment">—</p>
 
       <div class="space-y-3 pt-5 border-t border-background/15 text-xs">
         <div class="flex justify-between">
