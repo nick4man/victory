@@ -13,6 +13,7 @@ module ChatTools
       'submit_review'            => ChatTools::SubmitReview,
       'run_investment_audit'     => ChatTools::RunInvestmentAudit,
       'calculate_mortgage'       => ChatTools::CalculateMortgage,
+      'list_mortgage_programs'   => ChatTools::ListMortgagePrograms,
       'get_landing_content'      => ChatTools::GetLandingContent,
       'estimate_property_valuation' => ChatTools::EstimatePropertyValuation,
       'qualify_lead'                => ChatTools::QualifyLead
