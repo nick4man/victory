@@ -11,7 +11,8 @@ module CrmCards
     CONDITIONAL_MESSAGES = {
       'area_common' => 'не заполнено — для этого типа объекта нужна общая площадь',
       'area_land' => 'не заполнено — для участка нужна площадь участка',
-      'rooms' => 'не заполнено — для квартиры укажи число комнат',
+      'rooms' => 'не заполнено — для квартиры укажи число комнат (студия — 0)',
+      'floor' => 'не заполнено — для квартиры и комнаты нужен этаж',
       'contract_number' => 'не заполнено — для агентского договора и соглашения на рекламу нужен номер договора'
     }.freeze
 
@@ -34,6 +35,9 @@ module CrmCards
       keys = []
       keys << (type == 'land' ? 'area_land' : 'area_common') if type.present?
       keys << 'rooms' if type == 'flat'
+      # Этаж — один из первых вопросов покупателя по квартире и комнате, а
+      # раньше мастер его не спрашивал вовсе: поле было необязательным.
+      keys << 'floor' if %w[flat room].include?(type)
       keys << 'contract_number' if %w[agent ad_agreement].include?(values['contract_type'].to_s)
       keys
     end

@@ -10,7 +10,7 @@ module Telegram
         module_function
 
         def text(_tg_user)
-          "<b>Что сделать?</b>\n<i>Меню собрано под твою роль — недоступных действий здесь нет.</i>"
+          "<b>Что сделать?</b>\n<i>Здесь только то, что доступно твоей должности.</i>"
         end
 
         def keyboard(tg_user)

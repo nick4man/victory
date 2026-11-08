@@ -43,7 +43,7 @@ module Telegram
           return { text: "⚠️ #{escape_html(result.error)}" } unless result.ok?
 
           done = if card.kind_lead?
-                   'выгрузка запущена, итог придёт сообщением'
+                   'отправляю в CRM, итог придёт сообщением'
                  else
                    "внесёт в CRM вручную #{escape_html(card.responsible.mention)}"
                  end

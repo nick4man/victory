@@ -36,6 +36,10 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmObjectCardFlow do
     expect(last_text).to include('Комнат?')
 
     say('2', user: agent)
+    # Этаж спрашиваем у квартиры и комнаты: покупатель спрашивает о нём первым.
+    expect(last_text).to include('Этаж?')
+
+    say('3', user: agent)
     press('Агентский', user: agent)
     expect(last_text).to include('Номер договора?')
 
@@ -45,9 +49,9 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmObjectCardFlow do
     card = CrmCard.kind_object.last
     expect(card.author).to eq(agent)
     expect(card.payload).to include('owner_phone' => '79100001122', 'price' => 5_500_000, 'area_common' => 54.3,
-                                    'rooms' => 2, 'contract_number' => 'А-17/26')
+                                    'rooms' => 2, 'floor' => 3, 'contract_number' => 'А-17/26')
     expect(card.payload).not_to have_key('area_land')
-    expect(last_text).to include('Объект в CRM', '✅ пройдена')
+    expect(last_text).to include('Объект в CRM', 'всё на месте')
   end
 
   it 'стажёру без права на объекты мастер отказывает до первого вопроса' do
