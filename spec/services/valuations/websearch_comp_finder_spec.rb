@@ -122,4 +122,129 @@ RSpec.describe Valuations::WebsearchCompFinder do
       expect(finder.call).to eq(0)
     end
   end
+
+  # === Eval-фикстуры (issue #173) ===
+  # Записанные markdown-страницы реальных объявлений (≥3 площадки) +
+  # ожидаемые поля. LLM-парсинг стабится записанными результатами —
+  # проверяем downstream-пайплайн: поля, маппинг доменов, отбрасывание
+  # чужого города и аренды. Сеть закрыта WebMock, реальных вызовов нет.
+  describe 'eval-фикстуры' do
+    FIXTURE_DIR = Rails.root.join('spec/fixtures/valuations/websearch')
+    EVAL = JSON.parse(File.read(FIXTURE_DIR.join('expected.json'))).freeze
+
+    let(:tavily_client) { instance_double(Tavily::Client) }
+    let(:firecrawl_client) { instance_double(Firecrawl::Client) }
+    let(:ryazan_finder) do
+      described_class.new(
+        PropertyValuation.new(
+          property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+          address: 'г. Рязань, ул. Соборная, д. 12', city: 'Рязань',
+          district: 'Канищево', total_area: 54, rooms: 2, status: 'pending'
+        )
+      )
+    end
+
+    before do
+      allow(Tavily::Client).to receive(:new).and_return(tavily_client)
+      allow(Firecrawl::Client).to receive(:new).and_return(firecrawl_client)
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with('TAVILY_API_KEY').and_return('tvly-test-key')
+      allow(ENV).to receive(:[]).with('FIRECRAWL_API_KEY').and_return('fc-test-key')
+
+      url_to_json = EVAL.to_h { |_, e| [e['url'], e['llm_result'].to_json] }
+      fake_llm = Class.new do
+        define_method(:initialize) { |map| @map = map }
+        define_method(:complete) do |messages, **_opts|
+          url = messages.last[:content].to_s[/\AURL: (\S+)/, 1]
+          { content: @map.fetch(url, '{}'), model: 'eval-stub' }
+        end
+      end
+      allow(Llm::OmniClient).to receive(:new).and_return(fake_llm.new(url_to_json))
+
+      md_by_url = EVAL.to_h { |key, e| [e['url'], FIXTURE_DIR.join("#{key}.md").read] }
+      allow(firecrawl_client).to receive(:scrape) { |url| md_by_url[url] }
+    end
+
+    def stub_eval_tavily(urls)
+      results = urls.map { |u| { title: "listing #{u}", url: u, content: 'snippet', score: 0.9 } }
+      allow(tavily_client).to receive(:search).and_return(results)
+    end
+
+    it 'PARSE_SYSTEM_PROMPT требует все ключевые поля, включая город' do
+      %w[price area rooms city].each do |key|
+        expect(described_class::PARSE_SYSTEM_PROMPT).to include(key)
+      end
+    end
+
+    it 'markdown содержит ожидаемые «сырые» значения (страж дрейфа фикстур)' do
+      EVAL.each do |key, entry|
+        md = FIXTURE_DIR.join("#{key}.md").read
+        expect(md).to include(entry.dig('raw_checks', 'price_str')), "price drift in #{key}"
+        expect(md).to include(entry.dig('raw_checks', 'area_str')), "area drift in #{key}"
+      end
+    end
+
+    it 'покрывает 4 площадки: ЦИАН, Avito, Я.Недвижимость, Домклик' do
+      hosts = EVAL.values.map { |e| URI(e['url']).host }
+      expect(hosts).to include(a_string_matching(/cian\.ru/))
+      expect(hosts).to include(a_string_matching(/avito\.ru/))
+      expect(hosts).to include(a_string_matching(/realty\.yandex|realty\.ya\.ru/))
+      expect(hosts).to include(a_string_matching(/domclick\.ru/))
+    end
+
+    context 'полный пайплайн: 4 площадки Рязани + объявление другого города' do
+      let(:good_keys) { %w[cian_sale_ryazan avito_sale_ryazan yandex_sale_ryazan domclick_sale_ryazan] }
+
+      before { stub_eval_tavily(good_keys.map { |k| EVAL[k]['url'] } + [EVAL['cian_sale_kazan']['url']]) }
+
+      it 'персистит 4 локальных объявления с полями парсинга, отбрасывает Казань' do
+        expect(ryazan_finder.call).to eq(4)
+
+        good_urls = good_keys.map { |k| EVAL[k]['url'] }
+        expect(ExternalListing.where(url: good_urls).count).to eq(4)
+        expect(ExternalListing.where(url: EVAL['cian_sale_kazan']['url'])).not_to exist
+
+        cian = ExternalListing.find_by!(url: EVAL['cian_sale_ryazan']['url'])
+        expect(cian.source).to eq('cian')
+        expect(cian.price).to eq(4_350_000)
+        expect(cian.area).to eq(38.0)
+        expect(cian.rooms).to eq(1)
+        expect(cian.city).to eq('Рязань')
+        expect(cian.district).to eq('Канищево')
+        expect(cian.property_type).to eq('flat')
+        expect(cian.deal_type).to eq('sale')
+
+        expect(ExternalListing.find_by!(url: EVAL['avito_sale_ryazan']['url']).source).to eq('avito')
+        expect(ExternalListing.find_by!(url: EVAL['yandex_sale_ryazan']['url']).source).to eq('yandex_yrl')
+        # domclick не имеет своего kind — маппится в cian
+        expect(ExternalListing.find_by!(url: EVAL['domclick_sale_ryazan']['url']).source).to eq('cian')
+      end
+    end
+
+    context 'полный пайплайн: аренда (LLM вернул price=0)' do
+      before { stub_eval_tavily([EVAL['avito_rent_ryazan']['url']]) }
+
+      it 'не персистит аренду' do
+        expect(ryazan_finder.call).to eq(0)
+        expect(ExternalListing.where(url: EVAL['avito_rent_ryazan']['url'])).not_to exist
+      end
+    end
+
+    context 'дегрейд без ключей / при ошибках' do
+      it 'без TAVILY_API_KEY — 0 и ни одного внешнего вызова' do
+        allow(ENV).to receive(:[]).with('TAVILY_API_KEY').and_return(nil)
+
+        expect(ryazan_finder.call).to eq(0)
+        expect(Tavily::Client).not_to have_received(:new)
+        expect(Firecrawl::Client).not_to have_received(:new)
+      end
+
+      it 'Tavily::Client::Error не пробрасывается — 0' do
+        allow(tavily_client).to receive(:search)
+          .and_raise(Tavily::Client::Error, 'quota exceeded')
+
+        expect(ryazan_finder.call).to eq(0)
+      end
+    end
+  end
 end
