@@ -368,14 +368,17 @@ RSpec.describe ChatTools::Staff::MarketComparables do
           .and_return(double(latitude: 54.6292, longitude: 39.7187,
                              city: 'Рязань', district: 'Канищево'))
 
-        # 1.8M за 8 соток = 2_250 ₽/м². Координаты — 0.6–2.9 км от subject.
+        # 1.8M за 8 соток = 2_250 ₽/м², ±3% детерминированного джиттера —
+        # иначе цена идеально линейна по площади и bootstrap-предсказания
+        # вырождаются в константу (p5 == p95, вилку не проверить). Координаты
+        # — 0.6–2.9 км от subject.
         coords = [[54.6337, 39.7187], [54.6362, 39.7220], [54.6387, 39.7120],
                   [54.6412, 39.7250], [54.6437, 39.7080], [54.6462, 39.7200],
                   [54.6487, 39.7140], [54.6512, 39.7240]]
         pending_coords = coords.each
-        { 7.0 => 1_575_000, 7.3 => 1_642_500, 7.6 => 1_710_000, 7.9 => 1_777_500,
-          8.2 => 1_845_000, 8.5 => 1_912_500, 8.8 => 1_980_000, 9.0 => 2_025_000 }
-          .each do |sotki, price|
+        { 7.0 => 0.97, 7.3 => 1.02, 7.6 => 0.99, 7.9 => 1.03,
+          8.2 => 0.98, 8.5 => 1.01, 8.8 => 0.97, 9.0 => 1.02 }
+          .each do |sotki, factor|
             rooms = [7.6, 8.2, 8.8].include?(sotki) ? 0 : 1
             lat, lng = pending_coords.next
             create(:external_listing,
@@ -383,7 +386,8 @@ RSpec.describe ChatTools::Staff::MarketComparables do
                    source_id: "land-#{sotki}",
                    property_type: 'land', deal_type: 'sale',
                    city: 'Рязань', district: 'Канищево',
-                   area: sotki, rooms: rooms, price: price,
+                   area: sotki, rooms: rooms,
+                   price: (2250 * sotki * 100 * factor).round,
                    latitude: lat, longitude: lng,
                    fetched_at: Time.current, closed_at: nil)
           end
@@ -415,6 +419,13 @@ RSpec.describe ChatTools::Staff::MarketComparables do
         pv = PropertyValuation.find_by!(token: res[:valuation_token])
         expect(pv.evaluation_data).to include('composite', 'hedonic', 'bootstrap_ci')
         expect(pv.evaluation_data['composite']['hedonic_pps']).to be > 1_800
+        # Корректный диапазон bootstrap (ревью Kimi r7): перцентили PPS
+        # образуют непрерывную вилку вокруг базовой медианы — вырожденный
+        # интервал означал бы сломанную регрессию.
+        ci = pv.evaluation_data['bootstrap_ci']
+        expect(ci['p5']).to be < res[:price_per_sqm]
+        expect(ci['p95']).to be > res[:price_per_sqm]
+        expect(ci['p5']).to be < ci['p95']
       end
     end
 
