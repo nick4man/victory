@@ -15,6 +15,13 @@ module Telegram
     class OwnerIntakeProcessor
       PENDING_TYPE = 'owner_intake'
 
+      # Второй тип ожидания: собственник заведён, но приглашение не ушло — не
+      # было ни почты, ни телеграма. Раньше бот об этом просил, а состояния не
+      # ставил, и ответ агента доставался LLM-ассистенту вместо обработчика.
+      EMAIL_PENDING_TYPE = 'owner_email'
+
+      PENDING_TYPES = [PENDING_TYPE, EMAIL_PENDING_TYPE].freeze
+
       def self.applies?(msg, tg_user = nil)
         return false unless msg.is_a?(Hash)
         return false unless msg.dig('chat', 'type') == 'private'
@@ -33,7 +40,7 @@ module Telegram
         tg_user ||= ::TelegramUser.find_by(tg_user_id: from_id)
         return false unless tg_user&.status == 'active'
 
-        tg_user.pending_action&.dig('type') == PENDING_TYPE
+        PENDING_TYPES.include?(tg_user.pending_action&.dig('type'))
       end
 
       def self.call(msg, client: ::Telegram::Client.new)
@@ -48,13 +55,16 @@ module Telegram
 
       def call
         pending = @tg_user&.pending_action
-        return :ignored unless pending&.dig('type') == PENDING_TYPE
+        type = pending&.dig('type')
+        return :ignored unless PENDING_TYPES.include?(type)
 
         property = Property.unscoped.find_by(id: pending.dig('data', 'property_id'))
         if property.nil?
           @tg_user.clear_pending_action!
           return reply('Объект не найден — запрос отменён.')
         end
+
+        return accept_email(property) if type == EMAIL_PENDING_TYPE
 
         parsed = parse_contact
         # Не разобрали — состояние НЕ сбрасываем: человек уже согласился прислать
@@ -69,6 +79,78 @@ module Telegram
       def parse_contact
         Crm::ContactParser.from_telegram(@msg['contact']) ||
           Crm::ContactParser.from_text(@msg['text'])
+      end
+
+      # Агент дослал почту после неудачной отправки приглашения. Состояние не
+      # сбрасываем, пока почта не разобрана: опечатка не должна возвращать
+      # человека к началу.
+      def accept_email(property)
+        # Приводим к нижнему регистру: агент набирает почту с телефона, где
+        # первая буква автоматически заглавная, а уникальность в индексе
+        # регистрозависимая — иначе Svetlana@… и svetlana@… разойдутся.
+        email = Crm::ContactParser.from_text(@msg['text'].to_s)&.dig(:email)&.strip&.downcase
+        return reply('Не нашёл почту в сообщении. Пришлите её одним словом — например: <i>svetlana@example.com</i>') if email.blank?
+
+        owner = property.owner_user_id && User.find_by(id: property.owner_user_id)
+        if owner.nil?
+          @tg_user.clear_pending_action!
+          return reply("У объекта #{label(property)} больше не указан собственник — начните заново.")
+        end
+
+        # Проверяем занятость до записи, а не ловим RecordNotUnique после.
+        # Исключение из базы обрывает транзакцию целиком, и всё, что идёт
+        # следом, падает уже на отравленном соединении — включая сброс
+        # ожидания. unscoped обязателен: удалённые учётки продолжают занимать
+        # почту в индексе.
+        # LOWER(email), а не точное сравнение: вход в кабинет матчит почту
+        # регистронезависимо (Cabinet::AuthController#lookup_user), а индекс —
+        # по сырому значению. Точная проверка пропустила бы Sveta@… рядом с
+        # sveta@…, и magic-link логинил бы в произвольную из двух учёток.
+        if User.unscoped.where.not(id: owner.id).exists?(['LOWER(email) = ?', email])
+          return reply('Эта почта уже привязана к другой учётке. Пришлите другую или передайте ссылку собственнику сами.')
+        end
+
+        save_email_and_invite(property, owner, email)
+      end
+
+      # update_columns, а не update!: собственника заводит Crm::OwnerLinker через
+      # save(validate: false) — у контакта с одним телефоном нет ни почты, ни
+      # фамилии, и валидацию такая запись не проходит по причинам, к почте
+      # отношения не имеющим. update! падал бы на них всегда, и агент видел бы
+      # «почта занята» там, где она свободна.
+      #
+      # Уникальность при этом не теряется: её стережёт частичный индекс по
+      # users.email, и нарушение прилетит сюда как RecordNotUnique.
+      def save_email_and_invite(property, owner, email)
+        # invited_at сбрасываем вместе с почтой. Диспетчер коротит на
+        # `already invited`, а это ровно один из двух случаев, когда кнопка
+        # «Ввести почту» и показывается: агент ошибся в адресе, письмо ушло в
+        # никуда, отметка осталась. Без сброса исправленная почта сохранялась
+        # бы, а приглашение снова не уходило — тот же тупик, только глубже.
+        # Прежнее приглашение по определению не дошло: канал не отработал.
+        owner.update_columns(email: email, invited_at: nil, updated_at: Time.current) # rubocop:disable Rails/SkipsModelValidations
+        @tg_user.clear_pending_action!
+
+        result = CabinetInvitationDispatcher.call(owner, property, channels: %i[email tg])
+        if Array(result&.channels_succeeded).empty?
+          errors = Array(result&.errors).join('; ').presence || 'причина не указана'
+          # С клавиатурой, а не голым текстом: без неё агент оставался без
+          # выхода — кнопки лежали в сообщении выше по переписке.
+          return reply(
+            "Почта сохранена, но приглашение всё равно не ушло: #{ERB::Util.html_escape(errors)}",
+            keyboard: rescue_keyboard(property)
+          )
+        end
+
+        reply("✅ Приглашение отправлено на #{ERB::Util.html_escape(email)} — объект #{label(property)}.")
+      rescue ActiveRecord::RecordNotUnique => e
+        # Страховка от гонки: между проверкой и записью почту мог занять
+        # параллельный синк из Topnlab.
+        # Маскируем явно, а не полагаемся на обрезку по 120 символов: сейчас она
+        # случайно отсекает `Key (email)=(...)` из текста констрейнта, но это
+        # зависит от длины его имени, а не от нашего решения.
+        Rails.logger.warn("[OwnerIntake] почта не сохранена owner=#{owner.id} #{Crm::OwnerLinker.mask_email(email)}: #{e.class}")
+        reply('Эта почта уже привязана к другой учётке. Пришлите другую или передайте ссылку собственнику сами.')
       end
 
       def link_owner(property, parsed)
@@ -156,7 +238,16 @@ module Telegram
         "✅ Собственник #{status}: <b>#{ERB::Util.html_escape(who)}</b>" \
           "#{contacts.present? ? " (#{ERB::Util.html_escape(contacts)})" : ''}\n" \
           "Объект #{label(property)}.\n\n" \
-          "Отправить ему ссылку на подписание договора? После подписания объект попадёт на витрину."
+          'Отправить собственнику ссылку на подписание договора? После подписания объект попадёт на витрину.'
+      end
+
+      # Те же две ветки, что предлагает OwnerRequestCallback при неудаче: пока
+      # приглашение не ушло, у агента должен оставаться выход в один тап.
+      def rescue_keyboard(property)
+        { inline_keyboard: [
+          [{ text: '✉️ Ввести почту', callback_data: "owner:email:#{property.id}" }],
+          [{ text: '🔗 Дать ссылку мне', callback_data: "owner:link:#{property.id}" }]
+        ] }
       end
 
       def invite_keyboard(property)

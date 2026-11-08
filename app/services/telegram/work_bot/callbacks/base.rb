@@ -76,14 +76,18 @@ module Telegram
         end
 
         # Прислать текстовое сообщение в тот же топик, где была нажата кнопка.
-        def reply_in_topic(text, **opts)
+        # @param keyboard [Hash, nil] inline-клавиатура, когда ответ сам требует
+        #   действия — например, предложить выход из тупика вместо простого
+        #   «не получилось».
+        def reply_in_topic(text, keyboard: nil, **opts)
           msg = callback_query['message'] || {}
-          client.send_message(
-            text,
+          args = {
             chat_id: msg.dig('chat', 'id'),
             message_thread_id: msg['message_thread_id'],
             parse_mode: opts.fetch(:parse_mode, 'HTML')
-          )
+          }
+          args[:reply_markup] = keyboard if keyboard
+          client.send_message(text, **args)
         end
 
         def actor_mention
