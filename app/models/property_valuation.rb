@@ -61,6 +61,12 @@ class PropertyValuation < ApplicationRecord
   # User matched по email/phone.
   after_update_commit :broadcast_cabinet_completion, if: :saved_change_to_status?
 
+  # work_bot 2/3: завершённая оценка → эмбеддинг для semantic поиска
+  # похожих прошлых оценок. Skip-if-unchanged в EmbedPropertyValuationJob
+  # защищает от redundant API calls.
+  after_update_commit :enqueue_embed_on_completion,
+                      if: -> { saved_change_to_status? && completed? }
+
   # Validations
   # Phase 16 — auto-tag staff/test submissions (Надежда тестирует на проде,
   # «Тест Клиент», phase-test emails — отделяем от real client data).
@@ -240,6 +246,14 @@ class PropertyValuation < ApplicationRecord
     )
   rescue StandardError => e
     Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
+  end
+
+  # work_bot 2/3: enqueue embed для semantic поиска похожих оценок.
+  # Fail-safe — эмбеддинг не должен ломать основной флоу оценки.
+  def enqueue_embed_on_completion
+    EmbedPropertyValuationJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuation##{id}#enqueue_embed] #{e.class} #{e.message}")
   end
 
   # A7 Phase 2: push completion в /cabinet через CabinetChannel.

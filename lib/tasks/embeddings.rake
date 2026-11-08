@@ -41,4 +41,26 @@ namespace :embeddings do
     end
     puts '[embeddings:articles] done — check Sidekiq queue:low_priority'
   end
+
+  desc 'Backfill embeddings for every completed PropertyValuation (work_bot 2/3, synchronous, rate-limited)'
+  task valuations: :environment do
+    scope = PropertyValuation.completed
+    total = scope.count
+    puts "[embeddings:valuations] target=#{total} completed valuations"
+
+    done = 0
+    failed = 0
+
+    scope.find_each do |v|
+      EmbedPropertyValuationJob.perform_now(v.id)
+      done += 1
+      print "\r  progress: #{done}/#{total}" if (done % 5).zero?
+      sleep 0.7 # ≈85 req/min — under Google free tier 100 RPM
+    rescue StandardError => e
+      failed += 1
+      warn "\n  valuation=#{v.id} failed: #{e.class} #{e.message}"
+    end
+
+    puts "\n[embeddings:valuations] done=#{done} failed=#{failed}"
+  end
 end
