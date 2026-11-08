@@ -114,6 +114,26 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:comparables].map { |c| c[:external] }).to eq([true, false])
     end
 
+    it 'компактный comparables (first(5)) отрезал внешний аналог — тул берёт полный пул' do
+      internal = { title: 'Наш объект 1-комн.', url: '/properties/42',
+                   price: 4_100_000, price_per_sqm: 107_000, area: 38.0, rooms: 1,
+                   district: 'Канищево', source: 'agency', synthetic: false }
+      external = { title: 'ЦИАН 1-комн.', url: 'https://ryazan.cian.ru/sale/flat/294573918/',
+                   price: 4_350_000, price_per_sqm: 114_473, area: 38.0, rooms: 1,
+                   district: 'Канищево', source: 'external_listing', synthetic: false }
+      allow(PropertyEvaluationService).to receive(:new).and_return(
+        double(call: service_result.merge(
+          comparables: [internal],           # публичный отчёт — без внешнего
+          full_comparables: [internal, external]
+        ))
+      )
+
+      res = call_tool
+
+      expect(res[:comparables].map { |c| c[:url] })
+        .to eq(['https://ryazan.cian.ru/sale/flat/294573918/', '/properties/42'])
+    end
+
     it 'сохраняет PropertyValuation с metadata source=work_bot и id сотрудника' do
       call_tool
 
@@ -268,6 +288,27 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       expect(res[:success]).to be(true)
       urls = res[:comparables].map { |c| c[:url] }
       expect(urls).to include('https://ryazan.cian.ru/sale/land/777/')
+    end
+
+    # Ревью Kimi (PR #184, раунд 3): не только URL должен дойти — оценка
+    # по land-аналогу считается в сотках: 1_800_000 ₽ / 8 соток × 8 соток.
+    # Старое поведение (м² в subject_area) давало ~180_000_000 ₽.
+    it 'участок: estimated_price и price_per_sqm в сотках, без завышения ×100' do
+      res = described_class.call(
+        {
+          'property_type' => 'land',
+          'address'       => 'Рязань, Канищево, Солотчинское шоссе, 1',
+          'city'          => 'Рязань',
+          'district'      => 'Канищево',
+          'total_area'    => 8
+        },
+        asked_by: agent
+      )
+
+      expect(res[:success]).to be(true)
+      expect(res[:estimated_price]).to be_within(150_000).of(1_800_000)
+      expect(res[:price_per_sqm]).to be_within(15_000).of(225_000)
+      expect(res[:price_unit]).to eq('сотка')
     end
   end
 end

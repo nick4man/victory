@@ -196,11 +196,18 @@ module ChatTools
           min_price:        result[:min_price].to_i,
           max_price:        result[:max_price].to_i,
           price_per_sqm:    result[:price_per_sqm].to_i,
+          # Для участков price_per_sqm — за сотку (comp-домен), не за м² —
+          # иначе бот озвучит сотруднику абсурдные «225 000 ₽/м²».
+          price_unit:       pv.property_type.to_s == 'land' ? 'сотка' : 'м²',
           confidence_level: result[:confidence_level].to_f,
           low_coverage:     result[:low_coverage] == true,
           websearch:        status,
           market_note:      market_note(status),
-          comparables:      serialize_comparables(result[:comparables])
+          # Полный пул — external-first до MAX_COMPARABLES; компактный
+          # result[:comparables] (first(5)) нужен публичному отчёту (PR #184).
+          comparables:      serialize_comparables(
+            Array(result[:full_comparables]).presence || Array(result[:comparables])
+          )
         }
       end
 

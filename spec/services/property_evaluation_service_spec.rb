@@ -147,8 +147,11 @@ RSpec.describe PropertyEvaluationService do
       result = described_class.new(valuation).call
 
       expect(result[:success]).to be(true)
-      expect(result[:comparables].size).to eq(7)
-      urls = result[:comparables].map { |c| c[:url] }
+      # Публичный отчёт — компактно, как раньше (first(5))
+      expect(result[:comparables].size).to eq(5)
+      # Полный пул — для staff-тула market_comparables (external-first там)
+      expect(result[:full_comparables].size).to eq(7)
+      urls = result[:full_comparables].map { |c| c[:url] }
       expect(urls).to include('https://ryazan.cian.ru/sale/flat/294573918/')
     end
 

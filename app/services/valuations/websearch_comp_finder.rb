@@ -124,7 +124,13 @@ module Valuations
       }
       city = @v.city.presence || guess_city || 'Рязань'
       district = @v.district.presence
-      area_part = @v.total_area.to_f.positive? ? "#{@v.total_area.to_i} м²" : nil
+      area_part = if @v.property_type.to_s == 'land'
+                    # Площадь участков — в сотках (как в comp-домене):
+                    # «участок 8 м²» искажал Tavily-запрос (ревью Kimi, PR #184).
+                    @v.land_area.to_f.positive? ? "участок #{@v.land_area.to_i} соток" : nil
+                  elsif @v.total_area.to_f.positive?
+                    "#{@v.total_area.to_i} м²"
+                  end
       rooms_part = @v.rooms.to_i.positive? ? "#{@v.rooms}-комн" : nil
 
       [

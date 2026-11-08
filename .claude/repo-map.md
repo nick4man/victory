@@ -13854,47 +13854,6 @@ def property_or_message_required
 # applications validate cleanly.
 </file>
 
-<file path="app/services/chat_tools/staff/market_comparables.rb">
-module ChatTools
-module Staff
-⋮----
-module MarketComparables
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-MAX_COMPARABLES = 8
-⋮----
-def self.schema
-⋮----
-def self.call(args = {}, asked_by: nil)
-⋮----
-def self.resolve_caller(args, asked_by)
-⋮----
-def self.websearch_available?
-⋮----
-def self.build_valuation(args, caller)
-⋮----
-def self.valuation_metadata(caller)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.success_response(pv, result, websearch_ok)
-⋮----
-# Пайплайн площадок ищет только продажу (WebsearchCompFinder fail-close
-# для rent, issue #172) — для аренды честно сообщаем, что поиск не
-# выполнялся, а не отчитываемся ложным 'ok'.
-def self.websearch_status(websearch_ok, pv)
-⋮----
-def self.market_note(status)
-⋮----
-def self.serialize_comparables(comps)
-⋮----
-def self.serialize_comparable(c)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.run_failure(pv, error_message)
-</file>
-
 <file path="app/services/chat_tools/staff/registry.rb">
 module ChatTools
 module Staff
@@ -14952,98 +14911,6 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/services/property_evaluation_service.rb">
-class PropertyEvaluationService
-⋮----
-MIN_TIER1 = 3
-MIN_TIER2 = 2
-MIN_TIER3 = 1
-⋮----
-ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
-⋮----
-AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
-⋮----
-LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-# Effective area for the algorithm: total_area for buildings,
-# land_area (converted сотки → м²) for land plots.
-def subject_area
-⋮----
-private
-⋮----
-def valid?
-⋮----
-# === Ensemble-based confidence ===
-# Старая tier-логика заменена на multi-source формулу: оценка строится
-# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
-# ai_synthesized / city anchor), и confidence учитывает (a) сколько
-# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
-# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
-# большинстве реалистичных сценариев.
-REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
-⋮----
-def confidence_for(pool, estimate = nil)
-⋮----
-base = 0.50  # baseline: любая успешная оценка ≥ 50%
-⋮----
-base += 0.10 if real_count >= 1                # хотя бы один настоящий
-# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
-# модель строит bootstrap-CI и хедоник работает; засчитываем как
-# «полу-настоящий» сигнал.
-⋮----
-# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
-# с минимальным сравнением, даже если расходится с агрегатами.
-⋮----
-# condition хранится в колонке `condition`; геттер `property_condition` —
-# alias через `attribute`. Проверяем оба для совместимости.
-⋮----
-# Cap positive contributions ДО penalty — иначе сумма additions может
-# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
-# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
-# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
-# min(1.25, 0.95) = 0.95 — penalty не виден).
-⋮----
-# PENALTY for high sample variance — coefficient of variation
-# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
-# spans wide range, confidence shouldn't быть 0.95. Это решает
-# «honest math» проблему: 0.95 при spread 3x = nonsense.
-#
-# CV thresholds calibrated empirically:
-#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
-#  - CV > 0.30 → notable heterogeneity — medium penalty
-#  - CV > 0.18 → some spread — small penalty
-⋮----
-# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
-⋮----
-def estimators_agree?(comps)
-⋮----
-def pps_coefficient_of_variation(comps)
-⋮----
-def low_coverage?(comps)
-⋮----
-def fallback_estimate
-⋮----
-def serialize(comps)
-⋮----
-def compose_title(r)
-⋮----
-def comparable_url(r)
-⋮----
-def comparable_source(r)
-⋮----
-def build_market_analysis(comps, estimate)
-⋮----
-def build_recommendations
-⋮----
-def success(payload)
-⋮----
-def error(message)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/base.rb">
 module Telegram
 module WorkBot
@@ -15240,6 +15107,100 @@ def client_photo_intake?(msg)
 def workbot_photo_text_continuation(msg)
 ⋮----
 def workbot_wizard_text(msg)
+</file>
+
+<file path="app/services/property_evaluation_service.rb">
+class PropertyEvaluationService
+⋮----
+MIN_TIER1 = 3
+MIN_TIER2 = 2
+MIN_TIER3 = 1
+⋮----
+ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+⋮----
+AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+⋮----
+LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+# Effective area в ЕДИНИЦАХ COMP-ДОМЕНА (как у аналогов): total_area (м²)
+# для строений, land_area (сотки) для участков. Comp-объявления участков
+# хранят площадь в сотках — иначе медиана ₽/сотка умножалась на м² и
+# цена участка завышалась в 100 раз (ревью Kimi, PR #184).
+def subject_area
+⋮----
+private
+⋮----
+def valid?
+⋮----
+# === Ensemble-based confidence ===
+# Старая tier-логика заменена на multi-source формулу: оценка строится
+# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
+# ai_synthesized / city anchor), и confidence учитывает (a) сколько
+# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
+# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
+# большинстве реалистичных сценариев.
+REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
+⋮----
+def confidence_for(pool, estimate = nil)
+⋮----
+base = 0.50  # baseline: любая успешная оценка ≥ 50%
+⋮----
+base += 0.10 if real_count >= 1                # хотя бы один настоящий
+# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
+# модель строит bootstrap-CI и хедоник работает; засчитываем как
+# «полу-настоящий» сигнал.
+⋮----
+# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
+# с минимальным сравнением, даже если расходится с агрегатами.
+⋮----
+# condition хранится в колонке `condition`; геттер `property_condition` —
+# alias через `attribute`. Проверяем оба для совместимости.
+⋮----
+# Cap positive contributions ДО penalty — иначе сумма additions может
+# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+# min(1.25, 0.95) = 0.95 — penalty не виден).
+⋮----
+# PENALTY for high sample variance — coefficient of variation
+# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+# spans wide range, confidence shouldn't быть 0.95. Это решает
+# «honest math» проблему: 0.95 при spread 3x = nonsense.
+#
+# CV thresholds calibrated empirically:
+#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+#  - CV > 0.30 → notable heterogeneity — medium penalty
+#  - CV > 0.18 → some spread — small penalty
+⋮----
+# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+⋮----
+def estimators_agree?(comps)
+⋮----
+def pps_coefficient_of_variation(comps)
+⋮----
+def low_coverage?(comps)
+⋮----
+def fallback_estimate
+⋮----
+def serialize(comps)
+⋮----
+def compose_title(r)
+⋮----
+def comparable_url(r)
+⋮----
+def comparable_source(r)
+⋮----
+def build_market_analysis(comps, estimate)
+⋮----
+def build_recommendations
+⋮----
+def success(payload)
+⋮----
+def error(message)
 </file>
 
 <file path="Gemfile">
@@ -15494,6 +15455,47 @@ private
 def confirm_prompt
 ⋮----
 def accept_reason(value, manual)
+</file>
+
+<file path="app/services/chat_tools/staff/market_comparables.rb">
+module ChatTools
+module Staff
+⋮----
+module MarketComparables
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+MAX_COMPARABLES = 8
+⋮----
+def self.schema
+⋮----
+def self.call(args = {}, asked_by: nil)
+⋮----
+def self.resolve_caller(args, asked_by)
+⋮----
+def self.websearch_available?
+⋮----
+def self.build_valuation(args, caller)
+⋮----
+def self.valuation_metadata(caller)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.success_response(pv, result, websearch_ok)
+⋮----
+# Для участков price_per_sqm — за сотку (comp-домен), не за м² —
+# иначе бот озвучит сотруднику абсурдные «225 000 ₽/м²».
+⋮----
+def self.websearch_status(websearch_ok, pv, result)
+⋮----
+def self.market_note(status)
+⋮----
+def self.serialize_comparables(comps)
+⋮----
+def self.serialize_comparable(c)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.run_failure(pv, error_message)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">

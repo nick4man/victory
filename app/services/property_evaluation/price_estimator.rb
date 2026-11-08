@@ -52,9 +52,14 @@ module PropertyEvaluation
 
     private
 
+    # Effective area в ЕДИНИЦАХ COMP-ДОМЕНА: total_area (м²) для строений,
+    # land_area (сотки) для участков. Объявления-аналоги участков хранят
+    # площадь в сотках (парсер площадок так сохраняет), поэтому оценка —
+    # это ₽/сотка × сотки. Перевод в м² тут давал завышение цены участка
+    # ровно в 100 раз (ревью Kimi, PR #184).
     def subject_area
       if @v.property_type.to_s == 'land'
-        @v.respond_to?(:land_area_in_sqm) ? @v.land_area_in_sqm.to_f : @v.land_area.to_f * 100
+        @v.land_area.to_f
       else
         @v.total_area.to_f
       end

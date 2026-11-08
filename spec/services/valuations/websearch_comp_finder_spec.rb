@@ -84,6 +84,25 @@ RSpec.describe Valuations::WebsearchCompFinder do
     end
   end
 
+  describe '#build_query' do
+    it 'для участка ищет сотки, а не «м²» (ревью Kimi, PR #184)' do
+      land_valuation = PropertyValuation.new(
+        property_type: 'land', deal_type: 'sale', audit_mode: 'express',
+        address: 'г. Рязань, Канищево', city: 'Рязань',
+        land_area: 8, total_area: 8, status: 'pending'
+      )
+
+      query = described_class.new(land_valuation).send(:build_query)
+
+      expect(query).to include('участок 8 соток')
+      expect(query).not_to include('м²')
+    end
+
+    it 'для квартиры площадь остаётся в м²' do
+      expect(finder.send(:build_query)).to include("#{valuation.total_area.to_i} м²")
+    end
+  end
+
   describe '#call — rent-оценки' do
     it 'не запускает pipeline: поиск жёстко ищет продажу, а не аренду (issue #172)' do
       rent_valuation = PropertyValuation.new(
