@@ -75,19 +75,21 @@ module PropertyEvaluation
     end
 
     def reject_outliers(comps)
-      pps_values = comps.filter_map { |c| c[:price_per_sqm].to_f.nonzero? }
-      return comps if pps_values.size < 3
+      # Неположительные ₽/м² (LLM иногда возвращает отрицательные значения,
+      # см. AiSyntheticComps) в очищенный пул не берём: они искажают медиану
+      # и могут дать отрицательную оценку (блокер из ревью PR #177).
+      positive = comps.select { |c| c[:price_per_sqm].to_f.positive? }
+      pps_values = positive.map { |c| c[:price_per_sqm].to_f }
+      return positive if pps_values.size < 3
 
       median = pps_values.sort[pps_values.size / 2]
-      filtered = comps.select do |c|
+      filtered = positive.select do |c|
         pps = c[:price_per_sqm].to_f
-        next true if pps <= 0
-
         pps * OUTLIER_FACTOR >= median && pps <= median * OUTLIER_FACTOR
       end
       # Подстраховка: не отдаём пустую выборку, если все значения выглядели
       # «выбросами» относительно друг друга — лучше шумная оценка, чем ноль.
-      filtered.empty? ? comps : filtered
+      filtered.empty? ? positive : filtered
     end
 
     def floor_factor
