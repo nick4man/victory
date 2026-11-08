@@ -4781,6 +4781,101 @@ private
 def notify_property_owner
 </file>
 
+<file path="app/models/inquiry.rb">
+include AASM
+⋮----
+PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+⋮----
+def self.ransackable_attributes(auth_object = nil)
+⋮----
+def self.ransackable_associations(auth_object = nil)
+⋮----
+def self.statistics(period = :all)
+⋮----
+def self.calculate_conversion_rate(scope = all)
+⋮----
+def self.calculate_avg_response_time(scope = all)
+⋮----
+def full_contact_info
+⋮----
+def formatted_phone
+⋮----
+def type_label
+⋮----
+def status_label
+⋮----
+def status_badge_class
+⋮----
+def priority_badge_class
+⋮----
+def response_time_minutes
+⋮----
+def overdue?
+⋮----
+def scheduled_soon?
+⋮----
+def assign_to!(agent_user)
+⋮----
+def unassign!
+⋮----
+def mark_processed!
+⋮----
+def cancel_with_reason!(reason)
+⋮----
+def sync_to_crm!
+⋮----
+def synced_to_crm?
+⋮----
+def set_metadata(key, value)
+⋮----
+def get_metadata(key)
+⋮----
+def from_mobile?
+⋮----
+def has_utm_params?
+⋮----
+def utm_string
+⋮----
+def notify_admins!
+⋮----
+def notify_user_of_status_change!
+⋮----
+def property_title
+⋮----
+def property_url
+⋮----
+def agent_name
+⋮----
+Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+⋮----
+def normalize_phone
+⋮----
+def set_default_source
+⋮----
+def detect_staff_test_submission
+⋮----
+def assign_to_agent
+⋮----
+def send_notifications
+⋮----
+def sync_to_crm
+⋮----
+def push_to_work_bot
+⋮----
+def notify_status_change
+⋮----
+def broadcast_cabinet_status_change
+⋮----
+def phone_format
+⋮----
+def preferred_date_in_future
+⋮----
+def property_or_message_required
+# Mortgage inquiries carry program details in metadata, not a property
+# FK — exempt them from the property-or-message rule so /services/mortgage
+# applications validate cleanly.
+</file>
+
 <file path="app/models/landing_content.rb">
 class LandingContent < ApplicationRecord
 ⋮----
@@ -9389,28 +9484,6 @@ private
 def percentile(sorted, p)
 </file>
 
-<file path="app/services/property_evaluation/composite_estimator.rb">
-module PropertyEvaluation
-⋮----
-class CompositeEstimator
-⋮----
-MIN_HEDONIC    = 5
-HEDONIC_WEIGHT = 0.4
-MEDIAN_WEIGHT  = 0.6
-⋮----
-def self.call(comparables:, target_area:, target_rooms:, base_estimate:)
-⋮----
-def initialize(comparables, target_area, target_rooms, base_estimate)
-⋮----
-def call
-⋮----
-private
-⋮----
-def enrich_comparables(comps)
-⋮----
-def base_only
-</file>
-
 <file path="app/services/property_evaluation/hedonic.rb">
 require 'matrix'
 ⋮----
@@ -13778,101 +13851,6 @@ private
 def normalize_city_name
 </file>
 
-<file path="app/models/inquiry.rb">
-include AASM
-⋮----
-PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
-⋮----
-def self.ransackable_attributes(auth_object = nil)
-⋮----
-def self.ransackable_associations(auth_object = nil)
-⋮----
-def self.statistics(period = :all)
-⋮----
-def self.calculate_conversion_rate(scope = all)
-⋮----
-def self.calculate_avg_response_time(scope = all)
-⋮----
-def full_contact_info
-⋮----
-def formatted_phone
-⋮----
-def type_label
-⋮----
-def status_label
-⋮----
-def status_badge_class
-⋮----
-def priority_badge_class
-⋮----
-def response_time_minutes
-⋮----
-def overdue?
-⋮----
-def scheduled_soon?
-⋮----
-def assign_to!(agent_user)
-⋮----
-def unassign!
-⋮----
-def mark_processed!
-⋮----
-def cancel_with_reason!(reason)
-⋮----
-def sync_to_crm!
-⋮----
-def synced_to_crm?
-⋮----
-def set_metadata(key, value)
-⋮----
-def get_metadata(key)
-⋮----
-def from_mobile?
-⋮----
-def has_utm_params?
-⋮----
-def utm_string
-⋮----
-def notify_admins!
-⋮----
-def notify_user_of_status_change!
-⋮----
-def property_title
-⋮----
-def property_url
-⋮----
-def agent_name
-⋮----
-Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
-⋮----
-def normalize_phone
-⋮----
-def set_default_source
-⋮----
-def detect_staff_test_submission
-⋮----
-def assign_to_agent
-⋮----
-def send_notifications
-⋮----
-def sync_to_crm
-⋮----
-def push_to_work_bot
-⋮----
-def notify_status_change
-⋮----
-def broadcast_cabinet_status_change
-⋮----
-def phone_format
-⋮----
-def preferred_date_in_future
-⋮----
-def property_or_message_required
-# Mortgage inquiries carry program details in metadata, not a property
-# FK — exempt them from the property-or-message rule so /services/mortgage
-# applications validate cleanly.
-</file>
-
 <file path="app/services/chat_tools/staff/registry.rb">
 module ChatTools
 module Staff
@@ -14101,42 +14079,6 @@ def field(kind, key)
 def option_label(field, value)
 </file>
 
-<file path="app/services/external_listings/yrl_parser.rb">
-require 'nokogiri'
-require 'open-uri'
-⋮----
-module ExternalListings
-⋮----
-class YrlParser
-SOURCE = 'yandex_yrl'
-⋮----
-REALTY_TYPE_MAP = {
-⋮----
-DEAL_TYPE_MAP = {
-⋮----
-def initialize(feed_url, source: SOURCE, http_timeout: 30)
-⋮----
-def call
-⋮----
-private
-⋮----
-def fetch_xml
-⋮----
-def build_attrs(offer)
-⋮----
-def build_address(offer)
-⋮----
-def text(node, xpath)
-⋮----
-def numeric(value)
-⋮----
-def integer(value)
-⋮----
-def infer_type_loose(_type_attr, category)
-⋮----
-def upsert_one(attrs)
-</file>
-
 <file path="app/services/llm/omni_client.rb">
 require 'net/http'
 require 'json'
@@ -14264,6 +14206,28 @@ def empty_result(error)
 def system_prompt
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/property_evaluation/composite_estimator.rb">
+module PropertyEvaluation
+⋮----
+class CompositeEstimator
+⋮----
+MIN_HEDONIC    = 5
+HEDONIC_WEIGHT = 0.4
+MEDIAN_WEIGHT  = 0.6
+⋮----
+def self.call(comparables:, target_area:, target_rooms:, base_estimate:)
+⋮----
+def initialize(comparables, target_area, target_rooms, base_estimate)
+⋮----
+def call
+⋮----
+private
+⋮----
+def enrich_comparables(comps)
+⋮----
+def base_only
 </file>
 
 <file path="app/services/sandbox/codespace.rb">
@@ -14726,73 +14690,42 @@ def same_city?(property, distance_km = nil)
 def weight_for(cos, distance_km)
 </file>
 
-<file path="app/services/valuations/sitemap_comp_finder.rb">
-require 'net/http'
-require 'uri'
-require 'yaml'
-require 'digest'
+<file path="app/services/external_listings/yrl_parser.rb">
+require 'nokogiri'
+require 'open-uri'
 ⋮----
-module Valuations
+module ExternalListings
 ⋮----
-class SitemapCompFinder
-CACHE_TTL = 6.hours
-CONFIG_PATH = Rails.root.join('config/agency_sitemaps.yml')
-SOURCE_KIND = 'agency_sitemap'
+class YrlParser
+SOURCE = 'yandex_yrl'
 ⋮----
-REALTY_TYPE_TO_SLUG = {
+REALTY_TYPE_MAP = {
 ⋮----
-def initialize(valuation)
+DEAL_TYPE_MAP = {
+⋮----
+def initialize(feed_url, source: SOURCE, http_timeout: 30)
 ⋮----
 def call
 ⋮----
 private
 ⋮----
-def agency_covers_subject_city?(cfg)
+def fetch_xml
 ⋮----
-def normalize_city(value)
+def build_attrs(offer)
 ⋮----
-def enabled?
+def build_address(offer)
 ⋮----
-def load_config
+def text(node, xpath)
 ⋮----
-def property_type_supported?(cfg)
+def numeric(value)
 ⋮----
-def cached_count(agency_key)
+def integer(value)
 ⋮----
-def area_bracket_min
+def parse_land_area(offer)
 ⋮----
-def area_bracket_max
+def infer_type_loose(_type_attr, category)
 ⋮----
-def discover_listings(cfg)
-⋮----
-def fetch_xml(url)
-⋮----
-def extract_locs(xml)
-⋮----
-def scrape_and_parse(urls, agency_key)
-⋮----
-# JSON-LD path: fetch raw HTML + extract <script type="application/ld+json">.
-# Schema.org даёт structured Apartment/House/Product+Offer — все нужные поля
-# (price, area, address, rooms, floor) без LLM-парсинга. Если на странице
-# нет JSON-LD или structure broken — skip (не падаем).
-def scrape_json_ld(urls, agency_key)
-⋮----
-def fetch_html(url)
-⋮----
-# Извлечь поля из Schema.org JSON-LD. Возвращает hash совместимый с
-# `persist` (price/area/rooms/floor/address/district/title). Nil если
-# structure отсутствует или unparseable.
-def extract_json_ld_attrs(html, url)
-⋮----
-.where('source_id LIKE ?', "#{agency_key}:%")
-⋮----
-# Reuse exact same prompt as WebsearchCompFinder. Извлечён в локальную
-# константу — DRY ratio < 3, не стоит ради этого выделять в shared module.
-PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
-⋮----
-def llm_parse(url, markdown)
-⋮----
-def sane?(p)
+def upsert_one(attrs)
 </file>
 
 <file path="app/services/llm/chat_responder.rb">
@@ -14823,62 +14756,6 @@ def fallback_message
 # catalog and team. Cached for 5 min to avoid hammering the DB on
 # every visitor message.
 def system_prompt
-</file>
-
-<file path="app/services/property_evaluation/comparable_finder.rb">
-module PropertyEvaluation
-class ComparableFinder
-Tier = Struct.new(:radius_km, :area_pct, :rooms_delta, :scope_filter, keyword_init: true)
-⋮----
-TIERS = [
-⋮----
-THRESHOLDS = [
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-MAX_RADIUS_KM = 50
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def collect(tier)
-⋮----
-def external_scope(tier)
-⋮----
-def property_scope(tier)
-⋮----
-def mls_scope(tier)
-⋮----
-def apply_geo(scope, tier)
-⋮----
-def has_column?(scope, column)
-⋮----
-def band(pct)
-⋮----
-def rooms_band(delta)
-⋮----
-def property_type_id_for(pt)
-⋮----
-SIZE_BAND_PCT = 0.30
-⋮----
-def enrich(records)
-⋮----
-def external_band_area
-⋮----
-def same_city?(record, distance_km = nil)
-⋮----
-def normalized_subject_city
-⋮----
-def source_label(record)
-⋮----
-def subject_area_for_filter
-⋮----
-def compute_pps(record)
-⋮----
-def distance_km_to(r)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/base.rb">
@@ -14937,6 +14814,38 @@ def dispatch
 def audit!(outcome, args:, error_class: nil, error_message: nil)
 ⋮----
 def command_key
+</file>
+
+<file path="app/services/telegram/work_bot/commands/help.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Help < Base
+⋮----
+ENTRIES = [
+⋮----
+def handle
+⋮----
+# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
+# Шлём один-line redirect inline + полный список приватно в DM.
+# В DM-чате — inline как раньше.
+⋮----
+private
+⋮----
+def append_section(lines, header, level)
+⋮----
+def entries_for(level)
+⋮----
+def staff?
+⋮----
+def manager?
+⋮----
+def director?
+⋮----
+def group_chat?
+⋮----
+def send_full_via_dm(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/reopen.rb">
@@ -15287,38 +15196,6 @@ private
 def parse_args
 </file>
 
-<file path="app/services/telegram/work_bot/commands/help.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Help < Base
-⋮----
-ENTRIES = [
-⋮----
-def handle
-⋮----
-# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
-# Шлём один-line redirect inline + полный список приватно в DM.
-# В DM-чате — inline как раньше.
-⋮----
-private
-⋮----
-def append_section(lines, header, level)
-⋮----
-def entries_for(level)
-⋮----
-def staff?
-⋮----
-def manager?
-⋮----
-def director?
-⋮----
-def group_chat?
-⋮----
-def send_full_via_dm(text)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/task.rb">
 module Telegram
 module WorkBot
@@ -15361,13 +15238,18 @@ def confirm_prompt
 def accept_reason(value, manual)
 </file>
 
-<file path="app/services/valuations/websearch_comp_finder.rb">
+<file path="app/services/valuations/sitemap_comp_finder.rb">
+require 'net/http'
+require 'uri'
+require 'yaml'
+require 'digest'
+⋮----
 module Valuations
 ⋮----
-class WebsearchCompFinder
+class SitemapCompFinder
 CACHE_TTL = 6.hours
-MAX_SEARCH_RESULTS = 8
-MAX_SCRAPES = 5
+CONFIG_PATH = Rails.root.join('config/agency_sitemaps.yml')
+SOURCE_KIND = 'agency_sitemap'
 ⋮----
 REALTY_TYPE_TO_SLUG = {
 ⋮----
@@ -15377,9 +15259,17 @@ def call
 ⋮----
 private
 ⋮----
+def agency_covers_subject_city?(cfg)
+⋮----
+def normalize_city(value)
+⋮----
 def enabled?
 ⋮----
-def cache_key
+def load_config
+⋮----
+def property_type_supported?(cfg)
+⋮----
+def cached_count(agency_key)
 ⋮----
 def area_bracket_min
 ⋮----
@@ -15387,27 +15277,92 @@ def area_bracket_max
 ⋮----
 def band_area
 ⋮----
-def cached_count
+def discover_listings(cfg)
 ⋮----
-def tavily_search
+def fetch_xml(url)
 ⋮----
-def build_query
+def extract_locs(xml)
 ⋮----
-def guess_city
+def scrape_and_parse(urls, agency_key)
 ⋮----
-def scrape_and_parse(tavily_results)
+# JSON-LD path: fetch raw HTML + extract <script type="application/ld+json">.
+# Schema.org даёт structured Apartment/House/Product+Offer — все нужные поля
+# (price, area, address, rooms, floor) без LLM-парсинга. Если на странице
+# нет JSON-LD или structure broken — skip (не падаем).
+def scrape_json_ld(urls, agency_key)
 ⋮----
-def already_persisted?(url)
+def fetch_html(url)
 ⋮----
+# Извлечь поля из Schema.org JSON-LD. Возвращает hash совместимый с
+# `persist` (price/area/rooms/floor/address/district/title). Nil если
+# structure отсутствует или unparseable.
+def extract_json_ld_attrs(html, url)
+⋮----
+.where('source_id LIKE ?', "#{agency_key}:%")
+⋮----
+# Reuse exact same prompt as WebsearchCompFinder. Извлечён в локальную
+# константу — DRY ratio < 3, не стоит ради этого выделять в shared module.
 PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
 ⋮----
 def llm_parse(url, markdown)
 ⋮----
-def persist(parsed_list)
-⋮----
-def resolve_city(record, card_city)
-⋮----
 def sane?(p)
+</file>
+
+<file path="app/services/property_evaluation/comparable_finder.rb">
+module PropertyEvaluation
+class ComparableFinder
+Tier = Struct.new(:radius_km, :area_pct, :rooms_delta, :scope_filter, keyword_init: true)
+⋮----
+TIERS = [
+⋮----
+THRESHOLDS = [
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+MAX_RADIUS_KM = 50
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def collect(tier)
+⋮----
+def external_scope(tier)
+⋮----
+def property_scope(tier)
+⋮----
+def mls_scope(tier)
+⋮----
+def apply_geo(scope, tier)
+⋮----
+def has_column?(scope, column)
+⋮----
+def band(pct)
+⋮----
+def rooms_band(delta)
+⋮----
+def property_type_id_for(pt)
+⋮----
+SIZE_BAND_PCT = 0.30
+⋮----
+def enrich(records)
+⋮----
+def external_band_area
+⋮----
+def same_city?(record, distance_km = nil)
+⋮----
+def normalized_subject_city
+⋮----
+def source_label(record)
+⋮----
+def subject_area_for_filter
+⋮----
+def compute_pps(record)
+⋮----
+def distance_km_to(r)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
@@ -15484,6 +15439,55 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
+</file>
+
+<file path="app/services/valuations/websearch_comp_finder.rb">
+module Valuations
+⋮----
+class WebsearchCompFinder
+CACHE_TTL = 6.hours
+MAX_SEARCH_RESULTS = 8
+MAX_SCRAPES = 5
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def enabled?
+⋮----
+def cache_key
+⋮----
+def area_bracket_min
+⋮----
+def area_bracket_max
+⋮----
+def band_area
+⋮----
+def cached_count
+⋮----
+def tavily_search
+⋮----
+def build_query
+⋮----
+def guess_city
+⋮----
+def scrape_and_parse(tavily_results)
+⋮----
+def already_persisted?(url)
+⋮----
+PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
+⋮----
+def llm_parse(url, markdown)
+⋮----
+def persist(parsed_list)
+⋮----
+def resolve_city(record, card_city)
+⋮----
+def sane?(p)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">
