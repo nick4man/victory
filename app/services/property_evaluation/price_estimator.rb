@@ -52,6 +52,11 @@ module PropertyEvaluation
 
     private
 
+    # Effective area в м² для ВСЕХ типов: total_area для строений,
+    # land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
+    # (ComparableFinder#enrich переводит land-объявления площадок из соток)
+    # — единая единица по всему estimator, иначе цена участка искажается
+    # на порядки (ревью Kimi, PR #184).
     def subject_area
       if @v.property_type.to_s == 'land'
         @v.respond_to?(:land_area_in_sqm) ? @v.land_area_in_sqm.to_f : @v.land_area.to_f * 100

@@ -7980,7 +7980,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
-('20261108120000'),
+('20261108210000'),
 ('20261107233000'),
 ('20260914120000'),
 ('20260911100100'),
