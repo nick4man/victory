@@ -177,13 +177,13 @@ compose через volume из образа. Предлагается перво
 4. **Публикация в @rznvictory** — `publisher` читает `posts_queue`; токен
    бота в `.env.publisher` (утёк 05.10.26, ротация через @BotFather по
    `docs/runbooks/cutover-1.0.md`, окно B) остаётся на хосте,
-   `CHANNEL_BOT_TOKEN` в новый репо не копируется. Контроль перед
-   переключением (шаг 5): токен принят Bot API — `curl
+   `CHANNEL_BOT_TOKEN` в новый репо не копируется. Предусловие шага 5:
+   подтверждено, что `/revoke` утёкшего токена выполнен при ротации
+   (отметка в cutover-1.0.md); если подтверждения нет — выполнить `/revoke`
+   через @BotFather до переключения (getMe этого не докажет: старого токена
+   у нас нет). Контроль перед переключением: токен принят Bot API — `curl
    "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
-   .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`. getMe
-   подтверждает лишь валидность текущего токена; что `/revoke` утёкшего
-   выполнен, getMe не покажет (старого токена у нас нет) — при сомнениях
-   проротировать текущий до шага 5.
+   .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`.
 5. **LLM-шлюз omniroute** (chat:20128 по LAN) — адрес и ключи в
    `.env.conveyor`; новый репо их не видит (пример-файл только).
 
@@ -224,11 +224,18 @@ compose через volume из образа. Предлагается перво
 Два наследия, их надо различать:
 
 - `/opt/.openclaw/.openclaw/workspace-conveyor` — openclaw-архив, **только
-  чтение** (запрет продублирован в `.claude/settings.json`). Живого трафика
-  там нет с 11.09.26. Удаление архива **не требуется** для закрытия п. 6
-  issue #190 — это отдельное решение владельца (открытый вопрос 4 раздела
-  9); для п. 6 достаточно инвентарной записи, что архив существует, на
-  чтение и живого трафика в нём нет.
+  чтение** (запрет продублирован в `.claude/settings.json`). Боевой
+  конвейер там не живёт с 11.09.26, но **cron-строки на chat всё ещё
+  читают архивные скрипты** — по `SERVICE.md` коллектора (раздел «Соседи
+  по архиву`): `backfill_embeddings.py`, `weekly_infra_check.py`,
+  `ingest_macro_economics.py`, `ingest_posts_queue.py`,
+  `gemini_embedding_writer.py`, `auto_assembly_trigger.py`,
+  `test_digest_resilience.py`. Это не «живого трафика нет», это
+  «пишущего трафика нет». Удаление архива **не требуется** для закрытия
+  п. 6 issue #190 (отдельное решение владельца, открытый вопрос 4
+  раздела 9), но финальная архивация возможна только после
+  инвентаризации и отключения этих cron-потребителей — фиксируется как
+  предусловие шага 7.
 - `/opt/victory-conveyor` на chat — бывший боевой каталог (cutover B,
   13.10.26: крон заморожен, `publisher-bot` остановлен). По cutover-1.0.md
   он должен был остаться «до ротации пароля audit_user», которую читают
@@ -237,14 +244,25 @@ compose через volume из образа. Предлагается перво
   `audit_user`-потребителей и удаление каталога (это разблокирует и
   ротацию пароля). До этого шага вынос конвейера на chat ничего не меняет.
 
-Итог по п. 6 #190: закрывается инвентарной записью об openclaw-архиве
-(который никуда не девается) и финализацией `/opt/victory-conveyor`
-(шаг 7 — про него, не про openclaw-архив).
+Итог по п. 6 #190: закрывается инвентарной записью об openclaw-архиве с
+его cron-потребителями (который никуда не девается) и финализацией
+`/opt/victory-conveyor` (шаг 7 — про него, не про openclaw-архив).
 
-## 8. План миграции (нулевой простой, точки отката)
+## 8. План миграции (точки отката; про «нулевой простой» — ниже)
 
 Все шаги — без остановки текущего конвейера; единственные моменты
 переключения — смена тега образа (как обычная выкатка службы).
+
+**Про критерий «без простоя» (#190).** Строгий ноль недостижим: смена
+mount у `news-db` (шаг 4) гарантированно пересоздаёт её контейнер, это
+секунды недоступности БД в окне между тиками. Посты при этом **не
+теряются**: `posts_queue` и state конвейера — в именованных томах,
+пропущенный тик подбирается следующим прогоном, сайт и TG-канал штатны.
+План трактует критерий как «без потери постов и без простоя вне окна
+между тиками». Если владелец требует строгий ноль — единственный
+вариант: не трогать mount schema в victory и принять дублирование
+источника схемы (противоречит разделу 4); фиксируется в открытом
+вопросе 5 раздела 9.
 
 **Шаг 0. Утверждение (человек).** Владелец выбирает опцию. До утверждения
 issue #190 не закрывается, код не двигается.
@@ -282,17 +300,19 @@ ghcr.io/nick4man/victory-conveyor:<tag> python3 -m unittest discover` —
 
 ```bash
 for img in victory-conveyor victory-publisher; do
-  docker rmi ghcr.io/nick4man/$img:<tag> 2>/dev/null || true  # если тег уже был локально
   docker pull ghcr.io/nick4man/$img:<tag>
+  # digest реестра и digest того, что реально лежит локально после pull:
+  echo "$img реестр:    $(docker buildx imagetools inspect ghcr.io/nick4man/$img:<tag> --format '{{.Manifest.Digest}}')"
+  echo "$img локально:  $(docker image inspect ghcr.io/nick4man/$img:<tag> --format '{{index .RepoDigests 0}}')"
   docker image inspect ghcr.io/nick4man/$img:<tag> --format '{{.Created}}'
-  docker buildx imagetools inspect ghcr.io/nick4man/$img:<tag>  # manifest digest в реестре
 done
 ```
 
-Сверять `Created` со временем сборки в новом репо и manifest digest (через
-`buildx imagetools`) с записями пуша. Локальный config ID (`docker image
-inspect {{.Id}}`) с manifest digest из лога пуша сверять нельзя — это
-разные хеши; гарантия свежести — `docker rmi` перед `pull`.
+Сверить локальный `RepoDigests` с digest реестра — совпадение и есть
+гарантия, что под тегом лежит именно тот образ (а не прежний код под
+свежим тегом); `Created` — со временем сборки в новом репо. Локальный
+config ID (`docker image inspect {{.Id}}`) с manifest digest сверять
+нельзя — это разные хеши.
 *Откат: образ просто не используется.*
 
 **Шаг 4. Подготовка victory (PR в dev/upgrade, отдельный issue после
@@ -314,10 +334,9 @@ registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
 
 - **Смена mount у `news-db` пересоздаст её контейнер** при первом `up` с
   новым compose (том `newsdb` сохраняется, данные не теряются, initdb на
-  непустом томе не повторяется). Чтобы не ловить отдельный простой,
-  `news-db` включается в то же окно перекатки, что и conveyor/publisher
-  (шаг 5): одна перекатка, простой — секунды рестарта контейнера между
-  тиками.
+  непустом томе не повторяется; недоступность БД — секунды, см. трактовку
+  критерия выше). `news-db` включается в то же окно перекатки, что и
+  conveyor/publisher (шаг 5), — одна перекатка в окне между тиками.
 - **Доставка compose на хост.** `bin/rollout` запускается из ops-каталога
   `/home/q/victory` (checkout ветки main на хосте; живого bind-mount нет
   с cutover 1.0). Compose-правки едут обычным путём (PR → `dev/upgrade` →
@@ -339,13 +358,23 @@ initdb-схема и код образа разойдутся молча:
   `viktory-postgres-pgvector:pg15-postgis36`):
 
   ```bash
+  docker rm -f newsdb-smoke 2>/dev/null || true
+  docker volume rm -f smoke_initdb 2>/dev/null || true   # иначе повторный прогон пропустит initdb
   docker volume create smoke_initdb
-  docker run -d --name newsdb-smoke -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=news \
+  docker run -d --name newsdb-smoke \
+    -e POSTGRES_PASSWORD=smoke -e POSTGRES_USER=news -e POSTGRES_DB=news \
     -v /home/q/victory-conveyor/urgent-news-collector/schema:/docker-entrypoint-initdb.d:ro \
     -v smoke_initdb:/var/lib/postgresql/data viktory-postgres-pgvector:pg15-postgis36
-  # дождаться healthy, затем — схема реально применилась:
-  docker exec newsdb-smoke psql -U news -d news -c '\dt' \
-    | grep -E 'urgent_events|posts_queue|content_revisions|system_flags'
+  # у голого docker run нет compose-healthcheck — ждём готовности сами:
+  for i in $(seq 1 30); do
+    docker exec newsdb-smoke pg_isready -U news -d news >/dev/null 2>&1 && break
+    sleep 2
+  done
+  # initdb применился: все четыре таблицы на месте (не меньше):
+  docker exec newsdb-smoke psql -U news -d news -tAc \
+    "select count(*) from information_schema.tables where table_schema='public'
+     and table_name in ('urgent_events','posts_queue','content_revisions','system_flags')"
+  # ожидается ровно 4
   docker rm -f newsdb-smoke && docker volume rm smoke_initdb
   ```
 
@@ -362,6 +391,7 @@ shell-prefix (иначе следующая выкатка Rails увезёт к
 тег):
 
 ```bash
+cd /home/q/victory   # rollout и .env.deploy живут в ops-каталоге — все пути относительно него
 # 0) актуализировать ops-каталог на хосте (доставка compose шага 4)
 git -C /home/q/victory pull
 # 1) checkout нового репо по sha тега (дисциплина из шага 4)
@@ -394,20 +424,27 @@ services/content-publisher/SERVICE.md`. Остающиеся ссылки — CL
 соседи, AGENTS.md, repo-index. CI victory зелёный. *Откат: revert PR;
 история с кодом остаётся в git навсегда.*
 
-**Шаг 7. Финализация chat-легаси.** Инвентаризация читателей
-`audit_user@postgres-local`, ротация пароля. Перед удалением
-`/opt/victory-conveyor` — снапшот, **зашифрованный** (внутри каталога лежит
+**Шаг 7. Финализация chat-легаси.** Предусловие: инвентаризированы и
+отключены cron-потребители openclaw-архива (`backfill_embeddings.py` и др.
+из SERVICE.md коллектора, раздел 7) — иначе «финализация» оставит на chat
+висящие крон-строки, читающие удаляемые/архивные пути. Далее:
+инвентаризация читателей `audit_user@postgres-local`, ротация пароля.
+Перед удалением `/opt/victory-conveyor` — снапшот, **зашифрованный** (внутри каталога лежит
 `.env` с секретами — открытый tar на том же хосте недопустим) и проверенный
 тестовым восстановлением:
 
 ```bash
-tar -C /opt -czf - victory-conveyor | gpg -c -o /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
-chmod 600 /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
+( umask 077
+  tar -C /opt -czf - victory-conveyor | gpg -c -o /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
+  chmod 600 /var/backups/victory-conveyor-09.11.26.tar.gz.gpg )
+# off-host: копия .gpg уезжает в backup-контур chat — снапшот переживёт отказ самого хоста
 # проверка восстановления, а не только чтения оглавления:
-mkdir /tmp/restore-check && gpg -d /var/backups/victory-conveyor-09.11.26.tar.gz.gpg \
-  | tar -xz -C /tmp/restore-check
+( umask 077; mkdir -p /tmp/restore-check )
+gpg -d /var/backups/victory-conveyor-09.11.26.tar.gz.gpg | tar -xz -C /tmp/restore-check
 diff <(find /opt/victory-conveyor -type f | sed 's|^/opt/||' | sort) \
-     <(find /tmp/restore-check/victory-conveyor -type f | sed 's|^/tmp/restore-check/||' | sort)
+     <(find /tmp/restore-check/victory-conveyor -type f | sed 's|^/tmp/restore-check/||' | sort) \
+  && echo "списки файлов совпали"
+rm -rf /tmp/restore-check   # cleanup: в /tmp не остаётся распакованных секретов
 ```
 
 Путь `/var/backups` — вне удаляемого дерева; конкретный каталог — по месту,
@@ -417,21 +454,27 @@ diff <(find /opt/victory-conveyor -type f | sed 's|^/opt/||' | sort) \
 на chat конвейеру не нужны — он уже на victory, восстанавливаем каталог ради
 cron/state-остатков и audit-следов.*
 
-**Оценка рисков.** Критический путь — шаг 5 (обычная перекатка службы,
-механика отработана в release.md); схема БД и данные не трогаются; откат
-шага 5 занимает минуты и не требует восстановления данных. Главный
-организационный риск — двойная правка (код в двух репо между шагом 3 и 6):
-замораживается любой merge, трогающий `services/urgent-news-collector` и
+**Оценка рисков.** Критический путь — шаг 5 (перекатка трёх служб в окне
+между тиками; механика отработана в release.md); схема БД и данные не
+трогаются; единственная недоступность — секунды рестарта `news-db`
+(см. трактовку критерия в начале раздела); откат шага 5 занимает минуты
+и не требует восстановления данных. Главный организационный риск —
+двойная правка (код в двух репо между шагом 3 и 6): замораживается любой
+merge, трогающий `services/urgent-news-collector` и
 `services/content-publisher`, с шага 3 до шага 6.
 
 ## 9. Открытые вопросы владельцу
 
 1. Опция: E (рекомендация) / D / A (остаться)? B и C не рекомендуются —
-обоснование в разделе 2.
+   обоснование в разделе 2.
 2. Частота релизов конвейера: если правки редкие и короткие, A может быть
    разумнее — вынос окупается при желании версионировать и катить конвейер
    независимо.
 3. Имя репо: `nick4man/victory-conveyor`? (образы уже называются
    `victory-conveyor` — совпадение имён упростит учёт.)
 4. Удалять ли openclaw-архив `/opt/.openclaw/.openclaw/workspace-conveyor`
-   на chat или оставить как исторический архив (отдельное решение).
+   на chat или оставить как исторический архив (отдельное решение; при
+   удалении — только после отключения его cron-потребителей, раздел 7).
+5. Критерий «без простоя» (раздел 8): подтверждаете трактовку «без потери
+   постов, секунды рестарта news-db допустимы»? Строгий ноль требует
+   оставить mount schema в victory с дублированием источника.
