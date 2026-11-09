@@ -17,9 +17,10 @@ module Llm
   class ChatResponder
     ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 
-    def initialize(conversation, runner: Llm::ToolRunner.new)
-      @conv   = conversation
-      @runner = runner
+    def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
+      @conv     = conversation
+      @runner   = runner
+      @page_ctx = page_ctx # снимок страницы на момент вопроса (см. LlmReplyJob)
     end
 
     def call
@@ -42,8 +43,16 @@ module Llm
     # block — page context can change as the visitor navigates, so we don't
     # cache it.
     def full_system_prompt
-      page_block = Llm::PageContext.block(@conv.metadata.is_a?(Hash) ? @conv.metadata['page'] : nil)
+      page_block = Llm::PageContext.block(current_page_ctx)
       [security_preamble, page_block, system_prompt].reject(&:blank?).join("\n\n")
+    end
+
+    private
+
+    # Снимок сообщения в приоритете — иначе последний известный контекст
+    # переписки (покрывает старые job и приветствие без сообщений).
+    def current_page_ctx
+      @page_ctx || (@conv.metadata.is_a?(Hash) ? @conv.metadata['page'] : nil)
     end
 
     def security_preamble

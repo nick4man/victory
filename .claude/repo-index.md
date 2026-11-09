@@ -124,6 +124,7 @@ app/controllers/chat/presence_controller.rb — module Chat, class PresenceContr
 app/controllers/chatbot/messages_controller.rb — module Chatbot, class MessagesController
 app/controllers/concerns/admin/uploads_block_images.rb — module Admin, module UploadsBlockImages
 app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
+app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
@@ -251,6 +252,7 @@ app/services/chat_tools/staff/kpi_for.rb — module ChatTools, module Staff, mod
 app/services/chat_tools/staff/list_my_open_tasks.rb — module ChatTools, module Staff, module ListMyOpenTasks
 app/services/chat_tools/staff/lookup_lead.rb — module ChatTools, module Staff, module LookupLead
 app/services/chat_tools/staff/lookup_task.rb — module ChatTools, module Staff, module LookupTask
+app/services/chat_tools/staff/market_comparables.rb — module ChatTools, module Staff, module MarketComparables
 app/services/chat_tools/staff/nextcloud_list_templates.rb — module ChatTools, module Staff, module NextcloudListTemplates
 app/services/chat_tools/staff/nextcloud_lookup_deal.rb — module ChatTools, module Staff, module NextcloudLookupDeal
 app/services/chat_tools/staff/registry.rb — module ChatTools, module Staff, module Registry

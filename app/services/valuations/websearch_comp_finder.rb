@@ -87,11 +87,17 @@ module Valuations
     end
 
     def area_bracket_min
-      (@v.total_area.to_f * 0.75).round(1)
+      # Band кэша в тех же единицах, что площади объявлений источника:
+      # для участков ExternalListing хранит сотки (ревью Kimi, PR #184).
+      (band_area * 0.75).round(1)
     end
 
     def area_bracket_max
-      (@v.total_area.to_f * 1.25).round(1)
+      (band_area * 1.25).round(1)
+    end
+
+    def band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
     end
 
     def cached_count
@@ -99,9 +105,18 @@ module Valuations
               .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type,
                      deal_type: @v.deal_type)
               .where(district: @v.district.presence || nil)
-              .where(area: area_bracket_min..area_bracket_max)
               .where('fetched_at > ?', CACHE_TTL.ago)
               .where(closed_at: nil)
+      # Участки: в источниках смешаны два контракта площади — websearch хранит
+      # сотки в area, YRL — дом в м² в area + участок в сотках в land_area.
+      # Band кэша считаем по effective соткам (COALESCE), иначе YRL-записи
+      # давали бы вечный cache miss (ревью Kimi, PR #184).
+      scope = if @v.property_type.to_s == 'land'
+                scope.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?',
+                            area_bracket_min, area_bracket_max)
+              else
+                scope.where(area: area_bracket_min..area_bracket_max)
+              end
       # Тот же city-gate, что в ComparableFinder (issue #172): свежие записи
       # другого города не должны давать cache hit, иначе свежий поиск
       # (tavily, платный) пропускаем, а ComparableFinder отбросит все
@@ -124,7 +139,13 @@ module Valuations
       }
       city = @v.city.presence || guess_city || 'Рязань'
       district = @v.district.presence
-      area_part = @v.total_area.to_f.positive? ? "#{@v.total_area.to_i} м²" : nil
+      area_part = if @v.property_type.to_s == 'land'
+                    # Площадь участков — в сотках (как в comp-домене):
+                    # «участок 8 м²» искажал Tavily-запрос (ревью Kimi, PR #184).
+                    @v.land_area.to_f.positive? ? "участок #{@v.land_area.to_i} соток" : nil
+                  elsif @v.total_area.to_f.positive?
+                    "#{@v.total_area.to_i} м²"
+                  end
       rooms_part = @v.rooms.to_i.positive? ? "#{@v.rooms}-комн" : nil
 
       [
