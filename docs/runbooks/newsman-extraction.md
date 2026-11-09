@@ -39,7 +39,7 @@ compose на хосте `victory` (cutover 13.10.26, `docs/runbooks/cutover-1.0.
 |---|---|---|---|---|---|
 | Независимость релизов | нет: релиз 1.0/CI жёстко связаны с Rails-веткой | формальная: версия submodule — коммит в victory | слабая: subtree-мержи делаются из victory, ритм Rails | полная: свои теги, своя CI, свои sha-образы | полная (как D) |
 | CI | один build.yml, матрица по каталогам | checkout с `submodules: true` везде; агенты в victory-checkout получают весь конвейер | сложные sync-мержи в CI; дубль истории | victory build.yml теряет 2 записи матрицы; новый простой workflow | как D |
-| Риск для живого контура | нулевой (базовая линия) | submodule по умолчанию detached: локальный `docker compose build` молча берёт не ту ревизию; агенты трогают worktree руками | рассинхрон `subtree pull` — две правды о коде | нулевой: victory вообще не видит исходников, только тег образа | нулевой (как D) |
+| Риск для живого контура | нулевой (базовая линия) | gitlink фиксирует ревизию, но рискует пропущенный `submodule update` и незакоммиченный bump gitlink: агент правит код в submodule, а victory (и прод) остаются на старой ревизии; локальный `docker compose build` соберёт не то | рассинхрон `subtree pull` — две правды о коде | нулевой: victory вообще не видит исходников, только тег образа | нулевой (как D) |
 | Учёт владения | честный: всё наше в одном дереве | split-brain: файл числится в двух репо (та же ловушка, из-за которой четыре каталога годами были «чужими», см. services/README.md) | как B | честный: код в своём репо = один владелец; victory хранит контракт (тег) | честный + явный: учёт остаётся в services-check |
 | Стоимость переезда | 0 | средняя: импорт истории, submodule-гигиена, правка CI | высокая: история раздувается, мердж-барьер навсегда | низкая: `git filter-repo`, новый workflow, конец | низкая (как D) + точечная правка build.yml и манифестов учёта |
 
@@ -94,13 +94,20 @@ zhk-registry:services/zhk-registry` по diff с base/before; job `services`
   `<VERSION>` по файлу VERSION конвейера (независимый от Rails). То же для
   `victory-publisher`.
 - В victory `build.yml` из матрицы исчезают `conveyor` и `publisher`
-  (остаётся `zhk-registry`), lint.yml теряет python-тесты конвейера, а
-  `services-check` — два каталога (раздел 6).
+  (остаётся `zhk-registry`): вместе с каталогами уезжает тестовый слой
+  их Dockerfile'ов (`RUN python3 -m unittest …`) — именно там python-тесты
+  конвейера гоняются сейчас, `lint.yml` их и не содержал (только
+  `bin/services-check`), и `services-check` теряет два каталога (раздел 6).
 - Версионирование: конвейер живёт своими git-тегами/версией; victory
   **пинит** конкретный образ в `.env.deploy` (`CONVEYOR_TAG` /
-  `PUBLISHER_TAG`). Раскатка конвейера без Rails-релиза: собрать в новом
-  репо → `CONVEYOR_TAG=<tag> docker compose --profile conveyor up -d
-  --no-deps --pull always conveyor` (механика уже описана в release.md).
+  `PUBLISHER_TAG`). Раскатка конвейера без Rails-релиза — по той же
+  механике, что и в `docs/runbooks/release.md` («Обновить одну службу»):
+  зафиксировать override в `.env.deploy` и перекатить только службы
+  конвейера (`bin/rollout <общий тег> --services conveyor,publisher
+  --profile conveyor`); override сильнее общего тега и переживает
+  следующие выкатки Rails. Shell-prefix `CONVEYOR_TAG=… docker compose
+  up` **не годится**: он живёт одним вызовом, `.env.deploy` не обновит,
+  и следующая выкатка Rails увезёт конвейер на общий `VICTORY_TAG`.
   Раскатка Rails не трогает конвейер, и наоборот.
 - Канал поставки staging/прод не меняется: тот же GHCR, тот же
   `bin/rollout`/deploy-gate; staging-профиль конвейера отсутствует и сейчас
@@ -148,18 +155,28 @@ compose через volume из образа. Предлагается перво
    выносу отношения не имеет, но до/во время миграции конвейера ссылка в
    постах останется внутренней — риск известен и ограничен одним полем.
 2. **`urgent_*.meta.json` / `digest_*.meta.json`** — файловый контракт между
-   триггерами коллектора и `MIRROR_SCRIPT` (chat-host-cron). Поля meta
-   (`external_id`, `hashtags`, `source_url`, …) парсит bash-скрипт по
-   ключам; переименование полей в новом репо без синхронной правки скрипта
-   в victory сломает зеркало молча (пост в TG будет, на сайте — нет).
+   триггерами коллектора и `MIRROR_SCRIPT` (chat-host-cron). Скрипт
+   `services/chat-host-cron/post_news_to_victory.sh` читает из meta-файла
+   ровно четыре ключа: `event_id` (у digest-пайплайнов отсутствует —
+   fallback на имя файла `<basename>.meta.json`), `headline` (у digest
+   отсутствует — fallback `short_summary`), `hashtags`, `source_url`.
+   Поля `external_id` в meta-файле **нет** — оно создаётся только в
+   payload вебхука из `event_id`/имени файла (строка 65 скрипта). Поэтому
+   список «запрещённых к переименованию» ключей: `event_id`, `headline`,
+   `short_summary`, `hashtags`, `source_url`. Переименование любого из
+   них в новом репо без синхронной правки скрипта в victory сломает
+   зеркало молча (пост в TG будет, на сайте — нет).
    Контроль: чек-лист миграции, шаг «первый `[news_ingest] OK` в логе».
 3. **`posts_queue` / `content_revisions` / `system_flags` / `urgent_events`**
    в `news-db` — коннектор и публикатор связаны только таблицей; схема
    уезжает вместе с кодом (п. 4), том `newsdb` и сами данные — нет. Миграции
    схемы на живой базе — out of scope, при необходимости отдельным issue.
 4. **Публикация в @rznvictory** — `publisher` читает `posts_queue`; токен
-   бота в `.env.publisher` (ротирован после инцидента 05.10) остаётся на
-   хосте, `CHANNEL_BOT_TOKEN` в новый репо не копируется.
+   бота в `.env.publisher` (ротирован после инцидента 05.10.26) остаётся на
+   хосте, `CHANNEL_BOT_TOKEN` в новый репо не копируется. Контроль перед
+   переключением (шаг 5): токен жив — `curl
+   "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
+   .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`.
 5. **LLM-шлюз omniroute** (chat:20128 по LAN) — адрес и ключи в
    `.env.conveyor`; новый репо их не видит (пример-файл только).
 
@@ -177,13 +194,20 @@ compose через volume из образа. Предлагается перво
   внешней службы» — `owner: victory` по-прежнему обязателен, `deploy`
   обязан ссылаться на внешний репозиторий, проверка границ (импорты)
   сохраняется, а отсутствие кода — не ошибка. Дёшево: ~15 строк python.
-- В `services/` остаётся каталог-заглушка `conveyor/` с SERVICE.md:
-  `service: conveyor`, `repo: github.com/nick4man/victory-conveyor`,
-  `deploy: compose-профиль conveyor …; код и CI — во внешнем репо`.
-  Заглушка видна агентам и ревьюерам diff'ов victory; правила «владелец
+- В `services/` остаются **две** учётные заглушки — по одной на выносимую
+  службу, чтобы отдельный учёт `content-publisher` не растворился в общей
+  «conveyor»:
+  - `services/urgent-news-collector/SERVICE.md`: `service:
+    urgent-news-collector`, `repo: github.com/nick4man/victory-conveyor`,
+    `deploy: образ victory-conveyor, compose-профиль conveyor …; код и CI —
+    во внешнем репо`;
+  - `services/content-publisher/SERVICE.md`: `service: content-publisher`,
+    `repo: github.com/nick4man/victory-conveyor`, `deploy: образ
+    victory-publisher …; код и CI — во внешнем репо`.
+  Обе видны агентам и ревьюерам diff'ов victory; правила «владелец
   victory», «службы не знают друг о друге» не нарушаются — chat-host-cron
   продолжает существовать как полноценная служба с собственным SERVICE.md.
-- `services/README.md`: таблица получает строку conveyor с пометкой
+- `services/README.md`: таблица получает две строки с пометкой
   «внешний репо», раздел «Упаковка» — абзац про образный контракт.
 
 `VENDOR.md` у audit-engine не трогаем; его репатриация — отдельный трек.
@@ -194,8 +218,10 @@ compose через volume из образа. Предлагается перво
 
 - `/opt/.openclaw/.openclaw/workspace-conveyor` — openclaw-архив, **только
   чтение** (запрет продублирован в `.claude/settings.json`). Живого трафика
-  там нет с 11.09.26. Удаление архива — отдельное решение владельца, в плане
-  миграции не требуется; фиксируем только инвентарную запись.
+  там нет с 11.09.26. Удаление архива **не требуется** для закрытия п. 6
+  issue #190 — это отдельное решение владельца (открытый вопрос 4 раздела
+  9); для п. 6 достаточно инвентарной записи, что архив существует, на
+  чтение и живого трафика в нём нет.
 - `/opt/victory-conveyor` на chat — бывший боевой каталог (cutover B,
   13.10.26: крон заморожен, `publisher-bot` остановлен). По cutover-1.0.md
   он должен был остаться «до ротации пароля audit_user», которую читают
@@ -203,6 +229,10 @@ compose через volume из образа. Предлагается перво
   стабильной работы конвейера из нового репо — инвентаризация
   `audit_user`-потребителей и удаление каталога (это разблокирует и
   ротацию пароля). До этого шага вынос конвейера на chat ничего не меняет.
+
+Итог по п. 6 #190: закрывается инвентарной записью об openclaw-архиве
+(который никуда не девается) и финализацией `/opt/victory-conveyor`
+(шаг 7 — про него, не про openclaw-архив).
 
 ## 8. План миграции (нулевой простой, точки отката)
 
@@ -219,33 +249,76 @@ issue #190 не закрывается, код не двигается.
 `README.md`, `VERSION`, `.github/workflows/` (tests + build/push образов).
 *Откат: удалить репо, ничего не произошло.*
 
-**Шаг 2. CI нового репо.** Workflow: `unittest` (существующие тесты),
-сборка+пуш `victory-conveyor:sha-*` и `victory-publisher:sha-*` на merge.
+**Шаг 2. CI нового репо и доступ к GHCR.** Workflow: `unittest`
+(существующие тесты), сборка+пуш `victory-conveyor:sha-*` и
+`victory-publisher:sha-*` на merge. Образы продолжают лежать по тем же
+путям `ghcr.io/nick4man/victory-{conveyor,publisher}` — compose и rollout
+не меняются. Механика доступа: пакеты привязаны к репозиторию
+`nick4man/victory`, а `GITHUB_TOKEN` Actions нового репо в чужой пакет
+пушить не может. Два рабочих варианта (выбрать до первого пуша):
+- **Подключить пакет к новому репо** (рекомендуется, без долгоживущего
+  PAT): в настройках каждого пакета на GHCR «Connect repository» →
+  `nick4man/victory-conveyor`; после подключения `GITHUB_TOKEN` нового
+  репо с permission `packages: write` пушит в пакет. Имя образа не
+  меняется.
+- PAT с scope `write:packages` в секрете `GHCR_PAT` нового репо,
+  `docker login ghcr.io -u nick4man --password-stdin` из него.
 *Откат: workflow выключается одним коммитом.*
 
 **Шаг 3. Первая сборка из нового репо.** Получаем тег, например
 `sha-<7>` (или `<VERSION>` конвейера). Проверка образа: `docker run --rm
 ghcr.io/nick4man/victory-conveyor:<tag> python3 -m unittest discover` —
-тесты внутри образа зелёные. *Откат: образ просто не используется.*
+тесты внутри образа зелёные. Плюс проверка канала поставки **до** шага 4:
+с хоста victory `docker pull ghcr.io/nick4man/victory-conveyor:<tag>` —
+образ из нового репо реально доступен по тому же пути. *Откат: образ
+просто не используется.*
 
 **Шаг 4. Подготовка victory (PR в dev/upgrade, отдельный issue после
-утверждения):** build.yml теряет conveyor/publisher из матрицы; lint.yml —
-python-тесты конвейера; compose: mount schema initdb перенацеливается на
-checkout нового репо (`/home/q/victory-conveyor`), комментарий-контракт;
-`bin/services-check` — поддержка `repo:`; заглушка `services/conveyor/`;
-`services/README.md` — строка учёта. Рабочий код конвейера из victory **не
+утверждения):** build.yml теряет conveyor/publisher из матрицы; compose:
+mount schema initdb перенацеливается на checkout нового репо
+(`/home/q/victory-conveyor`), комментарий-контракт; `bin/services-check` —
+поддержка `repo:`; учётные заглушки `services/urgent-news-collector/` и
+`services/content-publisher/` (раздел 6); `services/README.md` — строки
+учёта. Рабочий код конвейера из victory **не
 удаляется в этом PR** — только публикация новых образов останавливается
 (это и есть точка невозврата вперёд). *Откат: revert PR, матрица
 возвращается.*
 
+Checkout нового репо на хосте — с дисциплиной синхронизации, без неё
+initdb-схема и код образа разойдутся молча:
+- `git clone https://github.com/nick4man/victory-conveyor /home/q/victory-conveyor`
+  (ops-каталог рядом с `/home/q/victory`, вне victory);
+- checkout строго по immutable-ревизии, совпадающей с тегом образа: для
+  тега `sha-<7>` это `git -C /home/q/victory-conveyor fetch && git -C
+  /home/q/victory-conveyor checkout <sha>`; для `<VERSION>` — тег в новом
+  репо, указывающий на тот же sha;
+- обновление checkout — часть той же процедуры, что и смена `CONVEYOR_TAG`
+  (следующий шаг): сначала checkout по sha, потом override в `.env.deploy`,
+  одним окном.
+
 **Шаг 5. Переключение прода на образ из нового репо.** В окне между тиками
-(как cutover B): `CONVEYOR_TAG=<tag> PUBLISHER_TAG=<tag> docker compose
---profile conveyor up -d --no-deps --pull always conveyor publisher`.
+(как cutover B), механика — per-service override из `release.md`, не
+shell-prefix (иначе следующая выкатка Rails увезёт конвейер на общий
+тег):
+
+```bash
+# 1) checkout нового репо по sha тега (дисциплина из шага 4)
+git -C /home/q/victory-conveyor fetch && git -C /home/q/victory-conveyor checkout <sha>
+# 2) фиксируем override в .env.deploy — как в docs/runbooks/release.md
+{ grep -vE '^(CONVEYOR_TAG|PUBLISHER_TAG)=' .env.deploy || true; } > .env.deploy.new
+printf 'CONVEYOR_TAG=%s\nPUBLISHER_TAG=%s\n' "<tag>" "<tag>" >> .env.deploy.new
+mv .env.deploy.new .env.deploy
+# 3) перекатка только служб конвейера
+bin/rollout "$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2-)" \
+  --services conveyor,publisher --profile conveyor --skip-backup
+```
+
 Контроль 30–60 мин: тики supercronic, `grep -ciE 'error|traceback'` → 0,
 у публикатора `Telegram Bot started`, строка `[news_ingest] OK` после
 первого триггера, новая запись на `/news`.
-*Откат (минуты): `CONVEYOR_TAG=<прежний> PUBLISHER_TAG=<прежний> … up -d`
-— данные в общем томе `newsdb`, ничего не теряется.*
+*Откат (минуты): вернуть в `.env.deploy` прежние значения `CONVEYOR_TAG` /
+`PUBLISHER_TAG` (или удалить строки — службы вернутся на общий `VICTORY_TAG`)
+и повторить команду п. 3; данные в общем томе `newsdb`, ничего не теряется.*
 
 **Шаг 6. Удаление кода из victory (PR, через 5–7 дней стабильной работы).**
 `git rm -r services/urgent-news-collector services/content-publisher` +
@@ -253,10 +326,17 @@ checkout нового репо (`/home/q/victory-conveyor`), комментар�
 зелёный. *Откат: revert PR; история с кодом остаётся в git навсегда.*
 
 **Шаг 7. Финализация chat-легаси.** Инвентаризация читателей
-`audit_user@postgres-local`, ротация пароля, удаление
-`/opt/victory-conveyor` на chat; запись в cutover-1.0.md/этот документ.
-*Откат: каталог восстанавливается из backup-хоста (данные на chat не
-нужны конвейеру — он уже на victory).*
+`audit_user@postgres-local`, ротация пароля. Перед удалением
+`/opt/victory-conveyor` — защищённый снапшот и его проверка:
+`tar -C /opt -czf /var/backups/victory-conveyor-09.11.26.tar.gz
+victory-conveyor` (каталог бэкапов вне удаляемого дерева; конкретный путь —
+по месту, у хоста chat есть свой backup-контур), контроль `tar -tzf
+/var/backups/victory-conveyor-09.11.26.tar.gz | head` — архив читается и
+содержит ожидаемые файлы. Только после проверенного снапшота —
+`rm -rf /opt/victory-conveyor`; запись в cutover-1.0.md/этот документ.
+*Откат: распаковать снапшот обратно (`tar -C /opt -xzf …`); данные на chat
+конвейеру не нужны — он уже на victory, восстанавливаем каталог ради
+cron/state-остатков и audit-следов.*
 
 **Оценка рисков.** Критический путь — шаг 5 (обычная перекатка службы,
 механика отработана в release.md); схема БД и данные не трогаются; откат
