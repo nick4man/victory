@@ -131,17 +131,14 @@ zhk-registry:services/zhk-registry` по diff с base/before; job `services`
 
 Уезжают: исходники коллектора и публикатора, их Dockerfile'ы, `schema/`
 (initdb-скрипты news-db — фактически миграции БД конвейера, должны жить
-рядом с кодом, который их генерирует; compose продолжит монтировать их из
-чекаутa нового репо на хосте — см. шаг 4 плана, где лежит mount-source).
+рядом с кодом, который их генерирует; как compose получает к ним доступ
+после выноса — развилка 5a/5b раздела 8).
 
 Замечание по монтированию schema: сегодня `news-db` монтирует
-`./services/urgent-news-collector/schema` из checkout'а victory. После выноса
-initdb-скрипты надо монтировать из checkout'а нового репо (например
-`/home/q/victory-conveyor` рядом с ops-каталогом) либо продублировать в
-compose через volume из образа. Предлагается первое: `news-db` и так не
-пересоздаётся (`initdb` работает только на пустом томе), но источник схемы
-должен быть адресуем. Это единственная точка, где victory после выноса
-читает файлы из нового репо, — фиксируется в compose-комментарии как контракт.
+`./services/urgent-news-collector/schema` из checkout'а victory, и после
+выноса этот путь исчезнет (шаг 6). Источник initdb-скриптов должен остаться
+адресуемым — тут развилка вариантов 5a/5b раздела 8: перенацеливание mount
+на checkout нового репо либо учётная копия в victory с hash-пином.
 
 ## 5. Контракты, которые нельзя ломать (п. 4)
 
@@ -153,16 +150,17 @@ compose через volume из образа. Предлагается перво
    `telegram_channel_url`, `telegram_channel_handle`; idempotency по
    `external_id`.
    Ответ с `.url` — **баг #189** (внутренний `http://web:3000/...` вместо
-   `https://victory62.org/...`): фикс Rails-стороны идёт своим issue, к
-   выносу отношения не имеет, но до/во время миграции конвейера ссылка в
-   постах останется внутренней — риск известен и ограничен одним полем.
+   `https://victory62.org/...`): фикс влит в `dev/chat` (#193), до релиза
+   в main в постах ссылка останется внутренней. Контроль перед миграцией:
+   проверить, что ответ вебхука (или результат #193 после релиза) отдаёт
+   публичный `.url`. К выносу отношения не имеет, но точка известная.
 2. **`urgent_*.meta.json` / `digest_*.meta.json`** — файловый контракт между
    триггерами коллектора и `MIRROR_SCRIPT` (chat-host-cron). Скрипт
    `services/chat-host-cron/post_news_to_victory.sh` читает из meta-файла
    пять ключей: `event_id`, `headline`, `short_summary`, `hashtags`,
    `source_url`. Два из них — с fallback'ами: `event_id` у digest-пайплайнов
-   отсутствует (подстановка имени файла без суффикса, `basename "$META"`
-   .meta.json`), `headline` у digest отсутствует (fallback `short_summary`).
+   отсутствует (подстановка имени файла без суффикса — команда
+   `basename "$META" .meta.json`), `headline` у digest отсутствует (fallback `short_summary`).
    Поля `external_id` в meta-файле **нет** — оно создаётся
    только в payload вебхука из `event_id`/имени файла (строка 65 скрипта). Поэтому
    список «запрещённых к переименованию» ключей: `event_id`, `headline`,
@@ -207,7 +205,9 @@ compose через volume из образа. Предлагается перво
   - `services/urgent-news-collector/SERVICE.md`: `service:
     urgent-news-collector`, `repo: github.com/nick4man/victory-conveyor`,
     `deploy: образ victory-conveyor, compose-профиль conveyor …; код и CI —
-    во внешнем репо`;
+    во внешнем репо`. При варианте 5b (раздел 8) каталог заглушки держит
+    ещё и учётную копию `schema/` с пином sha256 в манифесте — `bin/services-check`
+    сверяет копию с пином, расхождение с новым репо ловится при обновлении пина;
   - `services/content-publisher/SERVICE.md`: `service: content-publisher`,
     `repo: github.com/nick4man/victory-conveyor`, `deploy: образ
     victory-publisher …; код и CI — во внешнем репо`.
@@ -250,19 +250,28 @@ compose через volume из образа. Предлагается перво
 
 ## 8. План миграции (точки отката; про «нулевой простой» — ниже)
 
-Все шаги — без остановки текущего конвейера; единственные моменты
-переключения — смена тега образа (как обычная выкатка службы).
+Все шаги — без остановки текущего конвейера; переключение — перекатка
+служб конвейера в окне между тиками (как cutover B).
 
-**Про критерий «без простоя» (#190).** Строгий ноль недостижим: смена
-mount у `news-db` (шаг 4) гарантированно пересоздаёт её контейнер, это
-секунды недоступности БД в окне между тиками. Посты при этом **не
-теряются**: `posts_queue` и state конвейера — в именованных томах,
-пропущенный тик подбирается следующим прогоном, сайт и TG-канал штатны.
-План трактует критерий как «без потери постов и без простоя вне окна
-между тиками». Если владелец требует строгий ноль — единственный
-вариант: не трогать mount schema в victory и принять дублирование
-источника схемы (противоречит разделу 4); фиксируется в открытом
-вопросе 5 раздела 9.
+**Развилка: критерий «без простоя» (#190) — два варианта шага 5.**
+Критерий issue — «без простоя конвейера». Смена mount у `news-db`
+(перенацеливание источника схемы) пересоздаёт её контейнер — секунды
+недоступности БД. Поэтому два варианта:
+
+- **5a — единое окно.** mount перенацеливается на checkout нового репо
+  (шаг 4); `news-db`, `conveyor`, `publisher` перекатываются одной
+  командой в окне между тиками. Недоступность БД — секунды; посты **не
+  теряются**: `posts_queue` и state — в именованных томах, пропущенный тик
+  подбирается следующим прогоном. Единый источник схемы, без дублей.
+- **5b — строгий ноль.** mount `news-db` не меняется, контейнер не
+  пересоздаётся, перекатываются только `conveyor` и `publisher`. В stub
+  `services/urgent-news-collector/schema/` (раздел 6) кладётся учётная
+  копия initdb-скриптов с пином sha256 в манифесте — `bin/services-check`
+  сверяет копию с пином; расхождение с новым репо ловится при обновлении
+  пина отдельным коммитом victory. Цена: двойной источник схемы.
+
+Выбор варианта — открытый вопрос 5 (раздел 9); ниже команды шага 5 для
+5a, для 5b — те же, без `news-db` и без правок mount в шаге 4.
 
 **Шаг 0. Утверждение (человек).** Владелец выбирает опцию. До утверждения
 issue #190 не закрывается, код не двигается.
@@ -310,19 +319,23 @@ done
 
 Сверить локальный `RepoDigests` с digest реестра — совпадение и есть
 гарантия, что под тегом лежит именно тот образ (а не прежний код под
-свежим тегом); `Created` — со временем сборки в новом репо. Локальный
-config ID (`docker image inspect {{.Id}}`) с manifest digest сверять
-нельзя — это разные хеши.
+свежим тегом). Provenance: digest реестра сверяем не «сам с собой», а с
+digest'ом, напечатанным workflow'ом нового репо для **конкретного** run'а
+сборки (build/push печатает digest в лог; фиксируем run URL и оба digest
+в чек-листе миграции). `Created` — со временем сборки того же run'а.
+Локальный config ID (`docker image inspect {{.Id}}`) с manifest digest
+сверять нельзя — это разные хеши.
 *Откат: образ просто не используется.*
 
 **Шаг 4. Подготовка victory (PR в dev/upgrade, отдельный issue после
 утверждения):** build.yml теряет conveyor/publisher из матрицы; compose:
-mount schema initdb перенацеливается на checkout нового репо
-(`/home/q/victory-conveyor/urgent-news-collector/schema`), **секции
-`build:` у `conveyor` и `publisher` удаляются** — службы становятся чистыми
-registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
+**секции `build:` у `conveyor` и `publisher` удаляются** — службы становятся
+чистыми registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
 перестаёт их пропускать (сейчас buildable-службы rollout не пуллит, а при
-исчезнувшем после шага 6 build-context упал бы на `compose build`);
+исчезнувшем после шага 6 build-context упал бы на `compose build`); mount
+schema — по выбранному варианту: 5a — перенацелить на checkout нового репо
+(`/home/q/victory-conveyor/urgent-news-collector/schema`), 5b — оставить как
+есть и добавить учётную копию с hash-пином в stub (раздел 6);
 `bin/services-check` — поддержка `repo:`; учётные заглушки
 `services/urgent-news-collector/` и `services/content-publisher/` (раздел
 6); `services/README.md` — строки учёта. Рабочий код конвейера из victory
@@ -330,22 +343,14 @@ registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
 (это и есть точка невозврата вперёд). *Откат: revert PR, матрица
 возвращается.*
 
-Два следствия шага 4, которые план обязан учесть явно:
+Доставка compose на хост: `bin/rollout` запускается из ops-каталога
+`/home/q/victory` (checkout main на хосте; bind-mount отключён с cutover 1.0),
+поэтому до шага 5 там обязателен `git -C /home/q/victory pull` — иначе
+rollout пойдёт по старому compose (fail-fast — в шаге 5).
 
-- **Смена mount у `news-db` пересоздаст её контейнер** при первом `up` с
-  новым compose (том `newsdb` сохраняется, данные не теряются, initdb на
-  непустом томе не повторяется; недоступность БД — секунды, см. трактовку
-  критерия выше). `news-db` включается в то же окно перекатки, что и
-  conveyor/publisher (шаг 5), — одна перекатка в окне между тиками.
-- **Доставка compose на хост.** `bin/rollout` запускается из ops-каталога
-  `/home/q/victory` (checkout ветки main на хосте; живого bind-mount нет
-  с cutover 1.0). Compose-правки едут обычным путём (PR → `dev/upgrade` →
-  main), но до шага 5 на хосте обязателен `git -C /home/q/victory pull` —
-  иначе rollout пойдёт по старому compose со старым mount и старыми
-  `build:`-секциями.
-
-Checkout нового репо на хосте — с дисциплиной синхронизации, без неё
-initdb-схема и код образа разойдутся молча:
+Checkout нового репо на хосте (вариант 5a; для 5b checkout не нужен, а
+initdb-смок ниже гоняется против учётной копии в stub) — с дисциплиной
+синхронизации, без неё initdb-схема и код образа разойдутся молча:
 - `git clone https://github.com/nick4man/victory-conveyor /home/q/victory-conveyor`
   (ops-каталог рядом с `/home/q/victory`, вне victory);
 - checkout строго по immutable-ревизии, совпадающей с тегом образа: для
@@ -360,22 +365,30 @@ initdb-схема и код образа разойдутся молча:
   ```bash
   docker rm -f newsdb-smoke 2>/dev/null || true
   docker volume rm -f smoke_initdb 2>/dev/null || true   # иначе повторный прогон пропустит initdb
+  trap 'docker rm -f newsdb-smoke 2>/dev/null; docker volume rm -f smoke_initdb 2>/dev/null' EXIT
   docker volume create smoke_initdb
   docker run -d --name newsdb-smoke \
     -e POSTGRES_PASSWORD=smoke -e POSTGRES_USER=news -e POSTGRES_DB=news \
     -v /home/q/victory-conveyor/urgent-news-collector/schema:/docker-entrypoint-initdb.d:ro \
     -v smoke_initdb:/var/lib/postgresql/data viktory-postgres-pgvector:pg15-postgis36
-  # у голого docker run нет compose-healthcheck — ждём готовности сами:
-  for i in $(seq 1 30); do
-    docker exec newsdb-smoke pg_isready -U news -d news >/dev/null 2>&1 && break
-    sleep 2
+  # pg_isready отвечает уже на ВРЕМЕННЫЙ initdb-сервер (техника из bin/backup):
+  # ждём в логах завершения инициализации, потом — постоянный сервер.
+  for i in $(seq 1 90); do
+    docker logs newsdb-smoke 2>&1 | grep -q 'init process complete' && break
+    [ "$i" = 90 ] && { echo 'initdb не завершился за 90 с' >&2; exit 1; }
+    sleep 1
   done
-  # initdb применился: все четыре таблицы на месте (не меньше):
-  docker exec newsdb-smoke psql -U news -d news -tAc \
+  for i in $(seq 1 30); do
+    docker exec newsdb-smoke pg_isready -U news -d news -q 2>/dev/null && break
+    [ "$i" = 30 ] && { echo 'постоянный сервер не поднялся за 30 с' >&2; exit 1; }
+    sleep 1
+  done
+  # initdb применился: ровно четыре таблицы (не "хотя бы одна"):
+  count=$(docker exec newsdb-smoke psql -U news -d news -tAc \
     "select count(*) from information_schema.tables where table_schema='public'
-     and table_name in ('urgent_events','posts_queue','content_revisions','system_flags')"
-  # ожидается ровно 4
-  docker rm -f newsdb-smoke && docker volume rm smoke_initdb
+     and table_name in ('urgent_events','posts_queue','content_revisions','system_flags')")
+  [ "$count" = "4" ] || { echo "таблиц $count вместо 4 — initdb-смок провален" >&2; exit 1; }
+  docker rm -f newsdb-smoke && docker volume rm smoke_initdb && trap - EXIT
   ```
 
   Простой `ls` mount'а этого не проверяет: ошибка в initdb-скриптах
@@ -385,16 +398,28 @@ initdb-схема и код образа разойдутся молча:
   одним окном; откат шага 5 возвращает и checkout (`git -C
   /home/q/victory-conveyor checkout <прежний sha>`).
 
-**Шаг 5. Переключение прода на образ из нового репо.** В окне между тиками
-(как cutover B), механика — per-service override из `release.md`, не
-shell-prefix (иначе следующая выкатка Rails увезёт конвейер на общий
-тег):
+**Шаг 5. Переключение прода на образ из нового репо** (команды — для
+5a; для 5b пропустить проверку mount и checkout и убрать `news-db` из
+п. 3).
+В окне между тиками, механика — per-service override из `release.md`, не
+shell-prefix (иначе следующая выкатка Rails увезёт конвейер на общий тег).
+Перед переключением зафиксировать прежние теги (`PREV_CONVEYOR_TAG`,
+`PREV_PUBLISHER_TAG` из `.env.deploy`) — откат без них невозможен.
 
 ```bash
-cd /home/q/victory   # rollout и .env.deploy живут в ops-каталоге — все пути относительно него
-# 0) актуализировать ops-каталог на хосте (доставка compose шага 4)
-git -C /home/q/victory pull
-# 1) checkout нового репо по sha тега (дисциплина из шага 4)
+cd /home/q/victory   # rollout и .env.deploy живут в ops-каталоге
+# 0) доставка compose шага 4 + fail-fast:
+git -C /home/q/victory pull --ff-only
+[ "$(git -C /home/q/victory rev-parse HEAD)" = \
+  "$(git ls-remote https://github.com/nick4man/victory main | cut -f1)" ] \
+  || { echo 'ops-каталог не на актуальном main' >&2; exit 1; }
+docker compose --profile conveyor config | grep -q '/home/q/victory-conveyor/urgent-news-collector/schema' \
+  || { echo 'compose не содержит нового mount schema' >&2; exit 1; }
+# старые build:-секции должны быть удалены:
+docker compose --profile conveyor config \
+  | grep -E 'context: .*/services/(urgent-news-collector|content-publisher)' \
+  && { echo 'build:-секции conveyor/publisher не удалены' >&2; exit 1; }
+# 1) checkout нового репо по sha тега (дисциплина из шага 4; 5a)
 git -C /home/q/victory-conveyor fetch && git -C /home/q/victory-conveyor checkout <sha>
 # 2) фиксируем override в .env.deploy — как в docs/runbooks/release.md
 { grep -vE '^(CONVEYOR_TAG|PUBLISHER_TAG)=' .env.deploy || true; } > .env.deploy.new
@@ -409,11 +434,13 @@ bin/rollout "$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2-)" \
 Контроль 30–60 мин: тики supercronic, `grep -ciE 'error|traceback'` → 0,
 у публикатора `Telegram Bot started`, строка `[news_ingest] OK` после
 первого триггера, новая запись на `/news`.
-*Откат (минуты): вернуть в `.env.deploy` прежние значения `CONVEYOR_TAG` /
-`PUBLISHER_TAG` (или удалить строки — службы вернутся на общий `VICTORY_TAG`)
-и повторить команду п. 3; mount schema обратно не откатываем (на существующем
-томе `newsdb` initdb не повторяется, данные не трогаются); данные в общем
-томе, ничего не теряется.*
+*Откат (минуты): вернуть в `.env.deploy` **зафиксированные** `PREV_CONVEYOR_TAG`
+/ `PREV_PUBLISHER_TAG` (не удалять строки: после шага 4 victory больше не
+публикует образы конвейера под общим `VICTORY_TAG` — без override pull
+пойдёт за несуществующим тегом) и повторить команду п. 3; в 5a дополнительно
+вернуть checkout (`git -C /home/q/victory-conveyor checkout <прежний sha>`).
+Mount schema обратно не откатываем (на существующем томе `newsdb` initdb
+не повторяется, данные не трогаются); данные в общем томе, ничего не теряется.*
 
 **Шаг 6. Удаление кода из victory (PR, через 5–7 дней стабильной работы).**
 Код удаляется, **учётные манифесты-заглушки остаются** (они внесены шагом 4
@@ -426,10 +453,10 @@ services/content-publisher/SERVICE.md`. Остающиеся ссылки — CL
 
 **Шаг 7. Финализация chat-легаси.** Предусловие: инвентаризированы и
 отключены cron-потребители openclaw-архива (`backfill_embeddings.py` и др.
-из SERVICE.md коллектора, раздел 7) — иначе «финализация» оставит на chat
-висящие крон-строки, читающие удаляемые/архивные пути. Далее:
-инвентаризация читателей `audit_user@postgres-local`, ротация пароля.
-Перед удалением `/opt/victory-conveyor` — снапшот, **зашифрованный** (внутри каталога лежит
+из SERVICE.md коллектора, раздел 7) — иначе на chat останутся крон-строки,
+читающие архивные пути. Далее: инвентаризация читателей
+`audit_user@postgres-local`, ротация пароля. Перед удалением
+`/opt/victory-conveyor` — снапшот, **зашифрованный** (внутри каталога лежит
 `.env` с секретами — открытый tar на том же хосте недопустим) и проверенный
 тестовым восстановлением:
 
@@ -437,13 +464,17 @@ services/content-publisher/SERVICE.md`. Остающиеся ссылки — CL
 ( umask 077
   tar -C /opt -czf - victory-conveyor | gpg -c -o /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
   chmod 600 /var/backups/victory-conveyor-09.11.26.tar.gz.gpg )
-# off-host: копия .gpg уезжает в backup-контур chat — снапшот переживёт отказ самого хоста
+# off-host: копия в backup-контур chat (назначение — из конфигурации бэкапов
+# хоста), сверка по sha256 — иначе единственный архив остаётся на удаляемом хосте:
+rsync -a /var/backups/victory-conveyor-09.11.26.tar.gz.gpg <backup-host>:/backups/chat/
+ssh <backup-host> sha256sum /backups/chat/victory-conveyor-09.11.26.tar.gz.gpg
+sha256sum /var/backups/victory-conveyor-09.11.26.tar.gz.gpg   # хеши совпали
 # проверка восстановления, а не только чтения оглавления:
 ( umask 077; mkdir -p /tmp/restore-check )
 gpg -d /var/backups/victory-conveyor-09.11.26.tar.gz.gpg | tar -xz -C /tmp/restore-check
-diff <(find /opt/victory-conveyor -type f | sed 's|^/opt/||' | sort) \
-     <(find /tmp/restore-check/victory-conveyor -type f | sed 's|^/tmp/restore-check/||' | sort) \
-  && echo "списки файлов совпали"
+# побайтовая сверка содержимого (имена не ловят повреждение .env и state):
+diff -r /opt/victory-conveyor /tmp/restore-check/victory-conveyor \
+  && echo 'содержимое совпало побайтово'
 rm -rf /tmp/restore-check   # cleanup: в /tmp не остаётся распакованных секретов
 ```
 
@@ -457,7 +488,8 @@ cron/state-остатков и audit-следов.*
 **Оценка рисков.** Критический путь — шаг 5 (перекатка трёх служб в окне
 между тиками; механика отработана в release.md); схема БД и данные не
 трогаются; единственная недоступность — секунды рестарта `news-db`
-(см. трактовку критерия в начале раздела); откат шага 5 занимает минуты
+(см. развилку 5a/5b в начале раздела — для 5b этой недоступности нет);
+откат шага 5 занимает минуты
 и не требует восстановления данных. Главный организационный риск —
 двойная правка (код в двух репо между шагом 3 и 6): замораживается любой
 merge, трогающий `services/urgent-news-collector` и
@@ -475,6 +507,6 @@ merge, трогающий `services/urgent-news-collector` и
 4. Удалять ли openclaw-архив `/opt/.openclaw/.openclaw/workspace-conveyor`
    на chat или оставить как исторический архив (отдельное решение; при
    удалении — только после отключения его cron-потребителей, раздел 7).
-5. Критерий «без простоя» (раздел 8): подтверждаете трактовку «без потери
-   постов, секунды рестарта news-db допустимы»? Строгий ноль требует
-   оставить mount schema в victory с дублированием источника.
+5. Критерий «без простоя» (раздел 8): вариант **5b** (строгий ноль, двойной
+   источник схемы с hash-пином) или **5a** (единое окно, секунды рестарта
+   `news-db`, единый источник схемы)?
