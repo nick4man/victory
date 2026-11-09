@@ -157,11 +157,11 @@ compose через volume из образа. Предлагается перво
 2. **`urgent_*.meta.json` / `digest_*.meta.json`** — файловый контракт между
    триггерами коллектора и `MIRROR_SCRIPT` (chat-host-cron). Скрипт
    `services/chat-host-cron/post_news_to_victory.sh` читает из meta-файла
-   ровно четыре ключа: `event_id` (у digest-пайплайнов отсутствует —
-   fallback на имя файла `<basename>.meta.json`), `headline` (у digest
-   отсутствует — fallback `short_summary`), `hashtags`, `source_url`.
-   Поля `external_id` в meta-файле **нет** — оно создаётся только в
-   payload вебхука из `event_id`/имени файла (строка 65 скрипта). Поэтому
+   пять ключей: `event_id` (у digest-пайплайнов отсутствует — fallback на
+   имя файла без суффикса, `basename "$META" .meta.json`), `headline`
+   (у digest отсутствует — fallback `short_summary`), `hashtags`,
+   `source_url`. Поля `external_id` в meta-файле **нет** — оно создаётся
+   только в payload вебхука из `event_id`/имени файла (строка 65 скрипта). Поэтому
    список «запрещённых к переименованию» ключей: `event_id`, `headline`,
    `short_summary`, `hashtags`, `source_url`. Переименование любого из
    них в новом репо без синхронной правки скрипта в victory сломает
@@ -172,11 +172,13 @@ compose через volume из образа. Предлагается перво
    уезжает вместе с кодом (п. 4), том `newsdb` и сами данные — нет. Миграции
    схемы на живой базе — out of scope, при необходимости отдельным issue.
 4. **Публикация в @rznvictory** — `publisher` читает `posts_queue`; токен
-   бота в `.env.publisher` (ротирован после инцидента 05.10.26) остаётся на
-   хосте, `CHANNEL_BOT_TOKEN` в новый репо не копируется. Контроль перед
-   переключением (шаг 5): токен жив — `curl
-   "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
-   .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`.
+   бота в `.env.publisher` (ротирован после инцидента 05.10.26 по записи
+   инцидента) остаётся на хосте, `CHANNEL_BOT_TOKEN` в новый репо не
+   копируется. Контроль перед переключением (шаг 5): токен принят Bot API —
+   `curl "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
+   .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`. getMe
+   подтверждает лишь валидность текущего токена, историю утечки не проверяет;
+   при сомнениях в ротации — проротировать токен до шага 5.
 5. **LLM-шлюз omniroute** (chat:20128 по LAN) — адрес и ключи в
    `.env.conveyor`; новый репо их не видит (пример-файл только).
 
@@ -253,14 +255,15 @@ issue #190 не закрывается, код не двигается.
 (существующие тесты), сборка+пуш `victory-conveyor:sha-*` и
 `victory-publisher:sha-*` на merge. Образы продолжают лежать по тем же
 путям `ghcr.io/nick4man/victory-{conveyor,publisher}` — compose и rollout
-не меняются. Механика доступа: пакеты привязаны к репозиторию
-`nick4man/victory`, а `GITHUB_TOKEN` Actions нового репо в чужой пакет
-пушить не может. Два рабочих варианта (выбрать до первого пуша):
-- **Подключить пакет к новому репо** (рекомендуется, без долгоживущего
-  PAT): в настройках каждого пакета на GHCR «Connect repository» →
-  `nick4man/victory-conveyor`; после подключения `GITHUB_TOKEN` нового
-  репо с permission `packages: write` пушит в пакет. Имя образа не
-  меняется.
+не меняются. Механика доступа: пакеты принадлежат `nick4man/victory`, а
+`GITHUB_TOKEN` Actions нового репо в чужой пакет пушить не может. Два
+рабочих варианта (выбрать до первого пуша, применить к **обоим** пакетам):
+- **Actions access к пакету** (рекомендуется, без долгоживущего PAT):
+  настройки пакета на GHCR → «Manage Actions access» → Add repository →
+  `nick4man/victory-conveyor` → роль **Write**; после этого `GITHUB_TOKEN`
+  нового репо с permission `packages: write` пушит в пакет. Простого
+  «Connect repository» (ссылка на странице репо) недостаточно — права
+  на push выдаются именно через Manage Actions access.
 - PAT с scope `write:packages` в секрете `GHCR_PAT` нового репо,
   `docker login ghcr.io -u nick4man --password-stdin` из него.
 *Откат: workflow выключается одним коммитом.*
@@ -268,19 +271,32 @@ issue #190 не закрывается, код не двигается.
 **Шаг 3. Первая сборка из нового репо.** Получаем тег, например
 `sha-<7>` (или `<VERSION>` конвейера). Проверка образа: `docker run --rm
 ghcr.io/nick4man/victory-conveyor:<tag> python3 -m unittest discover` —
-тесты внутри образа зелёные. Плюс проверка канала поставки **до** шага 4:
-с хоста victory `docker pull ghcr.io/nick4man/victory-conveyor:<tag>` —
-образ из нового репо реально доступен по тому же пути. *Откат: образ
-просто не используется.*
+тесты внутри образа зелёные. Плюс проверка канала поставки **до** шага 4 —
+**оба** образа, с фиксацией image ID (иначе возможен запуск прежнего кода
+под новым тегом):
+
+```bash
+for img in victory-conveyor victory-publisher; do
+  docker pull ghcr.io/nick4man/$img:<tag>
+  docker image inspect ghcr.io/nick4man/$img:<tag> --format '{{.Id}} {{.Created}}'
+done
+```
+
+Сверить `Created` со временем сборки в новом репо и `Id` с digests в логе
+пуша. *Откат: образ просто не используется.*
 
 **Шаг 4. Подготовка victory (PR в dev/upgrade, отдельный issue после
 утверждения):** build.yml теряет conveyor/publisher из матрицы; compose:
 mount schema initdb перенацеливается на checkout нового репо
-(`/home/q/victory-conveyor`), комментарий-контракт; `bin/services-check` —
-поддержка `repo:`; учётные заглушки `services/urgent-news-collector/` и
-`services/content-publisher/` (раздел 6); `services/README.md` — строки
-учёта. Рабочий код конвейера из victory **не
-удаляется в этом PR** — только публикация новых образов останавливается
+(`/home/q/victory-conveyor/urgent-news-collector/schema`), **секции
+`build:` у `conveyor` и `publisher` удаляются** — службы становятся чистыми
+registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
+перестаёт их пропускать (сейчас buildable-службы rollout не пуллит, а при
+исчезнувшем после шага 6 build-context упал бы на `compose build`);
+`bin/services-check` — поддержка `repo:`; учётные заглушки
+`services/urgent-news-collector/` и `services/content-publisher/` (раздел
+6); `services/README.md` — строки учёта. Рабочий код конвейера из victory
+**не удаляется в этом PR** — только публикация новых образов останавливается
 (это и есть точка невозврата вперёд). *Откат: revert PR, матрица
 возвращается.*
 
@@ -292,9 +308,15 @@ initdb-схема и код образа разойдутся молча:
   тега `sha-<7>` это `git -C /home/q/victory-conveyor fetch && git -C
   /home/q/victory-conveyor checkout <sha>`; для `<VERSION>` — тег в новом
   репо, указывающий на тот же sha;
+- контроль после checkout: `git -C /home/q/victory-conveyor rev-parse HEAD`
+  равен sha тега, а после `up` — `docker compose exec news-db ls
+  /docker-entrypoint-initdb.d/` показывает файлы схемы (ошибка mount на
+  существующем `newsdb` проявилась бы только при пересоздании тома, поэтому
+  проверяем явно);
 - обновление checkout — часть той же процедуры, что и смена `CONVEYOR_TAG`
   (следующий шаг): сначала checkout по sha, потом override в `.env.deploy`,
-  одним окном.
+  одним окном; откат шага 5 возвращает и checkout (`git -C
+  /home/q/victory-conveyor checkout <прежний sha>`).
 
 **Шаг 5. Переключение прода на образ из нового репо.** В окне между тиками
 (как cutover B), механика — per-service override из `release.md`, не
@@ -321,21 +343,35 @@ bin/rollout "$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2-)" \
 и повторить команду п. 3; данные в общем томе `newsdb`, ничего не теряется.*
 
 **Шаг 6. Удаление кода из victory (PR, через 5–7 дней стабильной работы).**
-`git rm -r services/urgent-news-collector services/content-publisher` +
-оставшиеся ссылки (CLAUDE.md-соседи, AGENTS.md, repo-index). CI victory
-зелёный. *Откат: revert PR; история с кодом остаётся в git навсегда.*
+Код удаляется, **учётные манифесты-заглушки остаются** (они внесены шагом 4
+и обещаны разделом 6): `git rm -r services/urgent-news-collector
+services/content-publisher`, затем возврат двух SERVICE.md из истории:
+`git checkout <коммит шага 4> -- services/urgent-news-collector/SERVICE.md
+services/content-publisher/SERVICE.md`. Остающиеся ссылки — CLAUDE.md-
+соседи, AGENTS.md, repo-index. CI victory зелёный. *Откат: revert PR;
+история с кодом остаётся в git навсегда.*
 
 **Шаг 7. Финализация chat-легаси.** Инвентаризация читателей
 `audit_user@postgres-local`, ротация пароля. Перед удалением
-`/opt/victory-conveyor` — защищённый снапшот и его проверка:
-`tar -C /opt -czf /var/backups/victory-conveyor-09.11.26.tar.gz
-victory-conveyor` (каталог бэкапов вне удаляемого дерева; конкретный путь —
-по месту, у хоста chat есть свой backup-контур), контроль `tar -tzf
-/var/backups/victory-conveyor-09.11.26.tar.gz | head` — архив читается и
-содержит ожидаемые файлы. Только после проверенного снапшота —
-`rm -rf /opt/victory-conveyor`; запись в cutover-1.0.md/этот документ.
-*Откат: распаковать снапшот обратно (`tar -C /opt -xzf …`); данные на chat
-конвейеру не нужны — он уже на victory, восстанавливаем каталог ради
+`/opt/victory-conveyor` — снапшот, **зашифрованный** (внутри каталога лежит
+`.env` с секретами — открытый tar на том же хосте недопустим) и проверенный
+тестовым восстановлением:
+
+```bash
+tar -C /opt -czf - victory-conveyor | gpg -c -o /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
+chmod 600 /var/backups/victory-conveyor-09.11.26.tar.gz.gpg
+# проверка восстановления, а не только чтения оглавления:
+mkdir /tmp/restore-check && gpg -d /var/backups/victory-conveyor-09.11.26.tar.gz.gpg \
+  | tar -xz -C /tmp/restore-check
+diff <(find /opt/victory-conveyor -type f | sed 's|^/opt/||' | sort) \
+     <(find /tmp/restore-check/victory-conveyor -type f | sed 's|^/tmp/restore-check/||' | sort)
+```
+
+Путь `/var/backups` — вне удаляемого дерева; конкретный каталог — по месту,
+у хоста chat есть свой backup-контур. Списки файлов совпали — только после
+этого `rm -rf /opt/victory-conveyor`; запись в cutover-1.0.md/этот документ.
+*Откат: распаковать снапшот обратно (`gpg -d … | tar -xz -C /opt`); данные
+на chat конвейеру не нужны — он уже на victory, восстанавливаем каталог ради
 cron/state-остатков и audit-следов.*
 
 **Оценка рисков.** Критический путь — шаг 5 (обычная перекатка службы,
