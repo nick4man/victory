@@ -37,7 +37,7 @@ compose на хосте `victory` (cutover 13.10.26, `docs/runbooks/cutover-1.0.
 
 | | A. Статус-кво (всё в victory) | B. Отдельный репо + submodule | C. Отдельный репо + subtree | D. Отдельный репо, связь только образом | E. Гибрид (D + compose/учёт в victory) |
 |---|---|---|---|---|---|
-| Независимость релизов | нет: релиз 1.0/CI жёстко связаны с Rails-веткой | формальная: версия submodule — коммит в victory | слабая: subtree-мержи делаются из victory, ритм Rails | полная: свои теги, своя CI, свои sha-образы | полная (как D) |
+| Независимость релизов | частичная: sha-образы конвейера собираются по изменениям каталога и катятся override'ом (`CONVEYOR_TAG`), но VERSION и релизный ритм общие с Rails | формальная: версия submodule — коммит в victory | слабая: subtree-мержи делаются из victory, ритм Rails | полная: свои теги, своя CI, свои sha-образы | полная (как D) |
 | CI | один build.yml, матрица по каталогам | checkout с `submodules: true` везде; агенты в victory-checkout получают весь конвейер | сложные sync-мержи в CI; дубль истории | victory build.yml теряет 2 записи матрицы; новый простой workflow | как D |
 | Риск для живого контура | нулевой (базовая линия) | gitlink фиксирует ревизию, но рискует пропущенный `submodule update` и незакоммиченный bump gitlink: агент правит код в submodule, а victory (и прод) остаются на старой ревизии; локальный `docker compose build` соберёт не то | рассинхрон `subtree pull` — две правды о коде | нулевой: victory вообще не видит исходников, только тег образа | нулевой (как D) |
 | Учёт владения | честный: всё наше в одном дереве | split-brain: файл числится в двух репо (та же ловушка, из-за которой четыре каталога годами были «чужими», см. services/README.md) | как B | честный: код в своём репо = один владелец; victory хранит контракт (тег) | честный + явный: учёт остаётся в services-check |
@@ -148,8 +148,10 @@ compose через volume из образа. Предлагается перво
 Конвейер живой: пост каждые 15 минут. Независимо от выбранной опции:
 
 1. **`POST /webhooks/news_ingest`** (Rails-сторона, никуда не уезжает):
-   payload с `external_id`, `title`, `body_md`, `hashtags`, `category`,
-   `schema_type`, `published_at`, `source_url`, idempotency по `external_id`.
+   payload с `external_id`, `external_source`, `title`, `body_md`,
+   `hashtags`, `category`, `schema_type`, `published_at`, `source_url`,
+   `telegram_channel_url`, `telegram_channel_handle`; idempotency по
+   `external_id`.
    Ответ с `.url` — **баг #189** (внутренний `http://web:3000/...` вместо
    `https://victory62.org/...`): фикс Rails-стороны идёт своим issue, к
    выносу отношения не имеет, но до/во время миграции конвейера ссылка в
@@ -157,10 +159,11 @@ compose через volume из образа. Предлагается перво
 2. **`urgent_*.meta.json` / `digest_*.meta.json`** — файловый контракт между
    триггерами коллектора и `MIRROR_SCRIPT` (chat-host-cron). Скрипт
    `services/chat-host-cron/post_news_to_victory.sh` читает из meta-файла
-   пять ключей: `event_id` (у digest-пайплайнов отсутствует — fallback на
-   имя файла без суффикса, `basename "$META" .meta.json`), `headline`
-   (у digest отсутствует — fallback `short_summary`), `hashtags`,
-   `source_url`. Поля `external_id` в meta-файле **нет** — оно создаётся
+   пять ключей: `event_id`, `headline`, `short_summary`, `hashtags`,
+   `source_url`. Два из них — с fallback'ами: `event_id` у digest-пайплайнов
+   отсутствует (подстановка имени файла без суффикса, `basename "$META"`
+   .meta.json`), `headline` у digest отсутствует (fallback `short_summary`).
+   Поля `external_id` в meta-файле **нет** — оно создаётся
    только в payload вебхука из `event_id`/имени файла (строка 65 скрипта). Поэтому
    список «запрещённых к переименованию» ключей: `event_id`, `headline`,
    `short_summary`, `hashtags`, `source_url`. Переименование любого из
@@ -172,13 +175,15 @@ compose через volume из образа. Предлагается перво
    уезжает вместе с кодом (п. 4), том `newsdb` и сами данные — нет. Миграции
    схемы на живой базе — out of scope, при необходимости отдельным issue.
 4. **Публикация в @rznvictory** — `publisher` читает `posts_queue`; токен
-   бота в `.env.publisher` (ротирован после инцидента 05.10.26 по записи
-   инцидента) остаётся на хосте, `CHANNEL_BOT_TOKEN` в новый репо не
-   копируется. Контроль перед переключением (шаг 5): токен принят Bot API —
-   `curl "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
+   бота в `.env.publisher` (утёк 05.10.26, ротация через @BotFather по
+   `docs/runbooks/cutover-1.0.md`, окно B) остаётся на хосте,
+   `CHANNEL_BOT_TOKEN` в новый репо не копируется. Контроль перед
+   переключением (шаг 5): токен принят Bot API — `curl
+   "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
    .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`. getMe
-   подтверждает лишь валидность текущего токена, историю утечки не проверяет;
-   при сомнениях в ротации — проротировать токен до шага 5.
+   подтверждает лишь валидность текущего токена; что `/revoke` утёкшего
+   выполнен, getMe не покажет (старого токена у нас нет) — при сомнениях
+   проротировать текущий до шага 5.
 5. **LLM-шлюз omniroute** (chat:20128 по LAN) — адрес и ключи в
    `.env.conveyor`; новый репо их не видит (пример-файл только).
 
@@ -277,13 +282,18 @@ ghcr.io/nick4man/victory-conveyor:<tag> python3 -m unittest discover` —
 
 ```bash
 for img in victory-conveyor victory-publisher; do
+  docker rmi ghcr.io/nick4man/$img:<tag> 2>/dev/null || true  # если тег уже был локально
   docker pull ghcr.io/nick4man/$img:<tag>
-  docker image inspect ghcr.io/nick4man/$img:<tag> --format '{{.Id}} {{.Created}}'
+  docker image inspect ghcr.io/nick4man/$img:<tag> --format '{{.Created}}'
+  docker buildx imagetools inspect ghcr.io/nick4man/$img:<tag>  # manifest digest в реестре
 done
 ```
 
-Сверить `Created` со временем сборки в новом репо и `Id` с digests в логе
-пуша. *Откат: образ просто не используется.*
+Сверять `Created` со временем сборки в новом репо и manifest digest (через
+`buildx imagetools`) с записями пуша. Локальный config ID (`docker image
+inspect {{.Id}}`) с manifest digest из лога пуша сверять нельзя — это
+разные хеши; гарантия свежести — `docker rmi` перед `pull`.
+*Откат: образ просто не используется.*
 
 **Шаг 4. Подготовка victory (PR в dev/upgrade, отдельный issue после
 утверждения):** build.yml теряет conveyor/publisher из матрицы; compose:
@@ -300,6 +310,21 @@ registry-образами, и `compose pull --ignore-buildable` в `bin/rollout`
 (это и есть точка невозврата вперёд). *Откат: revert PR, матрица
 возвращается.*
 
+Два следствия шага 4, которые план обязан учесть явно:
+
+- **Смена mount у `news-db` пересоздаст её контейнер** при первом `up` с
+  новым compose (том `newsdb` сохраняется, данные не теряются, initdb на
+  непустом томе не повторяется). Чтобы не ловить отдельный простой,
+  `news-db` включается в то же окно перекатки, что и conveyor/publisher
+  (шаг 5): одна перекатка, простой — секунды рестарта контейнера между
+  тиками.
+- **Доставка compose на хост.** `bin/rollout` запускается из ops-каталога
+  `/home/q/victory` (checkout ветки main на хосте; живого bind-mount нет
+  с cutover 1.0). Compose-правки едут обычным путём (PR → `dev/upgrade` →
+  main), но до шага 5 на хосте обязателен `git -C /home/q/victory pull` —
+  иначе rollout пойдёт по старому compose со старым mount и старыми
+  `build:`-секциями.
+
 Checkout нового репо на хосте — с дисциплиной синхронизации, без неё
 initdb-схема и код образа разойдутся молча:
 - `git clone https://github.com/nick4man/victory-conveyor /home/q/victory-conveyor`
@@ -309,10 +334,23 @@ initdb-схема и код образа разойдутся молча:
   /home/q/victory-conveyor checkout <sha>`; для `<VERSION>` — тег в новом
   репо, указывающий на тот же sha;
 - контроль после checkout: `git -C /home/q/victory-conveyor rev-parse HEAD`
-  равен sha тега, а после `up` — `docker compose exec news-db ls
-  /docker-entrypoint-initdb.d/` показывает файлы схемы (ошибка mount на
-  существующем `newsdb` проявилась бы только при пересоздании тома, поэтому
-  проверяем явно);
+  равен sha тега. Дальше — **initdb-смок на scratch-томе** (не на боевом
+  `newsdb`: схема требует pgvector, поэтому образ тот же, что у news-db —
+  `viktory-postgres-pgvector:pg15-postgis36`):
+
+  ```bash
+  docker volume create smoke_initdb
+  docker run -d --name newsdb-smoke -e POSTGRES_PASSWORD=smoke -e POSTGRES_DB=news \
+    -v /home/q/victory-conveyor/urgent-news-collector/schema:/docker-entrypoint-initdb.d:ro \
+    -v smoke_initdb:/var/lib/postgresql/data viktory-postgres-pgvector:pg15-postgis36
+  # дождаться healthy, затем — схема реально применилась:
+  docker exec newsdb-smoke psql -U news -d news -c '\dt' \
+    | grep -E 'urgent_events|posts_queue|content_revisions|system_flags'
+  docker rm -f newsdb-smoke && docker volume rm smoke_initdb
+  ```
+
+  Простой `ls` mount'а этого не проверяет: ошибка в initdb-скриптах
+  проявится только на пустом томе;
 - обновление checkout — часть той же процедуры, что и смена `CONVEYOR_TAG`
   (следующий шаг): сначала checkout по sha, потом override в `.env.deploy`,
   одним окном; откат шага 5 возвращает и checkout (`git -C
@@ -324,15 +362,18 @@ shell-prefix (иначе следующая выкатка Rails увезёт к
 тег):
 
 ```bash
+# 0) актуализировать ops-каталог на хосте (доставка compose шага 4)
+git -C /home/q/victory pull
 # 1) checkout нового репо по sha тега (дисциплина из шага 4)
 git -C /home/q/victory-conveyor fetch && git -C /home/q/victory-conveyor checkout <sha>
 # 2) фиксируем override в .env.deploy — как в docs/runbooks/release.md
 { grep -vE '^(CONVEYOR_TAG|PUBLISHER_TAG)=' .env.deploy || true; } > .env.deploy.new
 printf 'CONVEYOR_TAG=%s\nPUBLISHER_TAG=%s\n' "<tag>" "<tag>" >> .env.deploy.new
 mv .env.deploy.new .env.deploy
-# 3) перекатка только служб конвейера
+# 3) одна перекатка: news-db (пересоздание из-за смены mount, данные в томе)
+#    + conveyor + publisher
 bin/rollout "$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2-)" \
-  --services conveyor,publisher --profile conveyor --skip-backup
+  --services news-db,conveyor,publisher --profile conveyor --skip-backup
 ```
 
 Контроль 30–60 мин: тики supercronic, `grep -ciE 'error|traceback'` → 0,
@@ -340,7 +381,9 @@ bin/rollout "$(grep -E '^VICTORY_TAG=' .env.deploy | cut -d= -f2-)" \
 первого триггера, новая запись на `/news`.
 *Откат (минуты): вернуть в `.env.deploy` прежние значения `CONVEYOR_TAG` /
 `PUBLISHER_TAG` (или удалить строки — службы вернутся на общий `VICTORY_TAG`)
-и повторить команду п. 3; данные в общем томе `newsdb`, ничего не теряется.*
+и повторить команду п. 3; mount schema обратно не откатываем (на существующем
+томе `newsdb` initdb не повторяется, данные не трогаются); данные в общем
+томе, ничего не теряется.*
 
 **Шаг 6. Удаление кода из victory (PR, через 5–7 дней стабильной работы).**
 Код удаляется, **учётные манифесты-заглушки остаются** (они внесены шагом 4
