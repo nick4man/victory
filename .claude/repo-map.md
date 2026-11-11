@@ -15699,6 +15699,8 @@ def self.express_line(pv)
 def self.build_summary(args, orientation, pv = nil)
 ⋮----
 def self.area_display(args, pv)
+⋮----
+def self.format_area(value, unit)
 </file>
 
 <file path="app/services/valuations/similar_valuations_finder.rb">

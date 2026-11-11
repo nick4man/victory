@@ -93,6 +93,16 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(inquiry.message).not_to include('800 м²')
     end
 
+    it 'дробная площадь не обрезается: 8.5 соток → «8.5 сот.» (ревью #206)' do
+      valuation.update_columns(property_type: 'land', total_area: 850.0, land_area: 8.5)
+
+      call_tool('valuation_token' => valuation.token)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to include('8.5 сот.')
+      expect(inquiry.message).not_to include('8 сот.')
+    end
+
     it 'участок: LLM продублировала total_area в сотках при token — не показываем как м² (нит-пик ревью #206)' do
       valuation.update_columns(
         property_type: 'land',

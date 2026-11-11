@@ -216,16 +216,20 @@ module ChatTools
     # нормализованных значений; raw-аргументы — только без pv.
     def self.area_display(args, pv)
       land = args['property_type'].to_s == 'land' || pv&.property_type == 'land'
-      if pv&.land_area.to_f.positive?
-        return "#{pv.land_area.to_i} сот."
-      end
-      if pv&.total_area.to_f.positive?
-        return "#{pv.total_area.to_i} м²"
-      end
-      return "#{args['total_area'].to_i} сот." if land && args['total_area'].to_f.positive?
-      return "#{args['total_area'].to_i} м²" if args['total_area'].to_f.positive?
+      return format_area(pv.land_area, 'сот.') if pv&.land_area.to_f.positive?
+      return format_area(pv.total_area, 'м²') if pv&.total_area.to_f.positive?
+      return format_area(args['total_area'], 'сот.') if land && args['total_area'].to_f.positive?
+      return format_area(args['total_area'], 'м²') if args['total_area'].to_f.positive?
 
       nil
+    end
+
+    # 54.0 → «54», 8.5 → «8.5» — дробная площадь не обрезается через to_i
+    # (нит-пик ревью #206).
+    def self.format_area(value, unit)
+      number = value.to_f
+      text = (number % 1).zero? ? number.to_i.to_s : number.round(1).to_s
+      "#{text} #{unit}"
     end
   end
 end

@@ -28,4 +28,9 @@ RSpec.describe Llm::ChatResponder do
     expect(prompt).to match(/ровно один тул/i)
     expect(prompt).to match(/никогда оба/i)
   end
+
+  it 'различает недоступность поиска (null) и малое покрытие (0–2): null — не упоминать прошлые оценки' do
+    expect(prompt).to match(/null — поиск по прошлым оценкам недоступен/i)
+    expect(prompt).to match(/0.2 — честно скажи, что похожих оценок мало/i)
+  end
 end
