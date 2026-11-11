@@ -93,6 +93,21 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(inquiry.message).not_to include('800 м²')
     end
 
+    it 'участок: LLM продублировала total_area в сотках при token — не показываем как м² (нит-пик ревью #206)' do
+      valuation.update_columns(
+        property_type: 'land',
+        total_area: 800.0,
+        land_area: 8.0
+      )
+
+      call_tool('valuation_token' => valuation.token, 'total_area' => 8)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to include('8 сот.')
+      expect(inquiry.message).not_to include('8 м²')
+      expect(inquiry.message).not_to include('800 м²')
+    end
+
     it 'похожих оценок мало (N < 3) → честный ориентир по экспресс-оценке с указанием найденного' do
       valuation.update_columns(
         evaluation_data: { 'similar_valuations' => { 'count' => 1, 'median_price' => nil,

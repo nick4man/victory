@@ -95,12 +95,17 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     let(:query_vector) { [1.0] + Array.new(767, 0.0) }
     let(:near_vector)  { [0.99, 0.14] + Array.new(766, 0.0) }
     let(:far_vector)   { [0.0, 1.0] + Array.new(766, 0.0) }
+    let(:embed_texts)  { [] }
 
     before do
       service_result[:low_coverage] = false
       allow(Valuations::SimilarValuationsFinder).to receive(:call).and_call_original
-      allow(Embedding::GoogleClient).to receive(:new)
-        .and_return(instance_double(Embedding::GoogleClient, embed: query_vector))
+      google = instance_double(Embedding::GoogleClient)
+      allow(google).to receive(:embed) do |text|
+        embed_texts << text
+        query_vector
+      end
+      allow(Embedding::GoogleClient).to receive(:new).and_return(google)
     end
 
     def seed_valuation!(price:, city: 'Рязань', deal_type: 'sale', status: 'completed',
@@ -158,6 +163,16 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
       expect(similar['count']).to eq(3)
       expect(similar['median_price']).to eq(4_200_000)
       expect(similar['low_coverage']).to be(false)
+    end
+
+    it 'query-эмбеддинг строится по представлению С записанным результатом оценки (блокер ревью #206)' do
+      call_tool
+
+      # Шаблон эмбеддинга включает итоговую цену/вилку/число аналогов — иначе
+      # cosine считался бы между разными представлениями. Пробелы нормализуем
+      # (ru-локаль number_to_currency может отдавать nbsp).
+      query_text = embed_texts.join("\n").gsub(/\s+/, '')
+      expect(query_text).to include('Итоговаяценаоценки:5400000')
     end
 
     it 'N < 3 → low_coverage: true, ценовые similar_* поля nil (fail-close), фолбэк на экспресс-оценку' do

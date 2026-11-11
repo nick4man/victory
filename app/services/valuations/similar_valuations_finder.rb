@@ -87,12 +87,21 @@ module Valuations
       prices
     end
 
+    # Жёсткие детерминированные фильтры — в SQL ДО страничного LIMIT:
+    # source/deal_type/status/self раньше, плюс staff_test/audit_mode/
+    # положительная цена — иначе неподходящие записи съедали бы слоты
+    # страницы и давали ложный low_coverage (блокер ревью #206).
+    # В Ruby остаются только фильтры, зависящие от нормализации/вычисления:
+    # город (ExternalListing.normalize_city, «г.»/регистр) и порог cosine
+    # (neighbor_distance). Страничный обход — см. collect_prices.
     def candidate_scope(vector)
       PropertyValuationEmbedding
         .nearest_neighbors(:embedding, vector, distance: :cosine)
         .joins(:property_valuation)
         .includes(:property_valuation)
-        .where(property_valuations: { deal_type: @v.deal_type, status: 'completed' })
+        .where(property_valuations: { deal_type: @v.deal_type, status: 'completed', staff_test: false })
+        .where.not(property_valuations: { audit_mode: 'investment' })
+        .where('property_valuations.estimated_price > 0')
         .where("property_valuations.metadata ->> 'source' = ?", STAFF_SOURCE)
         .where.not(property_valuation_id: @v.id)
     end

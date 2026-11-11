@@ -208,21 +208,24 @@ module ChatTools
       bits.join(' ')
     end
 
-    # Площадь: аргументы тула в приоритете (для land LLM шлёт сотки в
-    # total_area — см. schema); fallback — pv: участок → land_area в сотках,
-    # остальное → total_area в м².
+    # Площадь. При valuation_token LLM часто дублирует параметры оценки: для
+    # участка total_area в аргументах — это СОТКИ (schema
+    # estimate_property_valuation), а в pv значение уже нормализовано
+    # (total_area — м², land_area — сотки) — смотреть «8 сот.» как «8 м²»
+    # нельзя (нит-пик ревью #206). Поэтому при pv приоритет у его
+    # нормализованных значений; raw-аргументы — только без pv.
     def self.area_display(args, pv)
-      if args['total_area'].to_f.positive?
-        return "#{args['total_area'].to_i} сот." if args['property_type'].to_s == 'land'
-
-        return "#{args['total_area'].to_i} м²"
-      end
-      if pv&.property_type == 'land' && pv&.land_area.to_f.positive?
+      land = args['property_type'].to_s == 'land' || pv&.property_type == 'land'
+      if pv&.land_area.to_f.positive?
         return "#{pv.land_area.to_i} сот."
       end
+      if pv&.total_area.to_f.positive?
+        return "#{pv.total_area.to_i} м²"
+      end
+      return "#{args['total_area'].to_i} сот." if land && args['total_area'].to_f.positive?
+      return "#{args['total_area'].to_i} м²" if args['total_area'].to_f.positive?
 
-      pv_area = pv&.total_area.to_f
-      "#{pv_area.to_i} м²" if pv_area.positive?
+      nil
     end
   end
 end

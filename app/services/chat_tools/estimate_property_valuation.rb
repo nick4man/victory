@@ -114,22 +114,11 @@ module ChatTools
 
       evaluation_data = result.except(:success)
 
-      # Блокер ревью #206: шаблон эмбеддинга (Embedding::PropertyValuationTextTemplate)
-      # включает цену/вилку/₽-за-м² и число аналогов из evaluation_data. Без
-      # результата query-вектор строится по ДРУГОМУ представлению, чем у
-      # кандидатов, и cosine несопоставим. Пишем результат в in-memory pv ДО
-      # поиска; персист — ниже, одним update_columns.
-      pv.estimated_price  = result[:estimated_price]
-      pv.min_price        = result[:min_price]
-      pv.max_price        = result[:max_price]
-      pv.confidence_level = result[:confidence_level]
-      pv.evaluation_data  = evaluation_data
-
-      # Ориентир по прошлым оценкам специалистов (issue #176, часть 3).
-      # nil при инфраструктурном сбое — молча деградируем до express-only.
-      similar = Valuations::SimilarValuationsFinder.call(pv)
-      evaluation_data[:similar_valuations] = similar if similar
-
+      # Персист результата ДО semantic-поиска (блокер ревью #206): шаблон
+      # эмбеддинга (Embedding::PropertyValuationTextTemplate) включает цену,
+      # вилку и число аналогов из evaluation_data — без записанного результата
+      # query-вектор строился бы по ДРУГОМУ представлению, чем у кандидатов,
+      # и cosine был бы несопоставим.
       pv.update_columns(
         estimated_price:  result[:estimated_price],
         min_price:        result[:min_price],
@@ -139,6 +128,14 @@ module ChatTools
         status:           'completed',
         updated_at:       Time.current
       )
+
+      # Ориентир по прошлым оценкам специалистов (issue #176, часть 3).
+      # nil при инфраструктурном сбое — молча деградируем до express-only.
+      similar = Valuations::SimilarValuationsFinder.call(pv)
+      evaluation_data[:similar_valuations] = similar if similar
+      if similar
+        pv.update_columns(evaluation_data: evaluation_data, updated_at: Time.current)
+      end
       # update_columns обходит after_update_commit — эмбеддинг ставим явно
       pv.enqueue_embedding
 

@@ -87,6 +87,22 @@ RSpec.describe Valuations::SimilarValuationsFinder do
     expect(result[:max_price]).to eq(4_400_000)
   end
 
+  it 'граница страниц: ближайшие CANDIDATE_LIMIT+ неподходящих (другой город) не дают ложный low_coverage' do
+    # Все «московские» записи векторно БЛИЖЕ eligible-рязанских (cosine ≈ 0.999
+    # против 0.99) — без страничного обхода первые 100 слотов съели бы пул и
+    # оставшиеся подходящие оценки не попали бы в выборку (блокер ревью #206).
+    closer = [0.999, 0.0447] + Array.new(766, 0.0)
+    105.times { seed_valuation!(price: 9_000_000, city: 'Москва', vector: closer) }
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:low_coverage]).to be(false)
+  end
+
   it 'клиентские express-оценки не попадают в корпус — только work_bot (ревью #206)' do
     seed_valuation!(price: 4_000_000)
     seed_valuation!(price: 4_200_000)
