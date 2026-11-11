@@ -182,6 +182,19 @@ RSpec.describe Valuations::SimilarValuationsFinder do
     expect(result[:median_price]).to eq(4_200_000)
   end
 
+  it 'обрыв по MAX_PAGES с неизвестным покрытием → nil, а не ложный low_coverage (ревью #206)' do
+    # 500 ближайших записей другого города заполняют все MAX_PAGES страниц
+    # целиком; подходящие идут дальше. Покрытие неизвестно → честный nil
+    # (вызывающий деградирует до express-only), а не count 0 / low_coverage.
+    nearest = [1.0] + Array.new(767, 0.0) # строго ближе near_vector
+    500.times { seed_valuation!(price: 10_000_000, city: 'Москва', vector: nearest) }
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    expect(described_class.call(subject_valuation)).to be_nil
+  end
+
   it 'сравнение городов case-insensitive и с префиксом «г.»' do
     seed_valuation!(price: 4_000_000, city: 'г. рязань')
     seed_valuation!(price: 4_200_000)

@@ -4762,6 +4762,101 @@ private
 def notify_property_owner
 </file>
 
+<file path="app/models/inquiry.rb">
+include AASM
+⋮----
+PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+⋮----
+def self.ransackable_attributes(auth_object = nil)
+⋮----
+def self.ransackable_associations(auth_object = nil)
+⋮----
+def self.statistics(period = :all)
+⋮----
+def self.calculate_conversion_rate(scope = all)
+⋮----
+def self.calculate_avg_response_time(scope = all)
+⋮----
+def full_contact_info
+⋮----
+def formatted_phone
+⋮----
+def type_label
+⋮----
+def status_label
+⋮----
+def status_badge_class
+⋮----
+def priority_badge_class
+⋮----
+def response_time_minutes
+⋮----
+def overdue?
+⋮----
+def scheduled_soon?
+⋮----
+def assign_to!(agent_user)
+⋮----
+def unassign!
+⋮----
+def mark_processed!
+⋮----
+def cancel_with_reason!(reason)
+⋮----
+def sync_to_crm!
+⋮----
+def synced_to_crm?
+⋮----
+def set_metadata(key, value)
+⋮----
+def get_metadata(key)
+⋮----
+def from_mobile?
+⋮----
+def has_utm_params?
+⋮----
+def utm_string
+⋮----
+def notify_admins!
+⋮----
+def notify_user_of_status_change!
+⋮----
+def property_title
+⋮----
+def property_url
+⋮----
+def agent_name
+⋮----
+Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+⋮----
+def normalize_phone
+⋮----
+def set_default_source
+⋮----
+def detect_staff_test_submission
+⋮----
+def assign_to_agent
+⋮----
+def send_notifications
+⋮----
+def sync_to_crm
+⋮----
+def push_to_work_bot
+⋮----
+def notify_status_change
+⋮----
+def broadcast_cabinet_status_change
+⋮----
+def phone_format
+⋮----
+def preferred_date_in_future
+⋮----
+def property_or_message_required
+# Mortgage inquiries carry program details in metadata, not a property
+# FK — exempt them from the property-or-message rule so /services/mortgage
+# applications validate cleanly.
+</file>
+
 <file path="app/models/landing_content.rb">
 class LandingContent < ApplicationRecord
 ⋮----
@@ -10276,6 +10371,24 @@ private
 def escape(text)
 </file>
 
+<file path="app/services/telegram/work_bot/commands/reassign.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Reassign < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def dispatch_new_card(task)
+⋮----
+def invalidate_stale_card(coords, _new_assignee)
+⋮----
+def notify_previous_assignee(task, prev_assignee, new_assignee)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/resume_batch.rb">
 module Telegram
 module WorkBot
@@ -12285,15 +12398,6 @@ def redis
 require 'redis' unless defined?(Redis)
 </file>
 
-<file path="app/services/valuations/price_formatter.rb">
-module Valuations
-⋮----
-module PriceFormatter
-module_function
-⋮----
-def format_rub(amount)
-</file>
-
 <file path="app/services/yandex/webmaster_opportunities_service.rb">
 module Yandex
 ⋮----
@@ -13718,101 +13822,6 @@ private
 def normalize_city_name
 </file>
 
-<file path="app/models/inquiry.rb">
-include AASM
-⋮----
-PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
-⋮----
-def self.ransackable_attributes(auth_object = nil)
-⋮----
-def self.ransackable_associations(auth_object = nil)
-⋮----
-def self.statistics(period = :all)
-⋮----
-def self.calculate_conversion_rate(scope = all)
-⋮----
-def self.calculate_avg_response_time(scope = all)
-⋮----
-def full_contact_info
-⋮----
-def formatted_phone
-⋮----
-def type_label
-⋮----
-def status_label
-⋮----
-def status_badge_class
-⋮----
-def priority_badge_class
-⋮----
-def response_time_minutes
-⋮----
-def overdue?
-⋮----
-def scheduled_soon?
-⋮----
-def assign_to!(agent_user)
-⋮----
-def unassign!
-⋮----
-def mark_processed!
-⋮----
-def cancel_with_reason!(reason)
-⋮----
-def sync_to_crm!
-⋮----
-def synced_to_crm?
-⋮----
-def set_metadata(key, value)
-⋮----
-def get_metadata(key)
-⋮----
-def from_mobile?
-⋮----
-def has_utm_params?
-⋮----
-def utm_string
-⋮----
-def notify_admins!
-⋮----
-def notify_user_of_status_change!
-⋮----
-def property_title
-⋮----
-def property_url
-⋮----
-def agent_name
-⋮----
-Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
-⋮----
-def normalize_phone
-⋮----
-def set_default_source
-⋮----
-def detect_staff_test_submission
-⋮----
-def assign_to_agent
-⋮----
-def send_notifications
-⋮----
-def sync_to_crm
-⋮----
-def push_to_work_bot
-⋮----
-def notify_status_change
-⋮----
-def broadcast_cabinet_status_change
-⋮----
-def phone_format
-⋮----
-def preferred_date_in_future
-⋮----
-def property_or_message_required
-# Mortgage inquiries carry program details in metadata, not a property
-# FK — exempt them from the property-or-message rule so /services/mortgage
-# applications validate cleanly.
-</file>
-
 <file path="app/models/property_valuation_embedding.rb">
 class PropertyValuationEmbedding < ApplicationRecord
 has_neighbors :embedding
@@ -13921,40 +13930,6 @@ PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => '
 private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 ⋮----
 def self.page_url(args)
-</file>
-
-<file path="app/services/chat_tools/request_specialist_evaluation.rb">
-module ChatTools
-⋮----
-module RequestSpecialistEvaluation
-REQUIRED = %w[name phone].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-⋮----
-DEDUPE_WINDOW = 5.minutes
-⋮----
-MIN_ORIENT_COUNT = 3
-⋮----
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.find_recent_duplicate(phone)
-⋮----
-def self.duplicate_response(inquiry)
-⋮----
-def self.find_valuation(token)
-⋮----
-# Агрегат по похожим оценкам, сохранённый EstimatePropertyValuation в
-# evaluation_data (jsonb → ключи строки после reload).
-def self.extract_similar(pv)
-⋮----
-def self.orientation_line(pv, similar)
-⋮----
-def self.express_line(pv)
-⋮----
-def self.build_summary(args, orientation)
 </file>
 
 <file path="app/services/crm_cards/checker.rb">
@@ -14296,24 +14271,6 @@ class Menu < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/commands/reassign.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Reassign < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def dispatch_new_card(task)
-⋮----
-def invalidate_stale_card(coords, _new_assignee)
-⋮----
-def notify_previous_assignee(task, prev_assignee, new_assignee)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/start_test.rb">
 module WorkBot
 module Commands
@@ -14415,58 +14372,6 @@ def initialize(callback_query, client: Telegram::Client.new)
 def call
 ⋮----
 def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_announcer.rb">
-ROUTING_BUTTONS_PER_ROW = 3
-⋮----
-def self.refresh!(lead_event, client: Telegram::Client.new)
-⋮----
-STAGE_EMOJI = {
-⋮----
-def initialize(lead_event, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def repost_to(target_topic_key)
-⋮----
-def format_card_text
-⋮----
-def keyboard_for_card(topic_key = @lead.anchor_topic_key)
-⋮----
-def send_card(topic_key)
-⋮----
-def resolve_target_topic
-⋮----
-lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
-⋮----
-# Valuation block — when lead_ref is completed PropertyValuation.
-# Это блок добавляется TG editMessageText'ом после того как
-# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
-# + PropertyValuationJob#push_to_lead_card). До completion блок
-# отсутствует, card будет sparser.
-⋮----
-lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
-⋮----
-def stage_icon
-⋮----
-def source_label
-⋮----
-def phone_suffix(phone)
-⋮----
-def stage_row
-⋮----
-# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
-# поэтому «нет reply на якорь» исчезает как класс ошибки.
-def work_row
-⋮----
-def routing_keyboard_for(topic_key)
-⋮----
-def escape(text)
-⋮----
-def fmt_rub(amount)
-⋮----
-def report_url(valuation)
 </file>
 
 <file path="app/services/telegram/work_bot/lead_closure.rb">
@@ -14671,6 +14576,15 @@ def realty_slug
 def adapt(property, ratio:, donor_city:)
 </file>
 
+<file path="app/services/valuations/price_formatter.rb">
+module Valuations
+⋮----
+module PriceFormatter
+module_function
+⋮----
+def format_rub(amount)
+</file>
+
 <file path="app/services/valuations/semantic_comp_finder.rb">
 module Valuations
 ⋮----
@@ -14710,31 +14624,6 @@ def distance_km_to(property)
 def same_city?(property, distance_km = nil)
 ⋮----
 def weight_for(cos, distance_km)
-</file>
-
-<file path="app/services/valuations/similar_valuations_finder.rb">
-module Valuations
-⋮----
-class SimilarValuationsFinder
-LIMIT      = 20
-MIN_COSINE = 0.75
-MIN_COUNT  = 3
-⋮----
-STAFF_SOURCE = 'work_bot'
-⋮----
-def self.call(valuation)
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def price_for(row, subject_city)
-⋮----
-def aggregate(prices)
-⋮----
-def zero_result
 </file>
 
 <file path="app/jobs/embed_property_valuation_job.rb">
@@ -14861,36 +14750,6 @@ def parse_land_area(offer)
 def infer_type_loose(_type_attr, category)
 ⋮----
 def upsert_one(attrs)
-</file>
-
-<file path="app/services/llm/chat_responder.rb">
-module Llm
-⋮----
-class ChatResponder
-ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
-⋮----
-def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
-⋮----
-def call
-⋮----
-def full_system_prompt
-⋮----
-private
-⋮----
-def current_page_ctx
-⋮----
-def security_preamble
-⋮----
-private
-⋮----
-def parse(result)
-⋮----
-def fallback_message
-⋮----
-# System prompt is rebuilt on every call so it reflects the current
-# catalog and team. Cached for 5 min to avoid hammering the DB on
-# every visitor message.
-def system_prompt
 </file>
 
 <file path="app/services/property_evaluation/comparable_finder.rb">
@@ -15035,6 +14894,38 @@ def audit!(outcome, args:, error_class: nil, error_message: nil)
 def command_key
 </file>
 
+<file path="app/services/telegram/work_bot/commands/help.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Help < Base
+⋮----
+ENTRIES = [
+⋮----
+def handle
+⋮----
+# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
+# Шлём один-line redirect inline + полный список приватно в DM.
+# В DM-чате — inline как раньше.
+⋮----
+private
+⋮----
+def append_section(lines, header, level)
+⋮----
+def entries_for(level)
+⋮----
+def staff?
+⋮----
+def manager?
+⋮----
+def director?
+⋮----
+def group_chat?
+⋮----
+def send_full_via_dm(text)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/reopen.rb">
 module Telegram
 module WorkBot
@@ -15126,6 +15017,58 @@ def accept_title(value)
 def accept_assignee(value)
 ⋮----
 def crm_line(status)
+</file>
+
+<file path="app/services/telegram/work_bot/lead_announcer.rb">
+ROUTING_BUTTONS_PER_ROW = 3
+⋮----
+def self.refresh!(lead_event, client: Telegram::Client.new)
+⋮----
+STAGE_EMOJI = {
+⋮----
+def initialize(lead_event, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def repost_to(target_topic_key)
+⋮----
+def format_card_text
+⋮----
+def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+⋮----
+def send_card(topic_key)
+⋮----
+def resolve_target_topic
+⋮----
+lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
+⋮----
+# Valuation block — when lead_ref is completed PropertyValuation.
+# Это блок добавляется TG editMessageText'ом после того как
+# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
+# + PropertyValuationJob#push_to_lead_card). До completion блок
+# отсутствует, card будет sparser.
+⋮----
+lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
+⋮----
+def stage_icon
+⋮----
+def source_label
+⋮----
+def phone_suffix(phone)
+⋮----
+def stage_row
+⋮----
+# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
+# поэтому «нет reply на якорь» исчезает как класс ошибки.
+def work_row
+⋮----
+def routing_keyboard_for(topic_key)
+⋮----
+def escape(text)
+⋮----
+def fmt_rub(amount)
+⋮----
+def report_url(valuation)
 </file>
 
 <file path="app/services/telegram/work_bot/router.rb">
@@ -15459,36 +15402,34 @@ group :development, :test do
 end
 </file>
 
-<file path="app/services/chat_tools/estimate_property_valuation.rb">
-module ChatTools
+<file path="app/services/llm/chat_responder.rb">
+module Llm
 ⋮----
-module EstimatePropertyValuation
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+class ChatResponder
+ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 ⋮----
-def self.schema
+def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
 ⋮----
-def self.call(args)
+def call
 ⋮----
-def self.missing_fields_response(missing)
+def full_system_prompt
 ⋮----
-def self.build_valuation(args)
+private
 ⋮----
-def self.enrich_from_geocoder(pv)
+def current_page_ctx
 ⋮----
-def self.compact_response(pv, result, similar = nil)
-# Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
-# similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
-# озвучивает точную цену одной чужой оценки.
+def security_preamble
 ⋮----
-# Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
-# специалистов (N < 3, issue #176) — бот обязан озвучить
-# ориентировочность оценки, см. description в .schema.
+private
 ⋮----
-# Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
-# никаких поштучных адресов/телефонов чужих оценок (issue #176).
+def parse(result)
 ⋮----
-def self.run_failure(pv, error_message)
+def fallback_message
+⋮----
+# System prompt is rebuilt on every call so it reflects the current
+# catalog and team. Cached for 5 min to avoid hammering the DB on
+# every visitor message.
+def system_prompt
 </file>
 
 <file path="app/services/telegram/work_bot/commands/close.rb">
@@ -15505,38 +15446,6 @@ def handle
 private
 ⋮----
 def parse_args
-</file>
-
-<file path="app/services/telegram/work_bot/commands/help.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Help < Base
-⋮----
-ENTRIES = [
-⋮----
-def handle
-⋮----
-# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
-# Шлём один-line redirect inline + полный список приватно в DM.
-# В DM-чате — inline как раньше.
-⋮----
-private
-⋮----
-def append_section(lines, header, level)
-⋮----
-def entries_for(level)
-⋮----
-def staff?
-⋮----
-def manager?
-⋮----
-def director?
-⋮----
-def group_chat?
-⋮----
-def send_full_via_dm(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/task.rb">
@@ -15754,6 +15663,105 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
+</file>
+
+<file path="app/services/chat_tools/request_specialist_evaluation.rb">
+module ChatTools
+⋮----
+module RequestSpecialistEvaluation
+REQUIRED = %w[name phone].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+DEDUPE_WINDOW = 5.minutes
+⋮----
+MIN_ORIENT_COUNT = 3
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.find_recent_duplicate(phone)
+⋮----
+def self.duplicate_response(inquiry)
+⋮----
+def self.find_valuation(token)
+⋮----
+# Агрегат по похожим оценкам, сохранённый EstimatePropertyValuation в
+# evaluation_data (jsonb → ключи строки после reload).
+def self.extract_similar(pv)
+⋮----
+def self.orientation_line(pv, similar)
+⋮----
+def self.express_line(pv)
+⋮----
+def self.build_summary(args, orientation, pv = nil)
+⋮----
+def self.area_display(args, pv)
+</file>
+
+<file path="app/services/valuations/similar_valuations_finder.rb">
+module Valuations
+⋮----
+class SimilarValuationsFinder
+⋮----
+CANDIDATE_LIMIT = 100
+MAX_PAGES       = 5
+MIN_COSINE = 0.75
+MIN_COUNT  = 3
+⋮----
+STAFF_SOURCE = 'work_bot'
+⋮----
+def self.call(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def collect_prices(vector, subject_city)
+⋮----
+def candidate_scope(vector)
+⋮----
+def price_for(row, subject_city)
+⋮----
+def aggregate(prices)
+⋮----
+def zero_result
+</file>
+
+<file path="app/services/chat_tools/estimate_property_valuation.rb">
+module ChatTools
+⋮----
+module EstimatePropertyValuation
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.build_valuation(args)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.compact_response(pv, result, similar = nil)
+# Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
+# similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
+# озвучивает точную цену одной чужой оценки.
+⋮----
+# Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
+# специалистов (N < 3, issue #176) — бот обязан озвучить
+# ориентировочность оценки, см. description в .schema.
+⋮----
+# Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
+# никаких поштучных адресов/телефонов чужих оценок (issue #176).
+⋮----
+def self.run_failure(pv, error_message)
 </file>
 
 </files>

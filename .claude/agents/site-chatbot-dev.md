@@ -52,6 +52,7 @@ Visitor message → ChatResponder
   - `get_landing_content.rb` — page content fetch
   - `submit_review.rb` — moderated review submission
   - `qualify_lead.rb` — lead qualification after valuation
+  - `request_specialist_evaluation.rb` — передача запроса на оценку специалисту (Inquiry evaluation → work_bot #ОЦЕНКА, issue #176)
 
 ### Models
 - `Conversation` — chat session per visitor

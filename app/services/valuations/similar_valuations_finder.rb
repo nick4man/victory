@@ -24,7 +24,9 @@ module Valuations
   #     даёт ложный low_coverage, когда ближайшие записи не подходят (блокеры
   #     ревью #206): кандидаты листаются страницами CANDIDATE_LIMIT, пока не
   #     наберётся MIN_COUNT подходящих или строки не кончатся. MAX_PAGES
-  #     ограничивает стоимость векторного поиска.
+  #     ограничивает стоимость векторного поиска; обрыв по MAX_PAGES при
+  #     prices < MIN_COUNT — неизвестное покрытие → nil (честный express-only,
+  #     а не ложный «данных мало»).
   #
   # Возвращает ТОЛЬКО агрегат — поштучные адреса/цены/телефоны чужих
   # оценок наружу не отдаём:
@@ -62,6 +64,10 @@ module Valuations
       return zero_result unless vector.is_a?(Array) && vector.length > 100
 
       prices = collect_prices(vector, subject_city)
+      # nil — обрыв по MAX_PAGES с неизвестным покрытием: честный express-only,
+      # без ложного «данных мало» (см. collect_prices).
+      return nil if prices.nil?
+
       aggregate(prices)
     rescue StandardError => e
       Rails.logger.warn("[Valuations::SimilarValuationsFinder] #{e.class}: #{e.message.to_s.truncate(180)}")
@@ -76,14 +82,23 @@ module Valuations
     # LIMIT до Ruby-фильтров иначе даёт ложный low_coverage (ревью #206).
     def collect_prices(vector, subject_city)
       prices = []
+      last_page_full = false
       (0...MAX_PAGES).each do |page|
         rows = candidate_scope(vector)
                .offset(page * CANDIDATE_LIMIT)
                .limit(CANDIDATE_LIMIT)
                .to_a
         prices.concat(rows.filter_map { |row| price_for(row, subject_city) })
-        break if rows.size < CANDIDATE_LIMIT || prices.size >= MIN_COUNT
+        last_page_full = rows.size == CANDIDATE_LIMIT
+        break if !last_page_full || prices.size >= MIN_COUNT
       end
+      # Честная деградация при усечении (блокер ревью #206): обрыв по
+      # MAX_PAGES при полной последней странице и prices < MIN_COUNT означает
+      # НЕИЗВЕСТНОЕ покрытие — дальше по списку могут быть подходящие записи.
+      # Ложный low_coverage хуже отказа от ориентира: nil → вызывающий код
+      # деградирует до честного express-only ответа.
+      return nil if last_page_full && prices.size < MIN_COUNT
+
       prices
     end
 
