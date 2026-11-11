@@ -16,7 +16,7 @@ class EmbedPropertyValuationJob < ApplicationJob
 
   def perform(property_valuation_id)
     valuation = PropertyValuation.find_by(id: property_valuation_id)
-    return unless valuation&.completed?
+    return unless valuation&.completed? && !valuation.audit_mode_investment?
 
     text = ::Embedding::PropertyValuationTextTemplate.build(valuation)
     return if text.blank?

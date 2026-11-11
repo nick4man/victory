@@ -14729,58 +14729,6 @@ Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.cla
 def broadcast_cabinet_completion
 </file>
 
-<file path="app/services/chat_tools/estimate_property_valuation.rb">
-module ChatTools
-⋮----
-module EstimatePropertyValuation
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-⋮----
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.build_valuation(args)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.compact_response(pv, result)
-⋮----
-# Нет локальных аналогов (issue #172) — бот обязан озвучить
-# ориентировочность оценки, см. description в .schema.
-⋮----
-def self.run_failure(pv, error_message)
-</file>
-
-<file path="app/services/embedding/property_valuation_text_template.rb">
-module Embedding
-⋮----
-module PropertyValuationTextTemplate
-PROPERTY_TYPE_LABELS = {
-⋮----
-DEAL_TYPE_LABELS = {
-⋮----
-CONDITION_LABELS = {
-⋮----
-def self.build(valuation)
-⋮----
-def self.append_area(parts, valuation)
-⋮----
-def self.append_price(parts, valuation)
-⋮----
-def self.append_price_per_sqm(parts, valuation)
-⋮----
-def self.effective_area(valuation)
-⋮----
-def self.land_sotki(valuation)
-⋮----
-def self.analogs_count(valuation)
-⋮----
-def self.format_price(value)
-</file>
-
 <file path="app/services/external_listings/yrl_parser.rb">
 require 'nokogiri'
 require 'open-uri'
@@ -15512,6 +15460,51 @@ group :development, :test do
   gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
   gem 'webmock',             '~> 3.24'   # HTTP stubbing (stub_request в yandex_vision и др.)
 end
+</file>
+
+<file path="app/services/chat_tools/estimate_property_valuation.rb">
+module ChatTools
+⋮----
+module EstimatePropertyValuation
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.build_valuation(args)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.compact_response(pv, result)
+⋮----
+# Нет локальных аналогов (issue #172) — бот обязан озвучить
+# ориентировочность оценки, см. description в .schema.
+⋮----
+def self.run_failure(pv, error_message)
+</file>
+
+<file path="app/services/embedding/property_valuation_text_template.rb">
+PROPERTY_TYPE_LABELS = {
+⋮----
+DEAL_TYPE_LABELS = {
+⋮----
+CONDITION_LABELS = {
+⋮----
+parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
+⋮----
+def self.append_price_per_sqm(parts, valuation)
+⋮----
+def self.effective_area(valuation)
+⋮----
+def self.land_sotki(valuation)
+⋮----
+def self.analogs_count(valuation)
+⋮----
+def self.format_price(value)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/close.rb">

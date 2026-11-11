@@ -40,6 +40,8 @@ module Embedding
     }.freeze
 
     def self.build(valuation)
+      return '' if valuation.audit_mode_investment?
+
       parts = []
 
       type_label = PROPERTY_TYPE_LABELS[valuation.property_type]
@@ -118,10 +120,21 @@ module Embedding
       valuation.total_area
     end
 
+    # Число реально использованных аналогов:
+    # 1) full_comparables (staff-оценки с полным пулом);
+    # 2) ai_filter['candidates_kept'] (реальный размер пула в PropertyEvaluationService,
+    #    т.к. data['comparables'] усечён через .first(5) для публичного отчёта);
+    # 3) comparables.size / верхнеуровневый candidates_kept (фоллбэк).
     def self.analogs_count(valuation)
       data = valuation.evaluation_data || {}
+      full_comps = data['full_comparables']
+      return full_comps.size if full_comps.is_a?(Array) && full_comps.any?
+
+      kept = data.dig('ai_filter', 'candidates_kept').to_i
+      return kept if kept.positive?
+
       comps = data['comparables']
-      return comps.size if comps.is_a?(Array)
+      return comps.size if comps.is_a?(Array) && comps.any?
 
       data['candidates_kept'].to_i
     end

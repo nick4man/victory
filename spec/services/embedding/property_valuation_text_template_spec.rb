@@ -100,11 +100,37 @@ RSpec.describe Embedding::PropertyValuationTextTemplate do
       end
     end
 
-    context 'число аналогов из candidates_kept (нет comparables)' do
-      before { valuation.evaluation_data = { 'candidates_kept' => 7 } }
+    context 'реальная структура evaluation_data с >5 аналогами (comparables усечён до 5)' do
+      before do
+        valuation.evaluation_data = {
+          'comparables' => Array.new(5) { |i| { 'price' => i + 1 } },
+          'ai_filter' => { 'candidates_raw' => 9, 'candidates_kept' => 7, 'candidates_rejected' => 2 }
+        }
+      end
 
-      it 'берёт candidates_kept' do
+      it 'берёт реальное число аналогов из ai_filter[candidates_kept], а не усечённый comparables.first(5)' do
         expect(text).to include('Использовано аналогов: 7')
+      end
+    end
+
+    context 'staff-оценка с full_comparables (>5 аналогов)' do
+      before do
+        valuation.evaluation_data = {
+          'comparables' => Array.new(5) { |i| { 'price' => i + 1 } },
+          'full_comparables' => Array.new(8) { |i| { 'price' => i + 1 } }
+        }
+      end
+
+      it 'берёт размер full_comparables' do
+        expect(text).to include('Использовано аналогов: 8')
+      end
+    end
+
+    context 'инвестиционный аудит (audit_mode: investment)' do
+      before { valuation.audit_mode = 'investment' }
+
+      it 'возвращает пустую строку — asking price не должна выдаваться за рыночную оценку' do
+        expect(text).to eq('')
       end
     end
   end

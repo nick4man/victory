@@ -61,11 +61,12 @@ class PropertyValuation < ApplicationRecord
   # User matched по email/phone.
   after_update_commit :broadcast_cabinet_completion, if: :saved_change_to_status?
 
-  # work_bot 2/3: завершённая оценка → эмбеддинг для semantic поиска
-  # похожих прошлых оценок. Skip-if-unchanged в EmbedPropertyValuationJob
-  # защищает от redundant API calls.
+  # work_bot 2/3: завершённая экспресс-оценка → эмбеддинг для semantic поиска
+  # похожих прошлых оценок. Инвестиционные аудиты (audit_mode: investment)
+  # исключены: у них в estimated_price хранится входная цена предложения
+  # покупателя, а не рыночная оценка.
   after_update_commit :enqueue_embed_on_completion,
-                      if: -> { saved_change_to_status? && completed? }
+                      if: -> { saved_change_to_status? && completed? && !audit_mode_investment? }
 
   # Validations
   # Phase 16 — auto-tag staff/test submissions (Надежда тестирует на проде,
@@ -171,6 +172,8 @@ class PropertyValuation < ApplicationRecord
   # update_columns (chat_tools) не запускает after_update_commit — такие
   # пути обязаны вызвать метод явно после смены статуса.
   def enqueue_embedding
+    return if audit_mode_investment?
+
     EmbedPropertyValuationJob.perform_later(id)
   rescue StandardError => e
     Rails.logger.warn("[PropertyValuation##{id}#enqueue_embedding] #{e.class} #{e.message}")

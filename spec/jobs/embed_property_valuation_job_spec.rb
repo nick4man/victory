@@ -73,6 +73,21 @@ RSpec.describe EmbedPropertyValuationJob do
       expect(fake_client).not_to have_received(:embed)
     end
 
+    it 'skip если audit_mode == investment (asking price покупателя — не рыночная оценка)' do
+      inv_valuation = PropertyValuation.create!(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'investment',
+        status: 'completed',
+        address: 'г. Рязань, ул. Праволыбедская, д. 27',
+        latitude: 54.6292, longitude: 39.7417,
+        total_area: 45.0,
+        estimated_price: 6_000_000
+      )
+
+      expect { described_class.new.perform(inv_valuation.id) }
+        .not_to change { PropertyValuationEmbedding.count }
+      expect(fake_client).not_to have_received(:embed)
+    end
+
     it 'поднимает ошибку записи — бэкфилл embeddings:valuations учтёт её в failed' do
       allow(PropertyValuationEmbedding).to receive(:find_or_initialize_by)
         .and_raise(ActiveRecord::ConnectionNotEstablished)
@@ -106,6 +121,21 @@ RSpec.describe EmbedPropertyValuationJob do
     it 'update без смены статуса НЕ ставит job в очередь повторно' do
       expect do
         valuation.update!(views_count: 3)
+      end.not_to have_enqueued_job(described_class)
+    end
+
+    it 'переход investment-аудита в completed НЕ ставит job в очередь' do
+      inv_pending = PropertyValuation.create!(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'investment',
+        status: 'pending',
+        address: 'г. Рязань, ул. Праволыбедская, д. 28',
+        latitude: 54.6292, longitude: 39.7417,
+        total_area: 50.0,
+        estimated_price: 5_500_000
+      )
+
+      expect do
+        inv_pending.update!(status: 'completed')
       end.not_to have_enqueued_job(described_class)
     end
   end
