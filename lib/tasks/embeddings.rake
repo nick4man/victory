@@ -41,4 +41,29 @@ namespace :embeddings do
     end
     puts '[embeddings:articles] done — check Sidekiq queue:low_priority'
   end
+
+  desc 'Backfill embeddings for every completed PropertyValuation (work_bot 2/3, synchronous, rate-limited)'
+  task valuations: :environment do
+    scope = PropertyValuation.completed.express_estimates
+    total = scope.count
+    puts "[embeddings:valuations] target=#{total} completed valuations"
+
+    done = 0
+    failed = 0
+
+    scope.find_each do |v|
+      # Вызываем .new.perform напрямую, а не perform_now: у job и ApplicationJob
+      # заданы retry_on, которые в perform_now перехватывают исключение и ставят
+      # асинхронный retry вместо проброса в rescue (сбивая счётчик failed).
+      EmbedPropertyValuationJob.new.perform(v.id)
+      done += 1
+      print "\r  progress: #{done}/#{total}" if (done % 5).zero?
+      sleep 0.7 # ≈85 req/min — under Google free tier 100 RPM
+    rescue StandardError => e
+      failed += 1
+      warn "\n  valuation=#{v.id} failed: #{e.class} #{e.message}"
+    end
+
+    puts "\n[embeddings:valuations] done=#{done} failed=#{failed}"
+  end
 end
