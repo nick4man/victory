@@ -49,6 +49,23 @@ module ChatTools
             городу данных мало, цифра ориентировочная, точную оценку даст
             специалист») и предложи оставить заявку на оценку. НЕ подавай
             цену как точную рыночную.
+
+            Дополнительно тул возвращает ориентир по УЖЕ проведённым
+            оценкам наших специалистов (similar_* поля). Если
+            similar_valuations_count — ЧИСЛО ≥ 3 — озвучь ориентир «по
+            оценкам наших специалистов, приблизительно similar_median_price
+            (вилка similar_min_price – similar_max_price по
+            similar_valuations_count похожим оценкам)». Если
+            similar_valuations_count — число 0–2 — честно скажи, что
+            похожих оценок мало, и опирайся на экспресс-оценку. Если
+            similar_valuations_count — null — поиск по прошлым оценкам
+            недоступен: НЕ упоминай прошлые оценки вообще, отвечай только
+            по экспресс-оценке. НИКОГДА не перечисляй адреса, цены или
+            детали отдельных прошлых оценок — только агрегат.
+
+            После ответа предложи передать запрос специалисту для точной
+            оценки. Если пользователь согласен и назвал имя и телефон —
+            вызови request_specialist_evaluation.
           DESC
           parameters: {
             type: 'object',
@@ -82,24 +99,49 @@ module ChatTools
       pv = build_valuation(args)
       enrich_from_geocoder(pv) if pv.latitude.blank? || pv.city.blank?
 
-      pv.save!(validate: false)
+      # after_create_commit PropertyValuation#push_to_work_bot анонсирует
+      # оценку в work_bot — для чат-оценки это преждевременная карточка
+      # без контактов и цены: полноценный анонс придёт один раз из Inquiry
+      # через ChatTools::RequestSpecialistEvaluation (или QualifyLead).
+      # Флаг — существующий механизм (см. Lead::Intake::SiteSource#fallback_inquiry).
+      begin
+        Thread.current[:skip_workbot_push] = true
+        pv.save!(validate: false)
+      ensure
+        Thread.current[:skip_workbot_push] = false
+      end
 
       result = PropertyEvaluationService.new(pv).call
       return run_failure(pv, result[:error]) unless result[:success]
 
+      evaluation_data = result.except(:success)
+
+      # Персист результата ДО semantic-поиска (блокер ревью #206): шаблон
+      # эмбеддинга (Embedding::PropertyValuationTextTemplate) включает цену,
+      # вилку и число аналогов из evaluation_data — без записанного результата
+      # query-вектор строился бы по ДРУГОМУ представлению, чем у кандидатов,
+      # и cosine был бы несопоставим.
       pv.update_columns(
         estimated_price:  result[:estimated_price],
         min_price:        result[:min_price],
         max_price:        result[:max_price],
         confidence_level: result[:confidence_level],
-        evaluation_data:  result.except(:success),
+        evaluation_data:  evaluation_data,
         status:           'completed',
         updated_at:       Time.current
       )
+
+      # Ориентир по прошлым оценкам специалистов (issue #176, часть 3).
+      # nil при инфраструктурном сбое — молча деградируем до express-only.
+      similar = Valuations::SimilarValuationsFinder.call(pv)
+      evaluation_data[:similar_valuations] = similar if similar
+      if similar
+        pv.update_columns(evaluation_data: evaluation_data, updated_at: Time.current)
+      end
       # update_columns обходит after_update_commit — эмбеддинг ставим явно
       pv.enqueue_embedding
 
-      compact_response(pv, result)
+      compact_response(pv, result, similar)
     rescue StandardError => e
       Rails.logger.warn("[ChatTools::EstimatePropertyValuation] #{e.class}: #{e.message.to_s.truncate(200)}")
       { error: 'evaluation_failed', message: e.message.to_s.truncate(160) }
@@ -161,7 +203,12 @@ module ChatTools
       pv.district  ||= lookup.district if lookup.district.present?
     end
 
-    def self.compact_response(pv, result)
+    def self.compact_response(pv, result, similar = nil)
+      # Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
+      # similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
+      # озвучивает точную цену одной чужой оценки.
+      similar_low = similar&.[](:low_coverage) == true
+
       {
         success:           true,
         token:             pv.token,
@@ -176,9 +223,16 @@ module ChatTools
         confidence_level:  result[:confidence_level].to_f,
         tier:              result[:tier].to_i,
         comparables_count: Array(result[:comparables]).size,
-        # Нет локальных аналогов (issue #172) — бот обязан озвучить
+        # Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
+        # специалистов (N < 3, issue #176) — бот обязан озвучить
         # ориентировочность оценки, см. description в .schema.
-        low_coverage:      result[:low_coverage] == true,
+        low_coverage:      result[:low_coverage] == true || similar_low,
+        # Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
+        # никаких поштучных адресов/телефонов чужих оценок (issue #176).
+        similar_valuations_count: similar&.[](:count),
+        similar_median_price:     similar_low ? nil : similar&.[](:median_price),
+        similar_min_price:        similar_low ? nil : similar&.[](:min_price),
+        similar_max_price:        similar_low ? nil : similar&.[](:max_price),
         ai_summary:        result[:ai_summary].to_s.truncate(600)
       }
     end

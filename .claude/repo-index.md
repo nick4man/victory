@@ -243,6 +243,7 @@ app/services/chat_tools/get_property_details.rb — module ChatTools, module Get
 app/services/chat_tools/list_mortgage_programs.rb — module ChatTools, module ListMortgagePrograms
 app/services/chat_tools/qualify_lead.rb — module ChatTools, module QualifyLead
 app/services/chat_tools/registry.rb — module ChatTools, module Registry
+app/services/chat_tools/request_specialist_evaluation.rb — module ChatTools, module RequestSpecialistEvaluation
 app/services/chat_tools/run_investment_audit.rb — module ChatTools, module RunInvestmentAudit
 app/services/chat_tools/search_properties.rb — module ChatTools, module SearchProperties
 app/services/chat_tools/semantic_search.rb — module ChatTools, module SemanticSearch
@@ -502,7 +503,9 @@ app/services/valuations/ai_comp_filter.rb — module Valuations, class AiCompFil
 app/services/valuations/ai_explainer.rb — module Valuations, class AiExplainer
 app/services/valuations/ai_synthetic_comps.rb — module Valuations, class AiSyntheticComps
 app/services/valuations/cross_city_adapter.rb — module Valuations, class CrossCityAdapter
+app/services/valuations/price_formatter.rb — module Valuations, module PriceFormatter
 app/services/valuations/semantic_comp_finder.rb — module Valuations, class SemanticCompFinder
+app/services/valuations/similar_valuations_finder.rb — module Valuations, class SimilarValuationsFinder
 app/services/valuations/sitemap_comp_finder.rb — module Valuations, class SitemapCompFinder
 app/services/valuations/websearch_comp_finder.rb — module Valuations, class WebsearchCompFinder
 app/services/yandex/webmaster_opportunities_service.rb — module Yandex, class WebmasterOpportunitiesService, class ConfigError
