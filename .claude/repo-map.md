@@ -395,6 +395,7 @@ app/
       list_mortgage_programs.rb
       qualify_lead.rb
       registry.rb
+      request_specialist_evaluation.rb
       run_investment_audit.rb
       search_properties.rb
       semantic_search.rb
@@ -659,7 +660,9 @@ app/
       ai_explainer.rb
       ai_synthetic_comps.rb
       cross_city_adapter.rb
+      price_formatter.rb
       semantic_comp_finder.rb
+      similar_valuations_finder.rb
       sitemap_comp_finder.rb
       websearch_comp_finder.rb
     yandex/
@@ -2403,31 +2406,6 @@ private
 def valid_credential?(secret)
 ⋮----
 def bearer_token
-</file>
-
-<file path="app/controllers/webhooks/news_ingest_controller.rb">
-module Webhooks
-⋮----
-class NewsIngestController < ApplicationController
-skip_before_action :verify_authenticity_token, raise: false
-before_action :authenticate_bearer!
-⋮----
-DEFAULT_CATEGORY = 'news'
-DEFAULT_SCHEMA = 'NewsArticle'
-⋮----
-def create
-⋮----
-private
-⋮----
-def authenticate_bearer!
-⋮----
-def payload_params
-⋮----
-def normalize_payload(p)
-⋮----
-def safe_parse_time(value)
-⋮----
-def upsert_article(attrs)
 </file>
 
 <file path="app/controllers/webhooks/telegram_controller.rb">
@@ -12307,6 +12285,15 @@ def redis
 require 'redis' unless defined?(Redis)
 </file>
 
+<file path="app/services/valuations/price_formatter.rb">
+module Valuations
+⋮----
+module PriceFormatter
+module_function
+⋮----
+def format_rub(amount)
+</file>
+
 <file path="app/services/yandex/webmaster_opportunities_service.rb">
 module Yandex
 ⋮----
@@ -13559,6 +13546,33 @@ def sanitize_page_ctx(raw_ctx)
 def stamp_page(conv, page_ctx)
 </file>
 
+<file path="app/controllers/webhooks/news_ingest_controller.rb">
+module Webhooks
+⋮----
+class NewsIngestController < ApplicationController
+skip_before_action :verify_authenticity_token, raise: false
+before_action :authenticate_bearer!
+⋮----
+DEFAULT_CATEGORY = 'news'
+DEFAULT_SCHEMA = 'NewsArticle'
+⋮----
+def create
+⋮----
+private
+⋮----
+def public_news_url(slug)
+⋮----
+def authenticate_bearer!
+⋮----
+def payload_params
+⋮----
+def normalize_payload(p)
+⋮----
+def safe_parse_time(value)
+⋮----
+def upsert_article(attrs)
+</file>
+
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -13909,19 +13923,38 @@ private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 def self.page_url(args)
 </file>
 
-<file path="app/services/chat_tools/registry.rb">
+<file path="app/services/chat_tools/request_specialist_evaluation.rb">
 module ChatTools
 ⋮----
-module Registry
-HANDLERS = {
+module RequestSpecialistEvaluation
+REQUIRED = %w[name phone].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
 ⋮----
-module_function
+DEDUPE_WINDOW = 5.minutes
 ⋮----
-def schemas
+MIN_ORIENT_COUNT = 3
 ⋮----
-def call(name, args)
+def self.schema
 ⋮----
-def deep_symbolize(obj)
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.find_recent_duplicate(phone)
+⋮----
+def self.duplicate_response(inquiry)
+⋮----
+def self.find_valuation(token)
+⋮----
+# Агрегат по похожим оценкам, сохранённый EstimatePropertyValuation в
+# evaluation_data (jsonb → ключи строки после reload).
+def self.extract_similar(pv)
+⋮----
+def self.orientation_line(pv, similar)
+⋮----
+def self.express_line(pv)
+⋮----
+def self.build_summary(args, orientation)
 </file>
 
 <file path="app/services/crm_cards/checker.rb">
@@ -14679,6 +14712,31 @@ def same_city?(property, distance_km = nil)
 def weight_for(cos, distance_km)
 </file>
 
+<file path="app/services/valuations/similar_valuations_finder.rb">
+module Valuations
+⋮----
+class SimilarValuationsFinder
+LIMIT      = 20
+MIN_COSINE = 0.75
+MIN_COUNT  = 3
+⋮----
+STAFF_SOURCE = 'work_bot'
+⋮----
+def self.call(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def price_for(row, subject_city)
+⋮----
+def aggregate(prices)
+⋮----
+def zero_result
+</file>
+
 <file path="app/jobs/embed_property_valuation_job.rb">
 require 'digest'
 ⋮----
@@ -14727,6 +14785,44 @@ def photos_limit
 Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
 ⋮----
 def broadcast_cabinet_completion
+</file>
+
+<file path="app/services/chat_tools/registry.rb">
+module ChatTools
+⋮----
+module Registry
+HANDLERS = {
+⋮----
+module_function
+⋮----
+def schemas
+⋮----
+def call(name, args)
+⋮----
+def deep_symbolize(obj)
+</file>
+
+<file path="app/services/embedding/property_valuation_text_template.rb">
+PROPERTY_TYPE_LABELS = {
+⋮----
+DEAL_TYPE_LABELS = {
+⋮----
+CONDITION_LABELS = {
+⋮----
+# created_at, а не updated_at: touch/служебные правки не должны плавать
+# дату и content_hash — иначе лишние пере-эмбеддинги (issue #201)
+⋮----
+parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
+⋮----
+def self.append_price_per_sqm(parts, valuation)
+⋮----
+def self.effective_area(valuation)
+⋮----
+def self.land_sotki(valuation)
+⋮----
+def self.analogs_count(valuation)
+⋮----
+def self.format_price(value)
 </file>
 
 <file path="app/services/external_listings/yrl_parser.rb">
@@ -15199,105 +15295,6 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/services/property_evaluation_service.rb">
-class PropertyEvaluationService
-⋮----
-MIN_TIER1 = 3
-MIN_TIER2 = 2
-MIN_TIER3 = 1
-⋮----
-ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
-⋮----
-AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
-⋮----
-LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
-⋮----
-def initialize(valuation, include_full_comparables: false)
-⋮----
-def call
-⋮----
-# Полный пул аналогов добавляем только когда запросил staff-тул
-# (include_full_comparables) — публичные оценки его не хранят (PR #184).
-def full_comparables_hash(comps)
-⋮----
-# Effective area в м² для ВСЕХ типов: total_area для строений,
-# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
-# (ComparableFinder#enrich переводит land-объявления площадок из соток),
-# поэтому fallback и CompositeEstimator работают в одной единице
-# (ревью Kimi, PR #184).
-def subject_area
-⋮----
-private
-⋮----
-def valid?
-⋮----
-# === Ensemble-based confidence ===
-# Старая tier-логика заменена на multi-source формулу: оценка строится
-# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
-# ai_synthesized / city anchor), и confidence учитывает (a) сколько
-# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
-# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
-# большинстве реалистичных сценариев.
-REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
-⋮----
-def confidence_for(pool, estimate = nil)
-⋮----
-base = 0.50  # baseline: любая успешная оценка ≥ 50%
-⋮----
-base += 0.10 if real_count >= 1                # хотя бы один настоящий
-# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
-# модель строит bootstrap-CI и хедоник работает; засчитываем как
-# «полу-настоящий» сигнал.
-⋮----
-# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
-# с минимальным сравнением, даже если расходится с агрегатами.
-⋮----
-# condition хранится в колонке `condition`; геттер `property_condition` —
-# alias через `attribute`. Проверяем оба для совместимости.
-⋮----
-# Cap positive contributions ДО penalty — иначе сумма additions может
-# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
-# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
-# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
-# min(1.25, 0.95) = 0.95 — penalty не виден).
-⋮----
-# PENALTY for high sample variance — coefficient of variation
-# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
-# spans wide range, confidence shouldn't быть 0.95. Это решает
-# «honest math» проблему: 0.95 при spread 3x = nonsense.
-#
-# CV thresholds calibrated empirically:
-#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
-#  - CV > 0.30 → notable heterogeneity — medium penalty
-#  - CV > 0.18 → some spread — small penalty
-⋮----
-# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
-⋮----
-def estimators_agree?(comps)
-⋮----
-def pps_coefficient_of_variation(comps)
-⋮----
-def low_coverage?(comps)
-⋮----
-def fallback_estimate
-⋮----
-def serialize(comps)
-⋮----
-def compose_title(r)
-⋮----
-def comparable_url(r)
-⋮----
-def comparable_source(r)
-⋮----
-def build_market_analysis(comps, estimate)
-⋮----
-def build_recommendations
-⋮----
-def success(payload)
-⋮----
-def error(message)
-</file>
-
 <file path="Gemfile">
 # frozen_string_literal: true
 
@@ -15479,32 +15476,19 @@ def self.build_valuation(args)
 ⋮----
 def self.enrich_from_geocoder(pv)
 ⋮----
-def self.compact_response(pv, result)
+def self.compact_response(pv, result, similar = nil)
+# Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
+# similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
+# озвучивает точную цену одной чужой оценки.
 ⋮----
-# Нет локальных аналогов (issue #172) — бот обязан озвучить
+# Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
+# специалистов (N < 3, issue #176) — бот обязан озвучить
 # ориентировочность оценки, см. description в .schema.
 ⋮----
+# Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
+# никаких поштучных адресов/телефонов чужих оценок (issue #176).
+⋮----
 def self.run_failure(pv, error_message)
-</file>
-
-<file path="app/services/embedding/property_valuation_text_template.rb">
-PROPERTY_TYPE_LABELS = {
-⋮----
-DEAL_TYPE_LABELS = {
-⋮----
-CONDITION_LABELS = {
-⋮----
-parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
-⋮----
-def self.append_price_per_sqm(parts, valuation)
-⋮----
-def self.effective_area(valuation)
-⋮----
-def self.land_sotki(valuation)
-⋮----
-def self.analogs_count(valuation)
-⋮----
-def self.format_price(value)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/close.rb">
@@ -15595,6 +15579,105 @@ private
 def confirm_prompt
 ⋮----
 def accept_reason(value, manual)
+</file>
+
+<file path="app/services/property_evaluation_service.rb">
+class PropertyEvaluationService
+⋮----
+MIN_TIER1 = 3
+MIN_TIER2 = 2
+MIN_TIER3 = 1
+⋮----
+ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+⋮----
+AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+⋮----
+LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+⋮----
+def initialize(valuation, include_full_comparables: false)
+⋮----
+def call
+⋮----
+# Полный пул аналогов добавляем только когда запросил staff-тул
+# (include_full_comparables) — публичные оценки его не хранят (PR #184).
+def full_comparables_hash(comps)
+⋮----
+# Effective area в м² для ВСЕХ типов: total_area для строений,
+# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
+# (ComparableFinder#enrich переводит land-объявления площадок из соток),
+# поэтому fallback и CompositeEstimator работают в одной единице
+# (ревью Kimi, PR #184).
+def subject_area
+⋮----
+private
+⋮----
+def valid?
+⋮----
+# === Ensemble-based confidence ===
+# Старая tier-логика заменена на multi-source формулу: оценка строится
+# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
+# ai_synthesized / city anchor), и confidence учитывает (a) сколько
+# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
+# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
+# большинстве реалистичных сценариев.
+REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
+⋮----
+def confidence_for(pool, estimate = nil)
+⋮----
+base = 0.50  # baseline: любая успешная оценка ≥ 50%
+⋮----
+base += 0.10 if real_count >= 1                # хотя бы один настоящий
+# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
+# модель строит bootstrap-CI и хедоник работает; засчитываем как
+# «полу-настоящий» сигнал.
+⋮----
+# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
+# с минимальным сравнением, даже если расходится с агрегатами.
+⋮----
+# condition хранится в колонке `condition`; геттер `property_condition` —
+# alias через `attribute`. Проверяем оба для совместимости.
+⋮----
+# Cap positive contributions ДО penalty — иначе сумма additions может
+# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+# min(1.25, 0.95) = 0.95 — penalty не виден).
+⋮----
+# PENALTY for high sample variance — coefficient of variation
+# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+# spans wide range, confidence shouldn't быть 0.95. Это решает
+# «honest math» проблему: 0.95 при spread 3x = nonsense.
+#
+# CV thresholds calibrated empirically:
+#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+#  - CV > 0.30 → notable heterogeneity — medium penalty
+#  - CV > 0.18 → some spread — small penalty
+⋮----
+# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+⋮----
+def estimators_agree?(comps)
+⋮----
+def pps_coefficient_of_variation(comps)
+⋮----
+def low_coverage?(comps)
+⋮----
+def fallback_estimate
+⋮----
+def serialize(comps)
+⋮----
+def compose_title(r)
+⋮----
+def comparable_url(r)
+⋮----
+def comparable_source(r)
+⋮----
+def build_market_analysis(comps, estimate)
+⋮----
+def build_recommendations
+⋮----
+def success(payload)
+⋮----
+def error(message)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">

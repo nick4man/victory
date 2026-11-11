@@ -252,12 +252,10 @@ module Telegram
         text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
       end
 
-      # Mirror of ExpressReportNotifier#fmt_rub — should ideally extract
-      # to shared formatter helper. Keeping duplicate для simplicity пока
-      # не появится третий call-site (DRY ratio < 3).
+      # LeadAnnouncer делегирует к общему Valuations::PriceFormatter,
+      # формат идентичен прежнему fmt_rub.
       def fmt_rub(amount)
-        return '—' if amount.blank?
-        "#{amount.to_i.to_s.reverse.gsub(/(\d{3})/, '\1 ').reverse.strip} ₽"
+        Valuations::PriceFormatter.format_rub(amount)
       end
 
       def report_url(valuation)

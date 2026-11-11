@@ -24,14 +24,15 @@ RSpec.describe Valuations::SimilarValuationsFinder do
   end
 
   def seed_valuation!(price:, city: 'Рязань', deal_type: 'sale', status: 'completed',
-                      staff_test: false, vector: near_vector)
+                      staff_test: false, vector: near_vector, source: 'work_bot')
     v = PropertyValuation.create!(
       property_type: 'apartment', deal_type: deal_type, audit_mode: 'express',
       status: status, staff_test: staff_test,
       address: "г. #{city}, ул. Seed, д. #{PropertyValuation.count + 1}",
       city: city, latitude: 54.6292, longitude: 39.7417,
       total_area: 50.0, rooms: 2,
-      estimated_price: price, evaluation_data: {}
+      estimated_price: price, evaluation_data: {},
+      metadata: source ? { 'source' => source } : {}
     )
     PropertyValuationEmbedding.create!(
       property_valuation: v,
@@ -84,6 +85,37 @@ RSpec.describe Valuations::SimilarValuationsFinder do
     expect(result[:count]).to eq(3)
     expect(result[:min_price]).to eq(4_000_000)
     expect(result[:max_price]).to eq(4_400_000)
+  end
+
+  it 'клиентские express-оценки не попадают в корпус — только work_bot (ревью #206)' do
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+    # клиентские оценки (сайт/чат-бот): source отсутствует или другой —
+    # «оценками наших специалистов» их называть нельзя
+    seed_valuation!(price: 9_000_000, source: nil)
+    seed_valuation!(price: 8_000_000, source: 'site')
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:min_price]).to eq(4_000_000)
+    expect(result[:max_price]).to eq(4_400_000)
+  end
+
+  it 'ближайшие клиентские оценки не вытесняют staff-строки до LIMIT (фильтр в SQL)' do
+    # Клиентская оценка векторно БЛИЖЕ всех (query_vector=[1,0,…]) — без
+    # SQL-фильтра она съела бы слот в LIMIT 20 и дала бы ложный low_coverage.
+    near_client = [1.0] + Array.new(767, 0.0)
+    seed_valuation!(price: 9_000_000, source: nil, vector: near_client)
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:low_coverage]).to be(false)
   end
 
   it 'сравнение городов case-insensitive и с префиксом «г.»' do

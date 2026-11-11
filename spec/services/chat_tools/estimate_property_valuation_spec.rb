@@ -100,14 +100,15 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     end
 
     def seed_valuation!(price:, city: 'Рязань', deal_type: 'sale', status: 'completed',
-                        staff_test: false, vector: near_vector)
+                        staff_test: false, vector: near_vector, source: 'work_bot')
       v = PropertyValuation.create!(
         property_type: 'apartment', deal_type: deal_type, audit_mode: 'express',
         status: status, staff_test: staff_test,
         address: "г. #{city}, ул. Seed, д. #{PropertyValuation.count + 1}",
         city: city, latitude: 54.6292, longitude: 39.7417,
         total_area: 50.0, rooms: 2,
-        estimated_price: price, evaluation_data: {}
+        estimated_price: price, evaluation_data: {},
+        metadata: source ? { 'source' => source } : {}
       )
       PropertyValuationEmbedding.create!(
         property_valuation: v,
@@ -155,15 +156,32 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
       expect(similar['low_coverage']).to be(false)
     end
 
-    it 'N < 3 → low_coverage: true и фолбэк на экспресс-оценку' do
+    it 'N < 3 → low_coverage: true, ценовые similar_* поля nil (fail-close), фолбэк на экспресс-оценку' do
       seed_valuation!(price: 4_000_000)
 
       res = call_tool
 
       expect(res[:similar_valuations_count]).to eq(1)
       expect(res[:low_coverage]).to be(true)
+      # fail-close на уровне данных (ревью #206): N = 1 — это точная цена
+      # одной чужой оценки, наружу она не отдаётся
+      expect(res[:similar_median_price]).to be_nil
+      expect(res[:similar_min_price]).to be_nil
+      expect(res[:similar_max_price]).to be_nil
       # экспресс-оценка на месте — бот опирается на неё
       expect(res[:estimated_price]).to eq(5_400_000)
+    end
+
+    it 'клиентские express-оценки не смешиваются с оценками специалистов' do
+      seed_valuation!(price: 4_000_000)
+      seed_valuation!(price: 4_200_000)
+      seed_valuation!(price: 4_400_000)
+      seed_valuation!(price: 9_000_000, source: nil)
+
+      res = call_tool
+
+      expect(res[:similar_valuations_count]).to eq(3)
+      expect(res[:similar_median_price]).to eq(4_200_000)
     end
 
     it 'пустой корпус похожих оценок → count 0, low_coverage: true' do

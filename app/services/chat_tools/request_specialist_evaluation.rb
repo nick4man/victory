@@ -159,17 +159,34 @@ module ChatTools
     end
 
     def self.orientation_line(pv, similar)
-      count  = similar&.[]('count').to_i
-      median = similar&.[]('median_price').to_i
+      count  = similar&.[](:count)  || similar&.[]('count')
+      median = similar&.[](:median_price) || similar&.[]('median_price')
 
-      if count >= MIN_ORIENT_COUNT && median.positive?
-        min = similar['min_price'].to_i
-        max = similar['max_price'].to_i
-        "Ориентир по #{count} похожим оценкам наших специалистов: ~#{fmt_rub(median)} ₽ " \
-          "(вилка #{fmt_rub(min)}–#{fmt_rub(max)} ₽)."
+      if similar.nil?
+        # Инфраструктурный сбой SimilarValuationsFinder (nil) — НЕ «найдено: 0»:
+        # без числа похожих оценок, честный нейтральный экспресс-ориентир.
+        express_line(pv)
+      elsif count.to_i >= MIN_ORIENT_COUNT && median.to_i.positive?
+        min = similar[:min_price] || similar['min_price']
+        max = similar[:max_price] || similar['max_price']
+        format('Ориентир по %d похожим оценкам наших специалистов: ~%s ' \
+               '(вилка %s–%s).',
+               count.to_i,
+               Valuations::PriceFormatter.format_rub(median),
+               Valuations::PriceFormatter.format_rub(min),
+               Valuations::PriceFormatter.format_rub(max))
       elsif pv&.estimated_price.to_i.positive?
-        "Похожих оценок мало (найдено: #{count}) — ориентир по экспресс-оценке: ~#{fmt_rub(pv.estimated_price)} ₽."
+        format('Похожих оценок мало (найдено: %d) — ориентир по экспресс-оценке: ~%s.',
+               count.to_i,
+               Valuations::PriceFormatter.format_rub(pv.estimated_price))
       end
+    end
+
+    def self.express_line(pv)
+      return nil unless pv&.estimated_price.to_i.positive?
+
+      format('Ориентир по экспресс-оценке: ~%s.',
+             Valuations::PriceFormatter.format_rub(pv.estimated_price))
     end
 
     def self.build_summary(args, orientation)
@@ -184,10 +201,6 @@ module ChatTools
       bits << orientation if orientation.present?
       bits << "Комментарий клиента: #{args['message'].to_s.strip}" if args['message'].to_s.strip.present?
       bits.join(' ')
-    end
-
-    def self.fmt_rub(amount)
-      ActionController::Base.helpers.number_with_delimiter(amount.to_i, delimiter: ' ')
     end
   end
 end

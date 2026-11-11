@@ -69,10 +69,10 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(card_text).to include('Анна')
     end
 
-    it 'похожих оценок мало → ориентир по экспресс-оценке' do
+    it 'похожих оценок мало (N < 3) → честный ориентир по экспресс-оценке с указанием найденного' do
       valuation.update_columns(
-        evaluation_data: { 'similar_valuations' => { 'count' => 1, 'median_price' => 4_000_000,
-                                                     'min_price' => 4_000_000, 'max_price' => 4_000_000,
+        evaluation_data: { 'similar_valuations' => { 'count' => 1, 'median_price' => nil,
+                                                     'min_price' => nil, 'max_price' => nil,
                                                      'low_coverage' => true } }
       )
 
@@ -80,8 +80,23 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
 
       inquiry = Inquiry.order(:created_at).last
       expect(inquiry.message).to match(/Похожих оценок мало/)
+      expect(inquiry.message).to match(/найдено: 1/)
       expect(inquiry.message).to include('5 400 000')
       expect(res[:orientation]).to match(/экспресс-оценке/)
+    end
+
+    it 'инфраструктурный сбой поиска (evaluation_data без similar_valuations) → нейтральный экспресс-ориентир без «найдено: N»' do
+      valuation.update_columns(evaluation_data: {})
+
+      res = call_tool('valuation_token' => valuation.token)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to match(/Ориентир по экспресс-оценке/)
+      expect(inquiry.message).to include('5 400 000')
+      expect(inquiry.message).not_to match(/найдено/)
+      expect(inquiry.metadata['similar_valuations']).to be_nil
+      expect(res[:orientation]).to match(/экспресс-оценке/)
+      expect(res[:orientation]).not_to match(/найдено/)
     end
   end
 

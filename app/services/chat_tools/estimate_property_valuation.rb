@@ -184,6 +184,11 @@ module ChatTools
     end
 
     def self.compact_response(pv, result, similar = nil)
+      # Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
+      # similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
+      # озвучивает точную цену одной чужой оценки.
+      similar_low = similar&.[](:low_coverage) == true
+
       {
         success:           true,
         token:             pv.token,
@@ -201,13 +206,13 @@ module ChatTools
         # Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
         # специалистов (N < 3, issue #176) — бот обязан озвучить
         # ориентировочность оценки, см. description в .schema.
-        low_coverage:      result[:low_coverage] == true || similar&.[](:low_coverage) == true,
+        low_coverage:      result[:low_coverage] == true || similar_low,
         # Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
         # никаких поштучных адресов/телефонов чужих оценок (issue #176).
         similar_valuations_count: similar&.[](:count),
-        similar_median_price:     similar&.[](:median_price),
-        similar_min_price:        similar&.[](:min_price),
-        similar_max_price:        similar&.[](:max_price),
+        similar_median_price:     similar_low ? nil : similar&.[](:median_price),
+        similar_min_price:        similar_low ? nil : similar&.[](:min_price),
+        similar_max_price:        similar_low ? nil : similar&.[](:max_price),
         ai_summary:        result[:ai_summary].to_s.truncate(600)
       }
     end
