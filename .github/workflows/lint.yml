@@ -125,8 +125,21 @@ jobs:
           bundler-cache: true
 
       # structure.sql грузится через psql — нужен клиент мажорной версии 15.
+      # Раннеры GitHub периодически теряют DNS на apt-зеркалах (см. run
+      # 43051035771: «Temporary failure resolving 'security.ubuntu.com'») —
+      # одна попытка без ретраев убивает весь RSpec-job по инфраструктурной
+      # причине, не доходя до кода. Три попытки с паузой закрывают флейк.
       - name: Install postgresql-client
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed; retrying in 30s" >&2
+            sleep 30
+          done
+          echo 'apt-get failed after 3 attempts' >&2
+          exit 1
 
       - name: Prepare test database
         env: &rspec_env
