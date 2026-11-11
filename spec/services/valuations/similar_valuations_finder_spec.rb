@@ -150,6 +150,22 @@ RSpec.describe Valuations::SimilarValuationsFinder do
     expect(result[:low_coverage]).to be(false)
   end
 
+  it 'граница CANDIDATE_LIMIT: больше 100 ближайших неподходящих не дают ложный low_coverage' do
+    # 105 ближайших staff-оценок другого города (> страницы 100) — без
+    # страничного обхода подходящие рязанские записи за пределами первой
+    # страницы были бы обрезаны и результат стал бы ложным low_coverage.
+    105.times { seed_valuation!(price: 10_000_000, city: 'Москва') }
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:low_coverage]).to be(false)
+    expect(result[:median_price]).to eq(4_200_000)
+  end
+
   it 'сравнение городов case-insensitive и с префиксом «г.»' do
     seed_valuation!(price: 4_000_000, city: 'г. рязань')
     seed_valuation!(price: 4_200_000)

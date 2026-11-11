@@ -198,14 +198,31 @@ module ChatTools
       object << (args['property_type'].presence || pv&.property_type) if args['property_type'].present? || pv&.property_type.present?
       object << (args['city'].presence || pv&.city) if args['city'].present? || pv&.city.present?
       object << (args['address'].presence || pv&.address) if args['address'].present? || pv&.address.present?
-      area = args['total_area'].to_f.positive? ? args['total_area'].to_f : pv&.total_area.to_f
-      object << "#{area.to_i} м²" if area.positive?
+      area_bit = area_display(args, pv)
+      object << area_bit if area_bit.present?
       rooms = args['rooms'].to_i.positive? ? args['rooms'].to_i : pv&.rooms.to_i
       object << "#{rooms}-комн" if rooms.positive?
       bits << "Объект: #{object.join(', ')}." if object.any?
       bits << orientation if orientation.present?
       bits << "Комментарий клиента: #{args['message'].to_s.strip}" if args['message'].to_s.strip.present?
       bits.join(' ')
+    end
+
+    # Площадь: аргументы тула в приоритете (для land LLM шлёт сотки в
+    # total_area — см. schema); fallback — pv: участок → land_area в сотках,
+    # остальное → total_area в м².
+    def self.area_display(args, pv)
+      if args['total_area'].to_f.positive?
+        return "#{args['total_area'].to_i} сот." if args['property_type'].to_s == 'land'
+
+        return "#{args['total_area'].to_i} м²"
+      end
+      if pv&.property_type == 'land' && pv&.land_area.to_f.positive?
+        return "#{pv.land_area.to_i} сот."
+      end
+
+      pv_area = pv&.total_area.to_f
+      "#{pv_area.to_i} м²" if pv_area.positive?
     end
   end
 end

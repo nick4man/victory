@@ -188,6 +188,24 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
       expect(res[:similar_median_price]).to eq(4_200_000)
     end
 
+    it 'query-вектор строится ПОСЛЕ записи результата оценки в pv (ревью #206)' do
+      # Шаблон эмбеддинга включает цену/вилку/₽-за-м²/число аналогов — finder
+      # должен видеть результат, иначе cosine считается между разными
+      # представлениями.
+      received = nil
+      allow(Valuations::SimilarValuationsFinder).to receive(:call) do |pv|
+        received = pv
+        nil
+      end
+
+      call_tool
+
+      expect(received.estimated_price).to eq(5_400_000)
+      expect(received.min_price).to eq(4_968_000)
+      expect(received.max_price).to eq(5_832_000)
+      expect(received.evaluation_data).to include('estimated_price')
+    end
+
     it 'пустой корпус похожих оценок → count 0, low_coverage: true' do
       res = call_tool
 

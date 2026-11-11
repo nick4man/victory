@@ -19,11 +19,12 @@ module Valuations
   #     metadata['source'] == 'work_bot' (контракт ключа см. в
   #     ChatTools::Staff::MarketComparables#valuation_metadata);
   #   • в SQL до LIMIT уходят жёсткие фильтры (source/deal_type/status/self),
-  #     а фильтр по городу остаётся в Ruby (нормализация «г.»/регистр —
-  #     ExternalListing.normalize_city). Поэтому LIMIT берёт увеличенный пул
-  #     CANDIDATE_LIMIT кандидатов, а не 20 финальных: иначе 20 ближайших
-  #     оценок другого города вытеснят подходящие и дадут ложный
-  #     low_coverage (блокер ревью #206).
+  #     а фильтр по городу/cosine остаётся в Ruby (нормализация «г.»/регистр —
+  #     ExternalListing.normalize_city). Фиксированный LIMIT ДО Ruby-фильтров
+  #     даёт ложный low_coverage, когда ближайшие записи не подходят (блокеры
+  #     ревью #206): кандидаты листаются страницами CANDIDATE_LIMIT, пока не
+  #     наберётся MIN_COUNT подходящих или строки не кончатся. MAX_PAGES
+  #     ограничивает стоимость векторного поиска.
   #
   # Возвращает ТОЛЬКО агрегат — поштучные адреса/цены/телефоны чужих
   # оценок наружу не отдаём:
@@ -34,8 +35,9 @@ module Valuations
   # При любой инфраструктурной ошибке (нет API key, сеть, БД) → nil:
   # вызывающий код молча деградирует до express-only ответа.
   class SimilarValuationsFinder
-    # Пул кандидатов до Ruby-фильтра по городу/cosine — см. шапку класса.
+    # Страницы кандидатов — см. шапку класса, почему не один фиксированный LIMIT.
     CANDIDATE_LIMIT = 100
+    MAX_PAGES       = 5
     MIN_COSINE = 0.75   # как у SemanticCompFinder — ниже это другой сегмент
     MIN_COUNT  = 3      # меньше — low_coverage, агрегат не показываем
     # Контракт ключа — ChatTools::Staff::MarketComparables#valuation_metadata
@@ -59,16 +61,7 @@ module Valuations
       vector = Embedding::GoogleClient.new.embed(text)
       return zero_result unless vector.is_a?(Array) && vector.length > 100
 
-      rows = PropertyValuationEmbedding
-             .nearest_neighbors(:embedding, vector, distance: :cosine)
-             .joins(:property_valuation)
-             .includes(:property_valuation)
-             .where(property_valuations: { deal_type: @v.deal_type, status: 'completed' })
-             .where("property_valuations.metadata ->> 'source' = ?", STAFF_SOURCE)
-             .where.not(property_valuation_id: @v.id)
-             .limit(CANDIDATE_LIMIT)
-
-      prices = rows.filter_map { |row| price_for(row, subject_city) }
+      prices = collect_prices(vector, subject_city)
       aggregate(prices)
     rescue StandardError => e
       Rails.logger.warn("[Valuations::SimilarValuationsFinder] #{e.class}: #{e.message.to_s.truncate(180)}")
@@ -76,6 +69,33 @@ module Valuations
     end
 
     private
+
+    # Страничный обход: SQL отдаёт жёстко-фильтрованный пул (source/deal_type/
+    # status/self), Ruby отсекает по городу/cosine/цене. Листаем, пока не
+    # наберём MIN_COUNT подходящих или строки не кончатся — фиксированный
+    # LIMIT до Ruby-фильтров иначе даёт ложный low_coverage (ревью #206).
+    def collect_prices(vector, subject_city)
+      prices = []
+      (0...MAX_PAGES).each do |page|
+        rows = candidate_scope(vector)
+               .offset(page * CANDIDATE_LIMIT)
+               .limit(CANDIDATE_LIMIT)
+               .to_a
+        prices.concat(rows.filter_map { |row| price_for(row, subject_city) })
+        break if rows.size < CANDIDATE_LIMIT || prices.size >= MIN_COUNT
+      end
+      prices
+    end
+
+    def candidate_scope(vector)
+      PropertyValuationEmbedding
+        .nearest_neighbors(:embedding, vector, distance: :cosine)
+        .joins(:property_valuation)
+        .includes(:property_valuation)
+        .where(property_valuations: { deal_type: @v.deal_type, status: 'completed' })
+        .where("property_valuations.metadata ->> 'source' = ?", STAFF_SOURCE)
+        .where.not(property_valuation_id: @v.id)
+    end
 
     def price_for(row, subject_city)
       valuation = row.property_valuation

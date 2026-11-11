@@ -79,6 +79,20 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(res[:success]).to be(true)
     end
 
+    it 'fallback для участка показывает площадь в сотках из land_area (ревью #206)' do
+      valuation.update_columns(
+        property_type: 'land',
+        total_area: 800.0,   # нормализация EstimatePropertyValuation: сотки × 100
+        land_area: 8.0
+      )
+
+      call_tool('valuation_token' => valuation.token)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to include('8 сот.')
+      expect(inquiry.message).not_to include('800 м²')
+    end
+
     it 'похожих оценок мало (N < 3) → честный ориентир по экспресс-оценке с указанием найденного' do
       valuation.update_columns(
         evaluation_data: { 'similar_valuations' => { 'count' => 1, 'median_price' => nil,
@@ -121,6 +135,42 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(inquiry.inquiry_type).to eq('evaluation')
       expect(inquiry.message).to include('Тестовая')
       expect(inquiry.metadata['similar_valuations']).to be_nil
+    end
+  end
+
+  describe 'сквозной путь: оценка через чат-тул → передача специалисту' do
+    let(:service_result) do
+      {
+        success: true,
+        estimated_price: 5_400_000, min_price: 4_968_000, max_price: 5_832_000,
+        price_per_sqm: 100_000, confidence_level: 0.65, tier: 4,
+        comparables: [], ai_summary: '', low_coverage: false
+      }
+    end
+
+    before do
+      allow(PropertyEvaluationService).to receive(:new).and_return(double(call: service_result))
+      allow(Geocoding::AddressLookup).to receive(:call).and_return(nil)
+      allow(Valuations::SimilarValuationsFinder).to receive(:call).and_return(nil)
+    end
+
+    it 'создаёт ровно один LeadEvent и одну TG-карточку суммарно (ревью #206)' do
+      res = ChatTools::EstimatePropertyValuation.call(
+        'property_type' => 'apartment',
+        'address' => 'г. Рязань, ул. Тестовая, д. 1',
+        'city' => 'Рязань',
+        'total_area' => 54
+      )
+      expect(res[:success]).to be(true)
+
+      expect do
+        call_tool('valuation_token' => res[:token])
+      end.to change(LeadEvent, :count).by(1)
+      expect(sent_messages.size).to eq(1)
+
+      lead = LeadEvent.order(:id).last
+      expect(lead.lead_ref_type).to eq('PropertyValuation')
+      expect(lead.anchor_topic_key).to eq('appraisal')
     end
   end
 

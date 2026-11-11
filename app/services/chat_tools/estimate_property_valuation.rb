@@ -112,11 +112,22 @@ module ChatTools
       result = PropertyEvaluationService.new(pv).call
       return run_failure(pv, result[:error]) unless result[:success]
 
+      evaluation_data = result.except(:success)
+
+      # Блокер ревью #206: шаблон эмбеддинга (Embedding::PropertyValuationTextTemplate)
+      # включает цену/вилку/₽-за-м² и число аналогов из evaluation_data. Без
+      # результата query-вектор строится по ДРУГОМУ представлению, чем у
+      # кандидатов, и cosine несопоставим. Пишем результат в in-memory pv ДО
+      # поиска; персист — ниже, одним update_columns.
+      pv.estimated_price  = result[:estimated_price]
+      pv.min_price        = result[:min_price]
+      pv.max_price        = result[:max_price]
+      pv.confidence_level = result[:confidence_level]
+      pv.evaluation_data  = evaluation_data
+
       # Ориентир по прошлым оценкам специалистов (issue #176, часть 3).
       # nil при инфраструктурном сбое — молча деградируем до express-only.
       similar = Valuations::SimilarValuationsFinder.call(pv)
-
-      evaluation_data = result.except(:success)
       evaluation_data[:similar_valuations] = similar if similar
 
       pv.update_columns(
