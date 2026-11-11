@@ -52,7 +52,10 @@ namespace :embeddings do
     failed = 0
 
     scope.find_each do |v|
-      EmbedPropertyValuationJob.perform_now(v.id)
+      # Вызываем .new.perform напрямую, а не perform_now: у job и ApplicationJob
+      # заданы retry_on, которые в perform_now перехватывают исключение и ставят
+      # асинхронный retry вместо проброса в rescue (сбивая счётчик failed).
+      EmbedPropertyValuationJob.new.perform(v.id)
       done += 1
       print "\r  progress: #{done}/#{total}" if (done % 5).zero?
       sleep 0.7 # ≈85 req/min — under Google free tier 100 RPM

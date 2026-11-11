@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'rails_helper'
+require 'rake'
 
 RSpec.describe EmbedPropertyValuationJob do
   let(:fake_vec) { Array.new(768) { rand(-1.0..1.0) } }
@@ -105,6 +106,26 @@ RSpec.describe EmbedPropertyValuationJob do
     it 'update без смены статуса НЕ ставит job в очередь повторно' do
       expect do
         valuation.update!(views_count: 3)
+      end.not_to have_enqueued_job(described_class)
+    end
+  end
+
+  describe 'rake embeddings:valuations' do
+    before do
+      Rails.application.load_tasks unless Rake::Task.task_defined?('embeddings:valuations')
+      Rake::Task['embeddings:valuations'].reenable
+      allow(Kernel).to receive(:sleep)
+      allow_any_instance_of(Object).to receive(:sleep)
+    end
+
+    it 'считает сбой в failed и не ставит асинхронный retry' do
+      allow(fake_client).to receive(:embed).and_raise(Embedding::GoogleClient::Error, 'rate limit')
+
+      expect do
+        expect do
+          Rake::Task['embeddings:valuations'].invoke
+        end.to output(/done=0 failed=1/).to_stdout
+          .and output(/failed: Embedding::GoogleClient::Error/).to_stderr
       end.not_to have_enqueued_job(described_class)
     end
   end

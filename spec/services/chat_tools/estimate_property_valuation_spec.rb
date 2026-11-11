@@ -46,6 +46,44 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     expect { call_tool }.to have_enqueued_job(EmbedPropertyValuationJob)
   end
 
+  describe 'участок (land) — нормализация площади и реальный PropertyEvaluationService' do
+    before do
+      allow(PropertyEvaluationService).to receive(:new).and_call_original
+      allow(Valuations::WebsearchCompFinder).to receive(:new)
+        .and_return(instance_double(Valuations::WebsearchCompFinder, call: 0))
+      allow(Valuations::SitemapCompFinder).to receive(:new)
+        .and_return(instance_double(Valuations::SitemapCompFinder, call: 0))
+      allow(Valuations::SemanticCompFinder).to receive(:call).and_return([])
+      allow(Valuations::CrossCityAdapter).to receive(:call).and_return([])
+      allow(Valuations::AiSyntheticComps).to receive(:call).and_return([])
+      allow(Valuations::AiExplainer).to receive(:new)
+        .and_return(instance_double(Valuations::AiExplainer, call: nil))
+    end
+
+    it 'сохраняет land_area в сотках, total_area в м², завершает оценку и формирует полный текст эмбеддинга' do
+      res = nil
+      expect do
+        res = described_class.call(
+          'property_type' => 'land',
+          'address'       => 'г. Рязань, Канищево, Солотчинское шоссе, 1',
+          'city'          => 'Рязань',
+          'district'      => 'Канищево',
+          'total_area'    => 8
+        )
+      end.to have_enqueued_job(EmbedPropertyValuationJob)
+
+      expect(res[:success]).to be(true)
+      pv = PropertyValuation.find_by!(token: res[:token])
+      expect(pv.status).to eq('completed')
+      expect(pv.land_area).to eq(8)
+      expect(pv.total_area).to eq(800)
+
+      tpl = Embedding::PropertyValuationTextTemplate.build(pv)
+      expect(tpl).to include('Площадь участка: 8.0 сот.')
+      expect(tpl).to include('Цена за м²:')
+    end
+  end
+
   describe '.schema' do
     it 'объясняет боту, как озвучивать низкое покрытие' do
       description = described_class.schema.dig(:function, :description)

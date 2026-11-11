@@ -83,6 +83,23 @@ RSpec.describe Embedding::PropertyValuationTextTemplate do
       end
     end
 
+    context 'участок (land) — legacy запись с площадью только в total_area (сотки)' do
+      before do
+        valuation.property_type = 'land'
+        valuation.total_area = 8
+        valuation.land_area = nil
+        valuation.rooms = nil
+        valuation.floor = nil
+        valuation.total_floors = nil
+      end
+
+      it 'берёт сотки из total_area и считает ₽/м² от сотки × 100' do
+        expect(text).to include('Тип объекта: участок')
+        expect(text).to include('Площадь участка: 8.0 сот.')
+        expect(text).to include('Цена за м²: 6 563 ₽')
+      end
+    end
+
     context 'число аналогов из candidates_kept (нет comparables)' do
       before { valuation.evaluation_data = { 'candidates_kept' => 7 } }
 

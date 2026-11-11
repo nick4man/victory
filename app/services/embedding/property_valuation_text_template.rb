@@ -70,11 +70,14 @@ module Embedding
       parts.join("\n").truncate(2000)
     end
 
-    # Участок: площадь хранится в land_area (сотки), total_area может быть nil.
+    # Участок: площадь хранится в land_area (сотки); в старых клиентских
+    # записях (до нормализации EstimatePropertyValuation) сотки могли попасть
+    # только в total_area — учитываем оба варианта.
     # Для остальных типов — total_area в м².
     def self.append_area(parts, valuation)
       if valuation.property_type == 'land'
-        parts << "Площадь участка: #{valuation.land_area} сот." if valuation.land_area.present?
+        sotki = land_sotki(valuation)
+        parts << "Площадь участка: #{sotki} сот." if sotki.present?
       elsif valuation.total_area.present?
         parts << "Площадь: #{valuation.total_area} м²"
       end
@@ -97,10 +100,20 @@ module Embedding
       parts << "Цена за м²: #{format_price(valuation.estimated_price.to_f / area.to_f)} ₽"
     end
 
-    # Для участка ₽/м² считаем от land_area в м² (хранится в сотках) — иначе
-    # вектор участка теряет ключевой признак сходства.
+    # Для участка ₽/м² считаем от площади в м² (land_area хранится в сотках;
+    # при пустом land_area фоллбэк на legacy total_area в сотках × 100).
     def self.effective_area(valuation)
-      return valuation.land_area_in_sqm if valuation.property_type == 'land'
+      if valuation.property_type == 'land'
+        sotki = land_sotki(valuation)
+        return sotki.present? ? sotki.to_f * 100 : nil
+      end
+
+      valuation.total_area
+    end
+
+    def self.land_sotki(valuation)
+      return valuation.land_area if valuation.land_area.present?
+      return nil if valuation.total_area.blank?
 
       valuation.total_area
     end
