@@ -64,7 +64,9 @@ module Embedding
       append_price(parts, valuation)
       append_price_per_sqm(parts, valuation)
 
-      parts << "Дата оценки: #{valuation.updated_at.strftime('%d.%m.%y')}"
+      # created_at, а не updated_at: touch/служебные правки не должны плавать
+      # дату и content_hash — иначе лишние пере-эмбеддинги (issue #201)
+      parts << "Дата оценки: #{valuation.created_at.strftime('%d.%m.%y')}"
 
       analogs = analogs_count(valuation)
       parts << "Использовано аналогов: #{analogs}" if analogs.positive?

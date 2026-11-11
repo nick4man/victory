@@ -17,7 +17,8 @@ RSpec.describe Embedding::PropertyValuationTextTemplate do
       email: 'maria.ivanova@example.com',
       phone: '+79001234567',
       ip_address: '203.0.113.42',
-      updated_at: Time.zone.local(2026, 11, 8, 12, 0)
+      created_at: Time.zone.local(2026, 11, 8, 12, 0),
+      updated_at: Time.zone.local(2026, 11, 10, 18, 30)
     )
   end
 
@@ -42,6 +43,13 @@ RSpec.describe Embedding::PropertyValuationTextTemplate do
     it 'дата оценки в формате dd.MM.yy' do
       expect(text).to include('Дата оценки: 08.11.26')
       expect(text).not_to match(/\d{4}-\d{2}-\d{2}/)
+    end
+
+    it 'дата берётся из created_at — служебный touch (updated_at) не плавает content_hash' do
+      expect(valuation.updated_at).to be > valuation.created_at # sanity: поля реально различаются
+
+      valuation.updated_at = Time.zone.local(2026, 11, 15, 9, 0)
+      expect(described_class.build(valuation)).to include('Дата оценки: 08.11.26')
     end
 
     it 'НЕ содержит персональные данные (ФИО / телефон / email / ip)' do

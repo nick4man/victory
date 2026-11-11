@@ -173,6 +173,7 @@ class PropertyValuation < ApplicationRecord
   # пути обязаны вызвать метод явно после смены статуса.
   def enqueue_embedding
     return if audit_mode_investment?
+    return if staff_test? # тестовые оценки сотрудников — не в semantic-корпус (issue #201)
 
     EmbedPropertyValuationJob.perform_later(id)
   rescue StandardError => e
