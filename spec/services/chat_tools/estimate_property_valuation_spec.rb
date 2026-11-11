@@ -21,6 +21,9 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
   before do
     allow(PropertyEvaluationService).to receive(:new).and_return(double(call: service_result))
     allow(Geocoding::AddressLookup).to receive(:call).and_return(nil)
+    # По умолчанию semantic-поиск похожих оценок выключен — иначе каждый
+    # вызов тула пошёл бы в Embedding::GoogleClient (WebMock).
+    allow(Valuations::SimilarValuationsFinder).to receive(:call).and_return(nil)
   end
 
   def call_tool
@@ -84,12 +87,118 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     end
   end
 
+  describe 'ориентир по похожим оценкам специалистов (issue #176)' do
+    let(:query_vector) { [1.0] + Array.new(767, 0.0) }
+    let(:near_vector)  { [0.99, 0.14] + Array.new(766, 0.0) }
+    let(:far_vector)   { [0.0, 1.0] + Array.new(766, 0.0) }
+
+    before do
+      service_result[:low_coverage] = false
+      allow(Valuations::SimilarValuationsFinder).to receive(:call).and_call_original
+      allow(Embedding::GoogleClient).to receive(:new)
+        .and_return(instance_double(Embedding::GoogleClient, embed: query_vector))
+    end
+
+    def seed_valuation!(price:, city: 'Рязань', deal_type: 'sale', status: 'completed',
+                        staff_test: false, vector: near_vector)
+      v = PropertyValuation.create!(
+        property_type: 'apartment', deal_type: deal_type, audit_mode: 'express',
+        status: status, staff_test: staff_test,
+        address: "г. #{city}, ул. Seed, д. #{PropertyValuation.count + 1}",
+        city: city, latitude: 54.6292, longitude: 39.7417,
+        total_area: 50.0, rooms: 2,
+        estimated_price: price, evaluation_data: {}
+      )
+      PropertyValuationEmbedding.create!(
+        property_valuation: v,
+        content_hash: Digest::SHA256.hexdigest("seed-#{v.id}"),
+        content_text: "seed #{v.id}",
+        embedding: vector,
+        embedded_at: Time.current
+      )
+      v
+    end
+
+    it 'возвращает только агрегат (count/медиана/min/max) — поштучных данных чужих оценок нет' do
+      seed_valuation!(price: 4_000_000)
+      seed_valuation!(price: 4_200_000)
+      seed_valuation!(price: 5_000_000)
+      # фильтруются: другой город / аренда / staff_test / cosine ниже порога
+      seed_valuation!(price: 10_000_000, city: 'Москва')
+      seed_valuation!(price: 30_000, deal_type: 'rent')
+      seed_valuation!(price: 1_000_000, staff_test: true)
+      seed_valuation!(price: 2_000_000, vector: far_vector)
+
+      res = call_tool
+
+      expect(res[:similar_valuations_count]).to eq(3)
+      expect(res[:similar_median_price]).to eq(4_200_000)
+      expect(res[:similar_min_price]).to eq(4_000_000)
+      expect(res[:similar_max_price]).to eq(5_000_000)
+      expect(res[:low_coverage]).to be(false)
+      # наружу не утекают адреса/детали чужих оценок
+      expect(res.to_s).not_to include('Москва')
+      expect(res.to_s).not_to include('Seed')
+    end
+
+    it 'сохраняет агрегат в evaluation_data оценки — для передачи специалисту' do
+      seed_valuation!(price: 4_000_000)
+      seed_valuation!(price: 4_200_000)
+      seed_valuation!(price: 5_000_000)
+
+      res = call_tool
+
+      pv = PropertyValuation.find_by!(token: res[:token])
+      similar = pv.evaluation_data['similar_valuations']
+      expect(similar['count']).to eq(3)
+      expect(similar['median_price']).to eq(4_200_000)
+      expect(similar['low_coverage']).to be(false)
+    end
+
+    it 'N < 3 → low_coverage: true и фолбэк на экспресс-оценку' do
+      seed_valuation!(price: 4_000_000)
+
+      res = call_tool
+
+      expect(res[:similar_valuations_count]).to eq(1)
+      expect(res[:low_coverage]).to be(true)
+      # экспресс-оценка на месте — бот опирается на неё
+      expect(res[:estimated_price]).to eq(5_400_000)
+    end
+
+    it 'пустой корпус похожих оценок → count 0, low_coverage: true' do
+      res = call_tool
+
+      expect(res[:similar_valuations_count]).to eq(0)
+      expect(res[:low_coverage]).to be(true)
+      expect(res[:success]).to be(true)
+    end
+
+    it 'инфраструктурный сбой semantic-поиска → express-only ответ' do
+      allow(Valuations::SimilarValuationsFinder).to receive(:call).and_return(nil)
+
+      res = call_tool
+
+      expect(res[:success]).to be(true)
+      expect(res[:similar_valuations_count]).to be_nil
+      expect(res[:low_coverage]).to be(false)
+    end
+  end
+
   describe '.schema' do
     it 'объясняет боту, как озвучивать низкое покрытие' do
       description = described_class.schema.dig(:function, :description)
 
       expect(description).to include('low_coverage')
       expect(description).to match(/ориентировочн/i)
+    end
+
+    it 'объясняет боту про ориентир по оценкам специалистов и передачу специалисту' do
+      description = described_class.schema.dig(:function, :description)
+
+      expect(description).to include('similar_valuations_count')
+      expect(description).to match(/оценкам наших специалистов/)
+      expect(description).to include('request_specialist_evaluation')
     end
   end
 end

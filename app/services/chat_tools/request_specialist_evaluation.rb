@@ -1,0 +1,193 @@
+# frozen_string_literal: true
+
+module ChatTools
+  # Передача запроса на оценку специалисту (issue #176, часть 3).
+  # Вызывается ботом ПОСЛЕ estimate_property_valuation, когда посетитель
+  # согласился передать запрос специалисту и назвал имя + телефон.
+  #
+  # Создаёт Inquiry типа evaluation с параметрами объекта и ориентировкой
+  # (агрегат по похожим оценкам специалистов, сохранённый в
+  # PropertyValuation#evaluation_data тулом оценки). Стандартный
+  # Inquiry#push_to_work_bot → Lead::Intake (source site_valuation)
+  # → Telegram::WorkBot::LeadAnnouncer публикует карточку сотрудникам
+  # в топик #ОЦЕНКА (auto_route в config/telegram_topics.yml).
+  #
+  # Посетителю возвращаем только подтверждение — никаких данных чужих
+  # оценок, та же гигиена, что в EstimatePropertyValuation.
+  module RequestSpecialistEvaluation
+    REQUIRED = %w[name phone].freeze
+    SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+
+    # Idempotency: LLM может вызвать тул повторно в одном диалоге —
+    # не плодим дубли Inquiry за тем же телефоном (зеркало QualifyLead).
+    DEDUPE_WINDOW = 5.minutes
+
+    # Меньше похожих оценок — ориентир по ним не показываем, честно
+    # фолбэкаемся на экспресс-оценку (правило N ≥ 3 из issue #176).
+    MIN_ORIENT_COUNT = 3
+
+    def self.schema
+      {
+        type: 'function',
+        function: {
+          name: 'request_specialist_evaluation',
+          description: <<~DESC.strip,
+            Передаёт запрос на оценку специалисту АН «Виктори». Создаёт
+            заявку — сотрудники получат карточку в рабочем Telegram-чате
+            и свяжутся с клиентом.
+
+            Вызывай ТОЛЬКО когда пользователь ЯВНО согласился передать
+            запрос специалисту («да, передайте», «хочу точную оценку»,
+            «оставлю телефон») и назвал имя и телефон. Обычно — после
+            estimate_property_valuation в этом же диалоге: тогда передай
+            valuation_token из ответа тула оценки, чтобы специалист увидел
+            параметры объекта и ориентир по похожим оценкам.
+
+            Если имени или телефона ещё нет — сначала спроси их в диалоге,
+            НЕ вызывай тул. Не вызывай без согласия пользователя.
+          DESC
+          parameters: {
+            type: 'object',
+            required: REQUIRED,
+            properties: {
+              name:            { type: 'string', description: 'Имя клиента' },
+              phone:           { type: 'string', description: 'Телефон клиента, например +79001234567' },
+              email:           { type: 'string' },
+              valuation_token: { type: 'string', description: 'token из ответа estimate_property_valuation этого диалога' },
+              property_type:   { type: 'string', enum: SUPPORTED_TYPES },
+              address:         { type: 'string' },
+              city:            { type: 'string' },
+              total_area:      { type: 'number' },
+              rooms:           { type: 'integer' },
+              message:         { type: 'string', description: 'Комментарий/пожелание клиента своими словами' }
+            },
+            additionalProperties: false
+          }
+        }
+      }
+    end
+
+    def self.call(args)
+      args = args.is_a?(Hash) ? args.transform_keys(&:to_s) : {}
+
+      missing = REQUIRED.select { |k| args[k].to_s.strip.empty? }
+      return missing_fields_response(missing) if missing.any?
+
+      phone = args['phone'].to_s.strip
+      name  = args['name'].to_s.strip
+
+      existing = find_recent_duplicate(phone)
+      return duplicate_response(existing) if existing
+
+      pv       = find_valuation(args['valuation_token'])
+      similar  = extract_similar(pv)
+      orientation = orientation_line(pv, similar)
+
+      inquiry = Inquiry.create!(
+        name:         name.truncate(100),
+        phone:        phone,
+        email:        args['email'].to_s.strip.presence,
+        inquiry_type: 'evaluation',
+        priority:     'normal',
+        source:       'site_chatbot',
+        message:      build_summary(args, orientation).truncate(2000),
+        metadata:     {
+          name:        name,
+          phone:       phone,
+          summary:     orientation.presence || 'Запрос на оценку из чат-бота сайта',
+          # 🔵 EXPRESS-бейдж в TG-карточке (см. LeadAnnouncer#format_card)
+          service_type: 'express',
+          property_valuation_token: pv&.token,
+          similar_valuations:       similar
+        }.compact
+      )
+
+      {
+        success:     true,
+        inquiry_id:  inquiry.id,
+        orientation: orientation,
+        message:     'Заявка передана специалистам — свяжутся с клиентом в рабочее время.'
+      }
+    rescue ActiveRecord::RecordInvalid => e
+      Rails.logger.warn("[ChatTools::RequestSpecialistEvaluation] Inquiry create failed: #{e.message}")
+      { error: 'inquiry_failed', message: e.message.to_s.truncate(160) }
+    end
+
+    def self.missing_fields_response(missing)
+      hints = { 'name' => 'имя клиента', 'phone' => 'телефон клиента' }
+      {
+        error:   'missing_fields',
+        missing: missing,
+        message: "Не хватает данных: #{missing.map { |k| hints[k] || k }.join(', ')}. Уточи у пользователя и вызови тул повторно."
+      }
+    end
+
+    def self.find_recent_duplicate(phone)
+      suffix = phone.gsub(/\D/, '').last(10)
+      return nil if suffix.length < 10
+
+      Inquiry.where(inquiry_type: :evaluation)
+             .where('phone LIKE ?', "%#{suffix}")
+             .where('created_at > ?', DEDUPE_WINDOW.ago)
+             .order(created_at: :desc)
+             .first
+    end
+
+    def self.duplicate_response(inquiry)
+      {
+        success:    true,
+        inquiry_id: inquiry.id,
+        duplicate:  true,
+        message:    'Заявка по этому телефону уже создана несколько минут назад — дубль не нужен.'
+      }
+    end
+
+    def self.find_valuation(token)
+      return nil if token.to_s.strip.empty?
+
+      PropertyValuation.find_by(token: token.to_s.strip)
+    end
+
+    # Агрегат по похожим оценкам, сохранённый EstimatePropertyValuation в
+    # evaluation_data (jsonb → ключи строки после reload).
+    def self.extract_similar(pv)
+      data = pv&.evaluation_data
+      return nil unless data.is_a?(Hash)
+
+      similar = data['similar_valuations'] || data[:similar_valuations]
+      similar.is_a?(Hash) ? similar : nil
+    end
+
+    def self.orientation_line(pv, similar)
+      count  = similar&.[]('count').to_i
+      median = similar&.[]('median_price').to_i
+
+      if count >= MIN_ORIENT_COUNT && median.positive?
+        min = similar['min_price'].to_i
+        max = similar['max_price'].to_i
+        "Ориентир по #{count} похожим оценкам наших специалистов: ~#{fmt_rub(median)} ₽ " \
+          "(вилка #{fmt_rub(min)}–#{fmt_rub(max)} ₽)."
+      elsif pv&.estimated_price.to_i.positive?
+        "Похожих оценок мало (найдено: #{count}) — ориентир по экспресс-оценке: ~#{fmt_rub(pv.estimated_price)} ₽."
+      end
+    end
+
+    def self.build_summary(args, orientation)
+      bits = ['Запрос на оценку из чат-бота сайта.']
+      object = []
+      object << args['property_type'] if args['property_type'].present?
+      object << args['city']          if args['city'].present?
+      object << args['address']       if args['address'].present?
+      object << "#{args['total_area'].to_f.to_i} м²" if args['total_area'].to_f.positive?
+      object << "#{args['rooms'].to_i}-комн" if args['rooms'].to_i.positive?
+      bits << "Объект: #{object.join(', ')}." if object.any?
+      bits << orientation if orientation.present?
+      bits << "Комментарий клиента: #{args['message'].to_s.strip}" if args['message'].to_s.strip.present?
+      bits.join(' ')
+    end
+
+    def self.fmt_rub(amount)
+      ActionController::Base.helpers.number_with_delimiter(amount.to_i, delimiter: ' ')
+    end
+  end
+end

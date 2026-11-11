@@ -16,6 +16,7 @@ module ChatTools
       'list_mortgage_programs'   => ChatTools::ListMortgagePrograms,
       'get_landing_content'      => ChatTools::GetLandingContent,
       'estimate_property_valuation' => ChatTools::EstimatePropertyValuation,
+      'request_specialist_evaluation' => ChatTools::RequestSpecialistEvaluation,
       'qualify_lead'                => ChatTools::QualifyLead
     }.freeze
 

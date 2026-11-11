@@ -1,0 +1,130 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+RSpec.describe ChatTools::RequestSpecialistEvaluation do
+  let(:tg_client) { instance_double(Telegram::Client) }
+  let(:sent_messages) { [] }
+
+  before do
+    allow(Telegram::Client).to receive(:new).and_return(tg_client)
+    allow(tg_client).to receive(:send_message) do |text, opts|
+      sent_messages << [text, opts]
+      { 'message_id' => 555 }
+    end
+  end
+
+  def call_tool(extra = {})
+    described_class.call({ 'name' => 'Анна', 'phone' => '+79001234567' }.merge(extra))
+  end
+
+  describe 'с valuation_token завершённой оценки' do
+    let!(:valuation) do
+      PropertyValuation.create!(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+        status: 'completed',
+        address: 'г. Рязань, ул. Праволыбедская, д. 24', city: 'Рязань',
+        latitude: 54.6292, longitude: 39.7417,
+        total_area: 54.0, rooms: 2,
+        estimated_price: 5_400_000,
+        # token генерирует колбэк generate_token — берём valuation.token
+        evaluation_data: {
+          'similar_valuations' => {
+            'count' => 5, 'median_price' => 5_100_000,
+            'min_price' => 4_800_000, 'max_price' => 5_500_000,
+            'low_coverage' => false
+          }
+        }
+      )
+    end
+
+    it 'создаёт Inquiry типа evaluation с ориентировкой в данных лида' do
+      expect { call_tool('valuation_token' => valuation.token) }
+        .to change(Inquiry, :count).by(1)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.inquiry_type).to eq('evaluation')
+      expect(inquiry.source).to eq('site_chatbot')
+      expect(inquiry.name).to eq('Анна')
+      expect(inquiry.phone).to eq('79001234567') # Inquiry нормализует phone (normalize_phone)
+      expect(inquiry.message).to include('5 100 000')
+      expect(inquiry.message).to match(/оценкам наших специалистов/)
+      expect(inquiry.metadata['similar_valuations']['count']).to eq(5)
+      expect(inquiry.metadata['property_valuation_token']).to eq(valuation.token)
+    end
+
+    it 'LeadAnnouncer публикует карточку в топик #ОЦЕНКА (auto_route site_valuation)' do
+      call_tool('valuation_token' => valuation.token)
+
+      lead = LeadEvent.order(:id).last # создание самой оценки тоже пушит лид — берём последний
+      expect(lead.source).to eq('site_valuation')
+      expect(lead.anchor_topic_key).to eq('appraisal')
+      expect(lead.lead_ref).to eq(valuation)
+
+      card_text, card_opts = sent_messages.last
+      expect(card_opts[:message_thread_id]).to eq(24) # #ОЦЕНКА в config/telegram_topics.yml
+      # в карточке — ориентир по похожим оценкам и результаты экспресс-оценки
+      expect(card_text).to include('5 100 000')
+      expect(card_text).to include('5 400 000')
+      expect(card_text).to include('Анна')
+    end
+
+    it 'похожих оценок мало → ориентир по экспресс-оценке' do
+      valuation.update_columns(
+        evaluation_data: { 'similar_valuations' => { 'count' => 1, 'median_price' => 4_000_000,
+                                                     'min_price' => 4_000_000, 'max_price' => 4_000_000,
+                                                     'low_coverage' => true } }
+      )
+
+      res = call_tool('valuation_token' => valuation.token)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to match(/Похожих оценок мало/)
+      expect(inquiry.message).to include('5 400 000')
+      expect(res[:orientation]).to match(/экспресс-оценке/)
+    end
+  end
+
+  describe 'без valuation_token' do
+    it 'создаёт лид с параметрами объекта из аргументов' do
+      expect do
+        call_tool('property_type' => 'apartment', 'city' => 'Рязань',
+                  'address' => 'г. Рязань, ул. Тестовая, д. 1', 'total_area' => 54, 'rooms' => 2)
+      end.to change(Inquiry, :count).by(1)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.inquiry_type).to eq('evaluation')
+      expect(inquiry.message).to include('Тестовая')
+      expect(inquiry.metadata['similar_valuations']).to be_nil
+    end
+  end
+
+  describe 'валидация и идемпотентность' do
+    it 'без имени/телефона → missing_fields, Inquiry не создан' do
+      expect { described_class.call('phone' => '+79001234567') }
+        .not_to change(Inquiry, :count)
+
+      res = described_class.call('phone' => '+79001234567')
+      expect(res[:error]).to eq('missing_fields')
+      expect(res[:missing]).to eq(['name'])
+    end
+
+    it 'повторный вызов с тем же телефоном в течение 5 минут не плодит дубль' do
+      call_tool
+      expect { call_tool }.not_to change(Inquiry, :count)
+
+      res = call_tool
+      expect(res[:duplicate]).to be(true)
+      expect(res[:inquiry_id]).to eq(Inquiry.order(:created_at).last.id)
+    end
+  end
+
+  describe '.schema' do
+    it 'требует явного согласия и имени с телефоном' do
+      description = described_class.schema.dig(:function, :description)
+
+      expect(description).to match(/согласил/i)
+      expect(described_class.schema.dig(:function, :parameters, :required)).to eq(%w[name phone])
+    end
+  end
+end
