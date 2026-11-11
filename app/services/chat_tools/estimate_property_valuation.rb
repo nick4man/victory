@@ -97,7 +97,17 @@ module ChatTools
       pv = build_valuation(args)
       enrich_from_geocoder(pv) if pv.latitude.blank? || pv.city.blank?
 
-      pv.save!(validate: false)
+      # after_create_commit PropertyValuation#push_to_work_bot анонсирует
+      # оценку в work_bot — для чат-оценки это преждевременная карточка
+      # без контактов и цены: полноценный анонс придёт один раз из Inquiry
+      # через ChatTools::RequestSpecialistEvaluation (или QualifyLead).
+      # Флаг — существующий механизм (см. Lead::Intake::SiteSource#fallback_inquiry).
+      begin
+        Thread.current[:skip_workbot_push] = true
+        pv.save!(validate: false)
+      ensure
+        Thread.current[:skip_workbot_push] = false
+      end
 
       result = PropertyEvaluationService.new(pv).call
       return run_failure(pv, result[:error]) unless result[:success]

@@ -17,9 +17,13 @@ module Valuations
   #     (сайт, чат-бот) тоже попадают в embeddings (#175), но бот не должен
   #     называть их «оценками наших специалистов» — фильтр по
   #     metadata['source'] == 'work_bot' (контракт ключа см. в
-  #     ChatTools::Staff::MarketComparables#valuation_metadata).
-  #     Фильтр применяется В SQL до LIMIT — иначе ближайшие клиентские
-  #     строки вытеснят staff-оценки и дадут ложный low_coverage.
+  #     ChatTools::Staff::MarketComparables#valuation_metadata);
+  #   • в SQL до LIMIT уходят жёсткие фильтры (source/deal_type/status/self),
+  #     а фильтр по городу остаётся в Ruby (нормализация «г.»/регистр —
+  #     ExternalListing.normalize_city). Поэтому LIMIT берёт увеличенный пул
+  #     CANDIDATE_LIMIT кандидатов, а не 20 финальных: иначе 20 ближайших
+  #     оценок другого города вытеснят подходящие и дадут ложный
+  #     low_coverage (блокер ревью #206).
   #
   # Возвращает ТОЛЬКО агрегат — поштучные адреса/цены/телефоны чужих
   # оценок наружу не отдаём:
@@ -30,7 +34,8 @@ module Valuations
   # При любой инфраструктурной ошибке (нет API key, сеть, БД) → nil:
   # вызывающий код молча деградирует до express-only ответа.
   class SimilarValuationsFinder
-    LIMIT      = 20
+    # Пул кандидатов до Ruby-фильтра по городу/cosine — см. шапку класса.
+    CANDIDATE_LIMIT = 100
     MIN_COSINE = 0.75   # как у SemanticCompFinder — ниже это другой сегмент
     MIN_COUNT  = 3      # меньше — low_coverage, агрегат не показываем
     # Контракт ключа — ChatTools::Staff::MarketComparables#valuation_metadata
@@ -58,8 +63,10 @@ module Valuations
              .nearest_neighbors(:embedding, vector, distance: :cosine)
              .joins(:property_valuation)
              .includes(:property_valuation)
+             .where(property_valuations: { deal_type: @v.deal_type, status: 'completed' })
              .where("property_valuations.metadata ->> 'source' = ?", STAFF_SOURCE)
-             .limit(LIMIT)
+             .where.not(property_valuation_id: @v.id)
+             .limit(CANDIDATE_LIMIT)
 
       prices = rows.filter_map { |row| price_for(row, subject_city) }
       aggregate(prices)

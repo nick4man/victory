@@ -49,6 +49,10 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     expect { call_tool }.to have_enqueued_job(EmbedPropertyValuationJob)
   end
 
+  it 'НЕ пушит LeadEvent при создании оценки — анонс один, из Inquiry (ревью #206)' do
+    expect { call_tool }.not_to change(LeadEvent, :count)
+  end
+
   describe 'участок (land) — нормализация площади и реальный PropertyEvaluationService' do
     before do
       allow(PropertyEvaluationService).to receive(:new).and_call_original

@@ -54,9 +54,10 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
     end
 
     it 'LeadAnnouncer публикует карточку в топик #ОЦЕНКА (auto_route site_valuation)' do
-      call_tool('valuation_token' => valuation.token)
+      expect { call_tool('valuation_token' => valuation.token) }
+        .to change(LeadEvent, :count).by(1) # ровно одна карточка на лид
 
-      lead = LeadEvent.order(:id).last # создание самой оценки тоже пушит лид — берём последний
+      lead = LeadEvent.order(:id).last
       expect(lead.source).to eq('site_valuation')
       expect(lead.anchor_topic_key).to eq('appraisal')
       expect(lead.lead_ref).to eq(valuation)
@@ -67,6 +68,15 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(card_text).to include('5 100 000')
       expect(card_text).to include('5 400 000')
       expect(card_text).to include('Анна')
+    end
+
+    it 'только valuation_token без параметров объекта → объект подставляется из оценки (fallback)' do
+      res = call_tool('valuation_token' => valuation.token)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.message).to include('Праволыбедская')
+      expect(inquiry.message).to include('54 м²')
+      expect(res[:success]).to be(true)
     end
 
     it 'похожих оценок мало (N < 3) → честный ориентир по экспресс-оценке с указанием найденного' do

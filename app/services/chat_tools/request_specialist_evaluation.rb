@@ -90,7 +90,7 @@ module ChatTools
         inquiry_type: 'evaluation',
         priority:     'normal',
         source:       'site_chatbot',
-        message:      build_summary(args, orientation).truncate(2000),
+        message:      build_summary(args, orientation, pv).truncate(2000),
         metadata:     {
           name:        name,
           phone:       phone,
@@ -189,14 +189,19 @@ module ChatTools
              Valuations::PriceFormatter.format_rub(pv.estimated_price))
     end
 
-    def self.build_summary(args, orientation)
+    # Параметры объекта берём из аргументов тула; при вызове только с
+    # valuation_token (LLM не продублировал параметры) — fallback к
+    # данным найденной PropertyValuation, чтобы сотрудник видел объект.
+    def self.build_summary(args, orientation, pv = nil)
       bits = ['Запрос на оценку из чат-бота сайта.']
       object = []
-      object << args['property_type'] if args['property_type'].present?
-      object << args['city']          if args['city'].present?
-      object << args['address']       if args['address'].present?
-      object << "#{args['total_area'].to_f.to_i} м²" if args['total_area'].to_f.positive?
-      object << "#{args['rooms'].to_i}-комн" if args['rooms'].to_i.positive?
+      object << (args['property_type'].presence || pv&.property_type) if args['property_type'].present? || pv&.property_type.present?
+      object << (args['city'].presence || pv&.city) if args['city'].present? || pv&.city.present?
+      object << (args['address'].presence || pv&.address) if args['address'].present? || pv&.address.present?
+      area = args['total_area'].to_f.positive? ? args['total_area'].to_f : pv&.total_area.to_f
+      object << "#{area.to_i} м²" if area.positive?
+      rooms = args['rooms'].to_i.positive? ? args['rooms'].to_i : pv&.rooms.to_i
+      object << "#{rooms}-комн" if rooms.positive?
       bits << "Объект: #{object.join(', ')}." if object.any?
       bits << orientation if orientation.present?
       bits << "Комментарий клиента: #{args['message'].to_s.strip}" if args['message'].to_s.strip.present?

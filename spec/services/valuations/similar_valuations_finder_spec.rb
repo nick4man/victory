@@ -105,9 +105,41 @@ RSpec.describe Valuations::SimilarValuationsFinder do
 
   it 'ближайшие клиентские оценки не вытесняют staff-строки до LIMIT (фильтр в SQL)' do
     # Клиентская оценка векторно БЛИЖЕ всех (query_vector=[1,0,…]) — без
-    # SQL-фильтра она съела бы слот в LIMIT 20 и дала бы ложный low_coverage.
+    # SQL-фильтра она съела бы слот в LIMIT и дала бы ложный low_coverage.
     near_client = [1.0] + Array.new(767, 0.0)
     seed_valuation!(price: 9_000_000, source: nil, vector: near_client)
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:low_coverage]).to be(false)
+  end
+
+  it '20 ближайших staff-оценок другого города не вытесняют подходящие (пул кандидатов)' do
+    # Блокер ревью #206: LIMIT применялся ДО Ruby-фильтра по городу, поэтому
+    # 20 ближайших московских оценок (deal_type/source подходят) съедали весь
+    # лимит и давали ложный low_coverage. Сейчас deal_type/status/source/self
+    # фильтруются в SQL, а пул кандидатов — CANDIDATE_LIMIT (100).
+    20.times { seed_valuation!(price: 10_000_000, city: 'Москва') }
+    seed_valuation!(price: 4_000_000)
+    seed_valuation!(price: 4_200_000)
+    seed_valuation!(price: 4_400_000)
+
+    result = described_class.call(subject_valuation)
+
+    expect(result[:count]).to eq(3)
+    expect(result[:low_coverage]).to be(false)
+    expect(result[:median_price]).to eq(4_200_000)
+  end
+
+  it 'аренда и незавершённые staff-оценки фильтруются в SQL и не едят пул кандидатов' do
+    20.times do
+      seed_valuation!(price: 30_000, deal_type: 'rent')
+      seed_valuation!(price: 2_000_000, status: 'pending')
+    end
     seed_valuation!(price: 4_000_000)
     seed_valuation!(price: 4_200_000)
     seed_valuation!(price: 4_400_000)
