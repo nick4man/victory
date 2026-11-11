@@ -46,11 +46,11 @@ RSpec.describe PropertyEvaluationService do
   end
 
   describe 'отсечение выбросов ₽/м²' do
+    # Различные title обязательны: base_pool делает .uniq по [source, title],
+    # одинаковые заголовки схлопнут пул до одного компа и тест станет вакуумным.
     let(:pool) do
-      [comp('external_listing', 97_000), comp('external_listing', 98_000),
-       comp('external_listing', 99_000), comp('external_listing', 100_000),
-       comp('external_listing', 101_000), comp('external_listing', 102_000),
-       comp('external_listing', 103_000), comp('external_listing', 510)]
+      [97_000, 98_000, 99_000, 100_000, 101_000, 102_000, 103_000, 510]
+        .each_with_index.map { |pps, i| comp('external_listing', pps, title: "аналог-#{i}") }
     end
 
     it 'выброс не доходит до CompositeEstimator и сериализации' do
@@ -65,6 +65,15 @@ RSpec.describe PropertyEvaluationService do
       expect(result[:success]).to be(true)
       expect(received.map { |c| c[:price_per_sqm] }).not_to include(510)
       expect(result[:comparables].map { |c| c[:price_per_sqm] }).not_to include(510)
+    end
+
+    it 'ai_filter считает пул ПОСЛЕ чистки выбросов (issue #201)' do
+      result = described_class.new(valuation).call
+
+      expect(result[:success]).to be(true)
+      expect(result[:ai_filter][:candidates_raw]).to eq(8)
+      expect(result[:ai_filter][:candidates_kept]).to eq(7) # без выброса 510 ₽/м²
+      expect(result[:ai_filter][:candidates_rejected]).to eq(1)
     end
 
     it 'end-to-end: реальный CompositeEstimator/Hedonic не ломается выбросом' do

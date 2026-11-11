@@ -88,6 +88,21 @@ RSpec.describe EmbedPropertyValuationJob do
       expect(fake_client).not_to have_received(:embed)
     end
 
+    it 'skip если staff_test (тестовые оценки сотрудников — не в semantic-корпус, issue #201)' do
+      staff_valuation = PropertyValuation.create!(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+        status: 'completed', staff_test: true,
+        address: 'г. Рязань, ул. Праволыбедская, д. 29',
+        latitude: 54.6292, longitude: 39.7417,
+        total_area: 42.0,
+        estimated_price: 4_200_000
+      )
+
+      expect { described_class.new.perform(staff_valuation.id) }
+        .not_to change { PropertyValuationEmbedding.count }
+      expect(fake_client).not_to have_received(:embed)
+    end
+
     it 'поднимает ошибку записи — бэкфилл embeddings:valuations учтёт её в failed' do
       allow(PropertyValuationEmbedding).to receive(:find_or_initialize_by)
         .and_raise(ActiveRecord::ConnectionNotEstablished)
@@ -136,6 +151,20 @@ RSpec.describe EmbedPropertyValuationJob do
 
       expect do
         inv_pending.update!(status: 'completed')
+      end.not_to have_enqueued_job(described_class)
+    end
+
+    it 'переход staff_test-оценки в completed НЕ ставит job в очередь (issue #201)' do
+      staff_pending = PropertyValuation.create!(
+        property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',
+        status: 'pending', staff_test: true,
+        address: 'г. Рязань, ул. Праволыбедская, д. 30',
+        latitude: 54.6292, longitude: 39.7417,
+        total_area: 43.0
+      )
+
+      expect do
+        staff_pending.update!(status: 'completed', estimated_price: 4_300_000)
       end.not_to have_enqueued_job(described_class)
     end
   end

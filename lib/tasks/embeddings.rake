@@ -44,7 +44,7 @@ namespace :embeddings do
 
   desc 'Backfill embeddings for every completed PropertyValuation (work_bot 2/3, synchronous, rate-limited)'
   task valuations: :environment do
-    scope = PropertyValuation.completed.express_estimates
+    scope = PropertyValuation.completed.express_estimates.where(staff_test: false)
     total = scope.count
     puts "[embeddings:valuations] target=#{total} completed valuations"
 

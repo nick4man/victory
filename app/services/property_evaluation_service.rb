@@ -124,20 +124,23 @@ class PropertyEvaluationService
                       Valuations::AiCompFilter.new(@v, candidates_for_filter).call : []
     comparables = filtered_real + auto_kept
 
-    ai_meta = {
-      candidates_raw:      combined.size,
-      candidates_kept:     comparables.size,
-      candidates_rejected: combined.size - comparables.size,
-      sources_breakdown:   comparables.group_by { |c| c[:source].to_s }.transform_values(&:size)
-    }
-    Rails.logger.info("[PropertyEvaluation] ensemble #{ai_meta.inspect}")
-
     base_estimate = PropertyEvaluation::PriceEstimator.new(@v, comparables).call
     # PriceEstimator отсекает выбросы ₽/м² — все downstream-расчёты
     # (hedonic/bootstrap, confidence, сериализация, low_coverage) идут на
     # очищенном пуле. Иначе выброс (аренда 510 ₽/м² среди продаж,
     # case #124) снова искажал hedonic-регрессию и вилку (issue #172).
     cleaned_comparables = base_estimate.delete(:comparables) || comparables
+
+    # ai_filter считаем ПОСЛЕ чистки выбросов: candidates_kept — размер
+    # очищенного пула, он же попадает в текст эмбеддинга как «число
+    # использованных аналогов» (issue #201).
+    ai_meta = {
+      candidates_raw:      combined.size,
+      candidates_kept:     cleaned_comparables.size,
+      candidates_rejected: combined.size - cleaned_comparables.size,
+      sources_breakdown:   cleaned_comparables.group_by { |c| c[:source].to_s }.transform_values(&:size)
+    }
+    Rails.logger.info("[PropertyEvaluation] ensemble #{ai_meta.inspect}")
 
     # Layer hedonic regression + bootstrap CI on top of the median estimate.
     # If sample is too thin (< 8) or regression degenerates, returns
