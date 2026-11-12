@@ -15,7 +15,7 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
       t.string   :status,     null: false, default: 'suspect' # suspect | blocked
       t.string   :source,     null: false                    # local | <имя фида>
       t.integer  :hits,       null: false, default: 0        # suspect: счётчик срабатываний
-      t.jsonb    :hit_tokens, null: false, default: []       # последние ключи сессий/IP {key, at} — кворум
+      t.jsonb    :hit_tokens, null: false, default: []       # последние {ip, vt, at} — кворум по IP
       t.datetime :last_hit_at
       t.datetime :blocked_at                                 # момент перехода suspect → blocked
       t.datetime :deleted_at
@@ -27,8 +27,8 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
     add_index :spam_blocked_entries, :deleted_at
     add_index :spam_blocked_entries, %i[status entry_type]
 
-    # Популярные белые домены (Cisco Umbrella Top-10k): эвристикам нельзя
-    # автоблочить корень t.me/youtube.com — только конкретный путь.
+    # Популярные белые домены (Tranco Top-10k, синкается cron'ом): эвристикам
+    # нельзя автоблочить корень t.me/youtube.com — только конкретный путь.
     # manual = добавлен вручную/кодом (наш домен): синк не стирает такие.
     create_table :spam_allowlist_entries do |t|
       t.string   :domain, null: false
@@ -36,7 +36,9 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
       t.datetime :deleted_at
       t.timestamps
     end
-    add_index :spam_allowlist_entries, :domain, unique: true, where: 'deleted_at IS NULL'
+    add_index :spam_allowlist_entries, :domain,
+              unique: true, where: 'deleted_at IS NULL',
+              name: 'idx_spam_allowlist_entries_domain'
     add_index :spam_allowlist_entries, :deleted_at
   end
 end

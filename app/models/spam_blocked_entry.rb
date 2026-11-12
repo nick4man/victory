@@ -40,7 +40,7 @@ class SpamBlockedEntry < ApplicationRecord
   end
 
   # Приоритеты: url-level blocked бьёт всегда (точный путь, даже на белом
-  # домене); доменный blocked — любым путём, но allowlist (Umbrella Top-10k)
+  # домене); доменный blocked — любым путём, но allowlist (Tranco Top-10k)
   # его снимает; suspect-запись никогда не маскирует blocked-домен.
   def self.find_block_for(host:, path: nil)
     return nil if host.blank?
@@ -57,26 +57,30 @@ class SpamBlockedEntry < ApplicationRecord
     url_entry || domain_entry
   end
 
-  # Подсчёт срабатывания suspect-записи. Кворум разных ключей (visitor_token,
-  # при его отсутствии — IP) за HIT_WINDOW переводит ЛОКАЛЬНУЮ запись
-  # (source = local) в blocked. Служебные записи фидов (шортенеры) hits'ами
-  # не автоблокируются — их статусом управляет только синк фидов.
-  def self.record_hit!(entry, key:)
-    return if entry.blank? || key.blank?
+  # Подсчёт срабатывания suspect-записи. Кворум — не меньше QUORUM
+  # РАЗНЫХ IP за HIT_WINDOW: visitor-cookie спамер сбрасывает одним кликом,
+  # поэтому токен как мера независимости бессмысленен (один IP + три сменных
+  # токена = один спамер, а не три подтверждения). Переводит в blocked только
+  # ЛОКАЛЬНУЮ запись (source = local); служебные записи фидов (шортенеры)
+  # hits'ами не автоблокируются — их статусом управляет только синк фидов.
+  def self.record_hit!(entry, ip:, visitor_token: nil)
+    return if entry.blank? || (ip.blank? && visitor_token.blank?)
 
     entry.with_lock do
       entry.reload
       now = Time.current
       tokens = Array(entry.hit_tokens).select { |t| (now - Time.iso8601(t['at'])) < HIT_WINDOW }
-      tokens << { 'key' => key.to_s, 'at' => now.iso8601 } if tokens.none? { |t| t['key'] == key.to_s }
+      unless tokens.any? { |t| t['ip'] == ip.to_s && t['vt'].to_s == visitor_token.to_s }
+        tokens << { 'ip' => ip.to_s, 'vt' => visitor_token.to_s, 'at' => now.iso8601 }
+      end
 
       attrs = {
         hits:        entry.hits.to_i + 1,
         hit_tokens:  tokens.last(HIT_KEYS_CAP),
         last_hit_at: now
       }
-      local_quorum = entry.source == 'local' && entry.status_suspect? &&
-                     tokens.map { |t| t['key'] }.uniq.size >= QUORUM
+      distinct_ips = tokens.map { |t| t['ip'] }.reject(&:blank?).uniq
+      local_quorum = entry.source == 'local' && entry.status_suspect? && distinct_ips.size >= QUORUM
       if local_quorum
         attrs[:status] = :blocked
         attrs[:blocked_at] = now

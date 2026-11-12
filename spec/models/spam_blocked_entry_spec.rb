@@ -64,28 +64,39 @@ RSpec.describe SpamBlockedEntry do
     it 'инкрементирует hits и ведёт last_hit_at' do
       entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
 
-      described_class.record_hit!(entry, key: 'visitor-a')
+      described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'visitor-a')
 
       expect(entry.reload.hits).to eq(1)
       expect(entry.last_hit_at).to be_present
     end
 
-    it 'кворум: 3 разных ключа за окно → автопереход в blocked' do
+    it 'кворум: 3 разных IP за окно → автопереход в blocked' do
       entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
 
-      described_class.record_hit!(entry, key: 'v-a')
-      described_class.record_hit!(entry, key: 'v-b')
+      described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'v-a')
+      described_class.record_hit!(entry, ip: '198.51.100.11', visitor_token: 'v-b')
       expect(entry.reload).to be_status_suspect
 
-      described_class.record_hit!(entry, key: 'v-c')
+      described_class.record_hit!(entry, ip: '198.51.100.12', visitor_token: 'v-c')
       expect(entry.reload).to be_status_blocked
       expect(entry.blocked_at).to be_present
     end
 
-    it 'повторный hit того же ключа не даёт кворум' do
+    it 'один IP с разными visitor_token не даёт кворум (cookie сбрасывается одним кликом)' do
       entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
 
-      5.times { described_class.record_hit!(entry, key: 'same-visitor') }
+      described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'v-a')
+      described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'v-b')
+      described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'v-c')
+
+      expect(entry.reload).to be_status_suspect
+      expect(entry.hit_tokens.map { |t| t['ip'] }.uniq.size).to eq(1)
+    end
+
+    it 'повторный hit с тем же IP+token не раздувает кворум' do
+      entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
+
+      5.times { described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'same-visitor') }
 
       expect(entry.reload).to be_status_suspect
       expect(entry.hits).to eq(5)
@@ -93,17 +104,18 @@ RSpec.describe SpamBlockedEntry do
 
     it 'старые ключи вне окна 24ч не считаются' do
       entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
-      stale = [{ 'key' => 'old-1', 'at' => 2.days.ago.iso8601 }, { 'key' => 'old-2', 'at' => 2.days.ago.iso8601 }]
+      stale = [{ 'ip' => '198.51.100.1', 'at' => 2.days.ago.iso8601 },
+               { 'ip' => '198.51.100.2', 'at' => 2.days.ago.iso8601 }]
       entry.update_columns(hit_tokens: stale)
 
-      described_class.record_hit!(entry, key: 'new-1')
+      described_class.record_hit!(entry, ip: '198.51.100.3', visitor_token: 'new-1')
       expect(entry.reload).to be_status_suspect
     end
 
     it 'blocked-запись не меняет статус от hits' do
       entry = described_class.create!(entry_type: :domain, value: 'known-spam.example', status: :blocked, source: 'local')
 
-      4.times { |i| described_class.record_hit!(entry, key: "v-#{i}") }
+      4.times { |i| described_class.record_hit!(entry, ip: "198.51.100.#{i}", visitor_token: "v-#{i}") }
 
       expect(entry.reload).to be_status_blocked
     end
@@ -112,7 +124,9 @@ RSpec.describe SpamBlockedEntry do
       entry = described_class.create!(entry_type: :domain, value: 'bit.ly',
                                       status: :suspect, source: 'hagezi_shorteners')
 
-      %w[v-a v-b v-c].each { |k| described_class.record_hit!(entry, key: k) }
+      %w[198.51.100.10 198.51.100.11 198.51.100.12].each do |ip|
+        described_class.record_hit!(entry, ip: ip, visitor_token: 'v-x')
+      end
 
       expect(entry.reload).to be_status_suspect
     end

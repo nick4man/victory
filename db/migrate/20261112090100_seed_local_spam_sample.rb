@@ -20,5 +20,8 @@ class SeedLocalSpamSample < ActiveRecord::Migration[8.1]
 
   def down
     SpamBlockedEntry.find_by(entry_type: :domain, value: 'botmasterru.com')&.destroy
+
+    app_host = ENV.fetch('APP_DOMAIN', 'victory62.org').to_s.downcase
+    SpamAllowlistEntry.unscoped.where(domain: [app_host, "www.#{app_host}"].uniq, manual: true).destroy_all
   end
 end

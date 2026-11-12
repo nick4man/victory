@@ -4653,6 +4653,13 @@ CREATE INDEX idx_show_reports_pending_by_reporter ON public.show_reports USING b
 
 
 --
+-- Name: idx_spam_allowlist_entries_domain; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_allowlist_entries_domain ON public.spam_allowlist_entries USING btree (domain) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: idx_spam_blocked_entries_type_value; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -6883,13 +6890,6 @@ CREATE INDEX index_show_reports_on_status_and_conducted_at ON public.show_report
 --
 
 CREATE INDEX index_spam_allowlist_entries_on_deleted_at ON public.spam_allowlist_entries USING btree (deleted_at);
-
-
---
--- Name: index_spam_allowlist_entries_on_domain; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_spam_allowlist_entries_on_domain ON public.spam_allowlist_entries USING btree (domain) WHERE (deleted_at IS NULL);
 
 
 --

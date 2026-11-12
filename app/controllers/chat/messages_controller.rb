@@ -55,7 +55,9 @@ module Chat
         # поверхность). Эхо посетителю уже ушло, роль менять поздно.
         msg.update_columns(metadata: (msg.metadata || {}).merge('excluded_from_llm' => true))
         record_security_event(conv, spam.reason, body)
-        Rails.logger.warn("[SpamFilter] visitor=#{current_visitor_token} reason=#{spam.reason} ip=#{request.remote_ip} excerpt=#{body.to_s.truncate(120).inspect}")
+        # в лог — только причина и ссылки на записи: excerpt мог содержать
+        # телефон/PII, а стабильный visitor-token + IP — идентификаторы людей
+        Rails.logger.warn("[SpamFilter] дроп: reason=#{spam.reason} conversation_id=#{conv.id} message_id=#{msg.id}")
         return render(json: { ok: true, message_id: msg.id }, status: :created)
       end
 

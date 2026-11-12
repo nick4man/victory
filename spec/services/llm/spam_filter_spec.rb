@@ -57,6 +57,16 @@ RSpec.describe Llm::SpamFilter do
 
         expect(result[:action]).to eq(:drop)
       end
+
+      it 'userinfo не обходит blocked-домен: https://user@botmasterru.com/x' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        result = described_class.classify('посмотрите https://user@botmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
     end
 
     context 'карантин suspect' do
@@ -119,6 +129,16 @@ RSpec.describe Llm::SpamFilter do
                                  ip: '198.51.100.12', visitor_token: 'v-c')
 
         expect(entry.reload).to be_status_blocked
+      end
+
+      it 'кворум по IP: один IP + три сменных visitor_token НЕ блокирует' do
+        # visitor-cookie сбрасывается одним кликом — токен не мера независимости
+        %w[v-a v-b v-c].each do |token|
+          described_class.classify('продвижение ботов на spam-same-ip.example',
+                                   ip: '198.51.100.10', visitor_token: token)
+        end
+
+        expect(SpamBlockedEntry.find_by(value: 'spam-same-ip.example')).to be_status_suspect
       end
     end
 

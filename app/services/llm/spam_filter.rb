@@ -30,7 +30,6 @@ module Llm
       urls = Llm::SpamUrls.extract(text).filter_map { |raw| Llm::SpamUrls.normalize(raw) }
       return Result.new(action: :pass) if urls.empty?
 
-      key = visitor_token.presence || ip.to_s
       heuristic = heuristic_hit?(text, urls)
       blocked = []
 
@@ -40,8 +39,8 @@ module Llm
           blocked << entry
           next
         end
-        SpamBlockedEntry.record_hit!(entry, key: key) if entry
-        quarantine(url, key: key) if heuristic
+        SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token) if entry
+        quarantine(url, ip: ip, visitor_token: visitor_token) if heuristic
       end
 
       return Result.new(action: :drop, reason: :spam_link, matches: blocked) if blocked.any?
@@ -65,7 +64,7 @@ module Llm
     # пути: t.me — ок, t.me/spam_channel — suspect-запись url-уровня.
     # Домен без пути в этих случаях не трогаем — иначе самострел
     # по легитимным клиентам.
-    def quarantine(url, key:)
+    def quarantine(url, ip:, visitor_token: nil)
       host = url[:host]
       return if host.blank?
 
@@ -74,18 +73,25 @@ module Llm
       if known
         return if url[:path].blank?
 
-        upsert_suspect(:url, "#{host}#{url[:path]}", key)
+        upsert_suspect(:url, "#{host}#{url[:path]}", ip: ip, visitor_token: visitor_token)
       else
-        upsert_suspect(:domain, host, key)
+        upsert_suspect(:domain, host, ip: ip, visitor_token: visitor_token)
       end
     end
 
-    def upsert_suspect(entry_type, value, key)
-      entry = SpamBlockedEntry.find_or_create_by!(entry_type: entry_type, value: value) do |e|
+    # create_or_find_by: параллельные запросы по новому домену иначе гонятся
+    # в find_or_create (оба проходят find → RecordNotUnique на индексе → 500).
+    def upsert_suspect(entry_type, value, ip:, visitor_token: nil)
+      entry = SpamBlockedEntry.unscoped.create_or_find_by!(entry_type: entry_type, value: value) do |e|
         e.status = :suspect
         e.source = 'local'
       end
-      SpamBlockedEntry.record_hit!(entry, key: key)
+      if entry.deleted_at? # возвращается из карантина — реанимируем как local-suspect
+        entry.update_columns(deleted_at: nil, status: 'suspect', source: 'local',
+                             blocked_at: nil, updated_at: Time.current)
+        entry.reload
+      end
+      SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token)
     end
   end
 end

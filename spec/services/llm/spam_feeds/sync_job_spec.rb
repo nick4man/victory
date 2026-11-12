@@ -3,13 +3,17 @@
 require 'rails_helper'
 
 RSpec.describe Llm::SpamFeeds::SyncJob do
-  let(:feed_body) do
+  # adblock-формат hagezi: ||domain^; комментарии «!», исключения «@@||»,
+  # модификаторы (...^$document) фильтруются парсером
+  let(:tif_body) do
     <<~LIST
-      # comment line
-      spam-one.example
-      spam-two.example
-
-      Spam-Three.Example
+      [Adblock Plus]
+      ! comment line
+      ||spam-one.example^
+      ||spam-two.example^
+      ||Spam-Three.Example^
+      ||except.me^$document
+      @@||white.example^
     LIST
   end
 
@@ -26,14 +30,20 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
   end
 
   before do
+    # порог правдоподобия в спеках = 1 запись, чтобы короткие стабы проходили
+    stub_const('Llm::SpamFeeds::SyncJob::DOMAIN_FEEDS',
+               described_class::DOMAIN_FEEDS.transform_values { |cfg| cfg.merge(min_rows: 1) })
+    stub_const('Llm::SpamFeeds::SyncJob::IP_FEEDS',
+               described_class::IP_FEEDS.transform_values { |cfg| cfg.merge(min_rows: 1) })
+
     # все фиды, кроме явно заданных в примерах — пустые ответы;
     # отдельные примеры переопределяют stub конкретного URL
-    (described_class::DOMAIN_FEEDS.values + described_class::IP_FEEDS.values).each do |url|
-      stub_request(:get, url).to_return(status: 200, body: '')
+    (described_class::DOMAIN_FEEDS.values + described_class::IP_FEEDS.values).each do |cfg|
+      stub_request(:get, cfg[:url]).to_return(status: 200, body: '')
     end
-    stub_request(:get, 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt')
-      .to_return(status: 200, body: feed_body)
-    stub_request(:get, 'https://raw.githubusercontent.com/stamparm/ipsum/master/levels/3.txt')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: tif_body)
+    stub_request(:get, described_class::IP_FEEDS['ipsum_l3'][:url])
       .to_return(status: 200, body: ip_feed_body)
     stub_request(:get, described_class::ALLOWLIST_URL)
       .to_return(status: 200, body: allowlist_body)
@@ -46,6 +56,9 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
       .to have_attributes(status: 'blocked', source: 'hagezi_tif')
     expect(SpamBlockedEntry.find_by(entry_type: :domain, value: 'spam-three.example'))
       .to have_attributes(status: 'blocked', source: 'hagezi_tif')
+    # adblock-артефакты не попали в список
+    expect(SpamBlockedEntry.find_by(value: 'except.me')).to be_nil
+    expect(SpamBlockedEntry.find_by(value: 'white.example')).to be_nil
     expect(SpamBlockedEntry.find_by(entry_type: :ip, value: '203.0.113.66'))
       .to have_attributes(status: 'blocked', source: 'ipsum_l3')
     expect(stats['hagezi_tif']).to eq(3)
@@ -67,7 +80,19 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(local.deleted_at).to be_nil
   end
 
-  it 'протухание: запись источника, исчезнувшая из фида, soft-delete' do
+  it 'локальный suspect, подтверждённый blocked-фидом, повышается до blocked' do
+    local = SpamBlockedEntry.create!(entry_type: :domain, value: 'promote-me.example',
+                                     status: :suspect, source: 'local')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||promote-me.example^\n||other-spam.example^\n")
+
+    described_class.perform_now
+
+    expect(local.reload).to be_status_blocked
+    expect(local.blocked_at).to be_present
+  end
+
+  it 'протухание: запись, исчезнувшая из объединения фидов, soft-delete' do
     stale = SpamBlockedEntry.create!(entry_type: :domain, value: 'gone.example',
                                      status: :blocked, source: 'hagezi_tif')
     described_class.perform_now
@@ -76,25 +101,63 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'spam-one.example')).to be_present
   end
 
+  it 'пересечение фидов: ключ, оставшийся в другом успешном фиде, не протухает' do
+    overlap = SpamBlockedEntry.create!(entry_type: :domain, value: 'overlap.example',
+                                       status: :blocked, source: 'phishing_domains')
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 200, body: "overlap.example\nother-phish.example\n")
+
+    described_class.perform_now
+
+    # tif в этом прогоне домен не отдаёт, но свежий phishing_domains — отдаёт
+    expect(overlap.reload.deleted_at).to be_nil
+  end
+
+  it 'возврат ключа в фид реанимирует протухшую запись' do
+    revived = SpamBlockedEntry.unscoped.create!(entry_type: :domain, value: 'spam-one.example',
+                                                status: :blocked, source: 'hagezi_tif',
+                                                deleted_at: 1.day.ago)
+    described_class.perform_now
+
+    expect(revived.reload.deleted_at).to be_nil
+  end
+
   it 'пустой ответ фида не стирает прежние записи источника' do
     existing = SpamBlockedEntry.create!(entry_type: :domain, value: 'keep.example',
                                         status: :blocked, source: 'hagezi_tif')
-    stub_request(:get, 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 200, body: '')
 
     stats = described_class.perform_now
 
-    expect(stats['hagezi_tif']).to eq(0)
+    expect(stats['hagezi_tif']).to be_nil
     expect(existing.reload.deleted_at).to be_nil
   end
 
+  it 'резко усечённая НЕпустая выгрузка отклонена: записи источника целы' do
+    stub_const('Llm::SpamFeeds::SyncJob::DOMAIN_FEEDS',
+               described_class::DOMAIN_FEEDS.merge(
+                 'hagezi_tif' => described_class::DOMAIN_FEEDS['hagezi_tif'].merge(min_rows: 100)
+               ))
+    existing = SpamBlockedEntry.create!(entry_type: :domain, value: 'keep.example',
+                                        status: :blocked, source: 'hagezi_tif')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||only-one.example^\n")
+
+    stats = described_class.perform_now
+
+    expect(stats['hagezi_tif']).to be_nil
+    expect(existing.reload.deleted_at).to be_nil
+    expect(SpamBlockedEntry.find_by(value: 'only-one.example')).to be_nil
+  end
+
   it 'падение одного фида не роняет остальные' do
-    stub_request(:get, 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)
 
     stats = described_class.perform_now
 
-    expect(stats['hagezi_tif']).to eq(0)
+    expect(stats['hagezi_tif']).to be_nil
     expect(stats['ipsum_l3']).to eq(2)
   end
 
@@ -116,15 +179,24 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamAllowlistEntry.unscoped.find_by(domain: 'keep-me.example')).to be_present
   end
 
-  it 'усечённая выгрузка allowlist не стирает рабочий список' do
+  it 'усечённая выгрузка allowlist (zip ниже порога) не стирает рабочий список' do
     stub_const('Llm::SpamFeeds::SyncJob::ALLOWLIST_MIN_ROWS', 3)
     SpamAllowlistEntry.create!(domain: 'keep-me.example')
     stub_request(:get, described_class::ALLOWLIST_URL)
-      .to_return(status: 200, body: "1,only-one.example\n")
+      .to_return(status: 200, body: File.binread(Rails.root.join('spec/fixtures/files/tranco-small.zip')))
 
     described_class.perform_now
 
     expect(SpamAllowlistEntry.allowlisted?('keep-me.example')).to be(true)
     expect(SpamAllowlistEntry.allowlisted?('only-one.example')).to be(false)
+  end
+
+  it 'allowlist: домен, исчезнувший из Tranco, протухает (soft-delete)' do
+    stub_const('Llm::SpamFeeds::SyncJob::ALLOWLIST_MIN_ROWS', 3)
+    gone = SpamAllowlistEntry.create!(domain: 'gone-white.example')
+
+    described_class.perform_now
+
+    expect(gone.reload.deleted_at).to be_present
   end
 end

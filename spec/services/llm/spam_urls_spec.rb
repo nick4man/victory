@@ -69,6 +69,12 @@ RSpec.describe Llm::SpamUrls do
       expect(described_class.normalize('https://example.com:8080')).to eq(host: 'example.com', path: nil)
     end
 
+    it 'userinfo не меняет ключ: https://user@example.com/x — тот же хост' do
+      expect(described_class.normalize('https://user@example.com/x')).to eq(host: 'example.com', path: '/x')
+      expect(described_class.normalize('http://me:pass@botmasterru.com/y'))
+        .to eq(host: 'botmasterru.com', path: '/y')
+    end
+
     it 'мусор не падает, возвращает nil' do
       expect(described_class.normalize('not a url')).to be_nil
     end

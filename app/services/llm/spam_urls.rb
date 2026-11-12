@@ -50,11 +50,15 @@ module Llm
       s = s.sub(%r{/+\z}, '')
       return nil unless s.include?('.')
 
-      host, path = s.split('/', 2)
-      host = host.to_s.downcase
-      host = host.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
-      host = host.sub(/\.\z/, '')   # финальная точка FQDN-стиля
-      host = Addressable::IDNA.to_ascii(host)
+      authority, path = s.split('/', 2)
+      authority = authority.to_s
+      # userinfo не должна менять ключ: https://user@botmasterru.com/x
+      # обходил blocked-домен, превращаясь в «user@botmasterru.com»
+      authority = authority.split('@', 2).last if authority.include?('@')
+      authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
+      authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
+      authority = authority.downcase
+      host = Addressable::IDNA.to_ascii(authority)
       return nil if host.empty? || host.length > 253
 
       { host: host, path: path.present? ? "/#{path}" : nil }
