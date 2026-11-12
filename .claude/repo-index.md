@@ -2,7 +2,6 @@
 
 > Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
 
-
 ## app/models
 
 ```
@@ -266,6 +265,7 @@ app/services/chat_tools/submit_review.rb — module ChatTools, module SubmitRevi
 app/services/chat_tools/url.rb — module ChatTools, module Url
 app/services/cian_feed_mapper.rb — class CianFeedMapper
 app/services/cities.rb — module Cities
+app/services/contact_form_spam_guard.rb — class ContactFormSpamGuard
 app/services/crm/contact_parser.rb — module Crm, class ContactParser
 app/services/crm/owner_linker.rb — module Crm, class OwnerLinker
 app/services/crm/telegram_reachability.rb — module Crm, class TelegramReachability
