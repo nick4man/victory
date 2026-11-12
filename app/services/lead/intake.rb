@@ -9,8 +9,10 @@ module Lead
   # Каждый source имеет свой адаптер (SiteSource, TgDmSource, ManualSource,
   # CrmWebhookSource) — он отвечает за:
   #   1. Создание/поиск CRM-объекта (BuyerOrder | Property)
-  #   2. Опц. вызов Topnlab::Client#import_client (создание order в CRM)
-  #   3. Сборку metadata (phone, name, summary, budget) для карточки
+  #   2. Сборку metadata (phone, name, summary, budget) для карточки
+  #
+  # Запись заявки в CRM (Topnlab::Client#import_client) здесь НЕ происходит:
+  # путь один — карточка CrmCards → модерация → CrmCards::LeadExporter.
   #
   # Сам Intake:
   #   * валидирует входные данные

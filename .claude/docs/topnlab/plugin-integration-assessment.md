@@ -76,14 +76,14 @@ CRM никогда не означает «объектов нет»**, пока
 | `set_note` | публичная заметка на сущность — `commands/note.rb`, `lead_closure.rb`, `anchor_migrator.rb`, `NotesSyncService` |
 | `patch_entity` | правка `fc_*` кастомных полей — `lead_assignment.rb`, `lead_task_creator.rb`, `anchor_migrator.rb` |
 | `transfer_client` | назначает заявку агенту по email + опц. меняет `stage_id` — `lead_assignment.rb`, `lead_stage_transition.rb` |
-| `import_client` | создаёт заявку (order) — ⚠️ **определён, но нигде не вызывается** |
+| `import_client` | создаёт заявку (order) — единственный вызов: `CrmCards::LeadExporter` (карточка проходит модерацию, слой 2 стека «Карточки CRM») |
 | `create_report_menu` / `update` / `delete` | регистрация кастомных отчётов в меню CRM |
 
-**Лиды с сайта в CRM не попадают вовсе.** `import_client` написан под это, но
-ни один вызов в `app/` его не использует, а `Lead::Intake::SiteSource` прямо
-пишет в шапке: «не создаёт CRM-карточку немедленно… `import_client` —
-отдельная задача в Phase 2». Эта задача не сделана. Заявка с формы доходит до
-Telegram-диспетчерской, но не до Topnlab: там её заводят руками или никак.
+**Лиды с сайта в CRM попадают через модерацию карточки.** Путь один:
+`Lead::Intake` создаёт лид и карточку `CrmCard` → ответственный дозаполняет →
+машинная проверка → модератор одобряет → `CrmCards::Workflow#export!` →
+`CrmCards::LeadExporter` → `import_client` (держит его `single_write_path_spec`).
+Прямых вызовов из `Lead::Intake::*` больше нет.
 
 **Создать объект недвижимости существующим кодом невозможно.** Публичного
 эндпоинта для этого нет. Даже `import_client`, если его подключить, создаёт

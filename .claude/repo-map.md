@@ -194,6 +194,8 @@ app/
     sitemap_controller.rb
     valuations_controller.rb
   jobs/
+    crm_cards/
+      export_job.rb
     document_intake/
       parser_job.rb
     external_listings/
@@ -405,12 +407,16 @@ app/
       owner_linker.rb
       telegram_reachability.rb
     crm_cards/
+      card_view.rb
       checker.rb
       field_value.rb
+      lead_exporter.rb
+      notifier.rb
       permissions_report.rb
       permissions.rb
       phone_matches.rb
       schema.rb
+      workflow.rb
     crm_reports/
       base.rb
       inventory_pdf.rb
@@ -2403,31 +2409,6 @@ private
 def valid_credential?(secret)
 ⋮----
 def bearer_token
-</file>
-
-<file path="app/controllers/webhooks/news_ingest_controller.rb">
-module Webhooks
-⋮----
-class NewsIngestController < ApplicationController
-skip_before_action :verify_authenticity_token, raise: false
-before_action :authenticate_bearer!
-⋮----
-DEFAULT_CATEGORY = 'news'
-DEFAULT_SCHEMA = 'NewsArticle'
-⋮----
-def create
-⋮----
-private
-⋮----
-def authenticate_bearer!
-⋮----
-def payload_params
-⋮----
-def normalize_payload(p)
-⋮----
-def safe_parse_time(value)
-⋮----
-def upsert_article(attrs)
 </file>
 
 <file path="app/controllers/webhooks/telegram_controller.rb">
@@ -4782,6 +4763,101 @@ def created_at_formatted
 private
 ⋮----
 def notify_property_owner
+</file>
+
+<file path="app/models/inquiry.rb">
+include AASM
+⋮----
+PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+⋮----
+def self.ransackable_attributes(auth_object = nil)
+⋮----
+def self.ransackable_associations(auth_object = nil)
+⋮----
+def self.statistics(period = :all)
+⋮----
+def self.calculate_conversion_rate(scope = all)
+⋮----
+def self.calculate_avg_response_time(scope = all)
+⋮----
+def full_contact_info
+⋮----
+def formatted_phone
+⋮----
+def type_label
+⋮----
+def status_label
+⋮----
+def status_badge_class
+⋮----
+def priority_badge_class
+⋮----
+def response_time_minutes
+⋮----
+def overdue?
+⋮----
+def scheduled_soon?
+⋮----
+def assign_to!(agent_user)
+⋮----
+def unassign!
+⋮----
+def mark_processed!
+⋮----
+def cancel_with_reason!(reason)
+⋮----
+def sync_to_crm!
+⋮----
+def synced_to_crm?
+⋮----
+def set_metadata(key, value)
+⋮----
+def get_metadata(key)
+⋮----
+def from_mobile?
+⋮----
+def has_utm_params?
+⋮----
+def utm_string
+⋮----
+def notify_admins!
+⋮----
+def notify_user_of_status_change!
+⋮----
+def property_title
+⋮----
+def property_url
+⋮----
+def agent_name
+⋮----
+Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+⋮----
+def normalize_phone
+⋮----
+def set_default_source
+⋮----
+def detect_staff_test_submission
+⋮----
+def assign_to_agent
+⋮----
+def send_notifications
+⋮----
+def sync_to_crm
+⋮----
+def push_to_work_bot
+⋮----
+def notify_status_change
+⋮----
+def broadcast_cabinet_status_change
+⋮----
+def phone_format
+⋮----
+def preferred_date_in_future
+⋮----
+def property_or_message_required
+# Mortgage inquiries carry program details in metadata, not a property
+# FK — exempt them from the property-or-message rule so /services/mortgage
+# applications validate cleanly.
 </file>
 
 <file path="app/models/landing_content.rb">
@@ -10298,6 +10374,24 @@ private
 def escape(text)
 </file>
 
+<file path="app/services/telegram/work_bot/commands/reassign.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Reassign < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def dispatch_new_card(task)
+⋮----
+def invalidate_stale_card(coords, _new_assignee)
+⋮----
+def notify_previous_assignee(task, prev_assignee, new_assignee)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/resume_batch.rb">
 module Telegram
 module WorkBot
@@ -11785,90 +11879,6 @@ def interpolate(label, data)
 def parse_time(raw)
 ⋮----
 def resolve_user(crm_user_id)
-</file>
-
-<file path="app/services/topnlab/client.rb">
-require 'net/http'
-require 'json'
-require 'uri'
-⋮----
-module Topnlab
-class Client
-class Error < StandardError; end
-⋮----
-SLOW_DELAY = 6.0
-FAST_DELAY = 1.0
-⋮----
-def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
-⋮----
-def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
-⋮----
-def get_entities(ids, type: 'realty', append: nil)
-⋮----
-def get_entities_from_mls(ids)
-⋮----
-def get_entities_from_parser(ids)
-⋮----
-def get_realty_options
-⋮----
-def get_users
-⋮----
-def get_structure
-⋮----
-def get_stages(scope_id)
-⋮----
-# GET /public/get-notes — public notes attached to one entity.
-def get_notes(id:, type:)
-⋮----
-def set_note(id:, type:, note:, user_id:)
-⋮----
-def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
-⋮----
-def get_event_types
-⋮----
-def list_report_menus
-⋮----
-def report_pages
-⋮----
-def create_report_menu(title:, page_id:, order:, callback_url:)
-⋮----
-def update_report_menu(id:, title:, order:)
-⋮----
-def delete_report_menu(id:)
-⋮----
-def get_clients_by_entity(entity_id:, entity_type: 2)
-⋮----
-def patch_entity(id:, type:, fields:)
-⋮----
-def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
-⋮----
-def transfer_client(order_id:, email:, stage_id: nil)
-⋮----
-private
-⋮----
-def entity_map?(data)
-⋮----
-def scrub(data)
-⋮----
-# Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
-# Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
-def normalize_phone_11d(phone)
-⋮----
-def source_to_action(_source)
-⋮----
-def batched_get(path, ids, batch_size:, throttle:)
-⋮----
-def http_get(path, params, throttle:)
-⋮----
-def http_post_json(path, body)
-⋮----
-def perform(request)
-⋮----
-def encode_query(params)
-⋮----
-def parse(response, label)
-⋮----
-def throttle!(kind)
 </file>
 
 <file path="app/services/topnlab/importer.rb">
@@ -13559,6 +13569,42 @@ def sanitize_page_ctx(raw_ctx)
 def stamp_page(conv, page_ctx)
 </file>
 
+<file path="app/controllers/webhooks/news_ingest_controller.rb">
+module Webhooks
+⋮----
+class NewsIngestController < ApplicationController
+skip_before_action :verify_authenticity_token, raise: false
+before_action :authenticate_bearer!
+⋮----
+DEFAULT_CATEGORY = 'news'
+DEFAULT_SCHEMA = 'NewsArticle'
+⋮----
+def create
+⋮----
+private
+⋮----
+def public_news_url(slug)
+⋮----
+def authenticate_bearer!
+⋮----
+def payload_params
+⋮----
+def normalize_payload(p)
+⋮----
+def safe_parse_time(value)
+⋮----
+def upsert_article(attrs)
+</file>
+
+<file path="app/jobs/crm_cards/export_job.rb">
+module CrmCards
+⋮----
+class ExportJob < ApplicationJob
+queue_as :default
+⋮----
+def perform(card_id)
+</file>
+
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -13702,101 +13748,6 @@ def price_per_sqm
 private
 ⋮----
 def normalize_city_name
-</file>
-
-<file path="app/models/inquiry.rb">
-include AASM
-⋮----
-PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
-⋮----
-def self.ransackable_attributes(auth_object = nil)
-⋮----
-def self.ransackable_associations(auth_object = nil)
-⋮----
-def self.statistics(period = :all)
-⋮----
-def self.calculate_conversion_rate(scope = all)
-⋮----
-def self.calculate_avg_response_time(scope = all)
-⋮----
-def full_contact_info
-⋮----
-def formatted_phone
-⋮----
-def type_label
-⋮----
-def status_label
-⋮----
-def status_badge_class
-⋮----
-def priority_badge_class
-⋮----
-def response_time_minutes
-⋮----
-def overdue?
-⋮----
-def scheduled_soon?
-⋮----
-def assign_to!(agent_user)
-⋮----
-def unassign!
-⋮----
-def mark_processed!
-⋮----
-def cancel_with_reason!(reason)
-⋮----
-def sync_to_crm!
-⋮----
-def synced_to_crm?
-⋮----
-def set_metadata(key, value)
-⋮----
-def get_metadata(key)
-⋮----
-def from_mobile?
-⋮----
-def has_utm_params?
-⋮----
-def utm_string
-⋮----
-def notify_admins!
-⋮----
-def notify_user_of_status_change!
-⋮----
-def property_title
-⋮----
-def property_url
-⋮----
-def agent_name
-⋮----
-Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
-⋮----
-def normalize_phone
-⋮----
-def set_default_source
-⋮----
-def detect_staff_test_submission
-⋮----
-def assign_to_agent
-⋮----
-def send_notifications
-⋮----
-def sync_to_crm
-⋮----
-def push_to_work_bot
-⋮----
-def notify_status_change
-⋮----
-def broadcast_cabinet_status_change
-⋮----
-def phone_format
-⋮----
-def preferred_date_in_future
-⋮----
-def property_or_message_required
-# Mortgage inquiries carry program details in metadata, not a property
-# FK — exempt them from the property-or-message rule so /services/mortgage
-# applications validate cleanly.
 </file>
 
 <file path="app/models/property_valuation_embedding.rb">
@@ -14263,24 +14214,6 @@ class Menu < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/commands/reassign.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Reassign < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def dispatch_new_card(task)
-⋮----
-def invalidate_stale_card(coords, _new_assignee)
-⋮----
-def notify_previous_assignee(task, prev_assignee, new_assignee)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/start_test.rb">
 module WorkBot
 module Commands
@@ -14729,6 +14662,83 @@ Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.cla
 def broadcast_cabinet_completion
 </file>
 
+<file path="app/services/chat_tools/estimate_property_valuation.rb">
+module ChatTools
+⋮----
+module EstimatePropertyValuation
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.build_valuation(args)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.compact_response(pv, result)
+⋮----
+# Нет локальных аналогов (issue #172) — бот обязан озвучить
+# ориентировочность оценки, см. description в .schema.
+⋮----
+def self.run_failure(pv, error_message)
+</file>
+
+<file path="app/services/crm_cards/notifier.rb">
+module CrmCards
+⋮----
+class Notifier
+def initialize(client: nil)
+⋮----
+def submitted(card, moderators:)
+⋮----
+def returned(card, comment:)
+⋮----
+def approved(card)
+⋮----
+def exported(card, warning: nil)
+⋮----
+def export_failed(card)
+⋮----
+private
+⋮----
+def deliver(user, header, card)
+⋮----
+def dm(user, text, keyboard: nil)
+⋮----
+def refresh_lead_anchor(card)
+⋮----
+def client
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/embedding/property_valuation_text_template.rb">
+PROPERTY_TYPE_LABELS = {
+⋮----
+DEAL_TYPE_LABELS = {
+⋮----
+CONDITION_LABELS = {
+⋮----
+# created_at, а не updated_at: touch/служебные правки не должны плавать
+# дату и content_hash — иначе лишние пере-эмбеддинги (issue #201)
+⋮----
+parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
+⋮----
+def self.append_price_per_sqm(parts, valuation)
+⋮----
+def self.effective_area(valuation)
+⋮----
+def self.land_sotki(valuation)
+⋮----
+def self.analogs_count(valuation)
+⋮----
+def self.format_price(value)
+</file>
+
 <file path="app/services/external_listings/yrl_parser.rb">
 require 'nokogiri'
 require 'open-uri'
@@ -14939,6 +14949,38 @@ def audit!(outcome, args:, error_class: nil, error_message: nil)
 def command_key
 </file>
 
+<file path="app/services/telegram/work_bot/commands/help.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Help < Base
+⋮----
+ENTRIES = [
+⋮----
+def handle
+⋮----
+# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
+# Шлём один-line redirect inline + полный список приватно в DM.
+# В DM-чате — inline как раньше.
+⋮----
+private
+⋮----
+def append_section(lines, header, level)
+⋮----
+def entries_for(level)
+⋮----
+def staff?
+⋮----
+def manager?
+⋮----
+def director?
+⋮----
+def group_chat?
+⋮----
+def send_full_via_dm(text)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/reopen.rb">
 module Telegram
 module WorkBot
@@ -15079,6 +15121,90 @@ def workbot_photo_text_continuation(msg)
 def workbot_wizard_text(msg)
 </file>
 
+<file path="app/services/topnlab/client.rb">
+require 'net/http'
+require 'json'
+require 'uri'
+⋮----
+module Topnlab
+class Client
+class Error < StandardError; end
+⋮----
+SLOW_DELAY = 6.0
+FAST_DELAY = 1.0
+⋮----
+def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
+⋮----
+def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
+⋮----
+def get_entities(ids, type: 'realty', append: nil)
+⋮----
+def get_entities_from_mls(ids)
+⋮----
+def get_entities_from_parser(ids)
+⋮----
+def get_realty_options
+⋮----
+def get_users
+⋮----
+def get_structure
+⋮----
+def get_stages(scope_id)
+⋮----
+# GET /public/get-notes — public notes attached to one entity.
+def get_notes(id:, type:)
+⋮----
+def set_note(id:, type:, note:, user_id:)
+⋮----
+def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
+⋮----
+def get_event_types
+⋮----
+def list_report_menus
+⋮----
+def report_pages
+⋮----
+def create_report_menu(title:, page_id:, order:, callback_url:)
+⋮----
+def update_report_menu(id:, title:, order:)
+⋮----
+def delete_report_menu(id:)
+⋮----
+def get_clients_by_entity(entity_id:, entity_type: 2)
+⋮----
+def patch_entity(id:, type:, fields:)
+⋮----
+def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
+⋮----
+def transfer_client(order_id:, email:, stage_id: nil)
+⋮----
+private
+⋮----
+def entity_map?(data)
+⋮----
+def scrub(data)
+⋮----
+# Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
+# Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
+def normalize_phone_11d(phone)
+⋮----
+def source_to_action(_source)
+⋮----
+def batched_get(path, ids, batch_size:, throttle:)
+⋮----
+def http_get(path, params, throttle:)
+⋮----
+def http_post_json(path, body, retry_network: true)
+⋮----
+def perform(request, retry_network: true)
+⋮----
+def encode_query(params)
+⋮----
+def parse(response, label)
+⋮----
+def throttle!(kind)
+</file>
+
 <file path="app/services/valuations/sitemap_comp_finder.rb">
 require 'net/http'
 require 'uri'
@@ -15197,105 +15323,6 @@ def persist(parsed_list)
 def resolve_city(record, card_city)
 ⋮----
 def sane?(p)
-</file>
-
-<file path="app/services/property_evaluation_service.rb">
-class PropertyEvaluationService
-⋮----
-MIN_TIER1 = 3
-MIN_TIER2 = 2
-MIN_TIER3 = 1
-⋮----
-ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
-⋮----
-AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
-⋮----
-LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
-⋮----
-def initialize(valuation, include_full_comparables: false)
-⋮----
-def call
-⋮----
-# Полный пул аналогов добавляем только когда запросил staff-тул
-# (include_full_comparables) — публичные оценки его не хранят (PR #184).
-def full_comparables_hash(comps)
-⋮----
-# Effective area в м² для ВСЕХ типов: total_area для строений,
-# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
-# (ComparableFinder#enrich переводит land-объявления площадок из соток),
-# поэтому fallback и CompositeEstimator работают в одной единице
-# (ревью Kimi, PR #184).
-def subject_area
-⋮----
-private
-⋮----
-def valid?
-⋮----
-# === Ensemble-based confidence ===
-# Старая tier-логика заменена на multi-source формулу: оценка строится
-# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
-# ai_synthesized / city anchor), и confidence учитывает (a) сколько
-# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
-# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
-# большинстве реалистичных сценариев.
-REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
-⋮----
-def confidence_for(pool, estimate = nil)
-⋮----
-base = 0.50  # baseline: любая успешная оценка ≥ 50%
-⋮----
-base += 0.10 if real_count >= 1                # хотя бы один настоящий
-# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
-# модель строит bootstrap-CI и хедоник работает; засчитываем как
-# «полу-настоящий» сигнал.
-⋮----
-# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
-# с минимальным сравнением, даже если расходится с агрегатами.
-⋮----
-# condition хранится в колонке `condition`; геттер `property_condition` —
-# alias через `attribute`. Проверяем оба для совместимости.
-⋮----
-# Cap positive contributions ДО penalty — иначе сумма additions может
-# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
-# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
-# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
-# min(1.25, 0.95) = 0.95 — penalty не виден).
-⋮----
-# PENALTY for high sample variance — coefficient of variation
-# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
-# spans wide range, confidence shouldn't быть 0.95. Это решает
-# «honest math» проблему: 0.95 при spread 3x = nonsense.
-#
-# CV thresholds calibrated empirically:
-#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
-#  - CV > 0.30 → notable heterogeneity — medium penalty
-#  - CV > 0.18 → some spread — small penalty
-⋮----
-# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
-⋮----
-def estimators_agree?(comps)
-⋮----
-def pps_coefficient_of_variation(comps)
-⋮----
-def low_coverage?(comps)
-⋮----
-def fallback_estimate
-⋮----
-def serialize(comps)
-⋮----
-def compose_title(r)
-⋮----
-def comparable_url(r)
-⋮----
-def comparable_source(r)
-⋮----
-def build_market_analysis(comps, estimate)
-⋮----
-def build_recommendations
-⋮----
-def success(payload)
-⋮----
-def error(message)
 </file>
 
 <file path="Gemfile">
@@ -15462,49 +15489,48 @@ group :development, :test do
 end
 </file>
 
-<file path="app/services/chat_tools/estimate_property_valuation.rb">
-module ChatTools
+<file path="app/services/crm_cards/card_view.rb">
+module CrmCards
 ⋮----
-module EstimatePropertyValuation
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+module CardView
+KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
+RETRY_HINT = 'Если это таймаут — сначала найди клиента в CRM по телефону: заявка могла создаться.'
+MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
 ⋮----
-def self.schema
+module_function
 ⋮----
-def self.call(args)
+def render(card, viewer:)
 ⋮----
-def self.missing_fields_response(missing)
+def text(card)
 ⋮----
-def self.build_valuation(args)
+# Значение без HTML — для кнопок и для экранирования снаружи.
+def plain_value(field, value)
 ⋮----
-def self.enrich_from_geocoder(pv)
+def keyboard(card, viewer, perms)
 ⋮----
-def self.compact_response(pv, result)
+def approved_rows(card, owner, moderator)
 ⋮----
-# Нет локальных аналогов (issue #172) — бот обязан озвучить
-# ориентировочность оценки, см. description в .schema.
+def author_rows(card)
 ⋮----
-def self.run_failure(pv, error_message)
-</file>
-
-<file path="app/services/embedding/property_valuation_text_template.rb">
-PROPERTY_TYPE_LABELS = {
+def moderator_rows(card)
 ⋮----
-DEAL_TYPE_LABELS = {
+def header(card)
 ⋮----
-CONDITION_LABELS = {
+def staff_test_lines(card)
 ⋮----
-parts << "Итоговая цена оценки: #{valuation.estimated_price_formatted}"
+def check_lines(card)
 ⋮----
-def self.append_price_per_sqm(parts, valuation)
+def status_lines(card)
 ⋮----
-def self.effective_area(valuation)
+def exported_lines(card)
 ⋮----
-def self.land_sotki(valuation)
+def error_label(card, key)
 ⋮----
-def self.analogs_count(valuation)
+def format_phone(digits)
 ⋮----
-def self.format_price(value)
+def button(text, callback_data)
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/close.rb">
@@ -15521,38 +15547,6 @@ def handle
 private
 ⋮----
 def parse_args
-</file>
-
-<file path="app/services/telegram/work_bot/commands/help.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Help < Base
-⋮----
-ENTRIES = [
-⋮----
-def handle
-⋮----
-# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
-# Шлём один-line redirect inline + полный список приватно в DM.
-# В DM-чате — inline как раньше.
-⋮----
-private
-⋮----
-def append_section(lines, header, level)
-⋮----
-def entries_for(level)
-⋮----
-def staff?
-⋮----
-def manager?
-⋮----
-def director?
-⋮----
-def group_chat?
-⋮----
-def send_full_via_dm(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/task.rb">
@@ -15595,6 +15589,192 @@ private
 def confirm_prompt
 ⋮----
 def accept_reason(value, manual)
+</file>
+
+<file path="app/services/property_evaluation_service.rb">
+class PropertyEvaluationService
+⋮----
+MIN_TIER1 = 3
+MIN_TIER2 = 2
+MIN_TIER3 = 1
+⋮----
+ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+⋮----
+AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+⋮----
+LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+⋮----
+def initialize(valuation, include_full_comparables: false)
+⋮----
+def call
+⋮----
+# Полный пул аналогов добавляем только когда запросил staff-тул
+# (include_full_comparables) — публичные оценки его не хранят (PR #184).
+def full_comparables_hash(comps)
+⋮----
+# Effective area в м² для ВСЕХ типов: total_area для строений,
+# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
+# (ComparableFinder#enrich переводит land-объявления площадок из соток),
+# поэтому fallback и CompositeEstimator работают в одной единице
+# (ревью Kimi, PR #184).
+def subject_area
+⋮----
+private
+⋮----
+def valid?
+⋮----
+# === Ensemble-based confidence ===
+# Старая tier-логика заменена на multi-source формулу: оценка строится
+# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
+# ai_synthesized / city anchor), и confidence учитывает (a) сколько
+# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
+# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
+# большинстве реалистичных сценариев.
+REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
+⋮----
+def confidence_for(pool, estimate = nil)
+⋮----
+base = 0.50  # baseline: любая успешная оценка ≥ 50%
+⋮----
+base += 0.10 if real_count >= 1                # хотя бы один настоящий
+# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
+# модель строит bootstrap-CI и хедоник работает; засчитываем как
+# «полу-настоящий» сигнал.
+⋮----
+# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
+# с минимальным сравнением, даже если расходится с агрегатами.
+⋮----
+# condition хранится в колонке `condition`; геттер `property_condition` —
+# alias через `attribute`. Проверяем оба для совместимости.
+⋮----
+# Cap positive contributions ДО penalty — иначе сумма additions может
+# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+# min(1.25, 0.95) = 0.95 — penalty не виден).
+⋮----
+# PENALTY for high sample variance — coefficient of variation
+# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+# spans wide range, confidence shouldn't быть 0.95. Это решает
+# «honest math» проблему: 0.95 при spread 3x = nonsense.
+#
+# CV thresholds calibrated empirically:
+#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+#  - CV > 0.30 → notable heterogeneity — medium penalty
+#  - CV > 0.18 → some spread — small penalty
+⋮----
+# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+⋮----
+def estimators_agree?(comps)
+⋮----
+def pps_coefficient_of_variation(comps)
+⋮----
+def low_coverage?(comps)
+⋮----
+def fallback_estimate
+⋮----
+def serialize(comps)
+⋮----
+def compose_title(r)
+⋮----
+def comparable_url(r)
+⋮----
+def comparable_source(r)
+⋮----
+def build_market_analysis(comps, estimate)
+⋮----
+def build_recommendations
+⋮----
+def success(payload)
+⋮----
+def error(message)
+</file>
+
+<file path="app/services/crm_cards/lead_exporter.rb">
+module CrmCards
+⋮----
+class LeadExporter
+Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
+⋮----
+def initialize(topnlab: nil)
+⋮----
+def call(card)
+⋮----
+private
+⋮----
+def comment_with_extra_phone(values)
+⋮----
+def topnlab
+⋮----
+def assign_responsible(crm_id, author)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def export!(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">

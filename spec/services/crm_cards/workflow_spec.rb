@@ -240,5 +240,35 @@ RSpec.describe CrmCards::Workflow do
 
       expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
     end
+
+    # Регресс ревью PR #210: «Повторить» по stale-карточке, чья первая выгрузка
+    # ещё жива (застряла внутри exporter.call), заводит вторую попытку, но
+    # ровно один importClient доходит до финала — stale-попытка не перезаписывает
+    # ни номер, ни статус чужой попытки.
+    it 'гонка retry с живой выгрузкой: один номер в карточке, stale-попытка молчит' do
+      first_call = true
+      retry_result = nil
+      second_result = nil
+      allow(exporter).to receive(:call) do |c|
+        next CrmCards::LeadExporter::Outcome.new(crm_id: '2222', warning: nil) unless first_call
+
+        first_call = false
+        # Первая попытка «в сети»: карточку делают stale и жмут «Повторить»,
+        # вторая попытка проходит целиком, пока первая ещё не вернулась.
+        c.update_columns(updated_at: 20.minutes.ago)
+        retry_result = workflow.retry_export!(c.reload, actor: director)
+        second_result = workflow.export!(c.reload)
+        CrmCards::LeadExporter::Outcome.new(crm_id: '1111', warning: nil)
+      end
+
+      stale_result = workflow.export!(card)
+
+      expect(retry_result).to be_ok
+      expect(second_result).to be_ok
+      expect(stale_result.error).to include('устарела')
+      expect(card.reload).to have_attributes(status: 'exported', crm_id: '2222')
+      expect(exporter).to have_received(:call).twice
+      expect(notifier).to have_received(:exported).once
+    end
   end
 end

@@ -108,9 +108,13 @@ module CrmCards
 
     # Только для ExportJob. Захват approved → exporting атомарный: двойной
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
+    # Токен попытки ставится тем же update_all: «Повторить» по stale-карточке,
+    # чья первая выгрузка ещё жива, заведёт вторую попытку с другим токеном —
+    # и первая, проснувшись, ничего не перезапишет (ревью PR #210).
     def export!(card)
+      token = SecureRandom.hex(8)
       claimed = CrmCard.where(id: card.id, kind: 'lead', status: 'approved')
-                       .update_all(status: 'exporting', updated_at: Time.current)
+                       .update_all(status: 'exporting', export_attempt_token: token, updated_at: Time.current)
       return deny('Карточка не ждёт выгрузки: не одобрена или её уже выгружает другой процесс.') unless claimed == 1
 
       card.reload
@@ -118,7 +122,15 @@ module CrmCards
       begin
         outcome = exporter.call(card)
       rescue StandardError => e
-        return fail_export!(card, error: "#{e.class}: #{e.message}")
+        return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token)
+      end
+
+      # Пока шла выгрузка, карточку могли вернуть на повтор и захватить другим
+      # токеном: stale-попытка не пишет ни номер, ни статус чужой попытки.
+      unless attempt_current?(card, token)
+        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} попытка выгрузки устарела " \
+                          '(карточку заняла другая попытка) — результат игнорируем')
+        return deny('Выгрузка устарела: карточку уже обрабатывает другая попытка.')
       end
 
       # Заявка в CRM уже создана — номер фиксируем раньше всего, чтобы сбой
@@ -132,11 +144,11 @@ module CrmCards
                            "но номер не записан в карточку ##{card.id}: #{e.class}: #{e.message}")
         raise
       end
-      finalize_export!(card, outcome)
+      finalize_export!(card, outcome, attempt_token: token)
     end
 
     # mode 'api' — из export!; 'manual' — сотрудник внёс объект руками и ввёл номер.
-    def record_export!(card, crm_id:, mode:, actor: nil, warning: nil)
+    def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
       digits = crm_id.to_s.strip
       result = card.with_lock do
         next deny('Номер карточки в CRM — только цифры.') unless digits.match?(/\A\d{1,12}\z/)
@@ -148,6 +160,9 @@ module CrmCards
           next deny("Карточка не ждёт ручного внесения (#{label(card)}).") unless card.kind_object? && card.status_approved?
         else
           next deny("Карточка не выгружается (#{label(card)}).") unless card.status_exporting?
+          # Чужая (stale) попытка не финализирует чужую выгрузку: токен
+          # совпадает только у попытки, захватившей статус последней.
+          next deny('Чужая попытка выгрузки — результат не записываем.') if attempt_token && !attempt_current?(card, attempt_token)
         end
 
         transition!(card, to: 'exported', actor: actor, comment: warning)
@@ -167,7 +182,9 @@ module CrmCards
         next deny("Заявка уже есть в CRM (#{card.crm_id}) — повтор завёл бы вторую. Статус правится вручную.") if card.crm_id.present?
 
         transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
-        card.update!(export_error: nil)
+        # Токен чистим: живая старая попытка проснётся, увидит nil/чужой
+        # токен и ничего не перезапишет (гонка с retry_export!, PR #210).
+        card.update!(export_error: nil, export_attempt_token: nil)
         ok(card)
       end
       ExportJob.perform_later(card.id) if result.ok?
@@ -265,10 +282,11 @@ module CrmCards
       Result.new(ok: false, error: error)
     end
 
-    def fail_export!(card, error:)
+    def fail_export!(card, error:, attempt_token: nil)
       message = error.to_s.truncate(500)
       result = card.with_lock do
         next deny('Карточка не выгружается.') unless card.status_exporting?
+        next deny('Чужая попытка выгрузки — статус не трогаем.') if attempt_token && !attempt_current?(card, attempt_token)
 
         transition!(card, to: 'export_failed', actor: nil, comment: message)
         card.update!(export_error: message)
@@ -281,17 +299,24 @@ module CrmCards
     # record_export! может отказать (неверный формат номера) или упасть
     # (БД) уже после того, как CRM приняла заявку — crm_id к этому моменту
     # уже сохранён в export!, остаётся только не потерять карточку молча.
-    def finalize_export!(card, outcome)
-      result = record_export!(card, crm_id: outcome.crm_id, mode: 'api', warning: outcome.warning)
-      result.ok? ? result : lost_export_status!(card, outcome, result.error)
+    def finalize_export!(card, outcome, attempt_token: nil)
+      result = record_export!(card, crm_id: outcome.crm_id, mode: 'api', warning: outcome.warning,
+                              attempt_token: attempt_token)
+      result.ok? ? result : lost_export_status!(card, outcome, result.error, attempt_token: attempt_token)
     rescue StandardError => e
-      lost_export_status!(card, outcome, "#{e.class}: #{e.message}")
+      lost_export_status!(card, outcome, "#{e.class}: #{e.message}", attempt_token: attempt_token)
     end
 
-    def lost_export_status!(card, outcome, reason)
+    def lost_export_status!(card, outcome, reason, attempt_token: nil)
       Rails.logger.error("[CrmCards::Workflow] card=#{card.id} создана в CRM #{outcome.crm_id}, но статус не записан: #{reason}")
       fail_export!(card, error: "Заявка уже создана в CRM под номером #{outcome.crm_id}, но статус не записан (#{reason}). " \
-                              'Не повторяй выгрузку — поправь статус вручную.')
+                                'Не повторяй выгрузку — поправь статус вручную.', attempt_token: attempt_token)
+    end
+
+    # Попытка актуальна, только если её токен до сих пор на карточке:
+    # retry_export!/следующий export! заменяют или чистят его.
+    def attempt_current?(card, token)
+      card.reload.export_attempt_token == token
     end
 
     def notifier

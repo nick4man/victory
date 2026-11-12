@@ -243,7 +243,8 @@ module Topnlab
     end
 
     # POST /call/main/importClient/ — создать лид в Topnlab CRM.
-    # Используется Lead::Intake::* источниками для проброса заявок с сайта/TG в CRM.
+    # Единственный вызов — CrmCards::LeadExporter: заявка уходит в CRM только
+    # после модерации карточки (single_write_path_spec).
     #
     # @param phone [String] любой формат — нормализуется в 11 цифр (7XXXXXXXXXX)
     # @param name [String] ФИО / имя клиента (обязательно)
@@ -254,10 +255,10 @@ module Topnlab
     # @param object_type [String] flat|room|commerce|house|land|garage
     # @param to_number [String, nil] входящий номер (если лид пришёл по звонку)
     # @return [Hash] {"status" => "ok", "insertedId" => <order_id>}
-    # @raise [Topnlab::Client::Error] на любую неуспешную попытку. Ровно одна попытка
-    #   отправки — не идемпотентен (повтор завёл бы вторую заявку), поэтому
-    #   retry_network: false: сетевой сбой после отправки НЕ ретраится молча,
-    #   см. Topnlab::Client#perform.
+    # @raise [Topnlab::Client::Error] на любую неуспешную попытку. Не идемпотентен
+    #   (повтор завёл бы вторую заявку), поэтому retry_network: false: сбой
+    #   после отправки НЕ ретраится молча (исключение — Net::OpenTimeout,
+    #   когда запрос точно не ушёл, см. Topnlab::Client#perform).
     def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
                       action: nil, object_type: 'flat', to_number: nil)
       body = {

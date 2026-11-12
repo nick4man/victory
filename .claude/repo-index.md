@@ -268,12 +268,16 @@ app/services/cities.rb — module Cities
 app/services/crm/contact_parser.rb — module Crm, class ContactParser
 app/services/crm/owner_linker.rb — module Crm, class OwnerLinker
 app/services/crm/telegram_reachability.rb — module Crm, class TelegramReachability
+app/services/crm_cards/card_view.rb — module CrmCards, module CardView
 app/services/crm_cards/checker.rb — module CrmCards, class Checker
 app/services/crm_cards/field_value.rb — module CrmCards, module FieldValue
+app/services/crm_cards/lead_exporter.rb — module CrmCards, class LeadExporter
+app/services/crm_cards/notifier.rb — module CrmCards, class Notifier
 app/services/crm_cards/permissions.rb — module CrmCards, class Permissions
 app/services/crm_cards/permissions_report.rb — module CrmCards, class PermissionsReport
 app/services/crm_cards/phone_matches.rb — module CrmCards, module PhoneMatches
 app/services/crm_cards/schema.rb — module CrmCards, module Schema
+app/services/crm_cards/workflow.rb — module CrmCards, class Workflow
 app/services/crm_reports/base.rb — module CrmReports, class Base
 app/services/crm_reports/inventory_pdf.rb — module CrmReports, class InventoryPdf
 app/services/crm_reports/seller_presentation.rb — module CrmReports, class SellerPresentation
@@ -525,6 +529,7 @@ app/services/zhk/run_summary.rb — module Zhk, module RunSummary
 ```
 app/jobs/application_job.rb — class ApplicationJob
 app/jobs/bank_rates_refresh_job.rb — class BankRatesRefreshJob
+app/jobs/crm_cards/export_job.rb — module CrmCards, class ExportJob
 app/jobs/digest_cleanup_job.rb — class DigestCleanupJob
 app/jobs/dispatcher_digest_refresh_job.rb — class DispatcherDigestRefreshJob
 app/jobs/document_intake/parser_job.rb — module DocumentIntake, class ParserJob
