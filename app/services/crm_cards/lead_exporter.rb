@@ -16,17 +16,22 @@ module CrmCards
 
     # @return [Outcome]
     # @raise [Topnlab::Client::Error] заявка не создана
-    def call(card)
+    # heartbeat — callable от Workflow: ставит export_heartbeat_at на карточке
+    # вокруг каждого сетевого вызова. Пока heartbeat свежий, карточка не
+    # считается застрявшей и ручной «Повторить» не заведёт вторую заявку.
+    def call(card, heartbeat: nil)
       values = card.payload
+      heartbeat&.call
       response = topnlab.import_client(
         phone: values['phone'], name: values['name'], source: card.lead_event&.source.to_s,
         realty_id: values['realty_id'], comment: comment_with_extra_phone(values),
         action: values['action'] == 'rent' ? 0 : 1, object_type: values['object_type']
       )
+      heartbeat&.call
       crm_id = response['insertedId'].to_s
       raise Topnlab::Client::Error, 'importClient ответил ok без insertedId' if crm_id.blank?
 
-      Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible))
+      Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible, heartbeat))
     end
 
     private
@@ -55,9 +60,10 @@ module CrmCards
     # Ловим любую ошибку, не только Topnlab::Client::Error: сырой сетевой сбой
     # (ECONNREFUSED, SSL) иначе вылетел бы до Outcome, номер заявки потерялся
     # бы, и повтор выгрузки завёл бы в CRM вторую заявку.
-    def assign_responsible(crm_id, author)
+    def assign_responsible(crm_id, author, heartbeat)
       return "у #{author.mention} нет email в привязке к CRM — ответственный не назначен" if author.email.blank?
 
+      heartbeat&.call
       topnlab.transfer_client(order_id: crm_id.to_i, email: author.email)
       nil
     rescue StandardError => e

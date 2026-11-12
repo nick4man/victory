@@ -80,10 +80,11 @@ CRM никогда не означает «объектов нет»**, пока
 | `create_report_menu` / `update` / `delete` | регистрация кастомных отчётов в меню CRM |
 
 **Лиды с сайта в CRM попадают через модерацию карточки.** Путь один:
-`Lead::Intake` создаёт лид и карточку `CrmCard` → ответственный дозаполняет →
-машинная проверка → модератор одобряет → `CrmCards::Workflow#export!` →
-`CrmCards::LeadExporter` → `import_client` (держит его `single_write_path_spec`).
-Прямых вызовов из `Lead::Intake::*` больше нет.
+`Lead::Intake` создаёт `LeadEvent`, карточку `CrmCard` ответственный заводит
+через `CrmCards::Workflow#upsert_lead_card!` → дозаполнение → машинная проверка
+→ модератор одобряет → `CrmCards::Workflow#export!` → `CrmCards::LeadExporter`
+→ `import_client` (держит его `single_write_path_spec`). Прямых вызовов из
+`Lead::Intake::*` нет.
 
 **Создать объект недвижимости существующим кодом невозможно.** Публичного
 эндпоинта для этого нет. Даже `import_client`, если его подключить, создаёт

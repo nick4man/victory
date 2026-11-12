@@ -8731,40 +8731,6 @@ class ManualSource
 def call(_payload)
 </file>
 
-<file path="app/services/lead/intake/site_source.rb">
-module Lead
-class Intake
-⋮----
-class SiteSource
-def initialize(source)
-⋮----
-def call(payload)
-⋮----
-private
-⋮----
-def find_known_user(payload)
-⋮----
-# Привязка к существующей сайтовой сущности:
-#   * site_valuation — PropertyValuation (валюация на сайте)
-#   * site_form/site_mortgage — Inquiry (универсальная форма)
-#   * fallback (если ничего не передали) — также Inquiry, чтобы не создавать
-#     BuyerOrder без crm_id (он требует NOT NULL crm_id из CRM).
-def lead_ref_for(payload)
-⋮----
-def fallback_inquiry(payload)
-⋮----
-def digits(phone)
-⋮----
-def build_summary(payload)
-⋮----
-def normalize_phone(phone)
-⋮----
-ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
-def normalize_service_type(payload)
-⋮----
-def mask_phone(phone)
-</file>
-
 <file path="app/services/lead/intake/tg_dm_source.rb">
 module Lead
 class Intake
@@ -8787,26 +8753,6 @@ def infer_inquiry_type(intent)
 def build_name(payload)
 ⋮----
 def build_metadata(payload, returning_client:, match_strategy: nil, match_confidence: nil)
-</file>
-
-<file path="app/services/lead/intake.rb">
-module Lead
-⋮----
-class Intake
-SUPPORTED_SOURCES = %w[site_form site_valuation site_mortgage tg_dm manual crm_webhook].freeze
-⋮----
-Result = Struct.new(:success, :lead_event, :error, :threaded, keyword_init: true) do
-def success?
-⋮----
-def threaded?
-⋮----
-def self.call(...)
-⋮----
-def initialize(source:, payload:, announcer: Telegram::WorkBot::LeadAnnouncer)
-⋮----
-def call
-⋮----
-def valid_source?
 </file>
 
 <file path="app/services/lead/property_resolver.rb">
@@ -14001,6 +13947,60 @@ def field(kind, key)
 def option_label(field, value)
 </file>
 
+<file path="app/services/lead/intake/site_source.rb">
+module Lead
+class Intake
+⋮----
+class SiteSource
+def initialize(source)
+⋮----
+def call(payload)
+⋮----
+private
+⋮----
+def find_known_user(payload)
+⋮----
+# Привязка к существующей сайтовой сущности:
+#   * site_valuation — PropertyValuation (валюация на сайте)
+#   * site_form/site_mortgage — Inquiry (универсальная форма)
+#   * fallback (если ничего не передали) — также Inquiry, чтобы не создавать
+#     BuyerOrder без crm_id (он требует NOT NULL crm_id из CRM).
+def lead_ref_for(payload)
+⋮----
+def fallback_inquiry(payload)
+⋮----
+def digits(phone)
+⋮----
+def build_summary(payload)
+⋮----
+def normalize_phone(phone)
+⋮----
+ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+def normalize_service_type(payload)
+⋮----
+def mask_phone(phone)
+</file>
+
+<file path="app/services/lead/intake.rb">
+module Lead
+⋮----
+class Intake
+SUPPORTED_SOURCES = %w[site_form site_valuation site_mortgage tg_dm manual crm_webhook].freeze
+⋮----
+Result = Struct.new(:success, :lead_event, :error, :threaded, keyword_init: true) do
+def success?
+⋮----
+def threaded?
+⋮----
+def self.call(...)
+⋮----
+def initialize(source:, payload:, announcer: Telegram::WorkBot::LeadAnnouncer)
+⋮----
+def call
+⋮----
+def valid_source?
+</file>
+
 <file path="app/services/llm/omni_client.rb">
 require 'net/http'
 require 'json'
@@ -15121,90 +15121,6 @@ def workbot_photo_text_continuation(msg)
 def workbot_wizard_text(msg)
 </file>
 
-<file path="app/services/topnlab/client.rb">
-require 'net/http'
-require 'json'
-require 'uri'
-⋮----
-module Topnlab
-class Client
-class Error < StandardError; end
-⋮----
-SLOW_DELAY = 6.0
-FAST_DELAY = 1.0
-⋮----
-def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
-⋮----
-def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
-⋮----
-def get_entities(ids, type: 'realty', append: nil)
-⋮----
-def get_entities_from_mls(ids)
-⋮----
-def get_entities_from_parser(ids)
-⋮----
-def get_realty_options
-⋮----
-def get_users
-⋮----
-def get_structure
-⋮----
-def get_stages(scope_id)
-⋮----
-# GET /public/get-notes — public notes attached to one entity.
-def get_notes(id:, type:)
-⋮----
-def set_note(id:, type:, note:, user_id:)
-⋮----
-def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
-⋮----
-def get_event_types
-⋮----
-def list_report_menus
-⋮----
-def report_pages
-⋮----
-def create_report_menu(title:, page_id:, order:, callback_url:)
-⋮----
-def update_report_menu(id:, title:, order:)
-⋮----
-def delete_report_menu(id:)
-⋮----
-def get_clients_by_entity(entity_id:, entity_type: 2)
-⋮----
-def patch_entity(id:, type:, fields:)
-⋮----
-def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
-⋮----
-def transfer_client(order_id:, email:, stage_id: nil)
-⋮----
-private
-⋮----
-def entity_map?(data)
-⋮----
-def scrub(data)
-⋮----
-# Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
-# Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
-def normalize_phone_11d(phone)
-⋮----
-def source_to_action(_source)
-⋮----
-def batched_get(path, ids, batch_size:, throttle:)
-⋮----
-def http_get(path, params, throttle:)
-⋮----
-def http_post_json(path, body, retry_network: true)
-⋮----
-def perform(request, retry_network: true)
-⋮----
-def encode_query(params)
-⋮----
-def parse(response, label)
-⋮----
-def throttle!(kind)
-</file>
-
 <file path="app/services/valuations/sitemap_comp_finder.rb">
 require 'net/http'
 require 'uri'
@@ -15591,6 +15507,90 @@ def confirm_prompt
 def accept_reason(value, manual)
 </file>
 
+<file path="app/services/topnlab/client.rb">
+require 'net/http'
+require 'json'
+require 'uri'
+⋮----
+module Topnlab
+class Client
+class Error < StandardError; end
+⋮----
+SLOW_DELAY = 6.0
+FAST_DELAY = 1.0
+⋮----
+def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
+⋮----
+def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
+⋮----
+def get_entities(ids, type: 'realty', append: nil)
+⋮----
+def get_entities_from_mls(ids)
+⋮----
+def get_entities_from_parser(ids)
+⋮----
+def get_realty_options
+⋮----
+def get_users
+⋮----
+def get_structure
+⋮----
+def get_stages(scope_id)
+⋮----
+# GET /public/get-notes — public notes attached to one entity.
+def get_notes(id:, type:)
+⋮----
+def set_note(id:, type:, note:, user_id:)
+⋮----
+def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
+⋮----
+def get_event_types
+⋮----
+def list_report_menus
+⋮----
+def report_pages
+⋮----
+def create_report_menu(title:, page_id:, order:, callback_url:)
+⋮----
+def update_report_menu(id:, title:, order:)
+⋮----
+def delete_report_menu(id:)
+⋮----
+def get_clients_by_entity(entity_id:, entity_type: 2)
+⋮----
+def patch_entity(id:, type:, fields:)
+⋮----
+def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
+⋮----
+def transfer_client(order_id:, email:, stage_id: nil)
+⋮----
+private
+⋮----
+def entity_map?(data)
+⋮----
+def scrub(data)
+⋮----
+# Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
+# Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
+def normalize_phone_11d(phone)
+⋮----
+def source_to_action(_source)
+⋮----
+def batched_get(path, ids, batch_size:, throttle:)
+⋮----
+def http_get(path, params, throttle:)
+⋮----
+def http_post_json(path, body, retry_network: true)
+⋮----
+def perform(request, retry_network: true)
+⋮----
+def encode_query(params)
+⋮----
+def parse(response, label)
+⋮----
+def throttle!(kind)
+</file>
+
 <file path="app/services/property_evaluation_service.rb">
 class PropertyEvaluationService
 ⋮----
@@ -15698,7 +15698,7 @@ Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
 ⋮----
 def initialize(topnlab: nil)
 ⋮----
-def call(card)
+def call(card, heartbeat: nil)
 ⋮----
 private
 ⋮----
@@ -15706,75 +15706,7 @@ def comment_with_extra_phone(values)
 ⋮----
 def topnlab
 ⋮----
-def assign_responsible(crm_id, author)
-</file>
-
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
-⋮----
-class Workflow
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def export!(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
-⋮----
-private
-⋮----
-def save_values(card, values, actor:, perms:)
-⋮----
-def taking_over?(card, actor)
-⋮----
-def refresh_check(card)
-⋮----
-def transition!(card, to:, actor:, comment: nil)
-⋮----
-def sync_lead_ref!(card)
-⋮----
-def moderator?(actor)
-⋮----
-def moderator_denial(actor, action)
-⋮----
-def not_pending(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
+def assign_responsible(crm_id, author, heartbeat)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
@@ -15851,6 +15783,76 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def export!(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def heartbeat_for(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 </files>

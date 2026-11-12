@@ -216,8 +216,19 @@ RSpec.describe CrmCards::Workflow do
 
     it 'CRM приняла заявку, но номер не записался в базу — номер остаётся в логе' do
       allow(exporter).to receive(:call).and_return(outcome)
-      allow(card).to receive(:update_columns).and_raise(ActiveRecord::ConnectionNotEstablished, 'db gone')
       allow(Rails.logger).to receive(:error)
+      # Запись номера — атомарный update_all на relation с токеном; роняем
+      # именно его, claim (другие where) остаётся рабочим.
+      raising = Module.new do
+        def update_all(*_args, **_kwargs)
+          raise ActiveRecord::ConnectionNotEstablished, 'db gone'
+        end
+      end
+      allow(CrmCard).to receive(:where).and_wrap_original do |m, *args, **kwargs|
+        relation = m.call(*args, **kwargs)
+        relation.extend(raising) if kwargs.key?(:export_attempt_token)
+        relation
+      end
 
       expect { workflow.export!(card) }.to raise_error(ActiveRecord::ConnectionNotEstablished)
       expect(Rails.logger).to have_received(:error).with(a_string_including('номером 4455', "##{card.id}"))
@@ -241,21 +252,44 @@ RSpec.describe CrmCards::Workflow do
       expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
     end
 
-    # Регресс ревью PR #210: «Повторить» по stale-карточке, чья первая выгрузка
-    # ещё жива (застряла внутри exporter.call), заводит вторую попытку, но
-    # ровно один importClient доходит до финала — stale-попытка не перезаписывает
-    # ни номер, ни статус чужой попытки.
-    it 'гонка retry с живой выгрузкой: один номер в карточке, stale-попытка молчит' do
+    # Регресс ревью PR #210 (блокер 1): пока первая попытка жива (heartbeat
+    # свежий), «Повторить» отказывает — второй неидемпотентный importClient
+    # не стартует, гонки двух живых попыток нет.
+    it 'живая выгрузка блокирует повтор: retry отказывает, вторая попытка не стартует' do
+      retry_result = nil
+      second_result = nil
+      allow(exporter).to receive(:call) do |c, **_kwargs|
+        # Первая попытка «в сети»: пока она внутри exporter.call, модератор
+        # жмёт «Повторить» — stale-окно не наступило (heartbeat свежий).
+        retry_result = workflow.retry_export!(c.reload, actor: director)
+        second_result = workflow.export!(c.reload)
+        outcome
+      end
+
+      expect(workflow.export!(card)).to be_ok
+
+      expect(retry_result).not_to be_ok
+      expect(retry_result.error).to include('Повторять нечего')
+      expect(second_result).not_to be_ok
+      expect(card.reload).to have_attributes(status: 'exported', crm_id: '4455')
+      expect(exporter).to have_received(:call).once
+    end
+
+    # Регресс ревью PR #210 (блокеры 1+2): heartbeat умер — retry законно
+    # заводит вторую попытку; условная по токену атомарная запись отсекает
+    # stale-попытку, даже если её токен сменился между проверкой и записью.
+    it 'мёртвая попытка: retry проходит, stale-попытка не перезаписывает номер' do
       first_call = true
       retry_result = nil
       second_result = nil
-      allow(exporter).to receive(:call) do |c|
+      allow(exporter).to receive(:call) do |c, **_kwargs|
         next CrmCards::LeadExporter::Outcome.new(crm_id: '2222', warning: nil) unless first_call
 
         first_call = false
-        # Первая попытка «в сети»: карточку делают stale и жмут «Повторить»,
-        # вторая попытка проходит целиком, пока первая ещё не вернулась.
-        c.update_columns(updated_at: 20.minutes.ago)
+        # Первая попытка умирает (процесс падал, heartbeat застрял): карточка
+        # stale, модератор жмёт «Повторить», вторая попытка проходит целиком,
+        # пока первая ещё «в сети».
+        c.update_columns(updated_at: 20.minutes.ago, export_heartbeat_at: 20.minutes.ago)
         retry_result = workflow.retry_export!(c.reload, actor: director)
         second_result = workflow.export!(c.reload)
         CrmCards::LeadExporter::Outcome.new(crm_id: '1111', warning: nil)

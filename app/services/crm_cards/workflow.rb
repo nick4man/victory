@@ -108,35 +108,31 @@ module CrmCards
 
     # Только для ExportJob. Захват approved → exporting атомарный: двойной
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
-    # Токен попытки ставится тем же update_all: «Повторить» по stale-карточке,
-    # чья первая выгрузка ещё жива, заведёт вторую попытку с другим токеном —
-    # и первая, проснувшись, ничего не перезапишет (ревью PR #210).
+    # Токен попытки ставится тем же update_all, heartbeat — вокруг сетевых
+    # вызовов: пока попытка жива, «Повторить» по stale-карточке откажет,
+    # а проснувшаяся stale-попытка ничего не перезапишет (ревью PR #210).
     def export!(card)
       token = SecureRandom.hex(8)
+      now = Time.current
       claimed = CrmCard.where(id: card.id, kind: 'lead', status: 'approved')
-                       .update_all(status: 'exporting', export_attempt_token: token, updated_at: Time.current)
+                       .update_all(status: 'exporting', export_attempt_token: token,
+                                   export_heartbeat_at: now, updated_at: now)
       return deny('Карточка не ждёт выгрузки: не одобрена или её уже выгружает другой процесс.') unless claimed == 1
 
       card.reload
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
       begin
-        outcome = exporter.call(card)
+        outcome = exporter.call(card, heartbeat: heartbeat_for(card, token))
       rescue StandardError => e
         return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token)
       end
 
-      # Пока шла выгрузка, карточку могли вернуть на повтор и захватить другим
-      # токеном: stale-попытка не пишет ни номер, ни статус чужой попытки.
-      unless attempt_current?(card, token)
-        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} попытка выгрузки устарела " \
-                          '(карточку заняла другая попытка) — результат игнорируем')
-        return deny('Выгрузка устарела: карточку уже обрабатывает другая попытка.')
-      end
-
-      # Заявка в CRM уже создана — номер фиксируем раньше всего, чтобы сбой
-      # ниже не потерял его, а повтор не завёл вторую заявку.
+      # Запись номера — условная по токену и атомарная: retry мог сменить
+      # токен между любой отдельной проверкой и записью, а update_all либо
+      # пишет по живому токену, либо трогает ноль строк.
       begin
-        card.update_columns(crm_id: outcome.crm_id.to_s)
+        written = CrmCard.where(id: card.id, export_attempt_token: token)
+                         .update_all(crm_id: outcome.crm_id.to_s)
       rescue StandardError => e
         # База недоступна — номер остаётся только в логе; без этой строки
         # карточка через 15 минут предложит повтор, и он заведёт дубль.
@@ -144,7 +140,13 @@ module CrmCards
                            "но номер не записан в карточку ##{card.id}: #{e.class}: #{e.message}")
         raise
       end
-      finalize_export!(card, outcome, attempt_token: token)
+      unless written == 1
+        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} попытка выгрузки устарела " \
+                          '(токен сменился до записи номера) — результат игнорируем')
+        return deny('Выгрузка устарела: карточку уже обрабатывает другая попытка.')
+      end
+
+      finalize_export!(card.reload, outcome, attempt_token: token)
     end
 
     # mode 'api' — из export!; 'manual' — сотрудник внёс объект руками и ввёл номер.
@@ -317,6 +319,18 @@ module CrmCards
     # retry_export!/следующий export! заменяют или чистят его.
     def attempt_current?(card, token)
       card.reload.export_attempt_token == token
+    end
+
+    # Heartbeat живой попытки вокруг каждого сетевого вызова exporter'я.
+    # Advisory: сбой записи не роняет выгрузку — worst case staleness-окно
+    # наступит раньше, и retry заведёт повтор (токен всё равно удержит запись).
+    def heartbeat_for(card, token)
+      lambda do
+        CrmCard.where(id: card.id, export_attempt_token: token)
+               .update_all(export_heartbeat_at: Time.current)
+      rescue StandardError => e
+        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} heartbeat не записан: #{e.class}: #{e.message}")
+      end
     end
 
     def notifier
