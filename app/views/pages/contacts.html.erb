@@ -104,6 +104,13 @@
           <label class="text-xs tracking-[0.3em] text-muted-foreground mb-3 block">СООБЩЕНИЕ</label>
           <%= f.text_area :message, rows: 4, class: "w-full bg-transparent border-b border-border py-3 text-foreground tracking-wider focus:border-foreground focus:outline-none transition-colors resize-none" %>
         </div>
+        <%# Honeypot (#223): скрыто от людей, боты заполняют → молчаливый дроп на сервере %>
+        <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+          <label>Не заполняйте это поле
+            <%= f.text_field ContactFormSpamGuard::HONEYPOT_PARAM, name: ContactFormSpamGuard::HONEYPOT_PARAM,
+                             tabindex: -1, autocomplete: 'off' %>
+          </label>
+        </div>
         <%= f.submit "ОТПРАВИТЬ", class: "self-start mt-4 px-8 py-4 text-sm tracking-[0.3em] bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer" %>
       <% end %>
     </div>

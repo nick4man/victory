@@ -99,12 +99,32 @@ class PagesController < ApplicationController
     
     # Contact form object
     @contact_form = ContactForm.new if defined?(ContactForm)
-    
+
+    # Тайминг-сигнал антиспама (#223): момент рендера формы, сверяется
+    # при submit'е — бот шлёт мгновенно, человек заполняет дольше.
+    session[ContactFormSpamGuard::SESSION_KEY] = Time.current.to_f
+
     track_event('contacts_page_viewed')
   end
-  
+
   # POST /contacts
   def send_contact_form
+    guard = ContactFormSpamGuard.check(
+      honeypot: params[ContactFormSpamGuard::HONEYPOT_PARAM],
+      rendered_at: session.delete(ContactFormSpamGuard::SESSION_KEY)
+    )
+    if guard.spam
+      # Молчаливый дроп: бот видит обычный успех и не получает сигнала
+      # что его раскрыли. Только лог для наблюдаемости потока.
+      Rails.logger.info(
+        "[contact_form] spam dropped reason=#{guard.reason} ip=#{request.remote_ip} " \
+        "ua=#{request.user_agent.to_s.truncate(120)}"
+      )
+      flash[:notice] = 'Спасибо за обращение! Мы свяжемся с вами в ближайшее время.'
+      redirect_to contacts_path
+      return
+    end
+
     @name = params[:name]
     @email = params[:email]
     @phone = params[:phone]
