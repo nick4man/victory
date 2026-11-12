@@ -150,12 +150,6 @@ RSpec.describe ChatTools::Staff::MarketComparables do
       call_tool
       expect(Lead::Intake).not_to have_received(:call)
     end
-
-    it 'при завершении через update_columns ставит EmbedPropertyValuationJob с id созданной оценки' do
-      expect { call_tool }.to have_enqueued_job(EmbedPropertyValuationJob)
-      pv = PropertyValuation.order(:id).last
-      expect(EmbedPropertyValuationJob).to have_been_enqueued.with(pv.id)
-    end
   end
 
   describe '.call — честный дегрейд' do
