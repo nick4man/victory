@@ -409,6 +409,7 @@ app/
     crm_cards/
       card_view.rb
       checker.rb
+      export_lock.rb
       field_value.rb
       lead_exporter.rb
       notifier.rb
@@ -7805,6 +7806,19 @@ def self.report(users)
 def self.explain(reason)
 </file>
 
+<file path="app/services/crm_cards/export_lock.rb">
+module CrmCards
+⋮----
+class ExportLock
+NAMESPACE = 727_401
+⋮----
+def try_acquire(card)
+⋮----
+def in_progress?(card)
+⋮----
+def release(card)
+</file>
+
 <file path="app/services/crm_reports/base.rb">
 require 'prawn'
 require 'prawn/table'
@@ -11033,6 +11047,22 @@ def notify_assignee
 def escape(text)
 </file>
 
+<file path="app/services/telegram/work_bot/lead_closure.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadClosure
+OUTCOMES = ['closed_won', 'closed_lost'].freeze
+⋮----
+def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def push_close_note
+</file>
+
 <file path="app/services/telegram/work_bot/lead_stage_transition.rb">
 module Telegram
 module WorkBot
@@ -11070,6 +11100,24 @@ def compose_message(perspective, label, prev_stage)
 def resolve_client_user
 ⋮----
 def resolve_seller_user
+</file>
+
+<file path="app/services/telegram/work_bot/lead_task_creator.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadTaskCreator
+Result = Struct.new(:task, :crm, keyword_init: true)
+⋮----
+def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def due_at
+⋮----
+def push_due_to_crm
 </file>
 
 <file path="app/services/telegram/work_bot/owner_intake_processor.rb">
@@ -11368,6 +11416,32 @@ def normalize_username(raw)
 def normalize_enum(value, allowed, default)
 ⋮----
 def parse_due_at(raw)
+</file>
+
+<file path="app/services/telegram/work_bot/task_reopen.rb">
+module Telegram
+module WorkBot
+⋮----
+class TaskReopen
+REOPEN_WINDOW = 24.hours
+⋮----
+Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
+⋮----
+def initialize(task, actor:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def self.authorized?(task, actor)
+⋮----
+def self.closed_at(task)
+⋮----
+def self.expired?(task)
+⋮----
+private
+⋮----
+def notify_assignee_if_third_party(prev_status)
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/telegram/work_bot/topic_discovery.rb">
@@ -13606,54 +13680,6 @@ belongs_to :actor, class_name: 'TelegramUser', optional: true
 validates :from_status, :to_status, presence: true
 </file>
 
-<file path="app/models/crm_card.rb">
-class CrmCard < ApplicationRecord
-belongs_to :lead_event, optional: true
-belongs_to :author,   class_name: 'TelegramUser'
-belongs_to :reviewer, class_name: 'TelegramUser', optional: true
-has_many :transitions, -> { order(:created_at, :id) },
-           class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
-⋮----
-enum :kind, {
-    lead: 'lead',
-    object: 'object'
-  }, prefix: true
-⋮----
-enum :status, {
-    draft: 'draft',
-    needs_rework: 'needs_rework',
-    pending_review: 'pending_review',
-    approved: 'approved',
-    exporting: 'exporting',
-    exported: 'exported',
-    export_failed: 'export_failed'
-  }, prefix: true
-⋮----
-enum :export_mode, {
-    api: 'api',
-    manual: 'manual'
-  }, prefix: true
-⋮----
-STATUS_LABELS = {
-⋮----
-AUTHOR_EDITABLE = %w[draft needs_rework].freeze
-⋮----
-EXPORT_STALE_AFTER = 15.minutes
-⋮----
-scope :not_deleted, -> { where(deleted_at: nil) }
-default_scope { not_deleted }
-⋮----
-validates :kind, :status, presence: true
-⋮----
-def check_passed?
-⋮----
-def export_stale?
-⋮----
-def responsible
-⋮----
-def last_rework_comment
-</file>
-
 <file path="app/models/external_listing.rb">
 class ExternalListing < ApplicationRecord
 ⋮----
@@ -14214,6 +14240,17 @@ class Menu < Base
 def handle
 </file>
 
+<file path="app/services/telegram/work_bot/commands/reopen.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Reopen < Base
+REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
+⋮----
+def handle
+</file>
+
 <file path="app/services/telegram/work_bot/commands/start_test.rb">
 module WorkBot
 module Commands
@@ -14367,66 +14404,6 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_closure.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadClosure
-OUTCOMES = ['closed_won', 'closed_lost'].freeze
-⋮----
-def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def push_close_note
-</file>
-
-<file path="app/services/telegram/work_bot/lead_task_creator.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadTaskCreator
-Result = Struct.new(:task, :crm, keyword_init: true)
-⋮----
-def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def due_at
-⋮----
-def push_due_to_crm
-</file>
-
-<file path="app/services/telegram/work_bot/task_reopen.rb">
-module Telegram
-module WorkBot
-⋮----
-class TaskReopen
-REOPEN_WINDOW = 24.hours
-⋮----
-Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
-⋮----
-def initialize(task, actor:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def self.authorized?(task, actor)
-⋮----
-def self.closed_at(task)
-⋮----
-def self.expired?(task)
-⋮----
-private
-⋮----
-def notify_assignee_if_third_party(prev_status)
-⋮----
-def escape_html(text)
 </file>
 
 <file path="app/services/telegram/client.rb">
@@ -14621,6 +14598,54 @@ queue_as :low_priority
 retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
 def perform(property_valuation_id)
+</file>
+
+<file path="app/models/crm_card.rb">
+class CrmCard < ApplicationRecord
+belongs_to :lead_event, optional: true
+belongs_to :author,   class_name: 'TelegramUser'
+belongs_to :reviewer, class_name: 'TelegramUser', optional: true
+has_many :transitions, -> { order(:created_at, :id) },
+           class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
+⋮----
+enum :kind, {
+    lead: 'lead',
+    object: 'object'
+  }, prefix: true
+⋮----
+enum :status, {
+    draft: 'draft',
+    needs_rework: 'needs_rework',
+    pending_review: 'pending_review',
+    approved: 'approved',
+    exporting: 'exporting',
+    exported: 'exported',
+    export_failed: 'export_failed'
+  }, prefix: true
+⋮----
+enum :export_mode, {
+    api: 'api',
+    manual: 'manual'
+  }, prefix: true
+⋮----
+STATUS_LABELS = {
+⋮----
+AUTHOR_EDITABLE = %w[draft needs_rework].freeze
+⋮----
+EXPORT_STALE_AFTER = 15.minutes
+⋮----
+scope :not_deleted, -> { where(deleted_at: nil) }
+default_scope { not_deleted }
+⋮----
+validates :kind, :status, presence: true
+⋮----
+def check_passed?
+⋮----
+def export_stale?
+⋮----
+def responsible
+⋮----
+def last_rework_comment
 </file>
 
 <file path="app/models/property_valuation.rb">
@@ -14949,6 +14974,22 @@ def audit!(outcome, args:, error_class: nil, error_message: nil)
 def command_key
 </file>
 
+<file path="app/services/telegram/work_bot/commands/close.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Close < Base
+⋮----
+OUTCOME_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def parse_args
+</file>
+
 <file path="app/services/telegram/work_bot/commands/help.rb">
 module Telegram
 module WorkBot
@@ -14981,14 +15022,12 @@ def group_chat?
 def send_full_via_dm(text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/reopen.rb">
+<file path="app/services/telegram/work_bot/commands/task.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Reopen < Base
-REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
-⋮----
+class Task < Base
 def handle
 </file>
 
@@ -15449,31 +15488,6 @@ def button(text, callback_data)
 def escape(text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/close.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Close < Base
-⋮----
-OUTCOME_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse_args
-</file>
-
-<file path="app/services/telegram/work_bot/commands/task.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Task < Base
-def handle
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/close_flow.rb">
 module Telegram
 module WorkBot
@@ -15690,25 +15704,6 @@ def success(payload)
 def error(message)
 </file>
 
-<file path="app/services/crm_cards/lead_exporter.rb">
-module CrmCards
-⋮----
-class LeadExporter
-Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
-⋮----
-def initialize(topnlab: nil)
-⋮----
-def call(card, heartbeat: nil)
-⋮----
-private
-⋮----
-def comment_with_extra_phone(values)
-⋮----
-def topnlab
-⋮----
-def assign_responsible(crm_id, author, heartbeat)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
 module Telegram
 module WorkBot
@@ -15785,6 +15780,25 @@ def dm_chat_id
 def escape_html(text)
 </file>
 
+<file path="app/services/crm_cards/lead_exporter.rb">
+module CrmCards
+⋮----
+class LeadExporter
+Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
+⋮----
+def initialize(topnlab: nil)
+⋮----
+def call(card)
+⋮----
+private
+⋮----
+def comment_with_extra_phone(values)
+⋮----
+def topnlab
+⋮----
+def assign_responsible(crm_id, author)
+</file>
+
 <file path="app/services/crm_cards/workflow.rb">
 module CrmCards
 ⋮----
@@ -15807,6 +15821,8 @@ def return_for_rework!(card, actor:, comment:)
 def approve!(card, actor:)
 ⋮----
 def export!(card)
+⋮----
+def export_with_lock(card)
 ⋮----
 def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
 ⋮----
@@ -15847,8 +15863,6 @@ def finalize_export!(card, outcome, attempt_token: nil)
 def lost_export_status!(card, outcome, reason, attempt_token: nil)
 ⋮----
 def attempt_current?(card, token)
-⋮----
-def heartbeat_for(card, token)
 ⋮----
 def notifier
 ⋮----

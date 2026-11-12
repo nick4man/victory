@@ -270,6 +270,7 @@ app/services/crm/owner_linker.rb — module Crm, class OwnerLinker
 app/services/crm/telegram_reachability.rb — module Crm, class TelegramReachability
 app/services/crm_cards/card_view.rb — module CrmCards, module CardView
 app/services/crm_cards/checker.rb — module CrmCards, class Checker
+app/services/crm_cards/export_lock.rb — module CrmCards, class ExportLock
 app/services/crm_cards/field_value.rb — module CrmCards, module FieldValue
 app/services/crm_cards/lead_exporter.rb — module CrmCards, class LeadExporter
 app/services/crm_cards/notifier.rb — module CrmCards, class Notifier

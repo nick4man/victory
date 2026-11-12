@@ -75,17 +75,6 @@ RSpec.describe CrmCards::LeadExporter do
     expect(outcome.warning).to include('ответственный не назначен', 'ECONNREFUSED')
   end
 
-  it 'стучит heartbeat вокруг каждого сетевого вызова' do
-    heartbeat = instance_double(Proc, call: nil)
-    allow(topnlab).to receive_messages(import_client: { 'status' => 'ok', 'insertedId' => 4455 },
-                                        transfer_client: { 'status' => 'ok' })
-
-    described_class.new(topnlab: topnlab).call(card, heartbeat: heartbeat)
-
-    # до и после importClient + перед transferClient
-    expect(heartbeat).to have_received(:call).thrice
-  end
-
   it 'лид переназначили после отправки — ответственным в CRM становится текущий назначенный' do
     petr = TelegramUser.create!(tg_user_id: 98_402, tg_username: 'petr', status: 'active', email: 'petr@victory.test')
     lead.update!(assigned_to: petr)

@@ -108,21 +108,36 @@ module CrmCards
 
     # Только для ExportJob. Захват approved → exporting атомарный: двойной
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
-    # Токен попытки ставится тем же update_all, heartbeat — вокруг сетевых
-    # вызовов: пока попытка жива, «Повторить» по stale-карточке откажет,
-    # а проснувшаяся stale-попытка ничего не перезапишет (ревью PR #210).
+    # Токен попытки ставится тем же update_all: проснувшаяся stale-попытка
+    # ничего не перезапишет. Владение попыткой сериализовано CrmCards::ExportLock
+    # (advisory lock на всё время сетевых вызовов): retry и второй job не
+    # запустят параллельный importClient, пока живая попытка держит лок —
+    # смерть владельца отпускает лок мгновенно, retry для упавшей попытки
+    # не ждёт 15-минутного stale-окна (ревью PR #210).
     def export!(card)
+      unless ExportLock.try_acquire(card)
+        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} выгрузку уже ведёт другой процесс — job пропущен")
+        return deny('Карточку уже выгружает другой процесс — повтор запустится после его завершения.')
+      end
+
+      begin
+        export_with_lock(card)
+      ensure
+        ExportLock.release(card)
+      end
+    end
+
+    # Тело export! под advisory lock; сам lock держится в export!.
+    def export_with_lock(card)
       token = SecureRandom.hex(8)
-      now = Time.current
       claimed = CrmCard.where(id: card.id, kind: 'lead', status: 'approved')
-                       .update_all(status: 'exporting', export_attempt_token: token,
-                                   export_heartbeat_at: now, updated_at: now)
+                       .update_all(status: 'exporting', export_attempt_token: token, updated_at: Time.current)
       return deny('Карточка не ждёт выгрузки: не одобрена или её уже выгружает другой процесс.') unless claimed == 1
 
       card.reload
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
       begin
-        outcome = exporter.call(card, heartbeat: heartbeat_for(card, token))
+        outcome = exporter.call(card)
       rescue StandardError => e
         return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token)
       end
@@ -180,7 +195,14 @@ module CrmCards
       result = card.with_lock do
         next deny(moderator_denial(actor, 'Повторять выгрузку')) unless moderator?(actor)
         next deny('Повтор есть только у заявок — объект вносится в CRM вручную.') unless card.kind_lead?
-        next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
+        if card.status_exporting?
+          # Лок занят = попытка жива, второй importClient запрещён; лок
+          # свободен = владелец умер (соединение закрыто — лок отпущен
+          # мгновенно), повтор безопасен и не ждёт stale-окна.
+          next deny('Выгрузка сейчас выполняется другим процессом — дождись её завершения.') if ExportLock.in_progress?(card)
+        else
+          next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
+        end
         next deny("Заявка уже есть в CRM (#{card.crm_id}) — повтор завёл бы вторую. Статус правится вручную.") if card.crm_id.present?
 
         transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
@@ -319,18 +341,6 @@ module CrmCards
     # retry_export!/следующий export! заменяют или чистят его.
     def attempt_current?(card, token)
       card.reload.export_attempt_token == token
-    end
-
-    # Heartbeat живой попытки вокруг каждого сетевого вызова exporter'я.
-    # Advisory: сбой записи не роняет выгрузку — worst case staleness-окно
-    # наступит раньше, и retry заведёт повтор (токен всё равно удержит запись).
-    def heartbeat_for(card, token)
-      lambda do
-        CrmCard.where(id: card.id, export_attempt_token: token)
-               .update_all(export_heartbeat_at: Time.current)
-      rescue StandardError => e
-        Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} heartbeat не записан: #{e.class}: #{e.message}")
-      end
     end
 
     def notifier

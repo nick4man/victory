@@ -60,16 +60,12 @@ class CrmCard < ApplicationRecord
     checked_at.present? && check_errors.blank?
   end
 
-  # Заявка, застрявшая дольше EXPORT_STALE_AFTER: процесс упал между
-  # захватом статуса и ответом CRM (exporting) или джоб не встал в очередь
-  # после одобрения (approved). У exporting живость попытки меряем heartbeat'ом
-  # (ставится вокруг сетевых вызовов export!): пока попытка жива, «Повторить»
-  # не нужен — иначе retry завёл бы вторую заявку в CRM (ревью PR #210).
+  # Заявка, застрявшая дольше EXPORT_STALE_AFTER: джоб не встал в очередь
+  # после одобрения (approved) — самый частый случай. Статус exporting retry
+  # разрешает без ожидания: ExportLock.in_progress? отличает живую попытку
+  # (отказ) от умершей (лок отпущен закрытием соединения — повтор безопасен).
   def export_stale?
-    return false unless kind_lead? && (status_exporting? || status_approved?)
-
-    anchor = status_exporting? ? (export_heartbeat_at || updated_at) : updated_at
-    anchor < EXPORT_STALE_AFTER.ago
+    kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
   end
 
   # Кто отвечает за карточку сейчас. У заявки — текущий ответственный по
