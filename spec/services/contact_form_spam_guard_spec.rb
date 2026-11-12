@@ -5,41 +5,41 @@ require 'rails_helper'
 # Антиспам-гейт формы /contacts (issue #223). Honeypot + тайминг —
 # оба сигнала прозрачны для человека, ловят наивных ботов.
 RSpec.describe ContactFormSpamGuard do
-  def check(honeypot: '', rendered_at: 10.seconds.ago.to_f, now: Time.current)
-    described_class.check(honeypot: honeypot, rendered_at: rendered_at, now: now)
+  def guard_call(honeypot: '', rendered_at: 10.seconds.ago.to_f, now: Time.current)
+    described_class.new(honeypot: honeypot, rendered_at: rendered_at, now: now).call
   end
 
   it 'пропускает нормальную отправку' do
-    result = check
+    result = guard_call
     expect(result.spam).to be false
     expect(result.reason).to be_nil
   end
 
   it 'дропает заполненный honeypot независимо от тайминга' do
-    result = check(honeypot: 'http://buy-cheap-links.example')
+    result = guard_call(honeypot: 'http://buy-cheap-links.example')
     expect(result.spam).to be true
     expect(result.reason).to eq 'honeypot'
   end
 
   it 'дропает honeypot с пробельным мусором' do
-    expect(check(honeypot: '  ').spam).to be false
-    expect(check(honeypot: ' x ').reason).to eq 'honeypot'
+    expect(guard_call(honeypot: '  ').spam).to be false
+    expect(guard_call(honeypot: ' x ').reason).to eq 'honeypot'
   end
 
   it 'дропает POST без timestamp рендера (скрипт без визита на /contacts)' do
-    result = check(rendered_at: nil)
+    result = guard_call(rendered_at: nil)
     expect(result.spam).to be true
     expect(result.reason).to eq 'no_render_timestamp'
   end
 
   it 'дропает отправку быстрее MIN_FILL_SECONDS после рендера' do
-    result = check(rendered_at: (described_class::MIN_FILL_SECONDS - 1).seconds.ago.to_f)
+    result = guard_call(rendered_at: (described_class::MIN_FILL_SECONDS - 1).seconds.ago.to_f)
     expect(result.spam).to be true
     expect(result.reason).to eq 'too_fast'
   end
 
   it 'пропускает отправку ровно на границе MIN_FILL_SECONDS' do
-    result = check(rendered_at: described_class::MIN_FILL_SECONDS.seconds.ago.to_f)
+    result = guard_call(rendered_at: described_class::MIN_FILL_SECONDS.seconds.ago.to_f)
     expect(result.spam).to be false
   end
 
