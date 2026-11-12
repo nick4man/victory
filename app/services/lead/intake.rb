@@ -89,7 +89,7 @@ module Lead
         lead_ref:         ref,
         property:         Lead::PropertyResolver.for_ref(ref),
         source:           @source,
-        tg_chat_id:       Telegram::TopicRegistry.chat_id,
+        tg_chat_id:       target_chat_id(metadata),
         anchor_topic_key: 'dispatcher',
         current_stage:    'new',
         metadata:         metadata
@@ -104,6 +104,15 @@ module Lead
     end
 
     private
+
+    # Тест-лиды (issue #214) живут в тестовом чате (ENV['TELEGRAM_TEST_CHAT_ID']).
+    # ENV не задан — возвращаем рабочий chat_id, но LeadAnnouncer такую карточку
+    # не опубликует (skip с warning): ДИСПЕТЧЕРСКАЯ не трогается в любом случае.
+    def target_chat_id(metadata)
+      return Telegram::TopicRegistry.chat_id unless metadata.is_a?(Hash) && metadata['test'] == true
+
+      ENV['TELEGRAM_TEST_CHAT_ID'].presence&.to_i || Telegram::TopicRegistry.chat_id
+    end
 
     def valid_source?
       SUPPORTED_SOURCES.include?(@source)

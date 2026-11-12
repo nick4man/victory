@@ -143,4 +143,46 @@ RSpec.describe Lead::Intake do
     end
   end
 
+  describe 'тест-лиды (issue #214)' do
+    around do |example|
+      old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old
+    end
+
+    it 'тест-прогон (payload test: true) → tg_chat_id тестового чата + флаг в metadata' do
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Тест', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+      expect(result).to be_success
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+      expect(result.lead_event.metadata['test']).to be(true)
+    end
+
+    it 'боевой лид идёт в рабочий чат без тест-флага — регрессии нет' do
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Анна', phone: '79001234567', message: 'хочу квартиру' },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+      expect(result.lead_event.metadata['test']).to be(false)
+    end
+
+    it 'без TELEGRAM_TEST_CHAT_ID тест-лид падает обратно на рабочий chat_id (публикацию LeadAnnouncer скипнет)' do
+      ENV.delete('TELEGRAM_TEST_CHAT_ID')
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Тест', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+    end
+  end
+
 end

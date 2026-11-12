@@ -137,6 +137,40 @@ RSpec.describe Inquiry do
     end
   end
 
+  describe 'тест-режим чат-бота (issue #214)' do
+    it 'test? true только при metadata["test"]=true' do
+      expect(build_inquiry(metadata: { 'test' => true })).to be_test
+      expect(build_inquiry(metadata: { 'test' => false })).not_to be_test
+      expect(build_inquiry(metadata: {})).not_to be_test
+      expect(build_inquiry(metadata: nil)).not_to be_test
+    end
+
+    it 'тестовый лид не уходит в CRM-синк (sync_to_crm! гейт)' do
+      inquiry = build_inquiry(metadata: { 'test' => true })
+      expect(inquiry).to receive(:sync_to_crm!).and_call_original
+      inquiry.sync_to_crm!
+      expect(inquiry.crm_id).to be_nil
+    end
+
+    it 'тест-флаг прокидывается в payload Lead::Intake (push_to_work_bot)' do
+      inquiry = build_inquiry(metadata: { 'test' => true, 'service_type' => 'cma' }).tap(&:save!)
+      expect(Lead::Intake).to receive(:call) do |args|
+        expect(args[:payload][:test]).to be(true)
+        Lead::Intake::Result.new(success: true)
+      end
+      inquiry.send(:push_to_work_bot)
+    end
+
+    it 'боевой лид шлёт test: false — маршрут не меняется' do
+      inquiry = build_inquiry.tap(&:save!)
+      expect(Lead::Intake).to receive(:call) do |args|
+        expect(args[:payload][:test]).to be(false)
+        Lead::Intake::Result.new(success: true)
+      end
+      inquiry.send(:push_to_work_bot)
+    end
+  end
+
   describe 'AASM transitions' do
     let(:inquiry) { build_inquiry.tap(&:save!) }
 

@@ -103,7 +103,28 @@ module Telegram
 
       private
 
+      def test_lead?
+        (@lead.metadata || {})['test'] == true
+      end
+
       def send_card(topic_key)
+        # Тест-лиды (issue #214) публикуются в тестовый чат целиком — не в
+        # рабочую группу и не в топики. Без TELEGRAM_TEST_CHAT_ID пропускаем
+        # с warning: ДИСПЕТЧЕРСКАЯ не трогается.
+        if test_lead?
+          test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+          unless test_chat
+            Rails.logger.warn("[LeadAnnouncer] lead=#{@lead.id} test lead, TELEGRAM_TEST_CHAT_ID не задан — пропуск публикации")
+            return nil
+          end
+          return @client.send_message(
+            format_card,
+            chat_id: test_chat.to_i,
+            reply_markup: keyboard_for_card(topic_key),
+            parse_mode: 'HTML'
+          )
+        end
+
         is_general = Telegram::TopicRegistry.general_topic?(topic_key)
         thread_id  = Telegram::TopicRegistry.thread_id(topic_key)
 
@@ -141,6 +162,9 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
+        # Тест-прогон чат-бота (issue #214) — карточка ушла в тестовый чат,
+        # бейдж отличает её от боевых лидов при просмотре логов/скриншотов.
+        test_badge = '🧪 <b>ТЕСТ</b>' if meta['test'] == true
         # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
         # после express-валуации (см. ChatTools::QualifyLead). Помогает
         # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,
@@ -151,7 +175,7 @@ module Telegram
                         when 'cma'        then '🟠 <b>SALE CMA</b>'
                         when 'buyer_scan' then '🟢 <b>BUYER SCAN</b>'
                         end
-        badge_line = [priority_badge, returning_badge, service_badge].compact.join(' · ')
+        badge_line = [priority_badge, returning_badge, service_badge, test_badge].compact.join(' · ')
         lines << badge_line if badge_line.present?
         # BOTTLENECK — сегмент всегда виден: пустой сегмент должен раздражать.
         lines << @lead.segment_label

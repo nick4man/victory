@@ -40,6 +40,7 @@ module Lead
           'budget'       => payload[:budget].presence,
           'priority'     => payload[:priority].to_s.presence,      # high/urgent → LeadAnnouncer badge
           'service_type' => normalize_service_type(payload),       # express/investment/cma/buyer_scan → badge
+          'test'         => payload[:test] == true,                # тест-прогон → тестовый TG-чат (issue #214)
           'origin'       => payload[:origin].presence,
           'utm'          => payload[:utm].presence,
           'raw'          => payload.to_h.except(:name, :phone, :email)

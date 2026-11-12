@@ -257,10 +257,16 @@ module ChatTools
 
     # Создаём Inquiry только если есть phone + name (Inquiry validates обоих
     # presence). Иначе LLM ещё в discovery — пусть продолжает диалог.
+    #
+    # Тест-режим (issue #214): LlmReplyJob ставит Thread.current[:lead_test_mode]
+    # для диалогов с visitor_token probe-*. Такой Inquiry помечается
+    # metadata['test']=true — не синкается в CRM и публикуется в тестовый чат.
     def self.maybe_create_inquiry(args, priority, breakdown, reasoning)
       phone = args[:phone].to_s.strip
       name  = args[:name].to_s.strip
       return nil if phone.blank? || name.blank?
+
+      test_mode = Thread.current[:lead_test_mode] == true
 
       # Idempotency: skip если recent identical lead (LLM может call tool
       # multiple раз в одном диалоге). Phone normalization — last 10 digits
@@ -309,7 +315,8 @@ module ChatTools
           priority:                  priority,    # LeadAnnouncer reads meta['priority']
           summary:                   reasoning,
           service_type:              service_type, # LeadAnnouncer renders badge
-          property_valuation_token:  args[:valuation_token].to_s.strip.presence
+          property_valuation_token:  args[:valuation_token].to_s.strip.presence,
+          test:                      test_mode ? true : nil
         }.compact
       )
     rescue ActiveRecord::RecordInvalid => e

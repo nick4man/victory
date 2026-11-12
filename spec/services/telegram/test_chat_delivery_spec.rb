@@ -1,0 +1,61 @@
+# frozen_string_literal: true
+
+require 'rails_helper'
+
+# Интеграционный прогон с реальным Telegram (issue #214).
+#
+# Гоняется только там, где заданы оба ENV — локально тестировщик экспортирует
+# их сам, в CI они приходят из GitHub Secrets (TELEGRAM_TEST_BOT_TOKEN —
+# токен ТЕСТОВОГО бота, не продового):
+#
+#   TELEGRAM_TEST_BOT_TOKEN=… TELEGRAM_TEST_CHAT_ID=-100… \
+#     bin/rb --db bundle exec rspec spec/services/telegram/test_chat_delivery_spec.rb
+#
+# Без секретов spec skip'ается — сеть в спеках закрыта WebMock'ом, поэтому
+# здесь она точечно открывается только на время примеров.
+RSpec.describe 'Telegram test chat delivery (integration)' do
+  let(:bot_token) { ENV['TELEGRAM_TEST_BOT_TOKEN'].presence }
+  let(:chat_id)   { ENV['TELEGRAM_TEST_CHAT_ID'].presence }
+
+  before do
+    skip 'TELEGRAM_TEST_BOT_TOKEN/TELEGRAM_TEST_CHAT_ID не заданы — см. заголовок spec' unless bot_token && chat_id
+
+    WebMock.allow_net_connect!
+  end
+
+  after do
+    WebMock.disable_net_connect!(allow_localhost: true)
+  end
+
+  it 'тест-лид публикуется в тестовый чат живым вызовом Bot API' do
+    inquiry = create(:inquiry, source: 'site_form', metadata: { 'test' => true })
+    lead = LeadEvent.create!(
+      lead_ref:         inquiry,
+      source:           'site_form',
+      tg_chat_id:       chat_id.to_i,
+      anchor_topic_key: 'dispatcher',
+      current_stage:    'new',
+      metadata:         { 'name' => 'Интеграционный прогон', 'phone' => '+790****0000',
+                          'summary' => 'issue #214: доставка в тестовый чат', 'test' => true }
+    )
+
+    client = Telegram::Client.new(token: bot_token)
+    begin
+      announcer = Telegram::WorkBot::LeadAnnouncer.new(lead, client: client)
+
+      expect(announcer.call).to be(true)
+      expect(lead.reload.anchor_message_id).to be_present
+
+      text = announcer.format_card_text
+      expect(text).to include('🧪 <b>ТЕСТ</b>')
+      expect(text).to include('Интеграционный прогон')
+    ensure
+      # Карточка — одноразовая: убираем её из тестового чата, чтобы не копить мусор.
+      begin
+        client.delete_message(chat_id: chat_id.to_i, message_id: lead.anchor_message_id) if lead.anchor_message_id
+      rescue Telegram::Client::Error => e
+        Rails.logger.warn("[test_chat_delivery_spec] cleanup delete_message failed: #{e.message}")
+      end
+    end
+  end
+end
