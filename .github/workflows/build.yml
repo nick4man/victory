@@ -8,6 +8,14 @@ name: Build images
 #   что образ собирается и приложение грузится в production-режиме.
 # - workflow_dispatch: как push (sha + VERSION) — ручная пересборка.
 #
+# Безопасность образа: после пуша web-образа Grype-скан (anchore/scan-action)
+# гоняет CVE OS-пакетов/системных библиотек → SARIF в code-scanning
+# (Security → Code scanning alerts). fail-build: false — отчёт без блокировки:
+# чужие CVE базового образа не должны ронять релизы; триаж порога (severity) —
+# отдельным шагом после накопления статистики. Для push-событий джоба
+# provenance-web подписывает образ криптоподписью «собран этим CI из этого
+# коммита» (actions/attest-build-provenance).
+#
 # Выкатка образов — НЕ здесь: прод тянет образы сам (bin/rollout на хосте),
 # у CI нет доступа к прод-серверу. См. docs/ci-cd-pipeline-plan.md, фаза 1.
 
@@ -22,6 +30,11 @@ on:
 permissions:
   contents: read
   packages: write
+  # Grype SARIF → code-scanning alerts
+  security-events: write
+  # provenance-web: OIDC-токен для подписи + запись аттестации
+  id-token: write
+  attestations: write
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -151,6 +164,48 @@ jobs:
             docker tag "$IMG:sha-${{ needs.prep.outputs.sha }}" "$IMG:${{ needs.prep.outputs.version }}"
             docker push "$IMG:${{ needs.prep.outputs.version }}"
           fi
+
+      # Сканируем локально загруженный образ (это тот же sha-образ, что ушёл
+      # в реестр). fail-build: false — отчёт без блокировки релизов чужими
+      # CVE базового образа; severity-cutoff фиксируем явно, чтобы триаж
+      # порога не зависел от дефолта экшена.
+      - name: Grype scan образа → SARIF
+        uses: anchore/scan-action@v7
+        with:
+          image: "${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}"
+          fail-build: false
+          severity-cutoff: critical
+          output-file: grype-web.sarif
+
+      - name: Grype SARIF → code-scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: grype-web.sarif
+          category: grype-image-web
+
+  # Криптоподпись «образ собран этим CI из этого коммита» — supply chain
+  # и расследования. Только push: на PR образ в реестр не пушится, дайджеста
+  # нет. Digest читаем из реестра (imagetools не тянет слои на раннер);
+  # permissions id-token/attestations — на уровне workflow.
+  provenance-web:
+    name: Provenance web
+    needs: [prep, web]
+    if: needs.prep.outputs.push == '1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Digest запушенного образа
+        id: digest
+        env:
+          IMAGE: "${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}"
+        run: |
+          echo "digest=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: "${{ env.REGISTRY }}/victory-web"
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
 
   services:
     name: Образ ${{ matrix.service }}
