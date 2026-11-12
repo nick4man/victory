@@ -37,7 +37,11 @@ module CrmCards
       extra = values['phone_extra'].to_s
       return values['comment'] if extra.blank?
 
-      [values['comment'], "Доп. телефон: +#{extra}"].compact_blank.join("\n")
+      suffix = "Доп. телефон: +#{extra}"
+      # Topnlab::Client#import_client режет comment до 500 символов. Место под
+      # суффикс (и разделитель) резервируем здесь, обрезая только основной
+      # текст: иначе длинный комментарий съедал бы телефон вместе с концом.
+      [values['comment'].to_s.truncate(499 - suffix.length), suffix].compact_blank.join("\n")
     end
 
     # Клиент Topnlab кидает на отсутствии ENV — создаём его только при

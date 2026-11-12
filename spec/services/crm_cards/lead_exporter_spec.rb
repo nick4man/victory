@@ -93,4 +93,25 @@ RSpec.describe CrmCards::LeadExporter do
     expect(exporter.call(card).warning).to include('нет email')
     expect(topnlab).not_to have_received(:transfer_client)
   end
+
+  # Регресс ревью #94: Topnlab::Client#import_client режет comment до 500
+  # символов, поэтому суффикс с телефоном обязан пережить усечение. Проверяем
+  # итоговое тело HTTP-запроса к Topnlab, а не аргумент до усечения.
+  it 'длинный комментарий: итоговое тело запроса ≤ 500 символов и доп. телефон доезжает целиком' do
+    card.update!(payload: card.payload.merge('phone_extra' => '74912123456', 'comment' => 'Ж' * 600))
+    sent_comment = nil
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+      .with { |req| sent_comment = JSON.parse(req.body)['comment'] }
+      .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/transferClient/})
+      .to_return(status: 200, body: { status: 'ok' }.to_json)
+    real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+
+    described_class.new(topnlab: real_client).call(card)
+
+    expect(sent_comment).to be_present
+    expect(sent_comment.length).to be <= 500
+    expect(sent_comment).to end_with("Доп. телефон: +74912123456")
+    expect(sent_comment).to start_with('Ж')
+  end
 end
