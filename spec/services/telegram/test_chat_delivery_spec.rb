@@ -11,8 +11,10 @@ require 'rails_helper'
 #   TELEGRAM_TEST_BOT_TOKEN=… TELEGRAM_TEST_CHAT_ID=-100… \
 #     bin/rb --db bundle exec rspec spec/services/telegram/test_chat_delivery_spec.rb
 #
-# Без секретов spec skip'ается — сеть в спеках закрыта WebMock'ом, поэтому
-# здесь она точечно открывается только на время примеров.
+# Без секретов spec skip'ается. WebMock.disable! — глобальное отключение:
+# stub'ы из spec/support/external_services.rb перехватывают быстрее
+# allow_net_connect!, поэтому живой прогон требует полного выключения.
+# enable! в after гарантированно возвращает изоляцию остальным примерам.
 RSpec.describe 'Telegram test chat delivery (integration)' do
   let(:bot_token) { ENV['TELEGRAM_TEST_BOT_TOKEN'].presence }
   let(:chat_id)   { ENV['TELEGRAM_TEST_CHAT_ID'].presence }
@@ -20,10 +22,11 @@ RSpec.describe 'Telegram test chat delivery (integration)' do
   before do
     skip 'TELEGRAM_TEST_BOT_TOKEN/TELEGRAM_TEST_CHAT_ID не заданы — см. заголовок spec' unless bot_token && chat_id
 
-    WebMock.allow_net_connect!
+    WebMock.disable!
   end
 
   after do
+    WebMock.enable!
     WebMock.disable_net_connect!(allow_localhost: true)
   end
 
@@ -49,6 +52,17 @@ RSpec.describe 'Telegram test chat delivery (integration)' do
       text = announcer.format_card_text
       expect(text).to include('🧪 <b>ТЕСТ</b>')
       expect(text).to include('Интеграционный прогон')
+
+      # Доказательство живого вызова: stub из external_services.rb возвращает
+      # chat.id рабочей группы (-1003779115845) и message_id 1 — любой другой
+      # ответ (chat.id тестового чата) значит, что запрос ушёл реально.
+      probe = client.send_message('🧪 issue #214 live-check', chat_id: chat_id.to_i)
+      expect(probe.dig('chat', 'id')).to eq(chat_id.to_i)
+      begin
+        client.delete_message(chat_id: chat_id.to_i, message_id: probe['message_id'])
+      rescue Telegram::Client::Error => e
+        Rails.logger.warn("[test_chat_delivery_spec] cleanup probe delete failed: #{e.message}")
+      end
     ensure
       # Карточка — одноразовая: убираем её из тестового чата, чтобы не копить мусор.
       begin

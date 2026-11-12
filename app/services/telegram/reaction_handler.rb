@@ -103,9 +103,12 @@ module Telegram
 
     def find_lead_by_message
       msg_id = @rx['message_id']
-      return nil if msg_id.blank?
+      chat_id = @rx.dig('chat', 'id')
+      return nil if msg_id.blank? || chat_id.blank?
 
-      LeadEvent.find_by(anchor_message_id: msg_id)
+      # Пара (chat, message_id): Telegram уникален только внутри чата.
+      # Issue #214 — второй чат (тестовый), глобальный lookup опасен.
+      LeadEvent.find_by(tg_chat_id: chat_id, anchor_message_id: msg_id)
     end
 
     # Из new_reaction array выбираем первый ack-emoji (если он есть).
