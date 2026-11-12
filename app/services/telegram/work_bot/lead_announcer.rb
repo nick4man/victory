@@ -61,8 +61,11 @@ module Telegram
         result = send_card(topic_key)
         return false if result.nil?
 
+        # Тест-лид живёт в тестовом чате без топика (issue #214) — писать
+        # сюда thread_id рабочей группы нельзя: anchor_url и последующие
+        # отправки с этим message_thread_id ушли бы не туда.
         @lead.update!(
-          anchor_thread_id: Telegram::TopicRegistry.thread_id(topic_key),
+          anchor_thread_id: (test_lead? ? nil : Telegram::TopicRegistry.thread_id(topic_key)),
           anchor_message_id: result['message_id'],
           anchor_topic_key: topic_key,
           dispatcher_message_id: (topic_key == 'dispatcher' ? result['message_id'] : nil)

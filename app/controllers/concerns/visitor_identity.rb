@@ -20,6 +20,13 @@ module VisitorIdentity
   end
 
   def ensure_visitor_token
+    # Выход из тест-режима (issue #214): ?visitor_token=off сбрасывает cookie,
+    # дальше по течению выпускается обычный токен — следующие лиды боевые.
+    if params[:visitor_token] == 'off'
+      cookies.delete(COOKIE_NAME, path: '/')
+      request.cookie_jar.delete(COOKIE_NAME)
+    end
+
     # Только probe-префикс: произвольный токен из URL не принимаем — иначе
     # подделка куки тривиальна (подпись ставится на то, что прислали).
     probe = params[:visitor_token].to_s.strip.downcase

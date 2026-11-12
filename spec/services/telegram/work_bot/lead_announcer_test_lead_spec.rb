@@ -42,6 +42,24 @@ RSpec.describe Telegram::WorkBot::LeadAnnouncer do
       expect(announcer.format_card_text).to include('🧪 <b>ТЕСТ</b>')
     end
 
+    # Находка ревью PR #221: test-лид с auto-route (site_valuation → #ОЦЕНКА)
+    # получал в anchor_thread_id рабочий топик 24, хотя опубликован в тестовом
+    # чате без топика — anchor_url и следующие отправки уходили не туда.
+    it 'test-лид с auto-route не получает рабочий anchor_thread_id' do
+      lead = LeadEvent.create!(
+        lead_ref:         inquiry,
+        source:           'site_valuation',
+        tg_chat_id:       -100_999_888,
+        anchor_topic_key: 'dispatcher',
+        current_stage:    'new',
+        metadata:         { 'name' => 'Тест', 'test' => true }
+      )
+      expect(client).to receive(:send_message).and_return({ 'message_id' => 556 })
+
+      expect(described_class.new(lead, client: client).call).to be(true)
+      expect(lead.reload.anchor_thread_id).to be_nil
+    end
+
     it 'без TELEGRAM_TEST_CHAT_ID публикация пропускается (send_message не дёргается)' do
       ENV.delete('TELEGRAM_TEST_CHAT_ID')
       expect(client).not_to receive(:send_message)

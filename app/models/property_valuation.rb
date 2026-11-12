@@ -188,6 +188,11 @@ class PropertyValuation < ApplicationRecord
     "№#{report_number || id}"
   end
 
+  # Тестовый прогон чат-бота (issue #214, см. ChatTools::EstimatePropertyValuation).
+  def test?
+    metadata.is_a?(Hash) && metadata['test'] == true
+  end
+
   private
   
   def generate_token
@@ -240,6 +245,7 @@ class PropertyValuation < ApplicationRecord
 
   # Публикуем заявку оценки в Telegram-бот АН (auto-route в топик ОЦЕНКА).
   # Не блокирует — ошибки логируем и проглатываем.
+  # Тест-прогон чат-бота (issue #214): metadata['test']=true → тестовый чат.
   def push_to_work_bot
     return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
     return if Thread.current[:skip_workbot_push] == true
@@ -254,6 +260,7 @@ class PropertyValuation < ApplicationRecord
         rooms:   rooms,
         budget:  estimated_price_formatted,
         valuation_id: id,
+        test:    test?,
         summary: "Запрос оценки: #{address}, #{total_area} м²#{", #{rooms}-комн" if rooms.present?}"
       }
     )

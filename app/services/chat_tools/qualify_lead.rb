@@ -271,12 +271,20 @@ module ChatTools
       # Idempotency: skip если recent identical lead (LLM может call tool
       # multiple раз в одном диалоге). Phone normalization — last 10 digits
       # т.к. Inquiry хранит phone в normalized form (без + и форматирования).
+      # Дедуп ищет ТОЛЬКО внутри своего режима (issue #214): иначе тест-прогон
+      # вернул бы боевой Inquiry (тест без карточки) или наоборот (боевой лид
+      # получил бы тестовую карточку и запрет CRM-синка).
       phone_digits = phone.gsub(/\D/, '')
       phone_suffix = phone_digits.last(10)
       if phone_suffix.length == 10
-        recent = Inquiry.where('phone LIKE ?', "%#{phone_suffix}").
-                 where('created_at > ?', DEDUPE_WINDOW.ago).
-                 order(created_at: :desc).first
+        recent = Inquiry.where('phone LIKE ?', "%#{phone_suffix}")
+                        .where('created_at > ?', DEDUPE_WINDOW.ago)
+        recent = if test_mode
+                   recent.where("metadata->>'test' = 'true'")
+                 else
+                   recent.where("metadata->>'test' IS NULL OR metadata->>'test' <> 'true'")
+                 end
+        recent = recent.order(created_at: :desc).first
         return recent if recent
       end
 
