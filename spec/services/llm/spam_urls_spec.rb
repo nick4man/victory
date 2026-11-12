@@ -75,6 +75,11 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'botmasterru.com', path: '/y')
     end
 
+    it 'www после userinfo снимается: user@www.evil — тот же хост, что evil' do
+      expect(described_class.normalize('https://user@www.botmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
     it 'IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — это точки' do
       %w[。 ． ｡].each do |sep|
         expect(described_class.normalize("https://botmasterru#{sep}com/x"))

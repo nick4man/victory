@@ -59,18 +59,22 @@ module Llm
     end
 
     # suspect-записи (домен и точный URL) из сообщения от спам-IP повышаем
-    # до blocked без LLM и без ответа отправителю
+    # до blocked без LLM и без ответа отправителю. Только source = local:
+    # фидовые записи (шортенеры и т.п.) этим путём не повышаются — их
+    # статусом владеет синк, иначе один запрос с прокси блочил бы корень
+    # шортенера вопреки модели владения
     def promote_suspects_from(text)
       urls = Llm::SpamUrls.extract(text).filter_map { |raw| Llm::SpamUrls.normalize(raw) }
       return if urls.empty?
 
       now = Time.current
       urls.each do |url|
-        SpamBlockedEntry.where(entry_type: :domain, value: url[:host], status: :suspect)
+        SpamBlockedEntry.where(entry_type: :domain, value: url[:host], status: :suspect, source: 'local')
                         .update_all(status: 'blocked', blocked_at: now, updated_at: now)
         next if url[:path].blank?
 
-        SpamBlockedEntry.where(entry_type: :url, value: "#{url[:host]}#{url[:path]}", status: :suspect)
+        SpamBlockedEntry.where(entry_type: :url, value: "#{url[:host]}#{url[:path]}",
+                               status: :suspect, source: 'local')
                         .update_all(status: 'blocked', blocked_at: now, updated_at: now)
       end
     end
@@ -95,16 +99,17 @@ module Llm
       host = url[:host]
       return if host.blank?
 
-      known = SpamAllowlistEntry.allowlisted?(host) ||
-              SpamBlockedEntry.exists?(entry_type: :domain, value: host)
-      if known
-        if url[:path].blank?
-          # класть в карантин нечего, но срабатывание эвристики учитываем:
-          # иначе кворум по IP не набирался бы для pathless-ссылок
-          entry = SpamBlockedEntry.find_by(entry_type: :domain, value: host)
-          SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token)
-          return
-        end
+      entry = SpamBlockedEntry.find_by(entry_type: :domain, value: host)
+      if entry
+        # домен уже в карантине: hits считаем по домену независимо от пути —
+        # иначе разные пути размывали бы кворум по отдельным URL-записям
+        # и типичный спам не дотягивал бы до автоблока
+        SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token)
+        return
+      end
+
+      if SpamAllowlistEntry.allowlisted?(host)
+        return if url[:path].blank?
 
         upsert_suspect(:url, "#{host}#{url[:path]}", ip: ip, visitor_token: visitor_token)
       else

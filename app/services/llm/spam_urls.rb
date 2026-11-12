@@ -46,7 +46,6 @@ module Llm
       s = s.sub(%r{\A//}, '')
       s = s.split(/[?#]/).first.to_s
       s = s.gsub(/\s+/, '')
-      s = s.sub(%r{\Awww\.}i, '')
       s = s.sub(%r{/+\z}, '')
 
       authority, path = s.split('/', 2)
@@ -60,6 +59,9 @@ module Llm
       # иначе «botmasterru。com» уходил в punycode-лейбл и проверку на '.'
       # проходил мимо, не сматчив blocked-домен
       authority = authority.tr('。．｡', '...')
+      # www снимаем после userinfo: https://user@www.evil/x иначе оставлял
+      # 'www.evil' и обходил blocked-домен 'evil'
+      authority = authority.sub(%r{\Awww\.}i, '')
       authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
       return nil unless authority.include?('.')
 
