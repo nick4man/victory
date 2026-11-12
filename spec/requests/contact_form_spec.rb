@@ -25,8 +25,6 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
     old.nil? ? ENV.delete('TG_WORK_BOT_DISABLED') : ENV['TG_WORK_BOT_DISABLED'] = old
   end
 
-  after { travel_back }
-
   describe 'POST /contacts (send_contact_form)' do
     it 'создаёт Inquiry при нормальном прохождении' do
       get contacts_path
