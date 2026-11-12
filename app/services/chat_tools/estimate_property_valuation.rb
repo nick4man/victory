@@ -96,6 +96,8 @@ module ChatTools
         status:           'completed',
         updated_at:       Time.current
       )
+      # update_columns обходит after_update_commit — эмбеддинг ставим явно
+      pv.enqueue_embedding
 
       compact_response(pv, result)
     rescue StandardError => e
@@ -117,6 +119,12 @@ module ChatTools
     end
 
     def self.build_valuation(args)
+      # Участок: клиентский тул принимает площадь в сотках в total_area (см. schema).
+      # Нормализуем идентично Staff::MarketComparables: land_area — в сотках
+      # (читают ComparableFinder и шаблон эмбеддинга), total_area — в м² (сотки × 100,
+      # читают CompositeEstimator, AiSyntheticComps, SemanticCompFinder).
+      land = args['property_type'].to_s == 'land'
+      sotki = args['total_area'].to_f
       PropertyValuation.new(
         property_type:      args['property_type'],
         deal_type:          args['deal_type'].presence || 'sale',
@@ -124,7 +132,8 @@ module ChatTools
         address:            args['address'],
         city:               args['city'].presence,
         district:           args['district'].presence,
-        total_area:         args['total_area'],
+        total_area:         land ? (sotki * 100) : args['total_area'],
+        land_area:          land ? sotki : nil,
         rooms:              args['rooms'],
         floor:              args['floor'],
         total_floors:       args['total_floors'],
