@@ -12,12 +12,14 @@ RSpec.describe 'Chat::Messages', type: :request do
     expect(response).to have_http_status(:ok)
   end
 
-  def post_message(body, page: nil)
+  def post_message(body, page: nil, remote_ip: nil)
     payload = { body: body }
     payload[:page] = page if page
+    headers = { 'CONTENT_TYPE' => 'application/json' }
+    headers['REMOTE_ADDR'] = remote_ip if remote_ip
     post chat_conversation_messages_path,
          params: payload.to_json,
-         headers: { 'CONTENT_TYPE' => 'application/json' }
+         headers: headers
   end
 
   # В каждом примере ровно один посетитель/конверсация — берём первую.
@@ -200,5 +202,50 @@ RSpec.describe 'Chat::Messages', type: :request do
     expect(conversation.reload.metadata.dig('page', 'ctx', 'state')).to eq('pending')
     greeting = conversation.chat_messages.find_by(role: :assistant)
     expect(greeting.body).to include('ещё считается')
+  end
+
+  describe 'антиспам (issue #219)' do
+    it 'спам-ссылка: нет LlmReplyJob и нет ответа ассистента' do
+      SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+      open_chat
+      assistants_before = conversation.chat_messages.where(role: :assistant).count # greeting
+
+      expect do
+        post_message('услуги продвижения http://www.botmasterru.com/product52284/')
+      end.not_to have_enqueued_job(LlmReplyJob)
+
+      expect(response).to have_http_status(:created)
+      expect(conversation.chat_messages.where(role: :assistant).count).to eq(assistants_before)
+    end
+
+    it 'спам-дроп фиксируется в security_events конверсации' do
+      SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+      open_chat
+
+      post_message('услуги продвижения http://www.botmasterru.com/product52284/')
+
+      events = conversation.reload.metadata['security_events']
+      expect(events.last['kind']).to eq('spam_link')
+    end
+
+    it 'IP из блок-листа: тихий дроп без LLM' do
+      SpamBlockedEntry.create!(entry_type: :ip, value: '203.0.113.66', status: :blocked, source: 'ipsum_l3')
+      open_chat
+      assistants_before = conversation.chat_messages.where(role: :assistant).count # greeting
+
+      expect do
+        post_message('какая погода?', page: { 'path' => '/' }, remote_ip: '203.0.113.66')
+      end.not_to have_enqueued_job(LlmReplyJob)
+
+      expect(conversation.chat_messages.where(role: :assistant).count).to eq(assistants_before)
+    end
+
+    it 'легитимное сообщение со ссылкой на наш домен идёт в LLM как раньше' do
+      open_chat
+
+      expect do
+        post_message('смотрите https://victory62.org/properties/dom-1 — подскажите про цену')
+      end.to have_enqueued_job(LlmReplyJob)
+    end
   end
 end

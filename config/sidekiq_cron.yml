@@ -138,3 +138,9 @@ owner_request:
   class: "OwnerRequestJob"
   queue: scheduled
   description: "Спрашивает у агента, кто собственник объекта, застрявшего до витрины (owner_user_id пуст). ПО ОДНОМУ объекту на агента за прогон: у топ-агента их 44, и рассылка пачкой привела бы к муту бота вместе со всеми заявками. Повторный вопрос по объекту — не раньше чем через 3 дня."
+
+spam_feeds_sync:
+  cron: "20 3 * * *"       # daily 03:20 MSK — ночью, после topnlab-волны
+  class: "Llm::SpamFeeds::SyncJob"
+  queue: low_priority
+  description: "Антиспам чат-бота (issue #219): ежесуточный синк доменных/IP-фидов (hagezi, Phishing.Database, URLhaus, ipsum, firehol) + Cisco Umbrella Top-10k allowlist. Новые спам-домены в БД без деплоя."
