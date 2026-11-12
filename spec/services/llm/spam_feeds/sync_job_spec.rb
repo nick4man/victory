@@ -196,6 +196,26 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
       expect(clean[:action]).to eq(:pass)
       expect(phish[:action]).to eq(:drop)
     end
+
+    it 'URL без пути из URL-фида не создаёт доменную запись: корень хоста URL-фиды не блочит' do
+      stub_request(:get, described_class::DOMAIN_FEEDS['phishing_links'][:url])
+        .to_return(status: 200, body: "https://root-only.example\nhttps://stays.example/x\n")
+
+      described_class.perform_now
+
+      # контракт: URL-фид пишет только полные host+path; корень хоста — работа
+      # доменных фидов, иначе одна фишинговая запись без пути блочила бы домен
+      expect(SpamBlockedEntry.find_by(entry_type: :domain, value: 'root-only.example')).to be_nil
+      expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'stays.example/x'))
+        .to have_attributes(status: 'blocked', source: 'phishing_links')
+
+      # следующий прогон: stays остаётся в фиде — запись не протухает
+      stub_request(:get, described_class::DOMAIN_FEEDS['phishing_links'][:url])
+        .to_return(status: 200, body: "https://stays.example/x\n")
+      described_class.perform_now
+
+      expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'stays.example/x')).to be_present
+    end
   end
 
   context 'urlhaus' do
@@ -252,6 +272,18 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     expect(SpamAllowlistEntry.allowlisted?('keep-me.example')).to be(true)
     expect(SpamAllowlistEntry.allowlisted?('only-one.example')).to be(false)
+  end
+
+  it 'Tranco отвечает 307 на /download/… — fetch следует редиректам' do
+    stub_const('Llm::SpamFeeds::SyncJob::ALLOWLIST_MIN_ROWS', 3)
+    daily_url = 'https://tranco-list.eu/download/daily/current-list.zip'
+    stub_request(:get, described_class::ALLOWLIST_URL)
+      .to_return(status: 307, body: '', headers: { 'location' => '/download/daily/current-list.zip' })
+    stub_request(:get, daily_url).to_return(status: 200, body: allowlist_body)
+
+    described_class.perform_now
+
+    expect(SpamAllowlistEntry.allowlisted?('white-1.example')).to be(true)
   end
 
   it 'allowlist: домен, исчезнувший из Tranco, протухает (soft-delete)' do

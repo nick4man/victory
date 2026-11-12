@@ -65,29 +65,31 @@ module Llm
         'firehol_botscout'      => { url: 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/botscout_7d.ipset',
                                      min_rows: 100 }
       }.freeze
-      # Tranco Top-1M отдаётся только zip'ом; распаковка — Llm::SpamFeeds::Zip
+      # Tranco Top-1M: стартовый URL отдаётся только zip'ом и отвечает 307
+      # на /download/daily/… — fetch следует редиректам вручную
+      # (faraday-follow_redirects в проекте нет); распаковка — Llm::SpamFeeds::Zip
       # (без rubyzip). Первые 10k строк — домены, которые локальные
       # эвристики не имеют права блочить на уровне корня.
       ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
       ALLOWLIST_TOP = 10_000
       # усечённая выгрузка не должна стирать рабочий allowlist целиком
       ALLOWLIST_MIN_ROWS = 9_000
+      # сколько редиректов готовы пройти за один вызов fetch
+      MAX_REDIRECTS = 3
 
       def perform
         run_at = Time.current
         stats = {}
         # entry_type => источники, чья выгрузка в этом прогоне удалась
+        # (наполняется flush_batch по фактически записанным типам: URL-фид
+        # может дать и доменные, и URL-записи)
         synced = Hash.new { |h, k| h[k] = [] }
 
         (DOMAIN_FEEDS.merge(URLHAUS_FEED)).each do |source, cfg|
-          imported = import_feed(source, cfg, run_at)
-          stats[source] = imported
-          synced[cfg[:entry_type] || :domain] << source if imported.positive?
+          stats[source] = import_feed(source, cfg, run_at, synced)
         end
         IP_FEEDS.each do |source, cfg|
-          imported = import_feed(source, cfg.merge(entry_type: :ip), run_at)
-          stats[source] = imported
-          synced[:ip] << source if imported.positive?
+          stats[source] = import_feed(source, cfg.merge(entry_type: :ip), run_at, synced)
         end
 
         retire_stale(synced, run_at)
@@ -102,29 +104,34 @@ module Llm
       # пакетная запись), чтобы в памяти жил только чанк BATCH строк.
       # Возвращает число записей фида; 0 — фид не синкнулся (нет URL, пустой,
       # битый, усечённый), тогда прежние записи источника не протухают.
-      def import_feed(source, cfg, run_at)
+      def import_feed(source, cfg, run_at, synced)
         if cfg[:url].blank?
           Rails.logger.warn("[SpamFeeds] #{source}: URL не задан — фид пропущен")
           return 0
         end
 
         body = fetch(cfg[:url])
-        return 0 if body.blank?
+        return 0 if body.nil?
 
-        entry_type = cfg[:entry_type] || :domain
         status = cfg[:status] || :blocked
         total = count_tokens(body, cfg)
         if total < cfg[:min_rows]
           Rails.logger.warn("[SpamFeeds] #{source}: подозрительно мало записей " \
                             "(#{total} < #{cfg[:min_rows]}) — выгрузка отклонена")
+          body.close!
           return 0
         end
 
-        import_batches(body, source, cfg, entry_type, status, run_at)
+        body.rewind
+        import_batches(body, source, cfg, status, run_at, synced)
         total
       rescue StandardError => e
-        Rails.logger.warn("[SpamFeeds] #{source}: синк не удался (#{e.class}: #{e.message})")
+        # сообщение об ошибке намеренно не логируем: в нём может оказаться
+        # URLHAUS_EXPORT_URL с Auth-Key (Net::HTTP включает хост/путь в текст)
+        Rails.logger.warn("[SpamFeeds] #{source}: синк не удался (#{e.class})")
         0
+      ensure
+        body&.close! if body && !body.closed?
       end
 
       def count_tokens(body, cfg)
@@ -141,9 +148,9 @@ module Llm
       # реанимируем вернувшиеся ключи, потом вставляем новые (on_conflict
       # skip), затем set-based помечаем seen_at и повышаем suspect → blocked
       # подтверждённым фидом (в т.ч. локальную запись).
-      def import_batches(body, source, cfg, entry_type, status, run_at)
+      def import_batches(body, source, cfg, status, run_at, synced)
         batch = []
-        flush = -> { flush_batch(batch, entry_type, status, run_at) }
+        flush = -> { flush_batch(batch, source, status, run_at, synced) }
 
         body.each_line do |line|
           token = parse_token(line, cfg[:format] || :plain)
@@ -160,19 +167,26 @@ module Llm
         flush.call
       end
 
-      def flush_batch(batch, entry_type, status, run_at)
+      # Запись чанка с группировкой по фактическому типу записей: URL-фид
+      # может вернуть и доменную запись (URL без пути), и URL-запись —
+      # seen_at/реанимация/повышение статуса и протухание должны видеть их
+      # под тем типом, под которым строки реально лежат в таблице
+      def flush_batch(batch, source, status, run_at, synced)
         return if batch.empty?
 
-        values = batch.map { |r| r[:value] }
-        scope = SpamBlockedEntry.unscoped.where(entry_type: entry_type, value: values)
+        batch.group_by { |r| r[:entry_type] }.each do |type, rows|
+          values = rows.map { |r| r[:value] }
+          scope = SpamBlockedEntry.unscoped.where(entry_type: type, value: values)
 
-        scope.where.not(deleted_at: nil)
-             .update_all(deleted_at: nil, seen_at: run_at, updated_at: run_at)
-        SpamBlockedEntry.insert_all(batch, unique_by: :idx_spam_blocked_entries_type_value)
-        scope.update_all(seen_at: run_at, updated_at: run_at)
-        if status == :blocked
-          scope.where(status: 'suspect')
-               .update_all(status: 'blocked', blocked_at: run_at, updated_at: run_at)
+          scope.where.not(deleted_at: nil)
+               .update_all(deleted_at: nil, seen_at: run_at, updated_at: run_at)
+          SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_value)
+          scope.update_all(seen_at: run_at, updated_at: run_at)
+          if status == :blocked
+            scope.where(status: 'suspect')
+                 .update_all(status: 'blocked', blocked_at: run_at, updated_at: run_at)
+          end
+          synced[type.to_sym] << source
         end
         batch.clear
       end
@@ -189,9 +203,10 @@ module Llm
         end
       end
 
-      # Доменные фиды приводим к единому виду фильтра; URL-фиды пишут
-      # host+path. Ведущий '*.' (wildcard-записи Phishing.Database)
-      # опускаем до доменного уровня.
+      # Доменные фиды приводим к единому виду фильтра; URL-фиды пишут только
+      # полные host+path — запись без пути пропускаем (корень хоста из
+      # URL-фида блочить нельзя: доменный уровень — работа доменных фидов).
+      # Ведущий '*.' (wildcard-записи Phishing.Database) опускаем до домена.
       def normalize_entry(default_type, token)
         if default_type == :ip
           [:ip, token]
@@ -199,7 +214,9 @@ module Llm
           norm = Llm::SpamUrls.normalize(token.sub(/\A\*\./, ''))
           return [nil, nil] unless norm
 
-          if default_type == :url && norm[:path].present?
+          if default_type == :url
+            return [nil, nil] if norm[:path].blank?
+
             [:url, "#{norm[:host]}#{norm[:path]}"]
           else
             [:domain, norm[:host]]
@@ -221,7 +238,10 @@ module Llm
       end
 
       def sync_allowlist
-        csv = Zip.first_file(fetch(ALLOWLIST_URL))
+        zip_file = fetch(ALLOWLIST_URL)
+        return 0 if zip_file.nil?
+
+        csv = Zip.first_file(zip_file.read.to_s)
         return 0 if csv.blank?
 
         domains = csv.each_line.lazy.filter_map do |line|
@@ -256,21 +276,63 @@ module Llm
       rescue StandardError => e
         Rails.logger.warn("[SpamFeeds] tranco_allowlist: синк не удался (#{e.class}: #{e.message})")
         0
+      ensure
+        zip_file&.close! if zip_file && !zip_file.closed?
       end
 
-      def fetch(url)
-        conn = Faraday.new do |f|
-          f.options.open_timeout = 10
-          f.options.read_timeout = 30
-          f.response :raise_error
+      # Потоковая загрузка во временный файл: тело ответа целиком в памяти
+      # не держим, при превышении MAX_BODY_BYTES обрываем чтение (защита
+      # ежедневного job от OOM). Редиректы проходим вручную (follow_redirects
+      # в проекте нет): Tranco отдаёт 307 на /download/daily/…; URL в лог не
+      # пишем — в нём может быть URLHAUS_EXPORT_URL с Auth-Key.
+      def fetch(url, redirects: MAX_REDIRECTS)
+        uri = URI.parse(url)
+        http = Net::HTTP.new(uri.host, uri.port)
+        http.use_ssl = uri.scheme == 'https'
+        http.open_timeout = 10
+        http.read_timeout = 30
+
+        total = 0
+        tmp = Tempfile.new('spam_feed', binmode: true)
+        http.start do |conn|
+          conn.request(Net::HTTP::Get.new(uri)) do |res|
+            if res.is_a?(Net::HTTPRedirection) && res['location'].present? && redirects.positive?
+              tmp.close!
+              return fetch(URI.join(url, res['location']).to_s, redirects: redirects - 1)
+            end
+            res.value # 4xx/5xx → Net::HTTPError без URL в тексте
+            res.read_body do |chunk|
+              total += chunk.bytesize
+              if total > MAX_BODY_BYTES
+                tmp.close!
+                Rails.logger.warn("[SpamFeeds] ответ крупнее лимита #{MAX_BODY_BYTES} — отклонён")
+                return nil
+              end
+              tmp.write(chunk)
+            end
+            # WebMock в спеках не отдаёт чанки через read_body-блок (подставляет
+            # готовое тело) — пишем его напрямую, лимит тот же; у реального
+            # ответа после read_body-блока body == nil, у WebMock-пустышки —
+            # ReadAdapter без bytesize, оба случая пропускаем
+            fallback = total.zero? ? res.body : nil
+            if fallback.respond_to?(:bytesize) && fallback.bytesize.positive?
+              if fallback.bytesize > MAX_BODY_BYTES
+                tmp.close!
+                Rails.logger.warn("[SpamFeeds] ответ крупнее лимита #{MAX_BODY_BYTES} — отклонён")
+                return nil
+              end
+              tmp.write(fallback)
+            end
+          end
         end
-        response = conn.get(url)
-        body = response.body.to_s
-        if body.bytesize > MAX_BODY_BYTES
-          Rails.logger.warn("[SpamFeeds] #{url}: ответ #{body.bytesize} байт — больше лимита #{MAX_BODY_BYTES}, отклонён")
+        tmp.flush
+        # Tempfile не отвечает на empty? — проверяем размер по пути
+        if File.empty?(tmp.path)
+          tmp.close!
           return nil
         end
-        body
+        tmp.rewind
+        tmp
       end
     end
   end

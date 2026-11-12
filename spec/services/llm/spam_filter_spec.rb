@@ -39,6 +39,17 @@ RSpec.describe Llm::SpamFilter do
         expect(entry.reload).to be_status_blocked
       end
 
+      it 'спам-IP не повышает фидовый suspect: корень шортенера статусом владеет синк' do
+        SpamBlockedEntry.create!(entry_type: :ip, value: '203.0.113.66', status: :blocked, source: 'ipsum_l3')
+        entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'bit.ly',
+                                         status: :suspect, source: 'hagezi_shorteners')
+
+        result = described_class.classify('смотри bit.ly/abc', ip: '203.0.113.66', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(entry.reload).to be_status_suspect
+      end
+
       it 'с обычного IP suspect-домен не повышается без кворума' do
         entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'fishy.example',
                                          status: :suspect, source: 'local')
@@ -111,6 +122,16 @@ RSpec.describe Llm::SpamFilter do
           expect(result[:action]).to eq(:drop), "разделитель #{sep.inspect} не должен обходить блок"
         end
       end
+
+      it 'userinfo с www не обходит blocked-домен: https://user@www.botmasterru.com/x' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        result = described_class.classify('посмотрите https://user@www.botmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
     end
 
     context 'карантин suspect' do
@@ -150,14 +171,30 @@ RSpec.describe Llm::SpamFilter do
         expect(entry).to be_status_suspect
       end
 
-      it 'URL-shortener из hagezi-фида сам по себе эвристика: неизвестный путь → suspect' do
-        # шортенеры синкаются как suspect (блок всех bit.ly — самострел)
-        SpamBlockedEntry.create!(entry_type: :domain, value: 'bit.ly', status: :suspect, source: 'hagezi_shorteners')
+      it 'URL-shortener из hagezi-фида сам по себе эвристика: hit считается по домену' do
+        # шортенеры синкаются как suspect (блок всех bit.ly — самострел);
+        # домен уже на учёте — hits идут на доменную запись, путь не плодим
+        entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'bit.ly',
+                                         status: :suspect, source: 'hagezi_shorteners')
 
         described_class.classify('смотри bit.ly/xyz123 интересное',
                                  ip: '198.51.100.10', visitor_token: visitor)
 
-        expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'bit.ly/xyz123')).to be_present
+        expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'bit.ly/xyz123')).to be_nil
+        expect(entry.reload.hits).to eq(1)
+      end
+
+      it 'кворум работает через пути: один домен от 3 разных IP с разными путями → автоблок' do
+        # регрессия: hits не должны размываться по отдельным URL-записям
+        described_class.classify('продвижение ботов spam-paths.example/a',
+                                 ip: '198.51.100.10', visitor_token: 'v-a')
+        described_class.classify('продвижение ботов spam-paths.example/b',
+                                 ip: '198.51.100.11', visitor_token: 'v-b')
+        described_class.classify('продвижение ботов spam-paths.example/c',
+                                 ip: '198.51.100.12', visitor_token: 'v-c')
+
+        entry = SpamBlockedEntry.find_by(entry_type: :domain, value: 'spam-paths.example')
+        expect(entry).to be_status_blocked
       end
 
       it 'кворум: один домен от 3 разных сессий → автоблок' do
@@ -183,6 +220,21 @@ RSpec.describe Llm::SpamFilter do
         end
 
         expect(SpamBlockedEntry.find_by(value: 'spam-same-ip.example')).to be_status_suspect
+      end
+
+      it 'кворум по IP не размывается путями: 3 IP с разными путями блокируют домен' do
+        described_class.classify('продвижение ботов на spam-paths.example/landing',
+                                 ip: '198.51.100.10', visitor_token: 'v-a')
+        described_class.classify('продвижение ботов на spam-paths.example/promo',
+                                 ip: '198.51.100.11', visitor_token: 'v-b')
+
+        entry = SpamBlockedEntry.find_by(value: 'spam-paths.example')
+        expect(entry).to be_status_suspect
+
+        described_class.classify('продвижение ботов на spam-paths.example/sale',
+                                 ip: '198.51.100.12', visitor_token: 'v-c')
+
+        expect(entry.reload).to be_status_blocked
       end
     end
 
