@@ -196,7 +196,7 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   - GitGuardian Security Checks — GitHub App.
 - `.github/workflows/kimi.yml`, job **«Kimi Review»** — авторевью каждого PR; его вердикт
   (`VERDICT: MERGE|CHANGES`) — обязательный gate автослияния в `dev/*` (`automerge.yml`).
-  Job `@kimi` и `claude.yml` (`@claude`) — интерактивные боты, в PR-проверки **не входят**.
+  Job `@kimi`/`@claude` (алиас к тому же job'у) — интерактивный бот, в PR-проверки **не входят**.
 - **Агентный конвейер** (issue → kanban → PR → `dev/*`): `docs/runbooks/agent-pipeline.md`.
   Issue с меткой `agent:hermes` (ставит человек после triage) подхватывает Hermes на хосте
   `victory`; PR агентов идут только в `dev/*`, в `main` — человек.
