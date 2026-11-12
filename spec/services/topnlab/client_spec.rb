@@ -150,6 +150,32 @@ RSpec.describe Topnlab::Client do
       expect(a_request(:post, import_re)).to have_been_made.once
     end
 
+    # Регресс ревью PR #210: отражённый в теле ответа appkey попадал в текст
+    # ошибки → в export_error, журнал переходов и Telegram-модераторов.
+    it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'duplicate' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+
+    it 'HTTP-ошибка с телом, отражающим ключ, — тоже вычищена (путь через parse)' do
+      stub_request(:post, import_re)
+        .to_return(status: 500, body: { error: 'boom', appkey: 'test-key' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then

@@ -274,7 +274,9 @@ module Topnlab
 
       res = http_post_json('/call/main/importClient/', body, retry_network: false)
       unless res.is_a?(Hash) && res['status'] == 'ok'
-        raise Error, "importClient failed: #{res.inspect}"
+        # Тело ответа может отражать запрос — без scrub в ошибке уехал бы
+        # appkey в БД (export_error, журнал переходов) и Telegram-модераторам.
+        raise Error, "importClient failed: #{scrub(res)}"
       end
 
       res
@@ -311,7 +313,13 @@ module Topnlab
     # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` — то есть в БД и на
     # админ-страницу. Если Topnlab когда-нибудь отразит запрос в error-теле,
     # туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того, как строка станет логом.
+    # Строки (тела ответов) фильтруем напрямую: inspect экранирует кавычки
+    # и ломал бы regex в ветке для Hash.
     def scrub(data)
+      if data.is_a?(String)
+        return data.gsub(/((?:app)?key"?\s*[=:]\s*"?)[^&"',\s}\\]+/i, '\1[FILTERED]')
+      end
+
       data.inspect.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}]+/i, '\1[FILTERED]')
     end
 
@@ -429,10 +437,10 @@ module Topnlab
         Rails.logger.warn("Topnlab #{label}: 404 not found")
         nil
       else
-        raise Error, "#{label}: HTTP #{response.code} — #{body.truncate(500)}"
+        raise Error, "#{label}: HTTP #{response.code} — #{scrub(body).truncate(500)}"
       end
     rescue JSON::ParserError => e
-      raise Error, "#{label}: invalid JSON (#{e.message}) — body=#{body.truncate(300)}"
+      raise Error, "#{label}: invalid JSON (#{e.message}) — body=#{scrub(body).truncate(300)}"
     end
 
     def throttle!(kind)
