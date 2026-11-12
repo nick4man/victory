@@ -174,6 +174,7 @@ class PropertyValuation < ApplicationRecord
   def enqueue_embedding
     return if audit_mode_investment?
     return if staff_test? # тестовые оценки сотрудников — не в semantic-корпус (issue #201)
+    return if test? # probe-прогон чат-бота — тоже не в semantic-корпус (issue #214)
 
     EmbedPropertyValuationJob.perform_later(id)
   rescue StandardError => e
@@ -295,6 +296,14 @@ class PropertyValuation < ApplicationRecord
   # Phase 16 — staff/test detection. Auto-tag без UX friction.
   def detect_staff_test_submission
     return if staff_test # уже выставлен (например через factory или admin override)
+
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (вне embeddings и сводок).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
 
     result = StaffSubmissionDetector.detect(
       email: email, phone: phone, name: name, tg_user_id: nil

@@ -11,6 +11,9 @@
 #
 # Triggered from InvestmentAuditJob after the PropertyValuation is marked
 # completed. Chat target precedence:
+#   0. probe-прогон чат-бота (valuation.metadata['test'], issue #214) →
+#      TELEGRAM_TEST_CHAT_ID; ENV не задан — пропуск с warning, рабочие
+#      чаты не трогаем
 #   1. TELEGRAM_AUDITS_CHAT_ID (dedicated channel if set)
 #   2. TELEGRAM_STAFF_CHAT_ID  (general staff channel)
 class AuditReportNotifier

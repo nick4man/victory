@@ -186,6 +186,9 @@ class LeadEvent < ApplicationRecord
   # current_stage / anchor_topic_key actually изменился.
   def enqueue_embed_if_relevant_changed
     return if destroyed?
+    # staff_test (включая probe-прогоны, issue #214) — не в semantic-корпус:
+    # job гейтится и здесь, и в perform (rake-backfill идёт мимо enqueue).
+    return if staff_test?
 
     if saved_change_to_metadata? || saved_change_to_current_stage? || saved_change_to_anchor_topic_key? || transaction_include_any_action?(%i[create])
       EmbedLeadEventJob.perform_later(id)
@@ -199,6 +202,15 @@ class LeadEvent < ApplicationRecord
   # его decision (consistency между linked records).
   def detect_staff_test_submission
     return if staff_test # уже выставлен manually
+
+    # probe-прогон чат-бота (issue #214): metadata['test'] — тот же
+    # изоляционный класс, что staff_test: вне общего поиска, сводок, KPI
+    # и embeddings. Контакты прогона правдоподобны и эвристиками не ловятся.
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
 
     # Если parent Inquiry уже tag'нут — наследуем
     if lead_ref.is_a?(Inquiry) && lead_ref.staff_test

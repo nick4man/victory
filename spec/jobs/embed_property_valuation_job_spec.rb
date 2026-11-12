@@ -88,6 +88,22 @@ RSpec.describe EmbedPropertyValuationJob do
       expect(fake_client).not_to have_received(:embed)
     end
 
+    # Issue #214 (ревью PR #221, round 3): probe-прогон чат-бота —
+    # valuation с metadata['test'] не должна жечь лимит Embedding API.
+    it 'skip для probe-оценки (metadata test)' do
+      valuation.update_columns(metadata: { 'test' => true })
+      expect(valuation.test?).to be(true)
+      expect { described_class.new.perform(valuation.id) }
+        .not_to change { PropertyValuationEmbedding.count }
+      expect(fake_client).not_to have_received(:embed)
+    end
+
+    it 'enqueue_embedding — no-op для probe-оценки' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      valuation.update_columns(metadata: { 'test' => true })
+      expect { valuation.enqueue_embedding }.not_to have_enqueued_job(EmbedPropertyValuationJob)
+    end
+
     it 'skip если staff_test (тестовые оценки сотрудников — не в semantic-корпус, issue #201)' do
       staff_valuation = PropertyValuation.create!(
         property_type: 'apartment', deal_type: 'sale', audit_mode: 'express',

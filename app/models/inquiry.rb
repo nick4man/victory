@@ -474,6 +474,14 @@ class Inquiry < ApplicationRecord
   def detect_staff_test_submission
     return if staff_test # уже выставлен (admin override / factory)
 
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (KPI/dashboard фильтруют по умолчанию).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
+
     result = StaffSubmissionDetector.detect(
       email: email,
       phone: phone,

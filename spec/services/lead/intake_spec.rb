@@ -215,6 +215,37 @@ RSpec.describe Lead::Intake do
       expect(result).to be_success
       expect(result.lead_event).to be_nil
     end
+
+    # Находка ревью PR #221 (round 3): контакты прогона правдоподобны и
+    # эвристиками StaffSubmissionDetector не ловятся — изоляция от общего
+    # поиска/KPI/embeddings держится на metadata['test'] → staff_test.
+    it 'probe-лид с правдоподобными контактами → staff_test=true, без embedding' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Мария Соколова', phone: '79031112233', message: 'интересует двушка', test: true },
+        announcer: fake_announcer_class
+      )
+      lead = result.lead_event
+      expect(lead.staff_test).to be(true)
+      expect(lead.staff_test_matched_by).to eq('lead_test_mode')
+      # fallback-Inquiry тоже в том же изоляционном классе
+      expect(lead.lead_ref.staff_test).to be(true)
+      expect(EmbedLeadEventJob).not_to have_been_enqueued
+    end
+
+    it 'боевой лид с теми же контактами → staff_test=false, embedding ставится (регрессии нет)' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Мария Соколова', phone: '79031112233', message: 'интересует двушка' },
+        announcer: fake_announcer_class
+      )
+      lead = result.lead_event
+      expect(lead.staff_test).to be(false)
+      expect(EmbedLeadEventJob).to have_been_enqueued
+    end
   end
 
 end
