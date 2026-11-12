@@ -66,14 +66,16 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
         .not_to change(Inquiry, :count)
     end
 
-    it 'timestamp рендера одноразовый: повторный POST сразу дропается' do
+    it 'принимает повторный POST без повторного рендера (timestamp — тайминг-сигнал, не nonce)' do
       get contacts_path
       travel 5.seconds
       post send_contact_form_path, params: valid_params
       expect(Inquiry.count).to eq(1)
 
+      # cookie_store не даёт одноразовости: replay исходного cookie валиден
+      # — фиксируем честную семантику вместо недостижимой защиты (#223).
       expect { post send_contact_form_path, params: valid_params }
-        .not_to change(Inquiry, :count)
+        .to change(Inquiry, :count).by(1)
     end
 
     it 'после повторного GET /contacts форма снова принимается' do

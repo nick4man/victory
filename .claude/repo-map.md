@@ -13700,42 +13700,6 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
-⋮----
-def about
-⋮----
-def team
-⋮----
-def history
-⋮----
-def contacts
-⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-private
-⋮----
-def validate_contact_form
-⋮----
-def valid_email?(email)
-⋮----
-def check_spam
-</file>
-
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -14492,27 +14456,6 @@ def same_city?(property, distance_km = nil)
 def weight_for(cos, distance_km)
 </file>
 
-<file path="app/services/contact_form_spam_guard.rb">
-class ContactFormSpamGuard
-⋮----
-MIN_FILL_SECONDS = 3
-SESSION_KEY = :contact_form_rendered_at
-⋮----
-HONEYPOT_PARAM = :website
-⋮----
-REASONS = %w[honeypot no_render_timestamp too_fast].freeze
-⋮----
-Result = Struct.new(:spam, :reason, keyword_init: true)
-⋮----
-def initialize(honeypot:, rendered_at:, now: Time.current)
-⋮----
-def call
-⋮----
-private
-⋮----
-def spam(reason)
-</file>
-
 <file path="app/controllers/chat/conversations_controller.rb">
 module Chat
 ⋮----
@@ -14604,6 +14547,42 @@ def normalize_payload(p)
 def safe_parse_time(value)
 ⋮----
 def upsert_article(attrs)
+</file>
+
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
+⋮----
+def about
+⋮----
+def team
+⋮----
+def history
+⋮----
+def contacts
+⋮----
+def send_contact_form
+⋮----
+def services
+⋮----
+def faq
+⋮----
+def privacy
+⋮----
+def terms
+⋮----
+def not_found
+⋮----
+def unprocessable_entity
+⋮----
+def internal_server_error
+⋮----
+private
+⋮----
+def validate_contact_form
+⋮----
+def valid_email?(email)
+⋮----
+def check_spam
 </file>
 
 <file path="app/jobs/embed_property_valuation_job.rb">
@@ -15054,6 +15033,27 @@ def verify_code_in_dm
 def reply(text)
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
+⋮----
+MIN_FILL_SECONDS = 3
+SESSION_KEY = :contact_form_rendered_at
+⋮----
+HONEYPOT_PARAM = :website
+⋮----
+REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+⋮----
+Result = Struct.new(:spam, :reason, keyword_init: true)
+⋮----
+def initialize(honeypot:, rendered_at:, now: Time.current)
+⋮----
+def call
+⋮----
+private
+⋮----
+def spam(reason)
 </file>
 
 <file path="Gemfile">

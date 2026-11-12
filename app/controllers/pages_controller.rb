@@ -108,9 +108,12 @@ class PagesController < ApplicationController
 
   # POST /contacts
   def send_contact_form
+    # Timestamp — только тайминг-сигнал, не nonce: cookie_store не даёт
+    # одноразовости (старый cookie остаётся валидным), replay намеренно
+    # не блокируем — следующий шаг из #223 при продолжении потока — капча.
     guard = ContactFormSpamGuard.new(
       honeypot: params[ContactFormSpamGuard::HONEYPOT_PARAM],
-      rendered_at: session.delete(ContactFormSpamGuard::SESSION_KEY)
+      rendered_at: session[ContactFormSpamGuard::SESSION_KEY]
     ).call
     if guard.spam
       # Молчаливый дроп (#223): бот не должен узнать, что его раскрыли.
@@ -118,7 +121,7 @@ class PagesController < ApplicationController
         "[contact_form] spam dropped reason=#{guard.reason} ip=#{request.remote_ip} " \
         "ua=#{request.user_agent.to_s.truncate(120)}"
       )
-      flash[:notice] = 'Спасибо за обращение! Мы свяжемся с вами в ближайшее время.'
+      flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
       return
     end
@@ -158,7 +161,7 @@ class PagesController < ApplicationController
         inquiry_id: inquiry.id
       })
       
-      flash[:notice] = 'Спасибо за обращение! Мы свяжемся с вами в ближайшее время.'
+      flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
     else
       flash[:alert] = 'Ошибка при отправке сообщения. Попробуйте позже.'
