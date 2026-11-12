@@ -335,3 +335,10 @@ ehthumbs.db
 # Python-службы (services/*): байткод
 __pycache__/
 *.pyc
+
+# Локальные рабочие артефакты, не часть репозитория
+/.worktrees/
+/.zed/
+/paseo.json
+/sbox.tar
+/docs/roi/
