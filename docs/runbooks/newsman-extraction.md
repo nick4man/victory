@@ -6,7 +6,10 @@
 
 Дата анализа: 09.11.26. Состояние: конвейер жив в профиле `conveyor` корневого
 compose на хосте `victory` (cutover 13.10.26, `docs/runbooks/cutover-1.0.md`),
-посты каждые 15 минут, образы `ghcr.io/nick4man/victory-{conveyor,publisher}`.
+образы `ghcr.io/nick4man/victory-{conveyor,publisher}`. Publisher подтверждён
+работающим 11.11.26: контейнер `victory-publisher-1` в аптайме с 02.11.26 23:23
+MSK, `job_publish_due` тикает каждые 5 мин без ошибок (итог окна B —
+`docs/runbooks/cutover-1.0.md`).
 
 ## 1. Что именно выносим
 
@@ -130,7 +133,9 @@ schema initdb (`services/urgent-news-collector/schema` монтируется в
 
 ## 5. Контракты, которые нельзя ломать (п. 4)
 
-Конвейер живой: пост каждые 15 минут. Независимо от выбранной опции:
+Конвейер живой — подтверждено 11.11.26 (контейнер `victory-publisher-1`
+в аптайме, тики `job_publish_due` каждые 5 мин без ошибок). Независимо от
+выбранной опции:
 
 1. **`POST /webhooks/news_ingest`** (Rails-сторона, никуда не уезжает):
    payload с `external_id`, `external_source`, `title`, `body_md`,
@@ -164,12 +169,15 @@ schema initdb (`services/urgent-news-collector/schema` монтируется в
 4. **Публикация в @rznvictory** — `publisher` читает `posts_queue`; токен
    бота в `.env.publisher` (утёк 05.10.26, ротация через @BotFather по
    `docs/runbooks/cutover-1.0.md`, окно B) остаётся на хосте,
-   `CHANNEL_BOT_TOKEN` в новый репо не копируется. Предусловие шага 5:
-   подтверждено, что `/revoke` утёкшего токена выполнен (отметка в
-   cutover-1.0.md: publisher остановлен в ожидании `/revoke`, записи о
-   выполнении нет); если подтверждения нет — выполнить `/revoke` через
-   @BotFather до переключения (getMe этого не докажет: старого токена
-   у нас нет). Контроль: токен принят Bot API — `curl
+   `CHANNEL_BOT_TOKEN` в новый репо не копируется. Угроза утёкшего токена
+   снята: «Токен обновлен» (подтверждение владельца 11.11.26), publisher
+   поднят 02.11.26. Предусловие шага 5: подтверждено, что publisher
+   фактически работает — `docker ps` показывает живой контейнер
+   `victory-publisher-1`, а в его логе идут успешные тики `job_publish_due`
+   (`docker logs victory-publisher-1 --since 30m | grep job_publish_due`).
+   Оговорка про `getMe` остаётся корректной: getMe доказывает валидность
+   токена, но не запуск службы, поэтому как основной контроль он не
+   годится. Контроль: токен принят Bot API — `curl
    "https://api.telegram.org/bot$(grep -E '^CHANNEL_BOT_TOKEN='
    .env.publisher | cut -d= -f2-)/getMe"` вернул `"ok":true`.
 5. **LLM-шлюз omniroute** (chat:20128 по LAN) — адрес и ключи в
