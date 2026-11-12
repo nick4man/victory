@@ -27,14 +27,13 @@ on:
     branches: [main, 'dev/**']
   workflow_dispatch:
 
+# security-events (SARIF → code-scanning) и id-token/attestations (подпись
+# provenance) выданы точечно на уровне джоб — job-level permissions полностью
+# переопределяют workflow-level, поэтому на таких джобах contents/packages
+# продублированы явно.
 permissions:
   contents: read
   packages: write
-  # Grype SARIF → code-scanning alerts
-  security-events: write
-  # provenance-web: OIDC-токен для подписи + запись аттестации
-  id-token: write
-  attestations: write
 
 concurrency:
   group: build-${{ github.workflow }}-${{ github.ref }}
@@ -111,6 +110,11 @@ jobs:
     name: Образ web (+ zeitwerk:check)
     needs: prep
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Grype SARIF → code-scanning alerts
+      security-events: write
     steps:
       - uses: actions/checkout@v7
 
@@ -186,19 +190,38 @@ jobs:
   # Криптоподпись «образ собран этим CI из этого коммита» — supply chain
   # и расследования. Только push: на PR образ в реестр не пушится, дайджеста
   # нет. Digest читаем из реестра (imagetools не тянет слои на раннер);
-  # permissions id-token/attestations — на уровне workflow.
+  # логин в GHCR обязателен — attest-build-provenance с push-to-registry: true
+  # берёт credentials из docker config раннера и пишет аттестацию в реестр.
   provenance-web:
     name: Provenance web
     needs: [prep, web]
     if: needs.prep.outputs.push == '1'
     runs-on: ubuntu-latest
+    permissions:
+      # OIDC-токен для подписи + запись аттестации в реестр (packages)
+      id-token: write
+      attestations: write
+      packages: write
     steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Digest запушенного образа
         id: digest
         env:
           IMAGE: "${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}"
         run: |
-          echo "digest=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Пустой digest для $IMAGE — аттестации не будет"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v4
