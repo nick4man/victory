@@ -54,6 +54,10 @@ module Valuations
     # @return [Integer] total persisted ExternalListing rows across all agencies
     def call
       return 0 unless enabled?
+      # Sitemap-пайплайн парсит только продажи (prompt требует объявление
+      # о продаже), поэтому для rent-оценок сохранили бы продажу с
+      # deal_type='rent' — seeder запускается только для sale (issue #172).
+      return 0 unless @v.deal_type.to_s == 'sale'
 
       config = load_config
       return 0 if config.empty?
@@ -61,6 +65,12 @@ module Valuations
       total_persisted = 0
       config.each do |agency_key, cfg|
         next unless property_type_supported?(cfg)
+        # Sitemap-источники привязаны к городу агентства (см. `city` в
+        # config/agency_sitemaps.yml). Для оценок вне этого города discovery
+        # не просто бесполезен — вреден: рязанские объявления не должны
+        # попадать в аналоги для СПб/Москвы (issue #172). Город subject
+        # неизвестен — запускаем (критерий отсечки — «точно вне города»).
+        next unless agency_covers_subject_city?(cfg)
         next if cached_count(agency_key) >= 5
 
         listings = discover_listings(cfg)
@@ -70,7 +80,7 @@ module Valuations
                  when 'json_ld' then scrape_json_ld(listings, agency_key)
                  else scrape_and_parse(listings, agency_key)
                  end
-        persisted = persist(parsed, agency_key)
+        persisted = persist(parsed, agency_key, cfg)
         total_persisted += persisted
 
         Rails.logger.info(
@@ -84,6 +94,16 @@ module Valuations
     end
 
     private
+
+    def agency_covers_subject_city?(cfg)
+      agency_city = normalize_city(cfg['city'])
+      subject_city = normalize_city(@v.city)
+      agency_city.blank? || subject_city.blank? || agency_city.casecmp?(subject_city)
+    end
+
+    def normalize_city(value)
+      ExternalListing.normalize_city(value)
+    end
 
     # Always enabled — json_ld method не требует API keys; только
     # firecrawl_llm fallback гейтится FIRECRAWL_API_KEY (если используется
@@ -108,23 +128,36 @@ module Valuations
     # Cache по same key как WebsearchCompFinder, но scoped к agency_key
     # через source_id prefix.
     def cached_count(agency_key)
-      ExternalListing
-        .where(source: SOURCE_KIND)
-        .where('source_id LIKE ?', "#{agency_key}:%")
-        .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type)
-        .where(deal_type: @v.deal_type)
-        .where(area: area_bracket_min..area_bracket_max)
-        .where('fetched_at > ?', CACHE_TTL.ago)
-        .where(closed_at: nil)
-        .count
+      scope = ExternalListing
+              .where(source: SOURCE_KIND)
+              .where('source_id LIKE ?', "#{agency_key}:%")
+              .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type)
+              .where(deal_type: @v.deal_type)
+              .where('fetched_at > ?', CACHE_TTL.ago)
+              .where(closed_at: nil)
+      # Участки: тот же source-aware band, что в WebsearchCompFinder#cached_count —
+      # effective сотки через COALESCE(land_area, area) против смешанных
+      # контрактов YRL (м² в area) и websearch/sitemap (сотки в area) (PR #184).
+      if @v.property_type.to_s == 'land'
+        scope.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?',
+                    area_bracket_min, area_bracket_max).count
+      else
+        scope.where(area: area_bracket_min..area_bracket_max).count
+      end
     end
 
     def area_bracket_min
-      (@v.total_area.to_f * 0.75).round(1)
+      # Band кэша в тех же единицах, что площади объявлений источника:
+      # для участков ExternalListing хранит сотки (ревью Kimi, PR #184).
+      (band_area * 0.75).round(1)
     end
 
     def area_bracket_max
-      (@v.total_area.to_f * 1.25).round(1)
+      (band_area * 1.25).round(1)
+    end
+
+    def band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
     end
 
     # Sitemap → sub-sitemaps → listing URLs
@@ -327,7 +360,8 @@ module Valuations
       nil
     end
 
-    def persist(parsed_list, agency_key)
+    def persist(parsed_list, agency_key, cfg = nil)
+      cfg ||= load_config[agency_key] || {}
       count = 0
       parsed_list.each do |p|
         next unless sane?(p)
@@ -350,6 +384,9 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
+          # Город объявления — из парсинга страницы либо из конфига
+          # агентства (issue #172: без city чужие города не отсечь).
+          city:          p[:city].to_s.presence || normalize_city(cfg['city']).presence,
           property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,

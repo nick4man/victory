@@ -28,6 +28,12 @@ module PropertyEvaluation
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room'
     }.freeze
 
+    # Жёсткий потолок расстояния для аналогов: comp дальше 50 км от subject
+    # (при известных координатах обеих сторон) не считается локальным.
+    # Раньше предела не было — в выборку попадали объекты за 100-200 км
+    # и размывали взвешенную медиану (issue #172).
+    MAX_RADIUS_KM = 50
+
     def initialize(valuation)
       @v = valuation
     end
@@ -58,8 +64,30 @@ module PropertyEvaluation
       s = ExternalListing.active.priced.recent(60)
                          .for_deal(@v.deal_type)
                          .for_type(slug)
-                         .area_band(@v.total_area.to_f, tier.area_pct)
-                         .rooms_band(@v.rooms.to_i, tier.rooms_delta)
+      # Комнатность для участков не определена (YRL-записи rooms=NULL,
+      # иначе rooms_band отсекал бы их на уровне SQL) — фильтр только для
+      # строений (регрессионный спек yrl_parser, ревью Kimi r6, PR #184).
+      s = s.rooms_band(@v.rooms.to_i, tier.rooms_delta) unless @v.property_type.to_s == 'land'
+      # Площади land в источниках хранятся по-разному: websearch/большинство
+      # фидов — сотки в area, YRL — дом в м² в area + участок в land_area.
+      # Band для участков считаем по effective соткам (COALESCE), иначе
+      # YRL-аналог с area=800 м² отсекался бы band 6.8–9.2 (ревью Kimi,
+      # PR #184). Для остальных типов — обычный area_band по м².
+      if @v.property_type.to_s == 'land'
+        lo = external_band_area * (1 - tier.area_pct)
+        hi = external_band_area * (1 + tier.area_pct)
+        s = s.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?', lo, hi)
+      else
+        s = s.area_band(external_band_area, tier.area_pct)
+      end
+      # ExternalListing хранит город источника (issue #172): для
+      # subject с известным городом чужие города отсекаем на уровне SQL.
+      # NULL city (legacy avito/cian из websearch) в выборку не попадают —
+      # происхождение неизвестно, доверять ему для чужого города нельзя.
+      # LOWER() — чтобы совпадали и 'Рязань', и 'рязань' (нормализация
+      # регистра в writers не трогает уже сохранённые данные).
+      subject_city = normalized_subject_city
+      s = s.where('LOWER(city) = ?', subject_city.downcase) if subject_city.present?
       apply_geo(s, tier).limit(50)
     end
 
@@ -152,6 +180,12 @@ module PropertyEvaluation
       records.filter_map do |r|
         pps = compute_pps(r)
         next nil if pps <= 0
+        dist = distance_km_to(r)
+        # Город и радиус — hard gates ДО взвешивания: сюда попадают comps
+        # из property/mls scopes, где apply_geo на tier 3/4 может пропустить
+        # чужой город/дальний объект (issue #172).
+        next nil unless same_city?(r, dist)
+        next nil if dist && dist > MAX_RADIUS_KM
 
         if apply_size_filter
           area = r.try(:area).to_f
@@ -159,11 +193,50 @@ module PropertyEvaluation
           next nil unless area.between?(band_min, band_max)
         end
 
-        dist = distance_km_to(r)
         { record: r, price_per_sqm: pps, distance_km: dist,
           weight: dist ? 1.0 / (1.0 + dist) : 0.5,
-          source: source_label(r) }
+          source: source_label(r) }.tap do |comp|
+          # Land-объявления: effective сотки в разных колонках по источнику —
+          # websearch хранит сотки в area, YRL — дом в м² в area + участок
+          # в land_area. Estimator нормализован к ₽/м² (subject_area участка
+          # = land_area × 100); без перевода comp смешивал бы ₽/сотку с
+          # ₽/м² и цена участка искажалась на порядки (ревью Kimi, PR #184).
+          if @v.property_type.to_s == 'land' && r.is_a?(ExternalListing)
+            sotki = r.land_area.to_f.positive? ? r.land_area : r.area
+            area_sqm = sotki.to_f * 100
+            comp[:area] = area_sqm
+            comp[:price_per_sqm] = (r.price.to_f / area_sqm).round if area_sqm.positive?
+          end
+        end
       end.sort_by { |c| c[:distance_km] || Float::INFINITY }
+    end
+
+    # Площадь subject в ЕДИНИЦАХ ХРАНЕНИЯ источника: ExternalListing хранит
+    # land-площади в сотках (парсер площадок), каталог/MLS — в м². Band
+    # должен быть в тех же единицах, что area записей источника.
+    def external_band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
+    end
+
+    # Город subject vs город comp'а. Fail-close в обе стороны:
+    # - пустой город subject — локальность подтверждает только расстояние
+    #   ≤ MAX_RADIUS_KM; без координат у любой из сторон comp не локален
+    #   (websearch-записи без координат иначе проходили по кругу через
+    #   guess_city → Рязань, issue #172, правки по ревью Kimi);
+    # - пустой город comp'а — то же правило;
+    # - оба города известны — case-insensitive совпадение.
+    def same_city?(record, distance_km = nil)
+      subject_city = normalized_subject_city
+      return distance_km.present? && distance_km <= MAX_RADIUS_KM if subject_city.blank?
+
+      record_city = ExternalListing.normalize_city(record.city)
+      return distance_km.present? && distance_km <= MAX_RADIUS_KM if record_city.blank?
+
+      record_city.casecmp?(subject_city)
+    end
+
+    def normalized_subject_city
+      @normalized_subject_city ||= ExternalListing.normalize_city(@v.city)
     end
 
     # Label источника по record class. Используется downstream'ом

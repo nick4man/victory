@@ -44,6 +44,11 @@ module Valuations
     # return value, but log line gives observability.
     def call
       return 0 unless enabled?
+      # Пайплайн ищет и парсит ТОЛЬКО продажу: build_query жёстко добавляет
+      # «продажа», prompt требует объявление о продаже. Для rent-оценок
+      # продажа сохранилась бы с deal_type='rent' и попала бы в выборку
+      # аренды (issue #172, правки по ревью Kimi).
+      return 0 unless @v.deal_type.to_s == 'sale'
 
       cached = cached_count
       if cached >= 5
@@ -82,21 +87,44 @@ module Valuations
     end
 
     def area_bracket_min
-      (@v.total_area.to_f * 0.75).round(1)
+      # Band кэша в тех же единицах, что площади объявлений источника:
+      # для участков ExternalListing хранит сотки (ревью Kimi, PR #184).
+      (band_area * 0.75).round(1)
     end
 
     def area_bracket_max
-      (@v.total_area.to_f * 1.25).round(1)
+      (band_area * 1.25).round(1)
+    end
+
+    def band_area
+      @v.property_type.to_s == 'land' ? @v.land_area.to_f : @v.total_area.to_f
     end
 
     def cached_count
-      ExternalListing
-        .where(property_type: @v.property_type, deal_type: @v.deal_type)
-        .where(district: @v.district.presence || nil)
-        .where(area: area_bracket_min..area_bracket_max)
-        .where('fetched_at > ?', CACHE_TTL.ago)
-        .where(closed_at: nil)
-        .count
+      scope = ExternalListing
+              .where(property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type,
+                     deal_type: @v.deal_type)
+              .where(district: @v.district.presence || nil)
+              .where('fetched_at > ?', CACHE_TTL.ago)
+              .where(closed_at: nil)
+      # Участки: в источниках смешаны два контракта площади — websearch хранит
+      # сотки в area, YRL — дом в м² в area + участок в сотках в land_area.
+      # Band кэша считаем по effective соткам (COALESCE), иначе YRL-записи
+      # давали бы вечный cache miss (ревью Kimi, PR #184).
+      scope = if @v.property_type.to_s == 'land'
+                scope.where('COALESCE(NULLIF(land_area, 0), area) BETWEEN ? AND ?',
+                            area_bracket_min, area_bracket_max)
+              else
+                scope.where(area: area_bracket_min..area_bracket_max)
+              end
+      # Тот же city-gate, что в ComparableFinder (issue #172): свежие записи
+      # другого города не должны давать cache hit, иначе свежий поиск
+      # (tavily, платный) пропускаем, а ComparableFinder отбросит все
+      # закэшированные записи — локальные аналоги не запросятся до конца TTL
+      # (замечание из ревью PR #177).
+      city = ExternalListing.normalize_city(@v.city)
+      scope = scope.where('LOWER(city) = ?', city.downcase) if city.present?
+      scope.count
     end
 
     def tavily_search
@@ -111,7 +139,13 @@ module Valuations
       }
       city = @v.city.presence || guess_city || 'Рязань'
       district = @v.district.presence
-      area_part = @v.total_area.to_f.positive? ? "#{@v.total_area.to_i} м²" : nil
+      area_part = if @v.property_type.to_s == 'land'
+                    # Площадь участков — в сотках (как в comp-домене):
+                    # «участок 8 м²» искажал Tavily-запрос (ревью Kimi, PR #184).
+                    @v.land_area.to_f.positive? ? "участок #{@v.land_area.to_i} соток" : nil
+                  elsif @v.total_area.to_f.positive?
+                    "#{@v.total_area.to_i} м²"
+                  end
       rooms_part = @v.rooms.to_i.positive? ? "#{@v.rooms}-комн" : nil
 
       [
@@ -166,7 +200,8 @@ module Valuations
         "building_year":  int (если есть; иначе 0),
         "condition":      "needs_repair" | "average" | "good" | "excellent" | "designer" | "",
         "district":       "название района если упоминается, иначе пустая строка",
-        "address":        "уличный адрес если есть"
+        "address":        "уличный адрес если есть",
+        "city":           "город объявления если однозначно следует из текста (адрес, шапка), иначе пустая строка"
       }
 
       Если объявление не о продаже / закрыто / архив — верни {"price": 0}.
@@ -195,8 +230,24 @@ module Valuations
 
     def persist(parsed_list)
       count = 0
+      subject_city = ExternalListing.normalize_city(@v.city)
+
       parsed_list.each do |p|
         next unless sane?(p)
+
+        # Город — только из карточки объявления, а не из subject'а оценки:
+        # Tavily может вернуть объект чужого города, и приписывание ему
+        # города subject'а снова воспроизвело бы #172 (объявление стало бы
+        # «локальным» и обошло бы AI-фильтр через AUTO_KEPT_SOURCES).
+        card_city = ExternalListing.normalize_city(p[:city])
+        if subject_city.present? && card_city.blank?
+          Rails.logger.info("[Websearch] skip listing without confirmed city: #{p[:source_url]}")
+          next
+        end
+        if card_city.present? && subject_city.present? && !card_city.casecmp?(subject_city)
+          Rails.logger.info("[Websearch] skip non-local listing #{p[:source_url]}: city #{card_city} != #{subject_city}")
+          next
+        end
 
         # ExternalListing::KINDS = %w[yandex_yrl avito cian topnlab_mls].
         # Map domain → kind. Если домен не в whitelist (например, какой-то
@@ -228,6 +279,11 @@ module Valuations
           condition:     p[:condition].to_s.presence,
           district:      (p[:district].to_s.presence || @v.district.to_s.presence),
           address:       p[:address].to_s.presence,
+          # Город подтверждает карточка (выше гейтит mismatch/пустоту);
+          # городом subject'а здесь ничего не дописываем — иначе повторная
+          # оценка другого города перенесла бы запись в чужую выборку
+          # (issue #172, правки по ревью).
+          city:          resolve_city(el, card_city),
           property_type: REALTY_TYPE_TO_SLUG[@v.property_type.to_s] || @v.property_type.to_s,
           deal_type:     @v.deal_type,
           raw_payload:   p,
@@ -240,6 +296,15 @@ module Valuations
         end
       end
       count
+    end
+
+    # Город записи: карточка > уже сохранённое у существующей записи >
+    # nil (subject без города — локальность не заявлена, finder решит сам).
+    def resolve_city(record, card_city)
+      return card_city if card_city.present?
+      return record.city if record.persisted? && record.city.present?
+
+      nil
     end
 
     # Sanity-bounds: avoid garbage из LLM parsing — price 100k–1B ₽,

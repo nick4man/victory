@@ -42,6 +42,13 @@ module ChatTools
             «Назовите адрес, общую площадь, число комнат, этаж и состояние
             ремонта». НЕ эскалируй на человека. НЕ отправляй на
             /valuations/new. Собери в диалоге и вызови тул.
+
+            Если в ответе low_coverage: true — по городу объекта в нашей
+            базе мало аналогов, оценка ориентировочная. Обязательно
+            предупреди об этом пользователя своими словами («по этому
+            городу данных мало, цифра ориентировочная, точную оценку даст
+            специалист») и предложи оставить заявку на оценку. НЕ подавай
+            цену как точную рыночную.
           DESC
           parameters: {
             type: 'object',
@@ -160,6 +167,9 @@ module ChatTools
         confidence_level:  result[:confidence_level].to_f,
         tier:              result[:tier].to_i,
         comparables_count: Array(result[:comparables]).size,
+        # Нет локальных аналогов (issue #172) — бот обязан озвучить
+        # ориентировочность оценки, см. description в .schema.
+        low_coverage:      result[:low_coverage] == true,
         ai_summary:        result[:ai_summary].to_s.truncate(600)
       }
     end

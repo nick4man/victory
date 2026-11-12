@@ -17,9 +17,10 @@ module Llm
   class ChatResponder
     ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 
-    def initialize(conversation, runner: Llm::ToolRunner.new)
-      @conv   = conversation
-      @runner = runner
+    def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
+      @conv     = conversation
+      @runner   = runner
+      @page_ctx = page_ctx # снимок страницы на момент вопроса (см. LlmReplyJob)
     end
 
     def call
@@ -42,8 +43,16 @@ module Llm
     # block — page context can change as the visitor navigates, so we don't
     # cache it.
     def full_system_prompt
-      page_block = Llm::PageContext.block(@conv.metadata.is_a?(Hash) ? @conv.metadata['page'] : nil)
+      page_block = Llm::PageContext.block(current_page_ctx)
       [security_preamble, page_block, system_prompt].reject(&:blank?).join("\n\n")
+    end
+
+    private
+
+    # Снимок сообщения в приоритете — иначе последний известный контекст
+    # переписки (покрывает старые job и приветствие без сообщений).
+    def current_page_ctx
+      @page_ctx || (@conv.metadata.is_a?(Hash) ? @conv.metadata['page'] : nil)
     end
 
     def security_preamble
@@ -85,7 +94,7 @@ module Llm
     # catalog and team. Cached for 5 min to avoid hammering the DB on
     # every visitor message.
     def system_prompt
-      Rails.cache.fetch('llm/system_prompt/v8_investment_audit', expires_in: 5.minutes) do
+      Rails.cache.fetch('llm/system_prompt/v10_mortgage_programs_unavailable', expires_in: 5.minutes) do
         cities    = Property.on_site.where.not(district: nil)
                             .group(:district).count.sort_by { |_, n| -n }.first(10).map(&:first).compact
         services  = (ServiceType.public_visible.active.ordered.pluck(:title) rescue [])
@@ -115,7 +124,8 @@ module Llm
           • `find_in_district_polygon` — точный поиск в гео-полигоне района (если загружен; иначе fallback на текст).
           • `run_investment_audit` — запускает Investment Audit (EI cash/ипотека/депозит, Monte Carlo, вердикт BUY/WAIT/NEUTRAL) для конкретного объекта. Используй ВСЕГДА когда пользователь на странице объекта спрашивает «стоит ли купить», «окупится ли», «инвест-выгода», «ROI», «сравни с депозитом». Возвращает `audit_url` — оформи его как markdown-ссылку и попроси пользователя открыть. НЕ обещай вердикт до того как он откроет отчёт.
           • `estimate_property_valuation` — экспресс-оценка стоимости объекта пользователя (квартира/дом/участок/комната/коммерция/гараж) по адресу, площади и характеристикам. Используй когда пользователь спрашивает «сколько стоит моя/мой ...», «оцените ...», «какая рыночная цена ...», «во сколько оценить». Обязательные параметры: property_type, address, total_area. Если чего-то не хватает — задай ОДИН уточняющий вопрос («Назовите адрес, общую площадь, число комнат, этаж и состояние ремонта»), затем вызывай тул. Возвращает estimated_price, вилку min/max, ai_summary и result_url — оформи как markdown-ссылку «[Открыть полный отчёт](result_url)». НЕ путать с run_investment_audit (тот для объектов каталога). НЕ эскалируй на человека для запросов оценки.
-          • `calculate_mortgage` — расчёт ипотеки (платёж, переплата, программы банков). Используй когда пользователь спрашивает про ипотеку, кредит, ежемесячный платёж, программы.
+          • `calculate_mortgage` — расчёт ипотеки (ежемесячный платёж, переплата, ссылка на калькулятор). Используй когда спрашивают «сколько платить в месяц», «потяну ли ипотеку». Если до этого вызывал list_mortgage_programs — передавай rate = rate_min выбранной программы.
+          • `list_mortgage_programs` — подбор актуальных ипотечных программ банков (семейная, IT, господдержка, Дальний Восток, военная, рыночная). Используй ВСЕГДА когда пользователь спрашивает про ипотечные программы, ставки/условия банков, «что подойдёт семье с детьми», «IT-ипотека», «военная ипотека», «Дальний Восток». Подбор по ситуации: дети → `family_mortgage`, IT → `it_mortgage`, военный → `military_mortgage`, ДФО → `far_east_mortgage`, без льгот — без параметра. Если известны цена и первый взнос — затем посчитай платёж через calculate_mortgage по ставке программы. НЕ эскалируй на агента по этим вопросам. Исключение: если инструмент вернул error `programs_unavailable` — честно скажи, что каталог банков временно недоступен, и предложи помощь агента.
           • `get_landing_content` — экспертный SEO-текст по району Рязани (жилфонд, инфраструктура, транспорт, цены, FAQ). Используй когда пользователь спрашивает про конкретный район — «расскажи про Канищево», «что за район Дашково-Песочня», «инфраструктура центра».
 
           ТИПЫ ОБЪЕКТОВ — ОЧЕНЬ ВАЖНО
@@ -166,11 +176,13 @@ module Llm
           • Запрос показа объекта, переговоры о цене, нестандартные условия сделки.
           • Юридическая консультация, налоги, спорные ситуации.
           • Пользователь оставил телефон/email и готов к разговору.
+          • `list_mortgage_programs` вернул error `programs_unavailable` (каталог банков временно недоступен) — честно сообщи об этом и предложи помощь агента.
 
           НЕ ЭСКАЛИРУЙ если можешь сделать сам инструментом:
           • «Оцените мою квартиру / дом / участок» → `estimate_property_valuation` (спроси недостающие поля и вызови тул).
           • «Найдите мне ...» / «Подбор квартиры» → `search_properties` или `semantic_search`.
           • «Сколько ипотека на ...» → `calculate_mortgage`.
+          • «Какие ипотечные программы есть» / «что подойдёт семье с детьми» / «IT-ипотека» / «военная ипотека» / «ставки банков» / «условия банков» → `list_mortgage_programs` (затем при наличии цены и взноса — calculate_mortgage по ставке программы).
           • «Расскажи про район ...» → `get_landing_content`.
           • «Стоит ли купить ...» (на странице объекта или с slug) → `run_investment_audit`.
           Эскалация на человека для перечисленных запросов — ошибка. Сначала всегда пытайся ответить инструментом.

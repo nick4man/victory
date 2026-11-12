@@ -13,6 +13,10 @@
 
 cian_961:
   name: "ЦАН (Центральное АН Рязань) — 961-961.ru"
+  # Город агентства — SitemapCompFinder не запускает discovery для оценок
+  # вне этого города, а persist проставляет его в ExternalListing.city
+  # (issue #172: рязанские аналоги не должны попадать в оценки СПб/Москвы).
+  city: "Рязань"
   base_url: "https://961-961.ru"
   sitemap_index_url: "https://961-961.ru/sitemap.xml"
   # Все sub-sitemap'ы внутри index имеют формат sitemap-iblock-N.xml

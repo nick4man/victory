@@ -4,6 +4,8 @@ module Chat
   # Singleton conversation per visitor (one open conversation per browser cookie).
   # Anonymous visitors are identified by the signed visitor_token cookie.
   class ConversationsController < ApplicationController
+    include Chat::PageContextParams
+
     skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
 
     # GET /chat/conversation[?page[path]=&page[title]=&page[query]=&page[referrer]=]
@@ -52,26 +54,8 @@ module Chat
       )
     end
 
-    # Page payload from widget: { path:, query:, title:, referrer: }
-    # Sanitised and length-capped — visitor-controlled, never trust raw values.
-    def extract_page_params
-      raw = params[:page]
-      return nil unless raw.respond_to?(:to_unsafe_h) || raw.is_a?(Hash)
-      raw = raw.to_unsafe_h if raw.respond_to?(:to_unsafe_h)
-      ctx = {
-        'path'     => raw['path'].to_s[0, 500].presence,
-        'query'    => raw['query'].to_s[0, 500].presence,
-        'title'    => raw['title'].to_s[0, 200].presence,
-        'referrer' => raw['referrer'].to_s[0, 500].presence
-      }.compact
-      ctx.presence
-    end
-
-    def stamp_page(conv, page_ctx)
-      meta = conv.metadata.is_a?(Hash) ? conv.metadata.dup : {}
-      meta['page'] = page_ctx
-      conv.update_columns(metadata: meta) if conv.metadata != meta
-    end
+    # extract_page_params / stamp_page — в консерне Chat::PageContextParams
+    # (общий с Chat::MessagesController, который шлёт page с каждым сообщением).
 
     def serialize(conv)
       {
