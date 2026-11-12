@@ -71,6 +71,21 @@ RSpec.describe CrmCards::Workflow do
       expect(workflow.update_fields!(card, { 'name' => 'Пётр' }, actor: petr).error).to include('ведёт @irina')
     end
 
+    # Регресс ревью #94: new_record? в can_edit? пропускал любого с create_lead —
+    # карточку можно было завести по лиду, назначенному другому сотруднику.
+    it 'чужой назначенный лид — отказ, карточка не создана' do
+      petr = crm_staff(tg_user_id: 98_705, username: 'petr')
+
+      result = workflow.upsert_lead_card!(lead: lead, actor: petr, values: values)
+
+      expect(result.error).to include('ведёт @irina')
+      expect(CrmCard.count).to eq(0)
+    end
+
+    it 'модератор может завести карточку по назначенному лиду' do
+      expect(workflow.upsert_lead_card!(lead: lead, actor: director, values: values)).to be_ok
+    end
+
     it 'автор, у которого забрали лид, карточку больше не отправляет — отправляет новый ответственный' do
       card = filled_card
       petr = crm_staff(tg_user_id: 98_706, username: 'petr')

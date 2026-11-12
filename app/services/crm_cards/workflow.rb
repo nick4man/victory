@@ -180,7 +180,10 @@ module CrmCards
       return false unless CrmCard::AUTHOR_EDITABLE.include?(card.status)
       return true if perms.can?(:moderate)
 
-      perms.can?("create_#{card.kind}") && (card.new_record? || card.responsible&.id == actor.id)
+      # Ответственный известен и для новой карточки — CrmCard#responsible
+      # резолвится через lead_event.assigned_to. «new_record? ⇒ можно любому»
+      # позволяло завести карточку по чужому назначенному лиду (ревью #94).
+      perms.can?("create_#{card.kind}") && card.responsible&.id == actor.id
     end
 
     def edit_denial(card, perms)
