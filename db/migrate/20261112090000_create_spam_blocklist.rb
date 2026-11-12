@@ -17,6 +17,7 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
       t.integer  :hits,       null: false, default: 0        # suspect: счётчик срабатываний
       t.jsonb    :hit_tokens, null: false, default: []       # последние {ip, vt, at} — кворум по IP
       t.datetime :last_hit_at
+      t.datetime :seen_at                                      # последний синк-прогон, где ключ был в фиде (протухание)
       t.datetime :blocked_at                                 # момент перехода suspect → blocked
       t.datetime :deleted_at
       t.timestamps
@@ -26,6 +27,9 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
               name: 'idx_spam_blocked_entries_type_value'
     add_index :spam_blocked_entries, :deleted_at
     add_index :spam_blocked_entries, %i[status entry_type]
+    # протухание идёт set-based запросом по свежести seen_at внутри источников
+    add_index :spam_blocked_entries, %i[source seen_at],
+              where: 'deleted_at IS NULL'
 
     # Популярные белые домены (Tranco Top-10k, синкается cron'ом): эвристикам
     # нельзя автоблочить корень t.me/youtube.com — только конкретный путь.

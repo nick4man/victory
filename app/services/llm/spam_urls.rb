@@ -48,7 +48,6 @@ module Llm
       s = s.gsub(/\s+/, '')
       s = s.sub(%r{\Awww\.}i, '')
       s = s.sub(%r{/+\z}, '')
-      return nil unless s.include?('.')
 
       authority, path = s.split('/', 2)
       authority = authority.to_s
@@ -56,10 +55,17 @@ module Llm
       # обходил blocked-домен, превращаясь в «user@botmasterru.com»
       authority = authority.split('@', 2).last if authority.include?('@')
       authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
-      authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
       authority = authority.downcase
+      # IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — точки ДО IDNA:
+      # иначе «botmasterru。com» уходил в punycode-лейбл и проверку на '.'
+      # проходил мимо, не сматчив blocked-домен
+      authority = authority.tr('。．｡', '...')
+      authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
+      return nil unless authority.include?('.')
+
       host = Addressable::IDNA.to_ascii(authority)
       return nil if host.empty? || host.length > 253
+      host = host.sub(/\.\z/, '')
 
       { host: host, path: path.present? ? "/#{path}" : nil }
     rescue StandardError

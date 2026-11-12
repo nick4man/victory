@@ -25,7 +25,12 @@ module Llm
 
     # @return [Result] action: :drop | :pass; reason: :spam_ip | :spam_link
     def classify(text, ip:, visitor_token:)
-      return Result.new(action: :drop, reason: :spam_ip) if SpamBlockedEntry.ip_blocked?(ip)
+      if SpamBlockedEntry.ip_blocked?(ip)
+        # ссылки фиксируем до тихого дропа: suspect от спам-IP — это
+        # подтверждение (issue #219: связка с IP из ipsum повышает карантин)
+        promote_suspects_from(text)
+        return Result.new(action: :drop, reason: :spam_ip)
+      end
 
       urls = Llm::SpamUrls.extract(text).filter_map { |raw| Llm::SpamUrls.normalize(raw) }
       return Result.new(action: :pass) if urls.empty?
@@ -39,13 +44,35 @@ module Llm
           blocked << entry
           next
         end
-        SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token) if entry
-        quarantine(url, ip: ip, visitor_token: visitor_token) if heuristic
+        # hit считаем ровно раз: при эвристике карантин учтёт срабатывание
+        # сам, без эвристики — учитываем найденную suspect-запись напрямую
+        if heuristic
+          quarantine(url, ip: ip, visitor_token: visitor_token)
+        elsif entry
+          SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token)
+        end
       end
 
       return Result.new(action: :drop, reason: :spam_link, matches: blocked) if blocked.any?
 
       Result.new(action: :pass)
+    end
+
+    # suspect-записи (домен и точный URL) из сообщения от спам-IP повышаем
+    # до blocked без LLM и без ответа отправителю
+    def promote_suspects_from(text)
+      urls = Llm::SpamUrls.extract(text).filter_map { |raw| Llm::SpamUrls.normalize(raw) }
+      return if urls.empty?
+
+      now = Time.current
+      urls.each do |url|
+        SpamBlockedEntry.where(entry_type: :domain, value: url[:host], status: :suspect)
+                        .update_all(status: 'blocked', blocked_at: now, updated_at: now)
+        next if url[:path].blank?
+
+        SpamBlockedEntry.where(entry_type: :url, value: "#{url[:host]}#{url[:path]}", status: :suspect)
+                        .update_all(status: 'blocked', blocked_at: now, updated_at: now)
+      end
     end
 
     # Эвристические признаки спама вокруг ссылок: стоп-слова, обфускация
@@ -71,7 +98,13 @@ module Llm
       known = SpamAllowlistEntry.allowlisted?(host) ||
               SpamBlockedEntry.exists?(entry_type: :domain, value: host)
       if known
-        return if url[:path].blank?
+        if url[:path].blank?
+          # класть в карантин нечего, но срабатывание эвристики учитываем:
+          # иначе кворум по IP не набирался бы для pathless-ссылок
+          entry = SpamBlockedEntry.find_by(entry_type: :domain, value: host)
+          SpamBlockedEntry.record_hit!(entry, ip: ip, visitor_token: visitor_token)
+          return
+        end
 
         upsert_suspect(:url, "#{host}#{url[:path]}", ip: ip, visitor_token: visitor_token)
       else

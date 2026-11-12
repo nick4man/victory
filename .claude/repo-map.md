@@ -4477,26 +4477,6 @@ def mask_name(name)
 def self.intake!(uploader:, kind:, tg_chat_id:, tg_message_id:, tg_file_id:)
 </file>
 
-<file path="app/models/conversation.rb">
-class Conversation < ApplicationRecord
-belongs_to :user, optional: true
-belongs_to :assigned_user, class_name: 'User', optional: true
-has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
-⋮----
-enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
-⋮----
-scope :for_visitor, ->(token) { where(visitor_token: token) }
-scope :open_state, -> { where(status: %i[active escalated]) }
-⋮----
-PER_MSG_CHAR_CAP = 1000
-⋮----
-def history_for_llm(limit: 30)
-⋮----
-def escalate!(reason: nil)
-⋮----
-def display_name
-</file>
-
 <file path="app/models/crm_report.rb">
 class CrmReport < ApplicationRecord
 TEMPLATE_CLASSES = %w[CrmReports::InventoryPdf CrmReports::SellerPresentation].freeze
@@ -8819,18 +8799,6 @@ def self.for_ref(ref)
 def self.call(lead_event)
 </file>
 
-<file path="app/services/llm/spam_feeds/zip.rb">
-module Llm
-module SpamFeeds
-⋮----
-module Zip
-LOCAL_HEADER_SIG = "PK\u0003\u0004".b
-⋮----
-module_function
-⋮----
-def first_file(data)
-</file>
-
 <file path="app/services/llm/intent_classifier.rb">
 module Llm
 ⋮----
@@ -10180,6 +10148,25 @@ class WipStub < Base
 def handle
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/wizard_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class WizardCallback < Base
+def handle
+⋮----
+private
+⋮----
+def engine
+⋮----
+def start(flow_key, seed_id)
+⋮----
+def answer(outcome)
+⋮----
+def in_private_chat?
+</file>
+
 <file path="app/services/telegram/work_bot/commands/assign.rb">
 module Telegram
 module WorkBot
@@ -10698,6 +10685,66 @@ def escape(text)
 def skip(reason)
 </file>
 
+<file path="app/services/telegram/work_bot/wizard/flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Flow
+Step = Struct.new(:id, :kind, :prompt, :hint, :options, :quick, :manual,
+⋮----
+attr_reader :key, :title
+⋮----
+def flow(key, title)
+⋮----
+def manager_only(val = true)
+⋮----
+def manager_only?
+⋮----
+attr_reader :tg_user, :ctx, :client
+⋮----
+def initialize(tg_user:, ctx: {}, client: Telegram::Client.new)
+⋮----
+def steps
+⋮----
+def skip?(_step)
+⋮----
+def accept(_step, value, manual: false)
+⋮----
+def gate
+⋮----
+def finish
+⋮----
+protected
+⋮----
+def escape_html(text)
+⋮----
+def manager?
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module LeadPicking
+RECENT_LIMIT = 5
+⋮----
+def lead_step
+⋮----
+def lead
+⋮----
+def accept_lead(value)
+⋮----
+def lead_gate
+⋮----
+private
+⋮----
+def recent_leads
+⋮----
+def lead_label(lead)
+</file>
+
 <file path="app/services/telegram/work_bot/anchor_migrator.rb">
 module Telegram
 module WorkBot
@@ -10833,6 +10880,21 @@ def call
 "• tg_id: <code>#{tu.tg_user_id}</code>\n\n" \
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks_router.rb">
+module Telegram
+module WorkBot
+⋮----
+class CallbacksRouter
+⋮----
+PREFIX_MAP = {
+⋮----
+def initialize(callback_query, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
 </file>
 
 <file path="app/services/telegram/work_bot/cheatsheet_renderer.rb">
@@ -13694,6 +13756,26 @@ def awake?
 def notify(chat_id, thread_id, text)
 </file>
 
+<file path="app/models/conversation.rb">
+class Conversation < ApplicationRecord
+belongs_to :user, optional: true
+belongs_to :assigned_user, class_name: 'User', optional: true
+has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
+⋮----
+enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
+⋮----
+scope :for_visitor, ->(token) { where(visitor_token: token) }
+scope :open_state, -> { where(status: %i[active escalated]) }
+⋮----
+PER_MSG_CHAR_CAP = 1000
+⋮----
+def history_for_llm(limit: 30)
+⋮----
+def escalate!(reason: nil)
+⋮----
+def display_name
+</file>
+
 <file path="app/models/crm_card_transition.rb">
 class CrmCardTransition < ApplicationRecord
 belongs_to :crm_card, inverse_of: :transitions
@@ -13797,40 +13879,6 @@ class PropertyValuationEmbedding < ApplicationRecord
 has_neighbors :embedding
 ⋮----
 belongs_to :property_valuation
-</file>
-
-<file path="app/models/spam_allowlist_entry.rb">
-class SpamAllowlistEntry < ApplicationRecord
-default_scope { not_deleted }
-scope :not_deleted, -> { where(deleted_at: nil) }
-⋮----
-validates :domain, presence: true
-⋮----
-def self.allowlisted?(domain)
-</file>
-
-<file path="app/models/spam_blocked_entry.rb">
-class SpamBlockedEntry < ApplicationRecord
-⋮----
-QUORUM = 3
-HIT_WINDOW = 24.hours
-HIT_KEYS_CAP = 20
-CIDR_CACHE_KEY = 'spam_blocked_cidrs'
-CIDR_CACHE_TTL = 1.hour
-⋮----
-enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
-enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
-⋮----
-default_scope { not_deleted }
-scope :not_deleted, -> { where(deleted_at: nil) }
-⋮----
-validates :value, presence: true
-⋮----
-def self.ip_blocked?(ip)
-⋮----
-def self.find_block_for(host:, path: nil)
-⋮----
-def self.record_hit!(entry, key:)
 </file>
 
 <file path="app/services/chat_tools/list_mortgage_programs.rb">
@@ -14020,40 +14068,16 @@ def field(kind, key)
 def option_label(field, value)
 </file>
 
-<file path="app/services/llm/spam_feeds/sync_job.rb">
+<file path="app/services/llm/spam_feeds/zip.rb">
 module Llm
 module SpamFeeds
 ⋮----
-class SyncJob < ApplicationJob
-queue_as :low_priority
+module Zip
+LOCAL_HEADER_SIG = "PK\u0003\u0004".b
 ⋮----
-URL_FEEDS = %w[phishing_links urlhaus].freeze
-DOMAIN_FEEDS = {
+module_function
 ⋮----
-IP_FEEDS = {
-⋮----
-ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
-ALLOWLIST_TOP = 10_000
-⋮----
-ALLOWLIST_MIN_ROWS = 9_000
-⋮----
-def perform
-⋮----
-private
-⋮----
-def sync_list(url, source, default_type, status: :blocked)
-⋮----
-def normalize_entry(default_type, token)
-⋮----
-# insert_all новых + догон status'ом существующие (suspect → blocked,
-⋮----
-def upsert_batch(source, keys, status)
-⋮----
-def retire_missing(source, keys)
-⋮----
-def sync_allowlist
-⋮----
-def fetch(url)
+def first_file(data)
 </file>
 
 <file path="app/services/llm/omni_client.rb">
@@ -14102,52 +14126,6 @@ def redis_connection
 require 'redis' unless defined?(Redis)
 </file>
 
-<file path="app/services/llm/spam_filter.rb">
-module Llm
-⋮----
-module SpamFilter
-STOP_WORDS = [
-⋮----
-Result = Struct.new(:action, :reason, :matches, keyword_init: true)
-⋮----
-module_function
-⋮----
-def classify(text, ip:, visitor_token:)
-⋮----
-def heuristic_hit?(text, urls)
-⋮----
-def quarantine(url, key:)
-⋮----
-def upsert_suspect(entry_type, value, key)
-</file>
-
-<file path="app/services/llm/spam_urls.rb">
-module Llm
-⋮----
-module SpamUrls
-SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^\s<>"']+}i
-# «голый» хост латиницей с необязательным путём. Кириллица в regex
-# намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
-# как домен и улетал в карантин.
-BARE_HOST_RE = %r{\b[a-z0-9](?:[a-z0-9-]{0,61}\.)+[a-z]{2,24}(?:/[^\s<>"']*)?}i
-# разделённые пробелами домены («botmasterru .com») — типовая обфускация.
-# Одна точка тоже матчится (группа в середине — *): иначе «botmasterru .com»
-# не дотянул бы до обязательной «внутренней» точки.
-SPACED_HOST_RE = /\b[a-z0-9][a-z0-9-]{0,61}(?:\s?\.\s?[a-z0-9-]{1,61})*\s?\.\s?[a-z]{2,24}\b/i
-TRAILING_PUNCT = /[.,!?;:)\]}"']+\z/
-⋮----
-module_function
-⋮----
-def extract(text)
-⋮----
-# @param raw [String]
-# @return [Hash, nil] { host:, path: } — host в punycode-lowercase,
-#   path без query/якоря, nil если вход не похож на URL
-def normalize(raw)
-⋮----
-host = host.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
-</file>
-
 <file path="app/services/sandbox/codespace.rb">
 module Sandbox
 ⋮----
@@ -14180,25 +14158,6 @@ def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
 def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
 ⋮----
 def request(req)
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks/wizard_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class WizardCallback < Base
-def handle
-⋮----
-private
-⋮----
-def engine
-⋮----
-def start(flow_key, seed_id)
-⋮----
-def answer(outcome)
-⋮----
-def in_private_chat?
 </file>
 
 <file path="app/services/telegram/work_bot/commands/menu.rb">
@@ -14249,79 +14208,54 @@ def summary
 def without_comments(text)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/flow.rb">
+<file path="app/services/telegram/work_bot/wizard/menu.rb">
 module Telegram
 module WorkBot
 module Wizard
 ⋮----
-class Flow
-Step = Struct.new(:id, :kind, :prompt, :hint, :options, :quick, :manual,
+module Menu
+module_function
 ⋮----
-attr_reader :key, :title
+def text(_tg_user)
 ⋮----
-def flow(key, title)
+def keyboard(tg_user)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
 ⋮----
-def manager_only(val = true)
+class TaskFlow < Flow
+include LeadPicking
 ⋮----
-def manager_only?
+flow 'task', 'Задача с дедлайном'
 ⋮----
-attr_reader :tg_user, :ctx, :client
-⋮----
-def initialize(tg_user:, ctx: {}, client: Telegram::Client.new)
+TITLE_MAX = 255
 ⋮----
 def steps
 ⋮----
-def skip?(_step)
-⋮----
-def accept(_step, value, manual: false)
+def skip?(step)
 ⋮----
 def gate
 ⋮----
+def accept(step, value, manual: false)
+⋮----
 def finish
-⋮----
-protected
-⋮----
-def escape_html(text)
-⋮----
-def manager?
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module LeadPicking
-RECENT_LIMIT = 5
-⋮----
-def lead_step
-⋮----
-def lead
-⋮----
-def accept_lead(value)
-⋮----
-def lead_gate
 ⋮----
 private
 ⋮----
-def recent_leads
+def quick_dates
 ⋮----
-def lead_label(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks_router.rb">
-module Telegram
-module WorkBot
+def assignee_options
 ⋮----
-class CallbacksRouter
+def accept_due(value)
 ⋮----
-PREFIX_MAP = {
+def accept_title(value)
 ⋮----
-def initialize(callback_query, client: Telegram::Client.new)
+def accept_assignee(value)
 ⋮----
-def call
-⋮----
-def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
+def crm_line(status)
 </file>
 
 <file path="app/services/telegram/work_bot/lead_announcer.rb">
@@ -14446,6 +14380,23 @@ def stream_to_io(remote_path, io)
 def with_network_retry(label)
 ⋮----
 def api_call(method, body = {}, retried: false)
+</file>
+
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/valuations/ai_synthetic_comps.rb">
@@ -14692,6 +14643,16 @@ Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.cla
 def broadcast_cabinet_completion
 </file>
 
+<file path="app/models/spam_allowlist_entry.rb">
+class SpamAllowlistEntry < ApplicationRecord
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :domain, presence: true
+⋮----
+def self.allowlisted?(domain)
+</file>
+
 <file path="app/services/chat_tools/staff/market_comparables.rb">
 module ChatTools
 module Staff
@@ -14833,6 +14794,27 @@ def catalog_greeting
 def property_greeting(ctx)
 ⋮----
 def audit_greeting(ctx)
+</file>
+
+<file path="app/services/llm/spam_filter.rb">
+module Llm
+⋮----
+module SpamFilter
+STOP_WORDS = [
+⋮----
+Result = Struct.new(:action, :reason, :matches, keyword_init: true)
+⋮----
+module_function
+⋮----
+def classify(text, ip:, visitor_token:)
+⋮----
+def promote_suspects_from(text)
+⋮----
+def heuristic_hit?(text, urls)
+⋮----
+def quarantine(url, ip:, visitor_token: nil)
+⋮----
+def upsert_suspect(entry_type, value, ip:, visitor_token: nil)
 </file>
 
 <file path="app/services/llm/staff_chat_responder.rb">
@@ -15017,19 +14999,6 @@ class Task < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/menu.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module Menu
-module_function
-⋮----
-def text(_tg_user)
-⋮----
-def keyboard(tg_user)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/reopen_flow.rb">
 module Telegram
 module WorkBot
@@ -15062,43 +15031,6 @@ def accept_task(value)
 def new_task_callback(task)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class TaskFlow < Flow
-include LeadPicking
-⋮----
-flow 'task', 'Задача с дедлайном'
-⋮----
-TITLE_MAX = 255
-⋮----
-def steps
-⋮----
-def skip?(step)
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def finish
-⋮----
-private
-⋮----
-def quick_dates
-⋮----
-def assignee_options
-⋮----
-def accept_due(value)
-⋮----
-def accept_title(value)
-⋮----
-def accept_assignee(value)
-⋮----
-def crm_line(status)
-</file>
-
 <file path="app/services/telegram/work_bot/router.rb">
 module Telegram
 module WorkBot
@@ -15127,23 +15059,6 @@ def verify_code_in_dm
 def reply(text)
 ⋮----
 def escape(text)
-</file>
-
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
-⋮----
-def call
-⋮----
-def serialize(m)
-⋮----
-def log_and_ignore(reason)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_text(msg)
 </file>
 
 <file path="Gemfile">
@@ -15310,27 +15225,28 @@ group :development, :test do
 end
 </file>
 
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
+<file path="app/models/spam_blocked_entry.rb">
+class SpamBlockedEntry < ApplicationRecord
 ⋮----
-class MessagesController < ApplicationController
-include Chat::PageContextParams
+QUORUM = 3
+HIT_WINDOW = 24.hours
+HIT_KEYS_CAP = 20
+CIDR_CACHE_KEY = 'spam_blocked_cidrs'
+CIDR_CACHE_TTL = 1.hour
 ⋮----
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
+enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
 ⋮----
-RATE_LIMIT_PER_MINUTE = 5
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
 ⋮----
-def create
+validates :value, presence: true
 ⋮----
-private
+def self.ip_blocked?(ip)
 ⋮----
-def post_static_reply(conv, verdict, original_body)
+def self.find_block_for(host:, path: nil)
 ⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
+def self.record_hit!(entry, ip:, visitor_token: nil)
 </file>
 
 <file path="app/services/external_listings/yrl_parser.rb">
@@ -15371,6 +15287,55 @@ def infer_type_loose(_type_attr, category)
 def upsert_one(attrs)
 </file>
 
+<file path="app/services/llm/spam_feeds/sync_job.rb">
+module Llm
+module SpamFeeds
+⋮----
+class SyncJob < ApplicationJob
+queue_as :low_priority
+⋮----
+BATCH = 1_000
+⋮----
+MAX_BODY_BYTES = 100.megabytes
+⋮----
+DOMAIN_FEEDS = {
+⋮----
+URLHAUS_FEED = {
+⋮----
+IP_FEEDS = {
+⋮----
+ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
+ALLOWLIST_TOP = 10_000
+⋮----
+ALLOWLIST_MIN_ROWS = 9_000
+⋮----
+def perform
+⋮----
+private
+⋮----
+def import_feed(source, cfg, run_at)
+⋮----
+def count_tokens(body, cfg)
+⋮----
+def import_batches(body, source, cfg, entry_type, status, run_at)
+⋮----
+def flush_batch(batch, entry_type, status, run_at)
+⋮----
+def parse_token(line, format)
+⋮----
+def normalize_entry(default_type, token)
+⋮----
+# Протухание: активная запись не-local источника, чья выгрузка в этом
+# прогоне удалась, но который не видан в нём (seen_at старше прогона) —
+# soft-delete. Источник, чья выгрузка НЕ удалась, не трогаем: сбой
+# источника ≠ пустой список. Записи source = local вне этой логики.
+def retire_stale(synced, run_at)
+⋮----
+def sync_allowlist
+⋮----
+def fetch(url)
+</file>
+
 <file path="app/services/llm/chat_responder.rb">
 module Llm
 ⋮----
@@ -15399,6 +15364,42 @@ def fallback_message
 # catalog and team. Cached for 5 min to avoid hammering the DB on
 # every visitor message.
 def system_prompt
+</file>
+
+<file path="app/services/llm/spam_urls.rb">
+module Llm
+⋮----
+module SpamUrls
+SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^\s<>"']+}i
+# «голый» хост латиницей с необязательным путём. Кириллица в regex
+# намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
+# как домен и улетал в карантин.
+BARE_HOST_RE = %r{\b[a-z0-9](?:[a-z0-9-]{0,61}\.)+[a-z]{2,24}(?:/[^\s<>"']*)?}i
+# разделённые пробелами домены («botmasterru .com») — типовая обфускация.
+# Одна точка тоже матчится (группа в середине — *): иначе «botmasterru .com»
+# не дотянул бы до обязательной «внутренней» точки.
+SPACED_HOST_RE = /\b[a-z0-9][a-z0-9-]{0,61}(?:\s?\.\s?[a-z0-9-]{1,61})*\s?\.\s?[a-z]{2,24}\b/i
+TRAILING_PUNCT = /[.,!?;:)\]}"']+\z/
+⋮----
+module_function
+⋮----
+def extract(text)
+⋮----
+# @param raw [String]
+# @return [Hash, nil] { host:, path: } — host в punycode-lowercase,
+#   path без query/якоря, nil если вход не похож на URL
+def normalize(raw)
+⋮----
+# userinfo не должна менять ключ: https://user@botmasterru.com/x
+# обходил blocked-домен, превращаясь в «user@botmasterru.com»
+⋮----
+authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
+⋮----
+# IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — точки ДО IDNA:
+# иначе «botmasterru。com» уходил в punycode-лейбл и проверку на '.'
+# проходил мимо, не сматчив blocked-домен
+⋮----
+authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
 </file>
 
 <file path="app/services/property_evaluation/comparable_finder.rb">
@@ -15516,6 +15517,82 @@ private
 def confirm_prompt
 ⋮----
 def accept_reason(value, manual)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/engine.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Engine
+STATE_TYPE = 'wizard'
+TTL = 30.minutes
+⋮----
+FLOWS = {
+⋮----
+SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
+⋮----
+def self.flow_class(key)
+⋮----
+attr_reader :tg_user, :client
+⋮----
+def initialize(tg_user:, client: Telegram::Client.new)
+⋮----
+def self.active?(tg_user)
+⋮----
+def start(flow_key, seed: {})
+⋮----
+def pick(flow_key, step_id, index)
+⋮----
+def ask_manual(flow_key, step_id)
+⋮----
+def text(raw)
+⋮----
+def back(flow_key)
+⋮----
+def cancel
+⋮----
+def menu
+⋮----
+private
+⋮----
+def apply_answer(flow, state, step, value, manual:)
+⋮----
+def render_next(flow, state)
+⋮----
+def finish(flow, state)
+⋮----
+def claim_state!(state)
+⋮----
+def option_values(step)
+⋮----
+def prompt_text(step)
+⋮----
+def step_keyboard(flow, step, state)
+⋮----
+def button(label, flow, step, index)
+⋮----
+def nav_row(state)
+⋮----
+def menu_row
+⋮----
+def current_state(flow_key, step_id)
+⋮----
+def build_flow(state)
+⋮----
+def find_step(flow, step_id)
+⋮----
+def save(state, sent)
+⋮----
+def strip_previous_prompt
+⋮----
+def strip_prompt(state)
+⋮----
+def send_dm(text, keyboard: nil)
+⋮----
+def dm_chat_id
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/valuations/sitemap_comp_finder.rb">
@@ -15638,82 +15715,6 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/engine.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class Engine
-STATE_TYPE = 'wizard'
-TTL = 30.minutes
-⋮----
-FLOWS = {
-⋮----
-SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
-⋮----
-def self.flow_class(key)
-⋮----
-attr_reader :tg_user, :client
-⋮----
-def initialize(tg_user:, client: Telegram::Client.new)
-⋮----
-def self.active?(tg_user)
-⋮----
-def start(flow_key, seed: {})
-⋮----
-def pick(flow_key, step_id, index)
-⋮----
-def ask_manual(flow_key, step_id)
-⋮----
-def text(raw)
-⋮----
-def back(flow_key)
-⋮----
-def cancel
-⋮----
-def menu
-⋮----
-private
-⋮----
-def apply_answer(flow, state, step, value, manual:)
-⋮----
-def render_next(flow, state)
-⋮----
-def finish(flow, state)
-⋮----
-def claim_state!(state)
-⋮----
-def option_values(step)
-⋮----
-def prompt_text(step)
-⋮----
-def step_keyboard(flow, step, state)
-⋮----
-def button(label, flow, step, index)
-⋮----
-def nav_row(state)
-⋮----
-def menu_row
-⋮----
-def current_state(flow_key, step_id)
-⋮----
-def build_flow(state)
-⋮----
-def find_step(flow, step_id)
-⋮----
-def save(state, sent)
-⋮----
-def strip_previous_prompt
-⋮----
-def strip_prompt(state)
-⋮----
-def send_dm(text, keyboard: nil)
-⋮----
-def dm_chat_id
-⋮----
-def escape_html(text)
-</file>
-
 <file path="app/services/property_evaluation_service.rb">
 class PropertyEvaluationService
 ⋮----
@@ -15811,6 +15812,29 @@ def build_recommendations
 def success(payload)
 ⋮----
 def error(message)
+</file>
+
+<file path="app/controllers/chat/messages_controller.rb">
+module Chat
+⋮----
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
+⋮----
+private
+⋮----
+def post_static_reply(conv, verdict, original_body)
+⋮----
+def record_security_event(conv, verdict, original_body)
+⋮----
+def rate_limited?
+⋮----
+def serialize(m)
 </file>
 
 </files>

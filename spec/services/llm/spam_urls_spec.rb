@@ -75,6 +75,15 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'botmasterru.com', path: '/y')
     end
 
+    it 'IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — это точки' do
+      %w[。 ． ｡].each do |sep|
+        expect(described_class.normalize("https://botmasterru#{sep}com/x"))
+          .to eq(host: 'botmasterru.com', path: '/x'), "разделитель #{sep.inspect}"
+      end
+      # IDN-домен с IDN-разделителем всё равно уходит в punycode
+      expect(described_class.normalize('https://сбербанк。ру/x')[:host]).to start_with('xn--')
+    end
+
     it 'мусор не падает, возвращает nil' do
       expect(described_class.normalize('not a url')).to be_nil
     end

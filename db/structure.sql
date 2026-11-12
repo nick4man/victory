@@ -2606,6 +2606,7 @@ CREATE TABLE public.spam_blocked_entries (
     hits integer DEFAULT 0 NOT NULL,
     hit_tokens jsonb DEFAULT '[]'::jsonb NOT NULL,
     last_hit_at timestamp(6) without time zone,
+    seen_at timestamp(6) without time zone,
     blocked_at timestamp(6) without time zone,
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
@@ -6897,6 +6898,13 @@ CREATE INDEX index_spam_allowlist_entries_on_deleted_at ON public.spam_allowlist
 --
 
 CREATE INDEX index_spam_blocked_entries_on_deleted_at ON public.spam_blocked_entries USING btree (deleted_at);
+
+
+--
+-- Name: index_spam_blocked_entries_on_source_and_seen_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_source_and_seen_at ON public.spam_blocked_entries USING btree (source, seen_at) WHERE (deleted_at IS NULL);
 
 
 --

@@ -234,8 +234,9 @@ bundle exec sidekiq -C config/sidekiq.yml
 - `config/sidekiq_cron.yml` — 23 задачи внутри Sidekiq, едут вместе с кодом;
   среди них `spam_feeds_sync` (ежедневно 03:20 MSK, `Llm::SpamFeeds::SyncJob`,
   очередь `low_priority`) — антиспам чат-бота: доменные/IP-фиды (hagezi,
-  Phishing.Database, URLhaus, ipsum, firehol) + Tranco Top-10k allowlist,
-  см. `docs/runbooks/chat-antispam.md`;
+  Phishing.Database, ipsum, firehol; URLhaus — только с Auth-Key abuse.ch
+  через ENV `URLHAUS_EXPORT_URL`, keyless-экспорты отдают 410) + Tranco
+  Top-10k allowlist, см. `docs/runbooks/chat-antispam.md`;
 - системный crontab хоста — 5 записей + `bin/tunnel-check` каждые 15 мин
   (добавлен операционно после merge PR #137), правится `crontab -e`: 4 через
   `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`),

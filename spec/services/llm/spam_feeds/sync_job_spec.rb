@@ -39,7 +39,7 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     # все фиды, кроме явно заданных в примерах — пустые ответы;
     # отдельные примеры переопределяют stub конкретного URL
     (described_class::DOMAIN_FEEDS.values + described_class::IP_FEEDS.values).each do |cfg|
-      stub_request(:get, cfg[:url]).to_return(status: 200, body: '')
+      stub_request(:get, cfg[:url]).to_return(status: 200, body: '') if cfg[:url].present?
     end
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 200, body: tif_body)
@@ -130,7 +130,7 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     stats = described_class.perform_now
 
-    expect(stats['hagezi_tif']).to be_nil
+    expect(stats['hagezi_tif']).to eq(0)
     expect(existing.reload.deleted_at).to be_nil
   end
 
@@ -146,7 +146,7 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     stats = described_class.perform_now
 
-    expect(stats['hagezi_tif']).to be_nil
+    expect(stats['hagezi_tif']).to eq(0)
     expect(existing.reload.deleted_at).to be_nil
     expect(SpamBlockedEntry.find_by(value: 'only-one.example')).to be_nil
   end
@@ -157,8 +157,71 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     stats = described_class.perform_now
 
-    expect(stats['hagezi_tif']).to be_nil
+    expect(stats['hagezi_tif']).to eq(0)
     expect(stats['ipsum_l3']).to eq(2)
+  end
+
+  it 'urlhaus без URLHAUS_EXPORT_URL пропускается молча (остальные работают)' do
+    stats = described_class.perform_now
+
+    expect(stats['urlhaus']).to eq(0)
+    expect(stats['hagezi_tif']).to eq(3)
+  end
+
+  context 'phishing_links: полные URL, не домена' do
+    before do
+      stub_request(:get, described_class::DOMAIN_FEEDS['phishing_links'][:url])
+        .to_return(status: 200, body: "https://shared-host.example/phish/login\nhttps://shared-host.example/other\n")
+    end
+
+    it 'пишет entry_type = url: блок одной страницы, не всего хоста' do
+      described_class.perform_now
+
+      entry = SpamBlockedEntry.find_by(entry_type: :url, value: 'shared-host.example/phish/login')
+      expect(entry).to be_present
+      expect(entry).to be_status_blocked
+      # доменная запись из URL-фида не создаётся
+      expect(SpamBlockedEntry.find_by(entry_type: :domain, value: 'shared-host.example')).to be_nil
+    end
+
+    it 'регрессия: blocked host/phish не блочит другой путь того же хоста' do
+      described_class.perform_now
+      SpamAllowlistEntry.create!(domain: 'shared-host.example', manual: true)
+
+      clean = Llm::SpamFilter.classify('посмотрите https://shared-host.example/clean — нормально?',
+                                       ip: '198.51.100.10', visitor_token: 'v-1')
+      phish = Llm::SpamFilter.classify('войдите https://shared-host.example/phish/login',
+                                       ip: '198.51.100.10', visitor_token: 'v-1')
+
+      expect(clean[:action]).to eq(:pass)
+      expect(phish[:action]).to eq(:drop)
+    end
+  end
+
+  context 'urlhaus' do
+    let(:urlhaus_url) { 'https://urlhaus-api.abuse.ch/v2/files/exports/KEY/text' }
+
+    before do
+      stub_const('Llm::SpamFeeds::SyncJob::URLHAUS_FEED',
+                 'urlhaus' => { url: urlhaus_url, format: :urls, entry_type: :url, min_rows: 1 })
+    end
+
+    it 'с ключом: импортирует полные URL и протухает их безопасно' do
+      stub_request(:get, urlhaus_url)
+        .to_return(status: 200, body: "http://malware.example/payload.exe\nhttp://malware.example/second\n")
+
+      described_class.perform_now
+
+      expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'malware.example/payload.exe'))
+        .to have_attributes(status: 'blocked', source: 'urlhaus')
+
+      # повторный прогон со сбоем URLhaus не стирает прежние записи фида
+      stub_request(:get, urlhaus_url).to_return(status: 500)
+      described_class.perform_now
+
+      expect(SpamBlockedEntry.unscoped.find_by(entry_type: :url, value: 'malware.example/payload.exe'))
+        .to have_attributes(deleted_at: nil)
+    end
   end
 
   it 'синкает allowlist (Tranco Top-10k snapshot)' do

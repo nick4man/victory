@@ -16,6 +16,39 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:reason]).to eq(:spam_ip)
       end
 
+      it 'связка suspect + IP из ipsum: домен повышается до blocked до тихого дропа' do
+        SpamBlockedEntry.create!(entry_type: :ip, value: '203.0.113.66', status: :blocked, source: 'ipsum_l3')
+        entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'fishy.example',
+                                         status: :suspect, source: 'local')
+
+        result = described_class.classify('продвижение ботов на fishy.example',
+                                          ip: '203.0.113.66', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_ip)
+        expect(entry.reload).to be_status_blocked
+      end
+
+      it 'связка suspect URL + IP из ipsum: URL повышается до blocked' do
+        SpamBlockedEntry.create!(entry_type: :ip, value: '203.0.113.66', status: :blocked, source: 'ipsum_l3')
+        entry = SpamBlockedEntry.create!(entry_type: :url, value: 't.me/spam_channel',
+                                         status: :suspect, source: 'local')
+
+        described_class.classify('заходи t.me/spam_channel', ip: '203.0.113.66', visitor_token: visitor)
+
+        expect(entry.reload).to be_status_blocked
+      end
+
+      it 'с обычного IP suspect-домен не повышается без кворума' do
+        entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'fishy.example',
+                                         status: :suspect, source: 'local')
+
+        described_class.classify('что скажете про fishy.example ?',
+                                 ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(entry.reload).to be_status_suspect
+      end
+
       it 'обычный IP пропускается' do
         expect(described_class.classify('купить квартиру', ip: '198.51.100.10', visitor_token: visitor)[:action])
           .to eq(:pass)
@@ -66,6 +99,17 @@ RSpec.describe Llm::SpamFilter do
 
         expect(result[:action]).to eq(:drop)
         expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'IDN-разделители не обходят blocked-домен: botmasterru。com / ．com / ｡com' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        %w[。 ． ｡].each do |sep|
+          result = described_class.classify("заходите https://botmasterru#{sep}com/x",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "разделитель #{sep.inspect} не должен обходить блок"
+        end
       end
     end
 
