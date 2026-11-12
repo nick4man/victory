@@ -2,7 +2,6 @@
 
 > Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
 
-
 ## app/models
 
 ```
@@ -59,6 +58,8 @@ app/models/saved_search.rb — class SavedSearch
 app/models/service_order.rb — class ServiceOrder
 app/models/service_type.rb — class ServiceType
 app/models/show_report.rb — class ShowReport
+app/models/spam_allowlist_entry.rb — class SpamAllowlistEntry
+app/models/spam_blocked_entry.rb — class SpamBlockedEntry
 app/models/staff_metric.rb — class StaffMetric
 app/models/staff_question.rb — class StaffQuestion
 app/models/task.rb — class Task
@@ -325,6 +326,10 @@ app/services/llm/page_context.rb — module Llm, module PageContext
 app/services/llm/page_greeting.rb — module Llm, module PageGreeting
 app/services/llm/question_classifier.rb — module Llm, class QuestionClassifier
 app/services/llm/scope_guard.rb — module Llm, module ScopeGuard
+app/services/llm/spam_feeds/sync_job.rb — module Llm, module SpamFeeds, class SyncJob
+app/services/llm/spam_feeds/zip.rb — module Llm, module SpamFeeds, module Zip
+app/services/llm/spam_filter.rb — module Llm, module SpamFilter
+app/services/llm/spam_urls.rb — module Llm, module SpamUrls
 app/services/llm/staff_chat_responder.rb — module Llm, class StaffChatResponder
 app/services/llm/tool_runner.rb — module Llm, class ToolRunner
 app/services/macro_rates_service.rb — class MacroRatesService

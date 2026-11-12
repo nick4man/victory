@@ -51,7 +51,10 @@ module Llm
       return nil unless s.include?('.')
 
       host, path = s.split('/', 2)
-      host = Addressable::IDNA.to_ascii(host.to_s.downcase)
+      host = host.to_s.downcase
+      host = host.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
+      host = host.sub(/\.\z/, '')   # финальная точка FQDN-стиля
+      host = Addressable::IDNA.to_ascii(host)
       return nil if host.empty? || host.length > 253
 
       { host: host, path: path.present? ? "/#{path}" : nil }

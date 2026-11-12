@@ -326,6 +326,8 @@ app/
     service_order.rb
     service_type.rb
     show_report.rb
+    spam_allowlist_entry.rb
+    spam_blocked_entry.rb
     staff_metric.rb
     staff_question.rb
     task_batch.rb
@@ -465,6 +467,9 @@ app/
       intake.rb
       property_resolver.rb
     llm/
+      spam_feeds/
+        sync_job.rb
+        zip.rb
       chat_responder.rb
       intent_classifier.rb
       omni_client.rb
@@ -472,6 +477,8 @@ app/
       page_greeting.rb
       question_classifier.rb
       scope_guard.rb
+      spam_filter.rb
+      spam_urls.rb
       staff_chat_responder.rb
       tool_runner.rb
     mls_sync/
@@ -8812,6 +8819,18 @@ def self.for_ref(ref)
 def self.call(lead_event)
 </file>
 
+<file path="app/services/llm/spam_feeds/zip.rb">
+module Llm
+module SpamFeeds
+⋮----
+module Zip
+LOCAL_HEADER_SIG = "PK\u0003\u0004".b
+⋮----
+module_function
+⋮----
+def first_file(data)
+</file>
+
 <file path="app/services/llm/intent_classifier.rb">
 module Llm
 ⋮----
@@ -11081,6 +11100,22 @@ def notify_assignee
 def escape(text)
 </file>
 
+<file path="app/services/telegram/work_bot/lead_closure.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadClosure
+OUTCOMES = ['closed_won', 'closed_lost'].freeze
+⋮----
+def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def push_close_note
+</file>
+
 <file path="app/services/telegram/work_bot/lead_stage_transition.rb">
 module Telegram
 module WorkBot
@@ -11118,6 +11153,24 @@ def compose_message(perspective, label, prev_stage)
 def resolve_client_user
 ⋮----
 def resolve_seller_user
+</file>
+
+<file path="app/services/telegram/work_bot/lead_task_creator.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadTaskCreator
+Result = Struct.new(:task, :crm, keyword_init: true)
+⋮----
+def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def due_at
+⋮----
+def push_due_to_crm
 </file>
 
 <file path="app/services/telegram/work_bot/owner_intake_processor.rb">
@@ -11416,6 +11469,32 @@ def normalize_username(raw)
 def normalize_enum(value, allowed, default)
 ⋮----
 def parse_due_at(raw)
+</file>
+
+<file path="app/services/telegram/work_bot/task_reopen.rb">
+module Telegram
+module WorkBot
+⋮----
+class TaskReopen
+REOPEN_WINDOW = 24.hours
+⋮----
+Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
+⋮----
+def initialize(task, actor:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def self.authorized?(task, actor)
+⋮----
+def self.closed_at(task)
+⋮----
+def self.expired?(task)
+⋮----
+private
+⋮----
+def notify_assignee_if_third_party(prev_status)
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/telegram/work_bot/topic_discovery.rb">
@@ -13720,6 +13799,40 @@ has_neighbors :embedding
 belongs_to :property_valuation
 </file>
 
+<file path="app/models/spam_allowlist_entry.rb">
+class SpamAllowlistEntry < ApplicationRecord
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :domain, presence: true
+⋮----
+def self.allowlisted?(domain)
+</file>
+
+<file path="app/models/spam_blocked_entry.rb">
+class SpamBlockedEntry < ApplicationRecord
+⋮----
+QUORUM = 3
+HIT_WINDOW = 24.hours
+HIT_KEYS_CAP = 20
+CIDR_CACHE_KEY = 'spam_blocked_cidrs'
+CIDR_CACHE_TTL = 1.hour
+⋮----
+enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
+enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
+⋮----
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :value, presence: true
+⋮----
+def self.ip_blocked?(ip)
+⋮----
+def self.find_block_for(host:, path: nil)
+⋮----
+def self.record_hit!(entry, key:)
+</file>
+
 <file path="app/services/chat_tools/list_mortgage_programs.rb">
 module ChatTools
 ⋮----
@@ -13907,6 +14020,42 @@ def field(kind, key)
 def option_label(field, value)
 </file>
 
+<file path="app/services/llm/spam_feeds/sync_job.rb">
+module Llm
+module SpamFeeds
+⋮----
+class SyncJob < ApplicationJob
+queue_as :low_priority
+⋮----
+URL_FEEDS = %w[phishing_links urlhaus].freeze
+DOMAIN_FEEDS = {
+⋮----
+IP_FEEDS = {
+⋮----
+ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
+ALLOWLIST_TOP = 10_000
+⋮----
+ALLOWLIST_MIN_ROWS = 9_000
+⋮----
+def perform
+⋮----
+private
+⋮----
+def sync_list(url, source, default_type, status: :blocked)
+⋮----
+def normalize_entry(default_type, token)
+⋮----
+# insert_all новых + догон status'ом существующие (suspect → blocked,
+⋮----
+def upsert_batch(source, keys, status)
+⋮----
+def retire_missing(source, keys)
+⋮----
+def sync_allowlist
+⋮----
+def fetch(url)
+</file>
+
 <file path="app/services/llm/omni_client.rb">
 require 'net/http'
 require 'json'
@@ -13951,6 +14100,52 @@ def tier_weight(model)
 def redis_connection
 ⋮----
 require 'redis' unless defined?(Redis)
+</file>
+
+<file path="app/services/llm/spam_filter.rb">
+module Llm
+⋮----
+module SpamFilter
+STOP_WORDS = [
+⋮----
+Result = Struct.new(:action, :reason, :matches, keyword_init: true)
+⋮----
+module_function
+⋮----
+def classify(text, ip:, visitor_token:)
+⋮----
+def heuristic_hit?(text, urls)
+⋮----
+def quarantine(url, key:)
+⋮----
+def upsert_suspect(entry_type, value, key)
+</file>
+
+<file path="app/services/llm/spam_urls.rb">
+module Llm
+⋮----
+module SpamUrls
+SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^\s<>"']+}i
+# «голый» хост латиницей с необязательным путём. Кириллица в regex
+# намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
+# как домен и улетал в карантин.
+BARE_HOST_RE = %r{\b[a-z0-9](?:[a-z0-9-]{0,61}\.)+[a-z]{2,24}(?:/[^\s<>"']*)?}i
+# разделённые пробелами домены («botmasterru .com») — типовая обфускация.
+# Одна точка тоже матчится (группа в середине — *): иначе «botmasterru .com»
+# не дотянул бы до обязательной «внутренней» точки.
+SPACED_HOST_RE = /\b[a-z0-9][a-z0-9-]{0,61}(?:\s?\.\s?[a-z0-9-]{1,61})*\s?\.\s?[a-z]{2,24}\b/i
+TRAILING_PUNCT = /[.,!?;:)\]}"']+\z/
+⋮----
+module_function
+⋮----
+def extract(text)
+⋮----
+# @param raw [String]
+# @return [Hash, nil] { host:, path: } — host в punycode-lowercase,
+#   path без query/якоря, nil если вход не похож на URL
+def normalize(raw)
+⋮----
+host = host.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
 </file>
 
 <file path="app/services/sandbox/codespace.rb">
@@ -14012,6 +14207,17 @@ module WorkBot
 module Commands
 ⋮----
 class Menu < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/reopen.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Reopen < Base
+REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
+⋮----
 def handle
 </file>
 
@@ -14168,66 +14374,6 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_closure.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadClosure
-OUTCOMES = ['closed_won', 'closed_lost'].freeze
-⋮----
-def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def push_close_note
-</file>
-
-<file path="app/services/telegram/work_bot/lead_task_creator.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadTaskCreator
-Result = Struct.new(:task, :crm, keyword_init: true)
-⋮----
-def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def due_at
-⋮----
-def push_due_to_crm
-</file>
-
-<file path="app/services/telegram/work_bot/task_reopen.rb">
-module Telegram
-module WorkBot
-⋮----
-class TaskReopen
-REOPEN_WINDOW = 24.hours
-⋮----
-Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
-⋮----
-def initialize(task, actor:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def self.authorized?(task, actor)
-⋮----
-def self.closed_at(task)
-⋮----
-def self.expired?(task)
-⋮----
-private
-⋮----
-def notify_assignee_if_third_party(prev_status)
-⋮----
-def escape_html(text)
 </file>
 
 <file path="app/services/telegram/client.rb">
@@ -14434,29 +14580,6 @@ def seed_welcome(conv, page_ctx = nil)
 def serialize(conv)
 ⋮----
 def serialize_message(m)
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
-⋮----
-class MessagesController < ApplicationController
-include Chat::PageContextParams
-⋮----
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
-⋮----
-RATE_LIMIT_PER_MINUTE = 5
-⋮----
-def create
-⋮----
-private
-⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
 </file>
 
 <file path="app/controllers/concerns/chat/page_context_params.rb">
@@ -14837,6 +14960,22 @@ def audit!(outcome, args:, error_class: nil, error_message: nil)
 def command_key
 </file>
 
+<file path="app/services/telegram/work_bot/commands/close.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Close < Base
+⋮----
+OUTCOME_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def parse_args
+</file>
+
 <file path="app/services/telegram/work_bot/commands/help.rb">
 module Telegram
 module WorkBot
@@ -14869,14 +15008,12 @@ def group_chat?
 def send_full_via_dm(text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/reopen.rb">
+<file path="app/services/telegram/work_bot/commands/task.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Reopen < Base
-REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
-⋮----
+class Task < Base
 def handle
 </file>
 
@@ -15173,6 +15310,29 @@ group :development, :test do
 end
 </file>
 
+<file path="app/controllers/chat/messages_controller.rb">
+module Chat
+⋮----
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
+⋮----
+private
+⋮----
+def post_static_reply(conv, verdict, original_body)
+⋮----
+def record_security_event(conv, verdict, original_body)
+⋮----
+def rate_limited?
+⋮----
+def serialize(m)
+</file>
+
 <file path="app/services/external_listings/yrl_parser.rb">
 require 'nokogiri'
 require 'open-uri'
@@ -15323,31 +15483,6 @@ def year_factor
 def condition_factor
 ⋮----
 def amenities_factor
-</file>
-
-<file path="app/services/telegram/work_bot/commands/close.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Close < Base
-⋮----
-OUTCOME_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse_args
-</file>
-
-<file path="app/services/telegram/work_bot/commands/task.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Task < Base
-def handle
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/close_flow.rb">

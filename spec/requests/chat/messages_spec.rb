@@ -247,5 +247,19 @@ RSpec.describe 'Chat::Messages', type: :request do
         post_message('смотрите https://victory62.org/properties/dom-1 — подскажите про цену')
       end.to have_enqueued_job(LlmReplyJob)
     end
+
+    it 'сдропленный спам не попадает в history_for_llm следующего вопроса' do
+      SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+      open_chat
+
+      post_message('услуги продвижения http://www.botmasterru.com/product52284/')
+      spam_msg = conversation.chat_messages.where(role: :user).last
+      expect(spam_msg.metadata['excluded_from_llm']).to be(true)
+
+      post_message('а теперь нормальный вопрос про квартиру')
+
+      bodies = conversation.reload.history_for_llm.map { |m| m[:content] }
+      expect(bodies.join).not_to include('botmasterru')
+    end
   end
 end

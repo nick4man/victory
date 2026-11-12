@@ -21,6 +21,9 @@ class Conversation < ApplicationRecord
   def history_for_llm(limit: 30)
     chat_messages
       .where.not(role: ChatMessage.roles[:system])
+      # тихо сдропленный спам (Llm::SpamFilter) не должен попадать в контекст:
+      # токены + лишняя поверхность для инъекций в следующих вопросах
+      .where.not('chat_messages.metadata @> ?', { excluded_from_llm: true }.to_json)
       .last(limit)
       .map { |m| { role: m.llm_role, content: m.body.to_s[0, PER_MSG_CHAR_CAP] } }
   end

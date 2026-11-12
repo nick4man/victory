@@ -22,7 +22,7 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
   end
 
   let(:allowlist_body) do
-    (1..5).map { |i| "#{i},white-#{i}.example" }.join("\n") + "\n"
+    File.binread(Rails.root.join('spec/fixtures/files/tranco-top.zip'))
   end
 
   before do
@@ -64,6 +64,28 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     expect(local.reload).to be_status_suspect
     expect(local.source).to eq('local')
+    expect(local.deleted_at).to be_nil
+  end
+
+  it 'протухание: запись источника, исчезнувшая из фида, soft-delete' do
+    stale = SpamBlockedEntry.create!(entry_type: :domain, value: 'gone.example',
+                                     status: :blocked, source: 'hagezi_tif')
+    described_class.perform_now
+
+    expect(stale.reload.deleted_at).to be_present
+    expect(SpamBlockedEntry.find_by(value: 'spam-one.example')).to be_present
+  end
+
+  it 'пустой ответ фида не стирает прежние записи источника' do
+    existing = SpamBlockedEntry.create!(entry_type: :domain, value: 'keep.example',
+                                        status: :blocked, source: 'hagezi_tif')
+    stub_request(:get, 'https://raw.githubusercontent.com/hagezi/dns-blocklists/main/domains/tif.txt')
+      .to_return(status: 200, body: '')
+
+    stats = described_class.perform_now
+
+    expect(stats['hagezi_tif']).to eq(0)
+    expect(existing.reload.deleted_at).to be_nil
   end
 
   it 'падение одного фида не роняет остальные' do
@@ -76,13 +98,22 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(stats['ipsum_l3']).to eq(2)
   end
 
-  it 'синкает allowlist (Cisco Umbrella Top-10k snapshot)' do
+  it 'синкает allowlist (Tranco Top-10k snapshot)' do
     stub_const('Llm::SpamFeeds::SyncJob::ALLOWLIST_MIN_ROWS', 3)
 
     described_class.perform_now
 
-    expect(SpamAllowlistEntry.count).to eq(5)
+    expect(SpamAllowlistEntry.where(manual: false).count).to eq(5)
     expect(SpamAllowlistEntry.allowlisted?('white-1.example')).to be(true)
+  end
+
+  it 'manual-записи allowlist (ручные исключения + наш домен) синк не стирает' do
+    stub_const('Llm::SpamFeeds::SyncJob::ALLOWLIST_MIN_ROWS', 3)
+    SpamAllowlistEntry.create!(domain: 'keep-me.example', manual: true)
+
+    described_class.perform_now
+
+    expect(SpamAllowlistEntry.unscoped.find_by(domain: 'keep-me.example')).to be_present
   end
 
   it 'усечённая выгрузка allowlist не стирает рабочий список' do

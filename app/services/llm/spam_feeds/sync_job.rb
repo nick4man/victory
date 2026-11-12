@@ -8,13 +8,15 @@ module Llm
     #   домены   — hagezi TIF/Fake, matomo referrer-spam, Phishing.Database,
     #              URLhaus (полные URL → записи url-уровня);
     #   IP       — stamparm/ipsum level 3, firehol cleantalk/stopforumspam/
-    #              botscout 7d;
-    #   allowlist — снапшот Cisco Umbrella Top-1M (mozilla/cipherscan),
-    #              верхние 10k — защита от самострела локальных эвристик.
+    #              botscout 7d (включая CIDR-подсети);
+    #   allowlist — Tranco Top-1M (официальный zip), верхние 10k — защита
+    #              от самострела локальных эвристик.
     #
-    # Идемпотентен: upsert по уникальному индексу (entry_type, value);
-    # повторный прогон только догоняет расхождения. Падение одного фида
-    # не роняет остальные — следующий прогон дозальёт.
+    # Пакетная загрузка (insert_all сотнями) — hagezi TIF это сотни тысяч
+    # доменов, построчный find_or_create дал бы миллионы запросов. После
+    # удачной выгрузки записи source, пропавшие из фида, протухают
+    # (soft-delete): иначе выбывший из списков IP/домен блочился бы вечно.
+    # Записи source = local синк не трогает.
     class SyncJob < ApplicationJob
       queue_as :low_priority
 
@@ -35,10 +37,10 @@ module Llm
         'firehol_stopforumspam' => 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/stopforumspam_7d.ipset',
         'firehol_botscout'      => 'https://raw.githubusercontent.com/firehol/blocklist-ipsets/master/botscout_7d.ipset'
       }.freeze
-      # Umbrella Top-1M как plain CSV (без зип-зависимостей). Первые 10k
-      # строк — домены, которые локальные эвристики не имеют права блочить
-      # на уровне корня.
-      ALLOWLIST_URL = 'https://raw.githubusercontent.com/mozilla/cipherscan/master/top-1m.csv'
+      # Tranco Top-1M отдаётся только zip'ом; распаковка — Llm::SpamFeeds::Zip
+      # (без rubyzip). Первые 10k строк — домены, которые локальные
+      # эвристики не имеют права блочить на уровне корня.
+      ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
       ALLOWLIST_TOP = 10_000
       # усечённая выгрузка не должна стирать рабочий allowlist целиком
       ALLOWLIST_MIN_ROWS = 9_000
@@ -52,29 +54,34 @@ module Llm
           stats[source] = sync_list(url, source, type, status: status)
         end
         IP_FEEDS.each { |source, url| stats[source] = sync_list(url, source, :ip) }
-        stats['umbrella_allowlist'] = sync_allowlist
+        stats['tranco_allowlist'] = sync_allowlist
         Rails.logger.info("[SpamFeeds] синк завершён: #{stats.inspect}")
         stats
       end
 
       private
 
+      # Одна выгрузка: нормализация → пакетный upsert → протухание. Фид,
+      # вернувший пустой/битый ответ, НЕ стирает прежние записи — иначе
+      # сбой источника обнулил бы защиту.
       def sync_list(url, source, default_type, status: :blocked)
         body = fetch(url)
         return 0 if body.blank?
 
-        count = 0
+        keys = []
         body.each_line do |line|
           token = line.split.first
           next if token.blank? || token.start_with?('#')
 
           type, key = normalize_entry(default_type, token)
-          next if key.blank?
-
-          upsert_entry(type, key, source, status: status)
-          count += 1
+          keys << [type, key] if key
         end
-        count
+        keys.uniq!
+        return 0 if keys.empty?
+
+        upsert_batch(source, keys, status)
+        retire_missing(source, keys)
+        keys.size
       rescue StandardError => e
         Rails.logger.warn("[SpamFeeds] #{source}: синк не удался (#{e.class}: #{e.message})")
         0
@@ -98,24 +105,47 @@ module Llm
         end
       end
 
-      def upsert_entry(type, value, source, status:)
-        entry = SpamBlockedEntry.find_or_create_by!(entry_type: type, value: value) do |e|
-          e.source = source
-          e.status = status
-          e.blocked_at = Time.current if status == :blocked
+      # insert_all новых + догон status'ом существующие (suspect → blocked,
+      # когда фид довереннее). Конфликты по уникальному индексу пропускаются.
+      def upsert_batch(source, keys, status)
+        now = Time.current
+        known = SpamBlockedEntry.where(source: source).pluck(:entry_type, :value, :id, :status)
+                              .to_h { |type, value, id, st| [[type, value], [id, st]] }
+        rows = []
+        promote_ids = []
+        keys.each do |type, key|
+          if (rec = known[[type.to_s, key]])
+            promote_ids << rec[0] if status == :blocked && rec[1] == 'suspect'
+          else
+            rows << { entry_type: type.to_s, value: key, source: source, status: status.to_s,
+                      blocked_at: (now if status == :blocked), created_at: now, updated_at: now }
+          end
         end
-        # запись из фида довереннее локальной: suspect → blocked
-        if status == :blocked && entry.status_suspect?
-          entry.update_columns(status: 'blocked', blocked_at: Time.current)
+        rows.each_slice(1_000) do |slice|
+          SpamBlockedEntry.insert_all(slice, unique_by: :idx_spam_blocked_entries_type_value)
         end
-      rescue ActiveRecord::RecordNotUnique
-        # гонка двух прогонов под одним индексом — повторный find догонит
-        retry
+        promote_ids.each_slice(10_000) do |ids|
+          SpamBlockedEntry.where(id: ids).update_all(status: 'blocked', blocked_at: now)
+        end
+      end
+
+      # Записи источника, исчезнувшие из свежей выгрузки, протухают:
+      # выбывший из публичных списков адрес не должен блочиться вечно.
+      # local-записи сюда не попадают (source другой).
+      def retire_missing(source, keys)
+        fresh = keys.map(&:second).to_set
+        stale_ids = SpamBlockedEntry.where(source: source).pluck(:id, :value)
+                                    .filter_map { |id, value| id unless fresh.include?(value) }
+        stale_ids.each_slice(10_000) do |ids|
+          SpamBlockedEntry.where(id: ids).update_all(deleted_at: Time.current)
+        end
       end
 
       def sync_allowlist
-        body = fetch(ALLOWLIST_URL)
-        domains = body.to_s.each_line.lazy.filter_map do |line|
+        csv = Zip.first_file(fetch(ALLOWLIST_URL))
+        return 0 if csv.blank?
+
+        domains = csv.each_line.lazy.filter_map do |line|
           _rank, domain = line.strip.split(',', 2)
           domain&.strip&.downcase
         end.first(ALLOWLIST_TOP).to_a.uniq
@@ -123,14 +153,15 @@ module Llm
 
         now = Time.current
         SpamAllowlistEntry.transaction do
-          SpamAllowlistEntry.unscoped.delete_all
+          # manual-записи (ручные исключения + наш домен) синк не стирает
+          SpamAllowlistEntry.unscoped.where(manual: false).delete_all
           domains.each_slice(1_000) do |batch|
             SpamAllowlistEntry.insert_all(batch.map { |d| { domain: d, created_at: now, updated_at: now } })
           end
         end
         domains.size
       rescue StandardError => e
-        Rails.logger.warn("[SpamFeeds] allowlist: синк не удался (#{e.class}: #{e.message})")
+        Rails.logger.warn("[SpamFeeds] tranco_allowlist: синк не удался (#{e.class}: #{e.message})")
         0
       end
 

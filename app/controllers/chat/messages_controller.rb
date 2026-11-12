@@ -49,7 +49,11 @@ module Chat
       spam = Llm::SpamFilter.classify(body, ip: request.remote_ip, visitor_token: current_visitor_token)
       if spam.action == :drop
         # тихий дроп: ни ответа, ни LLM, ни лида — спамер не должен узнать,
-        # что канал жив. Событие остаётся в metadata конверсации для разбора.
+        # что канал жив. Событие остаётся в metadata конверсации для разбора,
+        # само сообщение исключается из history_for_llm (иначе следующий
+        # вопрос посетителя тащил спам в контекст LLM — токены и джейлбрейк-
+        # поверхность). Эхо посетителю уже ушло, роль менять поздно.
+        msg.update_columns(metadata: (msg.metadata || {}).merge('excluded_from_llm' => true))
         record_security_event(conv, spam.reason, body)
         Rails.logger.warn("[SpamFilter] visitor=#{current_visitor_token} reason=#{spam.reason} ip=#{request.remote_ip} excerpt=#{body.to_s.truncate(120).inspect}")
         return render(json: { ok: true, message_id: msg.id }, status: :created)

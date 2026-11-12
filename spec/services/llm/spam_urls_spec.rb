@@ -63,6 +63,12 @@ RSpec.describe Llm::SpamUrls do
       expect(described_class.normalize('https://example.com/')).to eq(host: 'example.com', path: nil)
     end
 
+    it 'порт и финальная точка не меняют ключ: обходы нормализации' do
+      expect(described_class.normalize('https://example.com:443/path')).to eq(host: 'example.com', path: '/path')
+      expect(described_class.normalize('https://example.com./path')).to eq(host: 'example.com', path: '/path')
+      expect(described_class.normalize('https://example.com:8080')).to eq(host: 'example.com', path: nil)
+    end
+
     it 'мусор не падает, возвращает nil' do
       expect(described_class.normalize('not a url')).to be_nil
     end

@@ -28,6 +28,27 @@ RSpec.describe SpamBlockedEntry do
       expect(described_class.find_block_for(host: 'botmasterru.com', path: '/product52284')).to be_status_blocked
     end
 
+    it 'suspect-URL не маскирует blocked-домен' do
+      described_class.create!(entry_type: :url, value: 'evil.example/page', status: :suspect, source: 'local')
+      described_class.create!(entry_type: :domain, value: 'evil.example', status: :blocked, source: 'local')
+
+      expect(described_class.find_block_for(host: 'evil.example', path: '/page')).to be_status_blocked
+    end
+
+    it 'allowlist снимает только доменный блок (рекомендованный в runbook разблок)' do
+      described_class.create!(entry_type: :domain, value: 'popular.example', status: :blocked, source: 'phishing_domains')
+      SpamAllowlistEntry.create!(domain: 'popular.example')
+
+      expect(described_class.find_block_for(host: 'popular.example', path: nil)).to be_nil
+    end
+
+    it 'blocked URL на allowlist-домене бьёт — путь точнее белого корня' do
+      SpamAllowlistEntry.create!(domain: 'popular.example')
+      described_class.create!(entry_type: :url, value: 'popular.example/bad', status: :blocked, source: 'phishing_links')
+
+      expect(described_class.find_block_for(host: 'popular.example', path: '/bad')).to be_status_blocked
+    end
+
     it 'suspect тоже возвращается (для подсчёта hits)' do
       entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
 
@@ -86,6 +107,15 @@ RSpec.describe SpamBlockedEntry do
 
       expect(entry.reload).to be_status_blocked
     end
+
+    it 'кворум не автоблокирует служебные записи фидов (шортенеры — только эвристика)' do
+      entry = described_class.create!(entry_type: :domain, value: 'bit.ly',
+                                      status: :suspect, source: 'hagezi_shorteners')
+
+      %w[v-a v-b v-c].each { |k| described_class.record_hit!(entry, key: k) }
+
+      expect(entry.reload).to be_status_suspect
+    end
   end
 
   describe '.ip_blocked?' do
@@ -95,6 +125,18 @@ RSpec.describe SpamBlockedEntry do
       expect(described_class.ip_blocked?('203.0.113.66')).to be(true)
       expect(described_class.ip_blocked?('203.0.113.67')).to be(false)
       expect(described_class.ip_blocked?(nil)).to be(false)
+    end
+
+    it 'CIDR-подсеть из firehol-фида ловит хост внутри (botscout отдаёт и /31)' do
+      Rails.cache.delete(described_class::CIDR_CACHE_KEY)
+      described_class.create!(entry_type: :ip, value: '198.51.100.0/28', status: :blocked, source: 'firehol_botscout')
+
+      expect(described_class.ip_blocked?('198.51.100.7')).to be(true)
+      expect(described_class.ip_blocked?('198.51.100.20')).to be(false)
+    end
+
+    it 'мусорный IP не падает' do
+      expect(described_class.ip_blocked?('not-an-ip')).to be(false)
     end
   end
 end

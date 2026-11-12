@@ -2567,6 +2567,7 @@ ALTER SEQUENCE public.show_reports_id_seq OWNED BY public.show_reports.id;
 CREATE TABLE public.spam_allowlist_entries (
     id bigint NOT NULL,
     domain character varying NOT NULL,
+    manual boolean DEFAULT false NOT NULL,
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
@@ -4649,6 +4650,13 @@ CREATE UNIQUE INDEX idx_property_valuations_audit_engine_id_unique ON public.pro
 --
 
 CREATE INDEX idx_show_reports_pending_by_reporter ON public.show_reports USING btree (reported_by_id) WHERE ((status)::text = 'pending_confirm'::text);
+
+
+--
+-- Name: idx_spam_blocked_entries_type_value; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_blocked_entries_type_value ON public.spam_blocked_entries USING btree (entry_type, value) WHERE (deleted_at IS NULL);
 
 
 --
@@ -6889,13 +6897,6 @@ CREATE UNIQUE INDEX index_spam_allowlist_entries_on_domain ON public.spam_allowl
 --
 
 CREATE INDEX index_spam_blocked_entries_on_deleted_at ON public.spam_blocked_entries USING btree (deleted_at);
-
-
---
--- Name: index_spam_blocked_entries_on_entry_type_and_value; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE UNIQUE INDEX index_spam_blocked_entries_on_entry_type_and_value ON public.spam_blocked_entries USING btree (entry_type, value) WHERE (deleted_at IS NULL);
 
 
 --

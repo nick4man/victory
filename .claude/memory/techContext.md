@@ -231,7 +231,11 @@ bundle exec sidekiq -C config/sidekiq.yml
 Расписаний два, и оба **не** `whenever` — гема в `Gemfile` нет, а
 `config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
 
-- `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
+- `config/sidekiq_cron.yml` — 23 задачи внутри Sidekiq, едут вместе с кодом;
+  среди них `spam_feeds_sync` (ежедневно 03:20 MSK, `Llm::SpamFeeds::SyncJob`,
+  очередь `low_priority`) — антиспам чат-бота: доменные/IP-фиды (hagezi,
+  Phishing.Database, URLhaus, ipsum, firehol) + Tranco Top-10k allowlist,
+  см. `docs/runbooks/chat-antispam.md`;
 - системный crontab хоста — 5 записей + `bin/tunnel-check` каждые 15 мин
   (добавлен операционно после merge PR #137), правится `crontab -e`: 4 через
   `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`),
