@@ -46,11 +46,11 @@ RSpec.describe PropertyEvaluationService do
   end
 
   describe 'отсечение выбросов ₽/м²' do
+    # Различные title обязательны: base_pool делает .uniq по [source, title],
+    # одинаковые заголовки схлопнут пул до одного компа и тест станет вакуумным.
     let(:pool) do
-      [comp('external_listing', 97_000), comp('external_listing', 98_000),
-       comp('external_listing', 99_000), comp('external_listing', 100_000),
-       comp('external_listing', 101_000), comp('external_listing', 102_000),
-       comp('external_listing', 103_000), comp('external_listing', 510)]
+      [97_000, 98_000, 99_000, 100_000, 101_000, 102_000, 103_000, 510]
+        .each_with_index.map { |pps, i| comp('external_listing', pps, title: "аналог-#{i}") }
     end
 
     it 'выброс не доходит до CompositeEstimator и сериализации' do
@@ -65,6 +65,15 @@ RSpec.describe PropertyEvaluationService do
       expect(result[:success]).to be(true)
       expect(received.map { |c| c[:price_per_sqm] }).not_to include(510)
       expect(result[:comparables].map { |c| c[:price_per_sqm] }).not_to include(510)
+    end
+
+    it 'ai_filter считает пул ПОСЛЕ чистки выбросов (issue #201)' do
+      result = described_class.new(valuation).call
+
+      expect(result[:success]).to be(true)
+      expect(result[:ai_filter][:candidates_raw]).to eq(8)
+      expect(result[:ai_filter][:candidates_kept]).to eq(7) # без выброса 510 ₽/м²
+      expect(result[:ai_filter][:candidates_rejected]).to eq(1)
     end
 
     it 'end-to-end: реальный CompositeEstimator/Hedonic не ломается выбросом' do
@@ -130,6 +139,54 @@ RSpec.describe PropertyEvaluationService do
       expect(result[:success]).to be(true)
       expect(result[:tier]).to eq(4)
       expect(result[:low_coverage]).to be(true)
+    end
+  end
+
+  describe 'полный пул аналогов в результате (ревью Kimi, PR #184)' do
+    it 'внешний аналог не теряется при более чем пяти внутренних comps' do
+      # Одинаковые ₽/м² и уникальные title: PriceEstimator не должен вычистить
+      # пул как выбросы — тест детерминированно ловит старый first(5).
+      internal = Array.new(6) { |i| comp('agency', 100_000, title: "аналог #{i}") }
+      external = comp('external_listing', 100_000, title: 'внешний аналог',
+                      url: 'https://ryazan.cian.ru/sale/flat/294573918/')
+      allow(PropertyEvaluation::ComparableFinder).to receive(:new)
+        .and_return(instance_double(PropertyEvaluation::ComparableFinder,
+                                    call: { tier: 1, comparables: internal + [external] }))
+
+      result = described_class.new(valuation, include_full_comparables: true).call
+
+      expect(result[:success]).to be(true)
+      # Публичный отчёт — компактно, как раньше (first(5))
+      expect(result[:comparables].size).to eq(5)
+      # Полный пул — только по флагу staff-тула (external-first там)
+      expect(result[:full_comparables].size).to eq(7)
+      urls = result[:full_comparables].map { |c| c[:url] }
+      expect(urls).to include('https://ryazan.cian.ru/sale/flat/294573918/')
+    end
+
+    it 'по умолчанию full_comparables в ответе нет (публичные оценки не хранят пул)' do
+      internal = Array.new(6) { |i| comp('agency', 100_000, title: "аналог #{i}") }
+      external = comp('external_listing', 100_000, title: 'внешний аналог',
+                      url: 'https://ryazan.cian.ru/sale/flat/294573918/')
+      allow(PropertyEvaluation::ComparableFinder).to receive(:new)
+        .and_return(instance_double(PropertyEvaluation::ComparableFinder,
+                                    call: { tier: 1, comparables: internal + [external] }))
+
+      result = described_class.new(valuation).call
+
+      expect(result[:success]).to be(true)
+      expect(result).not_to have_key(:full_comparables)
+      expect(result[:comparables].size).to eq(5)
+    end
+
+    it 'пробрасывает фактический исход websearch-поиска (websearch_count)' do
+      allow(Valuations::WebsearchCompFinder).to receive(:new)
+        .and_return(instance_double(Valuations::WebsearchCompFinder, call: 4))
+
+      result = described_class.new(valuation).call
+
+      expect(result[:success]).to be(true)
+      expect(result[:websearch_count]).to eq(4)
     end
   end
 end

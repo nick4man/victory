@@ -84,8 +84,12 @@ module PropertyEvaluation
       comps.map do |c|
         r = c[:record]
         {
+          # Нормализованная площадь comp (ComparableFinder переводит
+          # land-объявления из соток в м²) имеет приоритет над record.area —
+          # иначе hedonic/bootstrap регрессия снова работала бы в сотках
+          # при ₽/м² и цена участка искажалась бы на порядки (PR #184).
           rooms:         r.try(:rooms),
-          area:          r.try(:area).to_f,
+          area:          (c[:area].presence || r.try(:area)).to_f,
           price_per_sqm: c[:price_per_sqm].to_f,
           distance_km:   c[:distance_km].to_f
         }

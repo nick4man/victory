@@ -49,6 +49,7 @@ app/models/property.rb — class Property
 app/models/property_embedding.rb — class PropertyEmbedding
 app/models/property_type.rb — class PropertyType
 app/models/property_valuation.rb — class PropertyValuation
+app/models/property_valuation_embedding.rb — class PropertyValuationEmbedding
 app/models/property_view.rb — class PropertyView
 app/models/referral.rb — class Referral
 app/models/residential_complex.rb — class ResidentialComplex
@@ -252,6 +253,7 @@ app/services/chat_tools/staff/kpi_for.rb — module ChatTools, module Staff, mod
 app/services/chat_tools/staff/list_my_open_tasks.rb — module ChatTools, module Staff, module ListMyOpenTasks
 app/services/chat_tools/staff/lookup_lead.rb — module ChatTools, module Staff, module LookupLead
 app/services/chat_tools/staff/lookup_task.rb — module ChatTools, module Staff, module LookupTask
+app/services/chat_tools/staff/market_comparables.rb — module ChatTools, module Staff, module MarketComparables
 app/services/chat_tools/staff/nextcloud_list_templates.rb — module ChatTools, module Staff, module NextcloudListTemplates
 app/services/chat_tools/staff/nextcloud_lookup_deal.rb — module ChatTools, module Staff, module NextcloudLookupDeal
 app/services/chat_tools/staff/registry.rb — module ChatTools, module Staff, module Registry
@@ -294,6 +296,7 @@ app/services/embedding/article_text_template.rb — module Embedding, class Arti
 app/services/embedding/google_client.rb — module Embedding, class GoogleClient, class Error
 app/services/embedding/lead_event_text_template.rb — module Embedding, module LeadEventTextTemplate
 app/services/embedding/property_text_template.rb — module Embedding, module PropertyTextTemplate
+app/services/embedding/property_valuation_text_template.rb — module Embedding, module PropertyValuationTextTemplate
 app/services/embedding/telegram_group_message_text_template.rb — module Embedding, module TelegramGroupMessageTextTemplate
 app/services/express_report_notifier.rb — class ExpressReportNotifier
 app/services/external_listings/yrl_parser.rb — module ExternalListings, class YrlParser
@@ -529,6 +532,7 @@ app/jobs/document_reminder_job.rb — class DocumentReminderJob
 app/jobs/embed_article_job.rb — class EmbedArticleJob
 app/jobs/embed_lead_event_job.rb — class EmbedLeadEventJob
 app/jobs/embed_property_job.rb — class EmbedPropertyJob
+app/jobs/embed_property_valuation_job.rb — class EmbedPropertyValuationJob
 app/jobs/embed_telegram_group_message_job.rb — class EmbedTelegramGroupMessageJob
 app/jobs/external_listings/yrl_sync_job.rb — module ExternalListings, class YrlSyncJob
 app/jobs/inquiry_notification_job.rb — class InquiryNotificationJob

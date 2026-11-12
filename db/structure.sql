@@ -2012,6 +2012,41 @@ ALTER SEQUENCE public.property_types_id_seq OWNED BY public.property_types.id;
 
 
 --
+-- Name: property_valuation_embeddings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.property_valuation_embeddings (
+    id bigint NOT NULL,
+    property_valuation_id bigint NOT NULL,
+    content_hash character varying(64) NOT NULL,
+    content_text text NOT NULL,
+    embedding public.vector(768) NOT NULL,
+    embedded_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: property_valuation_embeddings_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.property_valuation_embeddings_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: property_valuation_embeddings_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.property_valuation_embeddings_id_seq OWNED BY public.property_valuation_embeddings.id;
+
+
+--
 -- Name: property_valuation_report_number_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -3556,6 +3591,13 @@ ALTER TABLE ONLY public.property_types ALTER COLUMN id SET DEFAULT nextval('publ
 
 
 --
+-- Name: property_valuation_embeddings id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_valuation_embeddings ALTER COLUMN id SET DEFAULT nextval('public.property_valuation_embeddings_id_seq'::regclass);
+
+
+--
 -- Name: property_valuations id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4090,6 +4132,14 @@ ALTER TABLE ONLY public.property_types
 
 
 --
+-- Name: property_valuation_embeddings property_valuation_embeddings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_valuation_embeddings
+    ADD CONSTRAINT property_valuation_embeddings_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: property_valuations property_valuations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4478,6 +4528,13 @@ CREATE INDEX idx_properties_seo_pending ON public.properties USING btree (seo_ge
 --
 
 CREATE INDEX idx_property_embeddings_cosine ON public.property_embeddings USING hnsw (embedding public.vector_cosine_ops);
+
+
+--
+-- Name: idx_property_valuation_embeddings_cosine; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_property_valuation_embeddings_cosine ON public.property_valuation_embeddings USING hnsw (embedding public.vector_cosine_ops);
 
 
 --
@@ -6154,6 +6211,13 @@ CREATE UNIQUE INDEX index_property_types_on_slug ON public.property_types USING 
 
 
 --
+-- Name: index_property_valuation_embeddings_on_property_valuation_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_property_valuation_embeddings_on_property_valuation_id ON public.property_valuation_embeddings USING btree (property_valuation_id);
+
+
+--
 -- Name: index_property_valuations_on_audit_mode; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7590,6 +7654,14 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: property_valuation_embeddings fk_rails_8f1b0a82bc; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.property_valuation_embeddings
+    ADD CONSTRAINT fk_rails_8f1b0a82bc FOREIGN KEY (property_valuation_id) REFERENCES public.property_valuations(id) ON DELETE CASCADE;
+
+
+--
 -- Name: article_embeddings fk_rails_95f36a2235; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7913,10 +7985,11 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public;
+SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261108210000'),
+('20261108120000'),
 ('20261107233000'),
 ('20260914120000'),
 ('20260911100100'),

@@ -76,4 +76,79 @@ RSpec.describe ExternalListings::YrlParser do
 
     expect(result[:comparables]).to be_empty
   end
+
+  # Ревью Kimi (PR #184, раунд 7): <lot-area> несёт unit, парсер его
+  # игнорировал — кв. м попадали в land_area как сотки. Контракт
+  # ExternalListing.land_area — сотки; иначе band-фильтр терял запись,
+  # а ₽/м² искажался в 100 раз. Проверяем обе единицы end-to-end:
+  # парсер → запись → ComparableFinder.
+  describe 'нормализация <lot-area> к соткам' do
+    def parse_land_feed(lot_area_xml)
+      file = Tempfile.new(%w[feed .xml])
+      file.write(<<~XML)
+        <?xml version="1.0" encoding="UTF-8"?>
+        <realty-feed xmlns="http://webmaster.yandex.ru/schemas/feed/realty/2010-06">
+          <offer internal-id="land-1">
+            <type>продажа</type>
+            <property-type>участок</property-type>
+            <category>участок</category>
+            <price><value>1800000</value></price>
+            <area><value>150</value></area>
+            <lot-area>#{lot_area_xml}</lot-area>
+            <location>
+              <country>Россия</country>
+              <region>Рязанская область</region>
+              <locality-name>Рязань</locality-name>
+              <sub-locality-name>Канищево</sub-locality-name>
+              <address>ул. Тестовая, д. 1</address>
+              <latitude>54.6292</latitude>
+              <longitude>39.7187</longitude>
+            </location>
+          </offer>
+        </realty-feed>
+      XML
+      file.flush
+      described_class.new(file.path).call
+    ensure
+      file.close!
+    end
+
+    def land_comparables
+      valuation = PropertyValuation.new(
+        property_type: 'land', deal_type: 'sale', audit_mode: 'express',
+        address: 'г. Рязань, Канищево, ул. Тестовая, д. 1', city: 'Рязань',
+        district: 'Канищево', total_area: 800, land_area: 8, rooms: 0,
+        status: 'pending', latitude: 54.6292, longitude: 39.7187
+      )
+
+      PropertyEvaluation::ComparableFinder.new(valuation).call[:comparables]
+    end
+
+    it 'кв. м переводится в сотки и запись проходит в band участка 8 соток' do
+      parse_land_feed('<value>800</value><unit>кв. м</unit>')
+
+      record = ExternalListing.find_by!(source: 'yandex_yrl', source_id: 'land-1')
+      expect(record.land_area).to eq(8.0)
+
+      comp = land_comparables.find { |c| c[:record] == record }
+      expect(comp).to be_present
+      # ₽/м² по нормализованной площади: 1.8M / 800 м², а не 1.8M / 80 000 м²
+      expect(comp[:price_per_sqm]).to eq(2250)
+    end
+
+    it 'сотки сохраняются как есть (регрессия прежнего поведения)' do
+      parse_land_feed('<value>8</value><unit>сотка</unit>')
+
+      record = ExternalListing.find_by!(source: 'yandex_yrl', source_id: 'land-1')
+      expect(record.land_area).to eq(8.0)
+      expect(land_comparables.map { |c| c[:record] }).to include(record)
+    end
+
+    it 'unit опущен — дефолт YRL «сотка»' do
+      parse_land_feed('<value>8</value>')
+
+      expect(ExternalListing.find_by!(source: 'yandex_yrl', source_id: 'land-1').land_area)
+        .to eq(8.0)
+    end
+  end
 end
