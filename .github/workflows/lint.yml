@@ -116,7 +116,7 @@ jobs:
           exit 1
 
       - name: Start Redis
-        run: docker run -d --name ci-redis -p 6379:6379 redis:7-alpine
+        run: docker run -d --name ci-redis -p 6379:6379 redis:8-alpine
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1

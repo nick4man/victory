@@ -83,7 +83,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:latest
+    image: redis:8.10.3
     restart: unless-stopped
     volumes:
       - redisdata:/data
