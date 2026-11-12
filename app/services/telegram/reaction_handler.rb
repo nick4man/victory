@@ -66,6 +66,10 @@ module Telegram
     def handle_task_reaction(tg_user)
       msg_id = @rx['message_id']
       return nil if msg_id.blank?
+      # Issue #214 / review round 5 — реакция закрывает задачу ТОЛЬКО в DM
+      # исполнителя. message_id уникален лишь внутри чата: 👍 на сообщении 42
+      # в тестовом чате закрыл бы боевую задачу из DM с тем же ID.
+      return nil unless own_dm_chat?(tg_user)
 
       tasks_in_dm = ::Task.where(tg_message_id: msg_id, assignee_id: tg_user.id).to_a
       return nil if tasks_in_dm.empty?
@@ -86,6 +90,14 @@ module Telegram
       task.mark_completed!(acked_method: 'reaction')
       Rails.logger.info("[ReactionHandler] task ##{task.id} done by #{tg_user.mention} via emoji reaction")
       :task_completed
+    end
+
+    # DM исполнителя = личка: chat.id реакции должен совпадать с dm_chat_id
+    # (или с tg_user_id, если dm_chat_id не заведён). Любой другой чат
+    # (рабочая группа, тестовый чат) — не закрывает задачи по реакции.
+    def own_dm_chat?(tg_user)
+      rx_chat_id = @rx.dig('chat', 'id')
+      rx_chat_id.present? && [tg_user.dm_chat_id, tg_user.tg_user_id].compact.include?(rx_chat_id)
     end
 
     def send_multitask_hint(tg_user, open_tasks)

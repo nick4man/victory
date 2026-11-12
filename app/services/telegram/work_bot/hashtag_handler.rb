@@ -22,6 +22,11 @@ module Telegram
       end
 
       def call
+        # Issue #214 / review round 5 — #ахтунг работает только в рабочей
+        # группе. Из тестового чата (и любого другого supergroup) менеджерам
+        # DM не уходят: priority-flip и рассылка — боевые side-effects.
+        return :ignored unless work_chat?
+
         text = @msg['text'].to_s
         return :no_hashtag unless text.match?(AHTUNG_REGEX)
 
@@ -45,6 +50,11 @@ module Telegram
       end
 
       private
+
+      # Рабочая группа AН — единственный чат, где #ахтунг что-то значит.
+      def work_chat?
+        @msg.dig('chat', 'id') == Router::WORK_CHAT_ID
+      end
 
       def find_lead_via_reply
         reply_to = @msg['reply_to_message']

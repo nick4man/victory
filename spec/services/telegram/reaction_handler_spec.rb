@@ -40,6 +40,30 @@ RSpec.describe Telegram::ReactionHandler do
     expect(result).to eq(:handled)
   end
 
+  # Issue #224 (ревью PR #221, round 5, блокер 1): реакция закрывает задачу
+  # только в DM исполнителя. message_id уникален лишь внутри чата — 👍 в
+  # тестовом чате с тем же ID не должен закрыть боевую задачу из DM.
+  describe 'task-reaction изоляция (round 5)' do
+    let!(:dm_task) do
+      ::Task.create!(assignee: agent, title: 'Боевая задача', status: 'open',
+                     kind: 'other', priority: 'normal', tg_message_id: 777)
+    end
+
+    it '👍 на то же message_id в тестовом чате НЕ закрывает боевую задачу из DM' do
+      result = described_class.new(reaction_payload(test_chat, 777), client: double('client')).call
+
+      expect(dm_task.reload.status_open?).to be(true)
+      expect(result).not_to eq(:task_completed)
+    end
+
+    it '👍 в DM исполнителя по-прежнему закрывает задачу' do
+      result = described_class.new(reaction_payload(agent.tg_user_id, 777), client: double('client')).call
+
+      expect(dm_task.reload.status_open?).to be(false)
+      expect(result).to eq(:task_completed)
+    end
+  end
+
   def reaction_payload(chat_id, message_id)
     { 'chat' => { 'id' => chat_id },
       'message_id' => message_id,

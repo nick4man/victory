@@ -181,6 +181,16 @@ module Telegram
             "В DM — укажи lead_id первым аргументом: <code>/#{cmd} 87 …</code>"
         end
 
+        # Issue #214 / review round 5 — staff_test-лиды (probe-прогоны чат-бота)
+        # не должны дать мутирующим командам (/assign, /task, /stage) тронуть
+        # боевых агентов, Task и CRM: назначение шлёт DM реальному агенту,
+        # /task создаёт боевой Task с CRM-patch, /stage — LeadStageTransition.
+        # Возвращает ответ-отказ или nil (лид боевой / не найден).
+        def staff_test_guard(lead)
+          return nil unless lead&.staff_test?
+          reply("🧪 Лид ##{lead.id} — тестовый (probe). Команда для тест-лидов недоступна.")
+        end
+
         private
 
         # Гейты вынесены из #call, чтобы исход был символом, а не возвратом

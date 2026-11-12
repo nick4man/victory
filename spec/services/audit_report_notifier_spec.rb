@@ -59,4 +59,52 @@ RSpec.describe AuditReportNotifier do
       expect(described_class.notify(valuation)).to be(true)
     end
   end
+
+  # Issue #224 (ревью PR #221, round 5, нит): маркер «🧪 ТЕСТ» без склейки
+  # слов — caption «🧪 ТЕСТ · PDF-отчёт …», заголовок summary «… · 🧪 ТЕСТ».
+  describe 'маркер test? (round 5)' do
+    let(:metadata) { { 'test' => true } }
+
+    around do |example|
+      old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old
+    end
+
+    it 'caption PDF: «🧪 ТЕСТ · PDF-отчёт …»' do
+      expect(client).to receive(:send_message).and_return({ 'message_id' => 1 })
+      expect(client).to receive(:send_document) do |_doc, kwargs|
+        expect(kwargs[:caption]).to start_with("🧪 ТЕСТ · PDF-отчёт ")
+        { 'message_id' => 2 }
+      end
+
+      described_class.notify(valuation)
+    end
+
+    it 'заголовок summary: маркер отделён « · »' do
+      expect(client).to receive(:send_message) do |text, _kwargs|
+        expect(text).to include(' · 🧪 ТЕСТ')
+        { 'message_id' => 1 }
+      end
+      expect(client).to receive(:send_document).and_return({ 'message_id' => 2 })
+
+      described_class.notify(valuation)
+    end
+  end
+
+  describe 'caption боевого аудита (round 5)' do
+    it 'без маркера, начинается с «PDF-отчёт»' do
+      allow(ENV).to receive(:[]).with('TELEGRAM_AUDITS_CHAT_ID').and_return('-100500')
+
+      expect(client).to receive(:send_message).and_return({ 'message_id' => 1 })
+      expect(client).to receive(:send_document) do |_doc, kwargs|
+        expect(kwargs[:caption]).to start_with('PDF-отчёт ')
+        expect(kwargs[:caption]).not_to include('ТЕСТ')
+        { 'message_id' => 2 }
+      end
+
+      described_class.notify(valuation)
+    end
+  end
 end

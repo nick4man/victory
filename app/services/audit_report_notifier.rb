@@ -58,9 +58,10 @@ class AuditReportNotifier
   end
 
   # Маркер для probe-записей (issue #214): даже в тестовом чате карточка
-  # должна визуально отличаться от боевых.
+  # должна визуально отличаться от боевых. Без ведущего пробела — разделитель
+  # добавляет caller (review round 5: « 🧪 ТЕСТPDF-отчёт» — склейка слов).
   def test_marker
-    @v.respond_to?(:test?) && @v.test? ? ' 🧪 ТЕСТ' : ''
+    @v.respond_to?(:test?) && @v.test? ? '🧪 ТЕСТ' : ''
   end
 
   def send_pdf(client, chat_id)
@@ -70,7 +71,7 @@ class AuditReportNotifier
     client.send_document(
       { io: io, filename: "audit-#{@v.report_number || @v.token}.pdf", content_type: 'application/pdf' },
       chat_id: chat_id,
-      caption: "#{test_marker}PDF-отчёт #{@v.report_label} · #{verdict_ru}"
+      caption: [test_marker, "PDF-отчёт #{@v.report_label} · #{verdict_ru}"].reject(&:empty?).join(' · ')
     )
   rescue StandardError => e
     # If PDF generation or upload fails, the summary message was already
@@ -80,7 +81,7 @@ class AuditReportNotifier
 
   def summary_message
     lines = []
-    lines << "📊 <b>Новый инвест-аудит #{escape(@v.report_label)} — #{verdict_ru}</b>#{test_marker}"
+    lines << "📊 <b>Новый инвест-аудит #{escape(@v.report_label)} — #{verdict_ru}</b>#{test_marker.blank? ? '' : " · #{test_marker}"}"
     lines << ''
     lines << contact_block.presence || '👤 <i>анонимно (контакты не оставлены)</i>'
     lines << ''
