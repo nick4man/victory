@@ -195,7 +195,7 @@
       <%# Активные фильтры — человекочитаемая сводка для чат-контекста
           (data-chat-state="filters"). Только ransack q[] + premium; url query
           целиком виджет и так шлёт в page.query, но это сырые параметры. %>
-      <% q_params = params[:q].to_h %>
+      <% q_params = params[:q] ? params[:q].to_unsafe_h : {} %>
       <% filter_bits = [] %>
       <% filter_bits << (q_params['deal_type_eq'] == 'rent' ? 'Аренда' : 'Покупка') if q_params['deal_type_eq'].present? %>
       <% if q_params['rooms_eq'].present? %>

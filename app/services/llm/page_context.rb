@@ -60,6 +60,16 @@ module Llm
     # но суммарно могут перевалить за разумное).
     BLOCK_MAX = 1500
 
+    # Порядок выкидывания клиентских ключей, если блок не влезает в
+    # BLOCK_MAX даже без фактов: сначала самое тяжёлое/опциональное.
+    # Никогда не обрезаем блок по truncate — только целые ключи, чтобы
+    # JSON, DATA_END и guidance не разорвались посередине.
+    CLIENT_DATA_DROP_ORDER = %w[state ctx h1 title query].freeze
+
+    # Потолок значения одной строки фактов (address оценки — пользовательский
+    # ввод, гоним через тот же анти-инъекционный контракт, что и для state).
+    FACT_VALUE_MAX = 200
+
     # Какие поля инструмента GetPropertyDetails допустимы в доверенных
     # фактах. description/agent/amenities/url/slug/id исключены сознательно:
     # description жирный, agent — телефон сотрудника, url/slug/id — сырые
@@ -112,7 +122,7 @@ module Llm
       client_data['ctx'] = page_ctx if page_ctx.present?
       client_data['state'] = state if state.present?
 
-      assemble_block(JSON.generate(client_data),
+      assemble_block(client_data,
                      server_facts(kind, page_ctx, visitor_token: visitor_token, user_id: user_id),
                      guidance(kind, page_ctx))
     end
@@ -122,6 +132,12 @@ module Llm
     # переводов строк и не длиннее STATE_VALUE_MAX, не больше STATE_KEYS_MAX
     # ключей. Возвращает nil если нечего пропускать.
     def sanitize_state(raw_state, kind)
+      # GET bootstrap шлёт state строкой (page[state]=<json>), POST — хешем.
+      if raw_state.is_a?(String)
+        raw_state = (JSON.parse(raw_state) rescue nil)
+      elsif raw_state.respond_to?(:to_unsafe_h)
+        raw_state = raw_state.to_unsafe_h
+      end
       return nil unless raw_state.is_a?(Hash)
 
       allowed = STATE_KEYS[kind]
@@ -139,19 +155,28 @@ module Llm
     end
 
     # Склеивает блок и удерживает его в BLOCK_MAX: сначала ужимает строки
-    # фактов (по одной, с конца), факты кончились — режет хвост целиком
-    # (доверенные указания короче фактов не бывают, но backstop на случай
-    # экстремально длинных клиентских значений оставляем).
-    def assemble_block(data_json, fact_lines, guidance_text)
-      lines = fact_lines.dup
+    # фактов (по одной, с конца), факты кончились — выкидывает клиентские
+    # ключи по CLIENT_DATA_DROP_ORDER. Безопасно потому, что:
+    #   • значения path/query/title/h1/ctx/state уже лимитированы на входе,
+    #     так что блок из одного path гарантированно влезает;
+    #   • целые ключи выкидываются, а не режется строка — JSON остаётся
+    #     валидным, DATA_END и guidance никогда не обрезаются.
+    def assemble_block(client_data, fact_lines, guidance_text)
+      data = client_data.dup
+      facts = fact_lines.dup
       loop do
-        text = block_template(data_json, lines, guidance_text)
+        text = block_template(JSON.generate(data), facts, guidance_text)
         return text if text.length <= BLOCK_MAX
-        break if lines.empty?
 
-        lines.pop
+        if facts.any?
+          facts.pop
+        else
+          key = CLIENT_DATA_DROP_ORDER.find { |k| data.key?(k) }
+          return text if key.nil?
+
+          data.delete(key)
+        end
       end
-      block_template(data_json, [], guidance_text).truncate(BLOCK_MAX)
     end
 
     def block_template(data_json, fact_lines, guidance_text)
@@ -195,15 +220,17 @@ module Llm
 
       # Ключи ответа инструмента — символы; сравниваем строково.
       data = data.transform_keys(&:to_s)
-      data.slice(*FACT_PROPERTY_KEYS).map { |k, v| "#{k}: #{v}" }
+      data.slice(*FACT_PROPERTY_KEYS).map { |k, v| fact_line(k, v) }
     end
 
     def zhk_facts(slug)
       return [] if slug.blank?
 
-      zhk = ResidentialComplex.friendly.find(slug)
+      # Только опубликованные ЖК — как в публичном контроллере и greeting:
+      # клиентский slug не должен раскрывать черновик.
+      zhk = ResidentialComplex.visible.friendly.find(slug)
       listings = zhk.on_site_listings
-      lines = ["name: #{zhk.name}", "listings: #{listings.count}"]
+      lines = [fact_line('name', zhk.name), "listings: #{listings.count}"]
       min_price = listings.reorder('').minimum(:price)
       max_price = listings.reorder('').maximum(:price)
       if min_price && max_price
@@ -227,10 +254,17 @@ module Llm
               (user_id.present? && v.user_id == user_id)
       return [] unless owned
 
-      lines = ["address: #{v.address}"]
-      lines << "estimated_price: #{v.estimated_price_formatted}" if v.estimated_price.present?
-      lines << "price_range: #{v.price_range_formatted}" if v.min_price.present? && v.max_price.present?
+      lines = [fact_line('address', v.address)]
+      lines << fact_line('estimated_price', v.estimated_price_formatted) if v.estimated_price.present?
+      lines << fact_line('price_range', v.price_range_formatted) if v.min_price.present? && v.max_price.present?
       lines
+    end
+
+    # Одна строка доверенных фактов: значение без переводов строк (иначе
+    # пользовательский ввод типа address может вставить псевдозаголовок
+    # после DATA_END) и не длиннее FACT_VALUE_MAX.
+    def fact_line(key, value)
+      "#{key}: #{value.to_s.gsub(/[\r\n]+/, ' ')[0, FACT_VALUE_MAX]}"
     end
 
     def format_money(value)
