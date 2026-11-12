@@ -169,6 +169,28 @@ RSpec.describe Inquiry do
       end
       inquiry.send(:push_to_work_bot)
     end
+
+    # Находка ревью PR #221 (round 2): тестовый Inquiry ставил
+    # InquiryNotificationJob (email менеджерам) и назначался боевому агенту
+    # через round-robin.
+    it 'тестовый лид: не назначается агенту и не ставит InquiryNotificationJob' do
+      create(:user, role: :agent)
+
+      inquiry = nil
+      expect {
+        inquiry = build_inquiry(metadata: { 'test' => true }).tap(&:save!)
+      }.not_to have_enqueued_job(InquiryNotificationJob)
+
+      expect(inquiry.agent).to be_nil
+    end
+
+    it 'боевой лид: агент назначается по-прежнему (регрессия)' do
+      agent = create(:user, role: :agent)
+
+      inquiry = build_inquiry.tap(&:save!)
+
+      expect(inquiry.agent).to eq(agent)
+    end
   end
 
   describe 'AASM transitions' do

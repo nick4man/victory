@@ -183,6 +183,38 @@ RSpec.describe Lead::Intake do
       )
       expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
     end
+
+    # Находка ревью PR #221 (round 2): A7 staff-skip резал probe-прогон
+    # сотрудника с его боевым телефоном — карточки не было вовсе.
+    it 'test-флаг переопределяет staff-skip: agent + test → тестовая карточка создаётся' do
+      create(:user, role: :agent, phone: '+79001234567')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Сотрудник', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+
+      expect(result).to be_success
+      expect(result.lead_event).not_to be_nil
+      expect(result.lead_event.metadata['test']).to be(true)
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+      # fallback-лид тоже помечен тестом — не уйдёт в CRM/агентам
+      expect(result.lead_event.lead_ref).to be_test
+    end
+
+    it 'боевой маршрут без флага: agent → skip по-прежнему (регрессии нет)' do
+      create(:user, role: :agent, phone: '+79001234567')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Сотрудник', phone: '79001234567', message: 'боевой сабмит' },
+        announcer: fake_announcer_class
+      )
+
+      expect(result).to be_success
+      expect(result.lead_event).to be_nil
+    end
   end
 
 end

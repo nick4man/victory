@@ -11,9 +11,11 @@ module VisitorIdentity
   COOKIE_TTL  = 90.days
 
   # Префикс токена тестового прогона чат-виджета. Открытие сайта с
-  # ?visitor_token=probe-<anything> фиксирует токен в куке — весь чат этого
+  # ?visitor_token=probe-<имя> фиксирует токен в куке — весь чат этого
   # посетителя идёт в тестовый канал, а не в ДИСПЕТЧЕРСКУЮ (issue #214).
-  PROBE_TOKEN_PATTERN = /\Aprobe-[a-z0-9-]+\z/.freeze
+  # Длина суффикса ограничена 1..32 символами: без bound длинный валидный
+  # суффикс упирается в лимит cookie (~4КБ) → CookieOverflow на каждый запрос.
+  PROBE_TOKEN_PATTERN = /\Aprobe-[a-z0-9][a-z0-9-]{0,31}\z/.freeze
 
   included do
     before_action :ensure_visitor_token

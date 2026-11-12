@@ -97,6 +97,11 @@ module Telegram
       # Прочитали бы из модели — ряд кнопок маршрутизации уехал бы в #КВАРТИРЫ
       # вместе с карточкой, и лид можно было бы маршрутизировать повторно.
       def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+        # Тест-лид (issue #214): карточка живёт в тестовом чате без топиков —
+        # кнопки маршрутизации/стадий не рисуем, иначе callback уведёт карточку
+        # в рабочую группу (AnchorMigrator дополнительно gated).
+        return nil if test_lead?
+
         rows = routing_keyboard_for(topic_key)[:inline_keyboard]
         rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
         rows << stage_row if @lead.open?

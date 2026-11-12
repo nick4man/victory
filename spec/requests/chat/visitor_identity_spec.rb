@@ -32,6 +32,12 @@ RSpec.describe 'VisitorIdentity', type: :request do
     expect(Conversation.order(:id).last.visitor_token).not_to eq('hacked-token')
   end
 
+  it 'слишком длинный probe-токен игнорируется (защита от CookieOverflow)' do
+    open_chat(visitor_token: "probe-#{'a' * 100}")
+
+    expect(Conversation.order(:id).last.visitor_token).not_to start_with('probe-')
+  end
+
   it '?visitor_token=off выводит из тест-режима: следующий визит — обычный токен' do
     open_chat(visitor_token: 'probe-maria-1211')
     expect(Conversation.order(:id).last.visitor_token).to eq('probe-maria-1211')

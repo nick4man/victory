@@ -60,6 +60,22 @@ RSpec.describe Telegram::WorkBot::LeadAnnouncer do
       expect(lead.reload.anchor_thread_id).to be_nil
     end
 
+    # Находка ревью PR #221 (round 2): route-кнопки у тест-карточки уводили
+    # её в рабочую группу через AnchorMigrator (подделанный callback).
+    it 'test-лиду не рисуется клавиатура маршрутизации/стадий' do
+      announcer = described_class.new(lead, client: client)
+      expect(announcer.keyboard_for_card).to be_nil
+    end
+
+    it 'AnchorMigrator отказывает test-лиду (route в рабочую группу запрещён)' do
+      migrator = Telegram::WorkBot::AnchorMigrator.new(lead, 'appraisal', actor: create(:user), client: client)
+      expect(client).not_to receive(:send_message)
+      expect(client).not_to receive(:delete_message)
+
+      expect(migrator.call).to be(false)
+      expect(lead.reload.anchor_topic_key).to eq('dispatcher')
+    end
+
     it 'без TELEGRAM_TEST_CHAT_ID публикация пропускается (send_message не дёргается)' do
       ENV.delete('TELEGRAM_TEST_CHAT_ID')
       expect(client).not_to receive(:send_message)

@@ -28,7 +28,7 @@ class AuditReportNotifier
   end
 
   def call
-    chat_id = ENV['TELEGRAM_AUDITS_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+    chat_id = target_chat_id
     return false if chat_id.blank? || ENV['TELEGRAM_BOT_TOKEN'].blank?
 
     client = Telegram::Client.new
@@ -38,6 +38,21 @@ class AuditReportNotifier
   end
 
   private
+
+  # Тест-режим чат-бота (issue #214): аудит из probe-прогона уходит в
+  # TELEGRAM_TEST_CHAT_ID, а не в рабочие audits/staff-чаты. Без
+  # TELEGRAM_TEST_CHAT_ID — пропуск с warning: рабочие каналы не трогаются.
+  def target_chat_id
+    if @v.respond_to?(:test?) && @v.test?
+      test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+      if test_chat.blank?
+        Rails.logger.warn("[AuditReportNotifier] valuation=#{@v.id} test audit, TELEGRAM_TEST_CHAT_ID не задан — пропуск")
+      end
+      return test_chat
+    end
+
+    ENV['TELEGRAM_AUDITS_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+  end
 
   def send_pdf(client, chat_id)
     pdf_bytes = AuditPdfGenerator.call(@v)

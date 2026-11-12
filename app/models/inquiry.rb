@@ -486,13 +486,20 @@ class Inquiry < ApplicationRecord
 
   def assign_to_agent
     return if agent.present?
-    
+    # Тест-прогон чат-бота (issue #214): тестовый лид не назначается боевому
+    # агенту — иначе round-robin «съедает» агента и портит его статистику.
+    return if test?
+
     # Simple round-robin assignment to available agents
     available_agents = User.agents.active.order('RANDOM()').limit(1)
     self.agent = available_agents.first if available_agents.any?
   end
 
   def send_notifications
+    # Тест-прогон чат-бота (issue #214): email менеджерам о тестовом лиде
+    # не шлём — карточка уже ушла в тестовый TG-чат.
+    return if test?
+
     notify_admins!
     InquiryNotificationJob.perform_later(id) if defined?(InquiryNotificationJob)
   end

@@ -22,8 +22,14 @@ module Lead
         # это test/internal submission, не должен попасть в TG-группу как лид.
         # Если submitter — known client (вернувшийся), отметим в meta и
         # повысим priority (warm baseline) — agent видит что не cold contact.
+        #
+        # Issue #214: явный тест-флаг (probe-прогон чат-бота) ПЕРЕОПРЕДЕЛЯЕТ
+        # staff-skip — сотрудник, гоняющий бота со своим телефоном, должен
+        # получить тестовую карточку в тестовом чате, а не тишину. Боевой
+        # маршрут без флага — прежний (skip для staff).
+        test_mode = payload[:test] == true
         known_user = find_known_user(payload)
-        if known_user&.role_agent? || known_user&.role_admin?
+        if !test_mode && (known_user&.role_agent? || known_user&.role_admin?)
           Rails.logger.info(
             "[Lead::Intake::SiteSource] skipping internal staff submission " \
             "user=#{known_user.id} role=#{known_user.role}"
@@ -120,7 +126,10 @@ module Lead
           status:       'new',
           client_phone_e164: Lead::Intake::ClientResolver.normalize_phone(payload[:phone]),
           client_email_norm: Lead::Intake::ClientResolver.normalize_email(payload[:email]),
-          attribution_source: @source
+          attribution_source: @source,
+          # Issue #214: fallback-лид тест-прогона тоже помечаем — иначе он
+          # ушёл бы в CRM-синк/назначение агенту как боевой.
+          metadata:     payload[:test] == true ? { 'test' => true } : {}
         )
       ensure
         Thread.current[:skip_workbot_push] = false
