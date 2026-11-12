@@ -248,6 +248,31 @@ RSpec.describe Llm::SpamFilter do
         expect(SpamBlockedEntry.find_by(value: 'youtube.com')).to be_nil
         expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'youtube.com')).to be_nil
       end
+
+      it 'allowlisted-домен со старой domain-записью: путь всё равно уходит в URL-карантин' do
+        # регрессия: blocked domain + manual allowlist + эвристика на пути —
+        # старая domain-запись не должна гасить path-level защиту ранним return
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'popular.example',
+                                 status: :blocked, source: 'hagezi_tif')
+        SpamAllowlistEntry.create!(domain: 'popular.example')
+
+        described_class.classify('продвижение ботов https://popular.example/phish',
+                                 ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(SpamBlockedEntry.find_by(entry_type: :url, value: 'popular.example/phish'))
+          .to be_status_suspect
+      end
+
+      it 'два «@» в authority не обходят blocked-домен: user@foo@www.botmasterru.com' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com',
+                                 status: :blocked, source: 'local')
+
+        result = described_class.classify('заходите https://user@foo@www.botmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
     end
   end
 end

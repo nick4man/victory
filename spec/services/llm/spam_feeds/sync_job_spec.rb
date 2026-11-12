@@ -294,4 +294,28 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     expect(gone.reload.deleted_at).to be_present
   end
+
+  it 'падение середины импорта не протухает прежние записи фида' do
+    # регрессия: chunk 1 записан, chunk 2 упал — источник не должен попасть
+    # в synced, иначе retire_stale стёр бы записи необработанной части фида
+    stub_const('Llm::SpamFeeds::SyncJob::BATCH', 1)
+    old_entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'keep.example',
+                                         status: :blocked, source: 'hagezi_tif',
+                                         seen_at: 2.days.ago)
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "new-one.example\nnew-two.example\n")
+
+    calls = 0
+    allow(SpamBlockedEntry).to receive(:insert_all).and_wrap_original do |original, *args|
+      calls += 1
+      raise ActiveRecord::StatementInvalid, 'boom' if calls == 2
+
+      original.call(*args)
+    end
+
+    stats = described_class.perform_now
+
+    expect(stats['hagezi_tif']).to eq(0)
+    expect(old_entry.reload.deleted_at).to be_nil
+  end
 end

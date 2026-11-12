@@ -51,8 +51,9 @@ module Llm
       authority, path = s.split('/', 2)
       authority = authority.to_s
       # userinfo не должна менять ключ: https://user@botmasterru.com/x
-      # обходил blocked-домен, превращаясь в «user@botmasterru.com»
-      authority = authority.split('@', 2).last if authority.include?('@')
+      # обходил blocked-домен, превращаясь в «user@botmasterru.com»; хост
+      # отделяем по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host»
+      authority = authority.rpartition('@').last if authority.include?('@')
       authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
       authority = authority.downcase
       # IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — точки ДО IDNA:

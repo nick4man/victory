@@ -8,7 +8,7 @@ module Llm
   #      эвристики (стоп-слова, hxxp, шортенеры) → новый домен в карантин.
   #
   # Карантин vs блок: неизвестный домен от эвристик получает status suspect,
-  # мгновенного бана нет. Кворум hits от разных сессий/IP (SpamBlockedEntry)
+  # мгновенного бана нет. Кворум hits от разных IP (SpamBlockedEntry)
   # переводит его в blocked — новые спам-домены режутся без деплоя.
   module SpamFilter
     STOP_WORDS = [
@@ -99,6 +99,17 @@ module Llm
       host = url[:host]
       return if host.blank?
 
+      # allowlist проверяем ДО доменной записи: у белого домена с путём
+      # карантин обязан создать URL-запись (кворум по пути), иначе старая
+      # domain-запись (например, из фида до ручного allowlist) гасила бы
+      # path-level защиту ранним return
+      if SpamAllowlistEntry.allowlisted?(host)
+        return if url[:path].blank?
+
+        upsert_suspect(:url, "#{host}#{url[:path]}", ip: ip, visitor_token: visitor_token)
+        return
+      end
+
       entry = SpamBlockedEntry.find_by(entry_type: :domain, value: host)
       if entry
         # домен уже в карантине: hits считаем по домену независимо от пути —
@@ -108,13 +119,7 @@ module Llm
         return
       end
 
-      if SpamAllowlistEntry.allowlisted?(host)
-        return if url[:path].blank?
-
-        upsert_suspect(:url, "#{host}#{url[:path]}", ip: ip, visitor_token: visitor_token)
-      else
-        upsert_suspect(:domain, host, ip: ip, visitor_token: visitor_token)
-      end
+      upsert_suspect(:domain, host, ip: ip, visitor_token: visitor_token)
     end
 
     # create_or_find_by: параллельные запросы по новому домену иначе гонятся

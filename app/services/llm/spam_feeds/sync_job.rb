@@ -80,9 +80,8 @@ module Llm
       def perform
         run_at = Time.current
         stats = {}
-        # entry_type => источники, чья выгрузка в этом прогоне удалась
-        # (наполняется flush_batch по фактически записанным типам: URL-фид
-        # может дать и доменные, и URL-записи)
+        # entry_type => источники, чья выгрузка в этом прогоне полностью
+        # успешна (публикуется import_feed только после полного прохода)
         synced = Hash.new { |h, k| h[k] = [] }
 
         (DOMAIN_FEEDS.merge(URLHAUS_FEED)).each do |source, cfg|
@@ -123,7 +122,13 @@ module Llm
         end
 
         body.rewind
-        import_batches(body, source, cfg, status, run_at, synced)
+        # типы накапливаем в локальный аккумулятор и публикуем в synced
+        # только после полного успешного прохода: иначе падение середины
+        # импорта оставило бы источник в synced, и retire_stale стёр бы
+        # записи необработанной части фида (контракт: сбой список не стирает)
+        feed_synced = Hash.new { |h, k| h[k] = [] }
+        import_batches(body, source, cfg, status, run_at, feed_synced)
+        feed_synced.each { |type, sources| synced[type].concat(sources) }
         total
       rescue StandardError => e
         # сообщение об ошибке намеренно не логируем: в нём может оказаться
@@ -167,10 +172,9 @@ module Llm
         flush.call
       end
 
-      # Запись чанка с группировкой по фактическому типу записей: URL-фид
-      # может вернуть и доменную запись (URL без пути), и URL-запись —
-      # seen_at/реанимация/повышение статуса и протухание должны видеть их
-      # под тем типом, под которым строки реально лежат в таблице
+      # Запись чанка с группировкой по фактическому типу записей: типы
+      # складываем в аккумулятор вызывающего импорта, который опубликует
+      # источник в synced только после полного успешного прохода по фиду
       def flush_batch(batch, source, status, run_at, synced)
         return if batch.empty?
 
