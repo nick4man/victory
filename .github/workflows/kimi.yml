@@ -178,9 +178,10 @@ jobs:
         with:
           # Алиас @claude: экшен ищет ровно одну trigger_phrase (gate job'ы
           # выше пропускает оба упоминания), поэтому подставляем ту, что
-          # реально встретилась в событии. contains(null, ...) → false, так
-          # что отсутствующие поля события выражение не ломают.
-          trigger_phrase: ${{ (contains(github.event.comment.body, '@kimi') || contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi') || contains(github.event.review.body, '@kimi')) && '@kimi' || '@claude' }}
+          # реально встретилась в ПОЛЯХ ТЕКУЩЕГО события: на issue_comment
+          # экшен проверяет только comment.body, и учёт issue.body сломал бы
+          # триггер (issue с @kimi в описании + комментарий только с @claude).
+          trigger_phrase: ${{ ((github.event_name == 'issue_comment' && contains(github.event.comment.body, '@kimi')) || (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kimi')) || (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kimi')) || (github.event_name == 'issues' && (contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi')))) && '@kimi' || '@claude' }}
 
           # API-ключ: Kimi Code Console (kimi_platform: code; k3/k3.1-pro —
           # план Moderato+, ниже — kimi-for-coding) или Open Platform — тогда
