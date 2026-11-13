@@ -72,6 +72,11 @@ module Chat
         # не отражает, для него в виджете отдельный индикатор.
         test_probe: conv.test_probe?,
         test_mode:  conv.lead_test_mode?,
+        # Подписанный сервером probe-токен для тумблера (rev #230, round 3):
+        # HMAC-формат probe-<name>-<16hex> из VisitorIdentity — самодельный
+        # токен из JS база отклоняет. Виджет хранит его в localStorage и
+        # перезагружает страницу с ?visitor_token=<token>.
+        probe_token: VisitorIdentity.probe_token,
         messages:   conv.chat_messages.recent.map { |m| serialize_message(m) }
       }
     end

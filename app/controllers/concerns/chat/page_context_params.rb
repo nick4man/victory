@@ -63,13 +63,27 @@ module Chat
     # офисного IP автоматически тестовая. Флаг ставится один раз и не
     # снимается: сессия, начатая на staging, не должна внезапно стать
     # боевой при переходе за прокси/с другого IP.
+    #
+    # ENV-кран SITE_CHATBOT_FORCE_TEST тоже фиксируется sticky-флагом
+    # metadata['force_test'] (rev #230): иначе кран, снятый между приёмом
+    # сообщения и выполнением LlmReplyJob/EscalationNotifier, превратил бы
+    # тестовый диалог обратно в боевой — обещание «100%-й гарантии» крана
+    # переставало бы выполняться.
     def stamp_auto_test(conv)
-      return if conv.metadata.is_a?(Hash) && conv.metadata['auto_test'] == true
-      return unless Chat::TestMode.auto_test_request?(request)
-
       meta = conv.metadata.is_a?(Hash) ? conv.metadata.dup : {}
-      meta['auto_test'] = true
-      conv.update_columns(metadata: meta)
+      changed = false
+
+      if meta['auto_test'] != true && Chat::TestMode.auto_test_request?(request)
+        meta['auto_test'] = true
+        changed = true
+      end
+
+      if meta['force_test'] != true && Chat::TestMode.force_test?
+        meta['force_test'] = true
+        changed = true
+      end
+
+      conv.update_columns(metadata: meta) if changed
     end
   end
 end

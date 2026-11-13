@@ -52,7 +52,7 @@ RSpec.describe 'VisitorIdentity', type: :request do
   # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг из JSON сессии
   # (probe-кука httponly — из JS не прочитать).
   it 'serialize отдаёт test_probe — виджет показывает состояние тумблера' do
-    open_chat(visitor_token: 'probe-widget')
+    open_chat(visitor_token: probe('widget'))
     expect(response.parsed_body['test_probe']).to be(true)
 
     open_chat(visitor_token: 'off')
@@ -89,20 +89,19 @@ RSpec.describe 'VisitorIdentity', type: :request do
     expect(token).not_to start_with('probe-')
   end
 
-  # Rev #230: тумблер виджета генерирует уникальный probe-<suffix> на браузер
-  # (localStorage) — общий токен смешивал бы сообщения независимых
-  # посетителей в один Conversation.
+  # Rev #230: у каждого браузера/прогона свой серверный probe-токен — общий
+  # токен смешивал бы сообщения независимых посетителей в один Conversation.
   it 'два независимых браузера с разными probe-сессиями не смешиваются' do
     session_a = ActionDispatch::Integration::Session.new(Rails.application)
     session_b = ActionDispatch::Integration::Session.new(Rails.application)
 
-    session_a.get chat_conversation_path(format: :json), params: { visitor_token: 'probe-alice-0001' }
-    session_b.get chat_conversation_path(format: :json), params: { visitor_token: 'probe-bob-0002' }
+    session_a.get chat_conversation_path(format: :json), params: { visitor_token: probe('alice-0001') }
+    session_b.get chat_conversation_path(format: :json), params: { visitor_token: probe('bob-0002') }
 
     expect(session_a.response).to have_http_status(:ok)
     expect(session_b.response).to have_http_status(:ok)
-    conv_a = Conversation.find_by!(visitor_token: 'probe-alice-0001')
-    conv_b = Conversation.find_by!(visitor_token: 'probe-bob-0002')
+    conv_a = Conversation.find_by!(visitor_token: probe('alice-0001'))
+    conv_b = Conversation.find_by!(visitor_token: probe('bob-0002'))
     expect(conv_a.id).not_to eq(conv_b.id)
     expect(conv_a).to be_test_probe
     expect(conv_b).to be_test_probe
@@ -113,7 +112,22 @@ RSpec.describe 'VisitorIdentity', type: :request do
     session_a.get chat_conversation_path(format: :json)
     expect(session_a.response).to have_http_status(:ok)
     expect(Conversation.count).to eq(count)
-    expect(Conversation.order(:id).last.visitor_token).to eq('probe-bob-0002')
+    expect(Conversation.order(:id).last.visitor_token).to eq(probe('bob-0002'))
+  end
+
+  # Issue #227 (rev #230, round 3): тумблер получает probe-токен только от
+  # сервера — JSON сессии содержит подписанный VisitorIdentity.probe_token,
+  # самодельный токен из JS база отклоняет (см. спеки round 6 выше).
+  it 'serialize отдаёт probe_token подписанный сервером — тумблеру из JS хватает его для входа в тест-режим' do
+    open_chat
+
+    token = response.parsed_body['probe_token']
+    expect(token).to match(VisitorIdentity::PROBE_TOKEN_PATTERN)
+    expect(VisitorIdentity.valid_probe_token?(token)).to be(true)
+
+    open_chat(visitor_token: token)
+    expect(response.parsed_body['test_probe']).to be(true)
+    expect(Conversation.order(:id).last.visitor_token).to eq(token)
   end
 
   # Issue #227 (rev #230): test_mode в JSON — полный режим диалога (probe ИЛИ
@@ -128,7 +142,7 @@ RSpec.describe 'VisitorIdentity', type: :request do
     end
 
     it 'probe-сессия: оба флага true' do
-      open_chat(visitor_token: 'probe-maria-1211')
+      open_chat(visitor_token: probe('maria-1211'))
 
       expect(response.parsed_body['test_mode']).to be(true)
       expect(response.parsed_body['test_probe']).to be(true)

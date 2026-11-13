@@ -73,4 +73,23 @@ RSpec.describe LlmReplyJob do
   ensure
     old.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old
   end
+
+  # Issue #227 (rev #230, round 3): sticky-снапшот крана. Диалог ПРИНЯТ под
+  # краном (контроллер ставит metadata['force_test']), кран снят ДО выполнения
+  # job — диалог всё равно тестовый, боевого Inquiry не будет.
+  it 'кран снят между приёмом сообщения и выполнением job — sticky-флаг держит тест-режим' do
+    old = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
+    ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+    conv = Conversation.create!(visitor_token: 'visitor-force-sticky', status: :active,
+                                metadata: { 'force_test' => true })
+    ENV.delete('SITE_CHATBOT_FORCE_TEST') # кран снят до perform
+    captured = stub_responder
+
+    described_class.new.perform(conv.id)
+
+    expect(captured[:flag]).to be(true)
+    expect(conv.reload).to be_lead_test_mode
+  ensure
+    old.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old
+  end
 end

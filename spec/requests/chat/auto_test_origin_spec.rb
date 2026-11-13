@@ -9,11 +9,14 @@ RSpec.describe 'Chat::AutoTest по происхождению', type: :request 
   around do |example|
     old_ips  = ENV.fetch('SITE_CHATBOT_OFFICE_IPS', nil)
     old_prod = ENV.fetch('SITE_CHATBOT_PROD_HOSTS', nil)
+    old_force = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
     ENV.delete('SITE_CHATBOT_OFFICE_IPS')
     ENV.delete('SITE_CHATBOT_PROD_HOSTS')
+    ENV.delete('SITE_CHATBOT_FORCE_TEST')
     example.run
     old_ips.nil? ? ENV.delete('SITE_CHATBOT_OFFICE_IPS') : ENV['SITE_CHATBOT_OFFICE_IPS'] = old_ips
     old_prod.nil? ? ENV.delete('SITE_CHATBOT_PROD_HOSTS') : ENV['SITE_CHATBOT_PROD_HOSTS'] = old_prod
+    old_force.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old_force
   end
 
   def open_chat(host: 'victory62.org')
@@ -100,6 +103,29 @@ RSpec.describe 'Chat::AutoTest по происхождению', type: :request 
 
     expect(response).to have_http_status(:created)
     expect(conversation.reload.metadata['auto_test']).to be(true)
+  end
+
+  # Rev #230, round 3: sticky-флаг крана. Диалог ПРИНЯТ под краном — контроллер
+  # фиксирует metadata['force_test']; кран снят — боевой прогон всё равно
+  # тестовый, иначе фоновые задачи по этой сессии ушли бы в боевой чат.
+  describe 'ENV-кран — sticky-снапшот (rev #230)' do
+    it 'под краном → metadata.force_test; кран снят — флаг остаётся' do
+      ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+      open_chat(host: 'victory62.org')
+      expect(conversation.reload.metadata['force_test']).to be(true)
+      expect(conversation).to be_lead_test_mode
+
+      ENV.delete('SITE_CHATBOT_FORCE_TEST')
+      open_chat(host: 'victory62.org')
+
+      expect(conversation.reload.metadata['force_test']).to be(true)
+      expect(conversation).to be_lead_test_mode
+    end
+
+    it 'без крана флаг не появляется' do
+      open_chat(host: 'victory62.org')
+      expect(conversation.reload.metadata['force_test']).not_to be(true)
+    end
   end
 
   it 'флаг не снимается: повторный заход с прод-хоста оставляет auto_test' do

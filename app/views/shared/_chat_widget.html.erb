@@ -38,12 +38,13 @@
     </div>
 
     <%# Тумблер «Тест-прогон» (issue #227): включён → сессия уходит под
-        probe-visitor_token (уникальный суффикс на браузер — rev #230: общий
-        probe-widget смешивал бы диалоги независимых посетителей), все лиды
-        диалога — metadata['test']=true, в тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не
-        трогается. Механизм — перезагрузка с ?visitor_token=probe-<suffix> / =off
-        (signed-куку из JS не подписать). Индикатор auto-теста — сессия тестовая
-        по происхождению/ENV-крану без тумблера (Chat::TestMode). %>
+        probe-visitor_token серверного формата (HMAC probe-<name>-<16hex>,
+        выдаётся в JSON сессии — rev #230 round 3: самодельный токен из JS
+        VisitorIdentity отклоняет), все лиды диалога — metadata['test']=true,
+        в тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не трогается. Механизм — перезагрузка
+        с ?visitor_token=<token> / =off (signed-куку из JS не подписать).
+        Индикатор auto-теста — сессия тестовая по происхождению/ENV-крану
+        без тумблера (Chat::TestMode). %>
     <label class="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-background text-[11px] text-muted-foreground cursor-pointer select-none">
       <input type="checkbox" id="chat-widget-test-toggle" class="accent-foreground">
       <span>🧪 Тест-прогон — диалог не попадёт к агентам</span>
@@ -125,23 +126,25 @@
 
   // Тумблер «Тест-прогон» (issue #227): переключение — перезагрузка с
   // visitor_token-параметром; VisitorIdentity фиксирует/снимает signed-куку.
-  // Суффикс probe-уникален на браузер и хранится в localStorage (rev #230):
-  // общий probe-widget смешивал бы сообщения независимых посетителей
-  // в один Conversation.
+  // Токен выдаёт ТОЛЬКО сервер (JSON поле probe_token, HMAC probe-<name>-<hex>,
+  // rev #230 round 3): самодельный probe-<random> база отклоняет. Храним его
+  // в localStorage — тестовый диалог стабилен на браузер, общего
+  // Conversation у разных посетителей нет.
   const testAutoEl = document.getElementById('chat-widget-test-auto');
-  const probeSuffix = (() => {
-    let suffix = localStorage.getItem('chat-widget-test-suffix');
-    if (!suffix) {
-      suffix = Math.random().toString(36).slice(2, 10);
-      localStorage.setItem('chat-widget-test-suffix', suffix);
+
+  function currentProbeToken () {
+    let token = localStorage.getItem('chat-widget-probe-token');
+    if (!token && conversation && conversation.probe_token) {
+      token = conversation.probe_token;
+      localStorage.setItem('chat-widget-probe-token', token);
     }
-    return suffix;
-  })();
+    return token;
+  }
 
   if (testToggle) {
     testToggle.addEventListener('change', () => {
       const url = new URL(window.location.href);
-      url.searchParams.set('visitor_token', testToggle.checked ? `probe-${probeSuffix}` : 'off');
+      url.searchParams.set('visitor_token', testToggle.checked ? currentProbeToken() : 'off');
       window.location.href = url.toString();
     });
   }

@@ -26,7 +26,10 @@
    Дублируется на трёх уровнях: `Lead::Intake` (метадата LeadEvent),
    `ChatTools::QualifyLead` (метадата Inquiry → без CRM-синка и назначения
    агенту), `Conversation#lead_test_mode?` (thread-флаг в `LlmReplyJob`).
-   Обычные боевые формы сайта (`ContactFormsController`,
+   Контроллеры фиксируют кран sticky-флагом `metadata['force_test']` на
+   Conversation (rev #230, round 3): кран, снятый между приёмом сообщения
+   и фоновыми задачами, диалог обратно боевым не делает. Обычные боевые
+   формы сайта (`ContactFormsController`,
    `PropertyValuationsController` идут теми же `site_*` источниками) краном
    не задеваются (rev #230). Без `TELEGRAM_TEST_CHAT_ID` тест-эскалации и
    PDF тест-лидов пропускаются (fail-closed) — в рабочую группу не идут.
@@ -40,11 +43,14 @@
    по-прежнему получает staff-skip (тишина, #214) — для автоматической
    тестовой карточки ему нужен тумблер/кран.
 3. **Тумблер «🧪 Тест-прогон» в виджете** — переключатель в UI чата: включён
-   → сессия под probe-`visitor_token` (`?visitor_token=probe-<suffix>` /
-   `=off`), все лиды диалога с `metadata['test']=true`. Суффикс уникален на
-   браузер (localStorage) — общий токен смешивал бы диалоги независимых
-   посетителей (rev #230). В JSON сессии два флага: `test_probe` (ручной
-   тумблер) и `test_mode` (полный режим, включая auto-test/кран).
+   → сессия под probe-`visitor_token` (`?visitor_token=<token>` / `=off`),
+   все лиды диалога с `metadata['test']=true`. Токен выдаёт ТОЛЬКО сервер —
+   JSON сессии содержит `probe_token` (HMAC probe-`<name>`-`<16hex>` из
+   `VisitorIdentity.probe_token`); самодельный probe-токен из JS база
+   отклоняет (rev #230, round 3). Хранится в localStorage на браузер —
+   общий токен смешивал бы диалоги независимых посетителей (rev #230).
+   В JSON сессии два флага: `test_probe` (ручной тумблер) и `test_mode`
+   (полный режим, включая auto-test/кран).
 4. **Auto-test по происхождению** — сессии с не-прод хоста (staging,
    localhost; список — `SITE_CHATBOT_PROD_HOSTS`) или с IP из офисного пула
    (`SITE_CHATBOT_OFFICE_IPS`, comma-separated, точный IP или префикс
