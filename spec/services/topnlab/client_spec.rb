@@ -310,6 +310,21 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9 (блокер, parse): текст JSON::ParserError содержит
+    # фрагмент сырого тела ответа — битый JSON, отразивший ключ/PII запроса,
+    # увёз бы секрет в сообщение исключения мимо scrub тела.
+    it 'битый JSON 200, отразивший ключ и PII, — секрет не попадает в ошибку' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: '{"x":test-key "phone":"79001234567"}')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError) { |e|
+        expect(e.message).to include('invalid JSON')
+        expect(e.message).not_to include('test-key', '79001234567')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then

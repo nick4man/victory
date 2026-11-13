@@ -546,8 +546,12 @@ module Topnlab
       end
     rescue JSON::ParserError => e
       # 200/201 с битым телом: запрос мог быть принят, а ответ обрезан —
-      # тоже неоднозначный исход (ревью PR #210).
-      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{safe_body_excerpt(body, request_body: request_body).truncate(300)}"
+      # тоже неоднозначный исход (ревью PR #210). Текст parser-исключения
+      # содержит фрагмент сырого тела (напр. unexpected token 'test-key}') —
+      # без скраббинга секрет/PII уехал бы в export_error и Telegram
+      # (ревью PR #210, round 9).
+      detail = scrub_request_literals(scrub(e.message), request_body)
+      raise AmbiguousError, "#{label}: invalid JSON (#{detail}) — body=#{safe_body_excerpt(body, request_body: request_body).truncate(300)}"
     end
 
     def throttle!(kind)

@@ -493,5 +493,22 @@ RSpec.describe CrmCards::Workflow do
       expect(card.export_error).to include('409')
       expect(card.export_error).not_to include('79101234567', 'Анна')
     end
+
+    # Сквозной регресс ревью PR #210 (round 9, parse): битый JSON ответа,
+    # отразивший appkey и PII запроса — текст JSON::ParserError содержит
+    # фрагмент сырого тела; итоговый export_error секрета не содержит.
+    it 'appkey и PII в битом JSON ответа не доезжают до export_error' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: '{"x":test-key "phone":"79101234567"}')
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      expect(card.export_error).to include('invalid JSON')
+      expect(card.export_error).not_to include('test-key', '79101234567')
+    end
   end
 end

@@ -3342,7 +3342,7 @@ git commit -m "feat(work_bot): мастер правки поля карточк
 - Test: `spec/services/telegram/work_bot/crm_card_moderation_spec.rb`
 
 **Interfaces:**
-- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#attach_export_number!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
+- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#retry_export!`, `#attach_export_number!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
 - Produces: `crm_card:<card_id>:view|submit|retry`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`); мастер-шаг `crm_attach` (сид `card`) → `Workflow#attach_export_number!` — единственный recovery из неоднозначного исхода: модератор сверил заявку с CRM глазами и вводит найденный номер, новый importClient не вызывается (ревью PR #210, round 7).
 
 - [ ] **Step 1: Спека (красная)**
