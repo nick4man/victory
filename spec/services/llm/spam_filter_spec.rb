@@ -274,6 +274,29 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:action]).to eq(:drop)
       end
 
+      it 'mixed run с ASCII-reserved (%26) внутри UTF-8: escape-запись vs Unicode-сообщение' do
+        # WHATWG: оба входа → один href …/%D1%84%26
+        SpamBlockedEntry.create!(entry_type: :url,
+                                 value: 'shared-host.example/%D1%84%26',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('смотрите https://shared-host.example/ф%26',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+      end
+
+      it 'mixed run с ASCII-reserved (%26): Unicode-запись vs escape-сообщение' do
+        normalized = Llm::SpamUrls.normalize('https://shared-host.example/ф%26')
+        SpamBlockedEntry.create!(entry_type: :url, value: "shared-host.example#{normalized[:path]}",
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('смотрите https://shared-host.example/%D1%84%26',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+      end
+
       it 'percent-encoded хост не обходит blocked-домен: %62otmasterru.com и botmasterru%2ecom' do
         SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
 

@@ -184,21 +184,50 @@ module Llm
       end
     end
 
-    # Байты одной non-ASCII run пути раскодируем в символы: зарезервированные
-    # однобайтовые escape'и (%2F и т.п.) не трогаем — '/' из них сломал бы
-    # структуру пути. Невалидный UTF-8 и смешанные run с разделителями
-    # оставляем как есть — с hex в ВЕРХНЕМ регистре (каноническая форма
-    # WHATWG-serialization; смешанный run %D1%84…%2F иначе получал lowercase
-    # hex и расходился с записью фида в ключе — ревью Kimi, раунд 14)
+    # Байты одной non-ASCII run пути декодируем посимвольно: UTF-8
+    # последовательности — в символы, ASCII-байты (%2F, %26, …) — в
+    # канонический escape-вид (uppercase hex). Целиком run не декодируем:
+    # иначе %26 рядом с UTF-8 превращался в '&' и расходился с ключом записи,
+    # где тот же URL пришёл полностью escape-написанным (ревью Kimi, раунд 15).
+    # Чисто ASCII run и невалидная UTF-8 последовательность — мусор как есть
+    # (uppercase hex): WHATWG невалидный хост/путь не принимает, структуру
+    # не угадываем
     def decode_multibyte_escapes(str)
       str.gsub(/(?:%[0-9a-f]{2})+/i) do |seq|
         bytes = seq.scan(/%([0-9a-f]{2})/i).flatten.map(&:hex)
         next seq.upcase if bytes.all? { |b| b < 0x80 }
 
-        decoded = percent_bytes_to_utf8(seq)
-        next seq.upcase if decoded.nil? || decoded.match?(%r{[/\\?#]})
+        out = +''
+        i = 0
+        valid = true
+        while valid && i < bytes.length
+          byte = bytes[i]
+          if byte < 0x80
+            out << format('%%%02X', byte)
+            i += 1
+            next
+          end
 
-        decoded
+          len = utf8_char_length(byte)
+          chunk = len && i + len <= bytes.length ? bytes[i, len].pack('C*').force_encoding(Encoding::UTF_8) : nil
+          if chunk.nil? || !chunk.valid_encoding?
+            valid = false
+            break
+          end
+
+          out << chunk
+          i += len
+        end
+        valid ? out : seq.upcase
+      end
+    end
+
+    # Длина UTF-8 последовательности по lead-байту (RFC 3629)
+    def utf8_char_length(lead)
+      case lead
+      when 0xC2..0xDF then 2
+      when 0xE0..0xEF then 3
+      when 0xF0..0xF4 then 4
       end
     end
 

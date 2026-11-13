@@ -135,6 +135,7 @@ module Llm
         # записи необработанной части фида (контракт: сбой список не стирает)
         feed_synced = Hash.new { |h, k| h[k] = [] }
         import_batches(body, source, cfg, status, run_at, feed_synced)
+        prune_confirmations(source, cfg.fetch(:entry_type, :domain), run_at) if status == :blocked
         feed_synced.each { |type, sources| synced[type].concat(sources) }
         total
       rescue StandardError => e
@@ -182,7 +183,7 @@ module Llm
           batch << { entry_type: type.to_s, value: key, value_digest: SpamBlockedEntry.digest_for(key),
                      source: source, status: status.to_s,
                      seen_at: run_at, blocked_at: (run_at if status == :blocked),
-                     confirmations: (status == :blocked ? { source => run_at.iso8601 } : {}),
+                     confirmations: (status == :blocked ? { source => run_at.iso8601(6) } : {}),
                      created_at: run_at, updated_at: run_at }
           flush.call if batch.size >= BATCH
         end
@@ -219,7 +220,7 @@ module Llm
             scope.update_all(seen_at: run_at, blocked_at: run_at, updated_at: run_at)
             scope.where(status: 'blocked')
                  .update_all(["confirmations = COALESCE(confirmations, '{}'::jsonb) || ?::jsonb",
-                              { source => run_at.iso8601 }.to_json])
+                              { source => run_at.iso8601(6) }.to_json])
             # повышение suspect → blocked забирает и владение: иначе при
             # последующем сбое blocked-фида запись осталась бы под владельцем-
             # suspect'ом, downgrade увидел бы его в synced и понизил бы
@@ -324,13 +325,27 @@ module Llm
 
       # Исключаем записи, у которых confirmations ссылаются на источники из
       # failed: такой источник ключ раньше подтверждал, а сейчас упал — сбой
-      # ≠ исчезновение ключа (fail-closed, раунд 14)
+      # ≠ исчезновение ключа (fail-closed, раунд 14). SQL статичен на каждый
+      # источник — иначе Brakeman (--exit-on-warn) ругается на интерполяцию
+      # списка плейсхолдеров (ревью Kimi, раунд 15)
       def exclude_failed_confirmed(scope, entry_type, synced_sources)
-        failed = failed_sources(entry_type, synced_sources)
-        return scope if failed.empty?
+        failed_sources(entry_type, synced_sources).each do |source|
+          scope = scope.where.not('jsonb_exists(confirmations, ?)', source)
+        end
+        scope
+      end
 
-        placeholders = failed.map { '?' }.join(', ')
-        scope.where.not("jsonb_exists_any(confirmations, ARRAY[#{placeholders}]::text[])", *failed)
+      # После ПОЛНОГО успешного импорта blocked-источника снимаем его прошлое
+      # подтверждение с ключей, не подтверждённых в этом прогоне: иначе
+      # устаревшее подтверждение вечно защищало запись от протухания/понижения
+      # (ревью Kimi, раунд 15). Подтверждения этого прогона имеют свежий
+      # timestamp и остаются; при частичном сбое импорта prune не вызывается —
+      # защита от сбоя сохраняется
+      def prune_confirmations(source, entry_type, run_at)
+        SpamBlockedEntry.unscoped
+                        .where(entry_type: entry_type)
+                        .where('confirmations ->> ? < ?', source, run_at.iso8601(6))
+                        .in_batches(of: 10_000) { |rel| rel.update_all(["confirmations = confirmations - ?", source]) }
       end
 
       def sync_allowlist

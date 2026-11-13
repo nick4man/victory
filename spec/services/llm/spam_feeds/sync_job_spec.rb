@@ -341,6 +341,45 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.unscoped.find_by(value: 'keep-multi.example').deleted_at).to be_present
   end
 
+  it 'успешный выпуск ключа источником снимает его подтверждение: чередование успехов и сбоя' do
+    # прогон 1: ключ в двух blocked-фидах → подтверждения обоих
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||overlap.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 200, body: "overlap.example\n")
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'overlap.example')
+    expect(entry.confirmations.keys).to contain_exactly('hagezi_tif', 'phishing_domains')
+
+    # прогон 2: TIF ключ оставляет, phishing_domains успешно синкается УЖЕ
+    # БЕЗ ключа — его устаревшее подтверждение снимается prune'ом
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||overlap.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 200, body: "other-phish.example\n")
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'overlap.example')
+    expect(entry.confirmations.keys).to eq(['hagezi_tif'])
+    expect(entry.status).to eq('blocked')
+
+    # прогон 3: TIF успешно без ключа, phishing_domains падает, шортенеры
+    # ключ видят (suspect). Оба blocked-фида ключ в последних успешных
+    # выгрузках выпустили → свежего подтверждения нет, защита от сбоя
+    # phishing_domains снята → понижение до suspect
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||other-tif.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 500)
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||overlap.example^\n")
+
+    described_class.perform_now
+
+    expect(SpamBlockedEntry.find_by(value: 'overlap.example').status).to eq('suspect')
+  end
+
   it 'падение одного фида не роняет остальные' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)
