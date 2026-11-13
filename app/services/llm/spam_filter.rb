@@ -69,11 +69,12 @@ module Llm
 
       now = Time.current
       urls.each do |url|
-        SpamBlockedEntry.where(entry_type: :domain, value: url[:host], status: :suspect, source: 'local')
+        SpamBlockedEntry.where(entry_type: :domain, value_digest: SpamBlockedEntry.digest_for(url[:host]),
+                               status: :suspect, source: 'local')
                         .update_all(status: 'blocked', blocked_at: now, updated_at: now)
         next if url[:path].blank?
 
-        SpamBlockedEntry.where(entry_type: :url, value: "#{url[:host]}#{url[:path]}",
+        SpamBlockedEntry.where(entry_type: :url, value_digest: SpamBlockedEntry.digest_for("#{url[:host]}#{url[:path]}"),
                                status: :suspect, source: 'local')
                         .update_all(status: 'blocked', blocked_at: now, updated_at: now)
       end
@@ -87,7 +88,8 @@ module Llm
       return true if %r{hxxps?://}i.match?(t)
 
       hosts = urls.map { |u| u[:host] }
-      SpamBlockedEntry.entry_type_domain.where(source: 'hagezi_shorteners', value: hosts).exists?
+      SpamBlockedEntry.entry_type_domain.where(source: 'hagezi_shorteners',
+                                               value_digest: hosts.map { |h| SpamBlockedEntry.digest_for(h) }).exists?
     end
 
     # Новый домен от эвристик → карантин (suspect), не мгновентный бан.
@@ -110,7 +112,7 @@ module Llm
         return
       end
 
-      entry = SpamBlockedEntry.find_by(entry_type: :domain, value: host)
+      entry = SpamBlockedEntry.find_by(entry_type: :domain, value_digest: SpamBlockedEntry.digest_for(host))
       if entry
         # домен уже в карантине: hits считаем по домену независимо от пути —
         # иначе разные пути размывали бы кворум по отдельным URL-записям
@@ -125,7 +127,9 @@ module Llm
     # create_or_find_by: параллельные запросы по новому домену иначе гонятся
     # в find_or_create (оба проходят find → RecordNotUnique на индексе → 500).
     def upsert_suspect(entry_type, value, ip:, visitor_token: nil)
-      entry = SpamBlockedEntry.unscoped.create_or_find_by!(entry_type: entry_type, value: value) do |e|
+      entry = SpamBlockedEntry.unscoped.create_or_find_by!(entry_type: entry_type,
+                                                           value_digest: SpamBlockedEntry.digest_for(value)) do |e|
+        e.value = value
         e.status = :suspect
         e.source = 'local'
       end

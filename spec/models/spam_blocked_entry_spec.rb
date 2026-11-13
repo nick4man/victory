@@ -14,6 +14,16 @@ RSpec.describe SpamBlockedEntry do
     expect(described_class.unscoped.find_by(value: 'spam-example.com')).to eq(entry)
   end
 
+  it 'value_digest (SHA-256) выставляется валидацией, в т.ч. для ключей >3 КБ' do
+    long_value = "long-key.example/#{'a' * 3_200}"
+    entry = described_class.create!(entry_type: :url, value: long_value, status: :blocked, source: 'phishing_links')
+
+    expect(entry.value_digest).to eq(described_class.digest_for(long_value))
+    # дайджест — единый ключ поиска: находим ту же запись без сканирования value
+    expect(described_class.find_by(entry_type: :url, value_digest: described_class.digest_for(long_value)))
+      .to eq(entry)
+  end
+
   describe '.find_block_for' do
     it 'уровень полного URL приоритетнее доменного' do
       described_class.create!(entry_type: :url, value: 't.me/spam_channel', status: :blocked, source: 'local')

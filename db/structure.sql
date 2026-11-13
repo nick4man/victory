@@ -2601,6 +2601,7 @@ CREATE TABLE public.spam_blocked_entries (
     id bigint NOT NULL,
     entry_type character varying NOT NULL,
     value character varying NOT NULL,
+    value_digest character varying NOT NULL,
     status character varying DEFAULT 'suspect'::character varying NOT NULL,
     source character varying NOT NULL,
     hits integer DEFAULT 0 NOT NULL,
@@ -4668,10 +4669,10 @@ CREATE UNIQUE INDEX idx_spam_allowlist_entries_domain ON public.spam_allowlist_e
 
 
 --
--- Name: idx_spam_blocked_entries_type_value; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_spam_blocked_entries_type_digest; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_spam_blocked_entries_type_value ON public.spam_blocked_entries USING btree (entry_type, value) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX idx_spam_blocked_entries_type_digest ON public.spam_blocked_entries USING btree (entry_type, value_digest) WHERE (deleted_at IS NULL);
 
 
 --
@@ -8129,7 +8130,7 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public, tiger, topology;
+SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261112120000'),

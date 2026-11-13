@@ -3,7 +3,9 @@
 # Запись блок-листа (см. миграцию CreateSpamBlocklist). value хранится только
 # в нормализованном виде (Llm::SpamUrls.normalize): иначе IDN-омографы
 # (sberbаnk.ru с русской «а») обходят проверку другим написанием того же
-# домена.
+# домена. Уникальность и все поиски — по value_digest (SHA-256): value
+# текстом может достигать ~5 КБ (URL phishing-фидов), а B-tree PG выше
+# ~2700 байт на ключ не индексирует.
 class SpamBlockedEntry < ApplicationRecord
   # suspect → blocked, если домен прилетел от стольких разных сессий/IP
   # за окно: один спамер ≠ повод блочить, три независимых — повод.
@@ -23,13 +25,22 @@ class SpamBlockedEntry < ApplicationRecord
 
   validates :value, presence: true
 
+  before_validation :assign_value_digest
+
+  # Единый ключ поиска/уникальности; nil-value (валидация отсекает раньше)
+  # сводится в дайджест пустой строки — колонка NOT NULL.
+  def self.digest_for(value)
+    Digest::SHA256.hexdigest(value.to_s)
+  end
+
   # Точное совпадение + CIDR-подсети из firehol-фидов (botscout отдаёт
-  # и /31). Точный fast-path — индексом; подсетей мало, их список кешируется.
+  # и /31). Точный fast-path — индексом по digest; подсетей мало, их
+  # список кешируется.
   def self.ip_blocked?(ip)
     return false if ip.blank?
 
     addr = IPAddr.new(ip.to_s) # InvalidAddressError на мусоре
-    return true if status_blocked.entry_type_ip.where(value: ip.to_s).exists?
+    return true if status_blocked.entry_type_ip.where(value_digest: digest_for(ip)).exists?
 
     cidrs = Rails.cache.fetch(CIDR_CACHE_KEY, expires_in: CIDR_CACHE_TTL) do
       status_blocked.entry_type_ip.where('value LIKE ?', '%/%').pluck(:value)
@@ -45,8 +56,8 @@ class SpamBlockedEntry < ApplicationRecord
   def self.find_block_for(host:, path: nil)
     return nil if host.blank?
 
-    url_entry = path.present? ? find_by(entry_type: :url, value: "#{host}#{path}") : nil
-    domain_entry = find_by(entry_type: :domain, value: host)
+    url_entry = path.present? ? find_by(entry_type: :url, value_digest: digest_for("#{host}#{path}")) : nil
+    domain_entry = find_by(entry_type: :domain, value_digest: digest_for(host))
 
     return url_entry if url_entry&.status_blocked?
     if domain_entry&.status_blocked?
@@ -110,7 +121,8 @@ class SpamBlockedEntry < ApplicationRecord
                           [:domain, url[:host]]
                         end
 
-    entry = unscoped.create_or_find_by!(entry_type: entry_type, value: value) do |e|
+    entry = unscoped.create_or_find_by!(entry_type: entry_type, value_digest: digest_for(value)) do |e|
+      e.value = value
       e.status = status
       e.source = 'local'
       e.blocked_at = Time.current if status == 'blocked'
@@ -124,5 +136,11 @@ class SpamBlockedEntry < ApplicationRecord
       entry.reload
     end
     { ok: true, value: entry }
+  end
+
+  private
+
+  def assign_value_digest
+    self.value_digest = self.class.digest_for(value)
   end
 end

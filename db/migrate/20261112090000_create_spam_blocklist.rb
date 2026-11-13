@@ -10,21 +10,26 @@
 class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
   def change
     create_table :spam_blocked_entries do |t|
-      t.string   :entry_type, null: false                    # domain | url | ip
-      t.string   :value,      null: false                    # нормализованный домен / host+path / ip
-      t.string   :status,     null: false, default: 'suspect' # suspect | blocked
-      t.string   :source,     null: false                    # local | <имя фида>
-      t.integer  :hits,       null: false, default: 0        # suspect: счётчик срабатываний
-      t.jsonb    :hit_tokens, null: false, default: []       # последние {ip, vt, at} — кворум по IP
+      t.string   :entry_type,   null: false                # domain | url | ip
+      t.string   :value,        null: false                # нормализованный домен / host+path / ip
+      # SHA-256(value): уникальность без B-tree-лимита PG (~2700 байт на ключ)
+      # — реальные URL phishing-фидов доходят до ~5 КБ и падали бы
+      # PG::ProgramLimitExceeded на каждом синке; value остаётся текстом
+      # без индекса (для людей и отладки), все поиски — по digest
+      t.string   :value_digest, null: false
+      t.string   :status,       null: false, default: 'suspect' # suspect | blocked
+      t.string   :source,       null: false                # local | <имя фида>
+      t.integer  :hits,         null: false, default: 0    # suspect: счётчик срабатываний
+      t.jsonb    :hit_tokens,   null: false, default: []   # последние {ip, vt, at} — кворум по IP
       t.datetime :last_hit_at
-      t.datetime :seen_at                                      # последний синк-прогон, где ключ был в фиде (протухание)
+      t.datetime :seen_at                                    # последний синк-прогон, где ключ был в фиде (протухание)
       t.datetime :blocked_at                                 # момент перехода suspect → blocked
       t.datetime :deleted_at
       t.timestamps
     end
-    add_index :spam_blocked_entries, %i[entry_type value],
+    add_index :spam_blocked_entries, %i[entry_type value_digest],
               unique: true, where: 'deleted_at IS NULL',
-              name: 'idx_spam_blocked_entries_type_value'
+              name: 'idx_spam_blocked_entries_type_digest'
     add_index :spam_blocked_entries, :deleted_at
     add_index :spam_blocked_entries, %i[status entry_type]
     # протухание идёт set-based запросом по свежести seen_at внутри источников

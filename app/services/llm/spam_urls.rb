@@ -50,6 +50,14 @@ module Llm
 
       authority, path = s.split('/', 2)
       authority = authority.to_s
+      # percent-encoding в хосте декодируем до всех проверок: браузер
+      # разрешает %62otmasterru.com и botmasterru%2ecom именно в
+      # botmasterru.com, а без декода оба обходили blocked-запись. Декодируем
+      # раньше userinfo/порта — иначе %40/%3A (%user@host/, %:8080) разошлись
+      # бы с проверками ниже. %2F в хосте — мусор, не URL: после декода это
+      # слэш, и такой вход отбрасываем, а не гадаем.
+      authority = authority.gsub(/%[0-9a-f]{2}/i) { |hex| hex[1..].hex.chr }
+      return nil if authority.match?(%r{[/\\\s]})
       # userinfo не должна менять ключ: https://user@botmasterru.com/x
       # обходил blocked-домен, превращаясь в «user@botmasterru.com»; хост
       # отделяем по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host»
@@ -68,12 +76,51 @@ module Llm
 
       host = Addressable::IDNA.to_ascii(authority)
       return nil if host.empty? || host.length > 253
-      host = host.sub(/\.\z/, '')
+      host = host.delete_suffix('.')
 
-      { host: host, path: path.present? ? "/#{path}" : nil }
+      { host: host, path: normalize_path(path) }
     rescue StandardError
       # мусорный вход не должен ронять фильтр — это просто не URL
       nil
+    end
+
+    # @param path [String, nil] путь без query/якоря
+    # @return [String, nil] путь с убранными dot-сегментами (RFC 3986 §5.2.4)
+    #   или nil для корня. Запись и проверка обязаны сводить `/clean/../x`
+    #   и `/x` к одному ключу: у URL-only фидов (phishing_links) доменной
+    #   записи нет, и несвённый dot-сегмент — полный обход блока пути.
+    #   %2e декодируем в точку заранее: иначе %2e%2e не распознался бы как «..».
+    def normalize_path(path)
+      return nil if path.blank?
+
+      p = "/#{path}".gsub(/%2e/i, '.')
+      p = remove_dot_segments(p)
+      p = p.sub(%r{/+\z}, '')
+      p.presence
+    end
+
+    # RFC 3986 §5.2.4 remove_dot_segments — побеговая реализация по строке.
+    def remove_dot_segments(input)
+      output = +''
+      until input.empty?
+        if input.start_with?('../') || input.start_with?('./')
+          input = input[2..]
+        elsif input.start_with?('/./') || input == '/.'
+          input = input.sub(%r{\A/\./}, '/')
+          input = '/' if input == '/.'
+        elsif input.start_with?('/../') || input == '/..'
+          input = input.sub(%r{\A/\.\./}, '/')
+          input = '/' if input == '/..'
+          output = output.sub(%r{/[^/]*\z}, '')
+        elsif input == '.' || input == '..'
+          input = ''
+        else
+          seg = input[%r{\A/?[^/]*}]
+          output << seg
+          input = input[seg.length..]
+        end
+      end
+      output
     end
   end
 end

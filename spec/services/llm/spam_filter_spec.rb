@@ -132,6 +132,54 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:action]).to eq(:drop)
         expect(result[:reason]).to eq(:spam_link)
       end
+
+      it 'percent-encoded хост не обходит blocked-домен: %62otmasterru.com и botmasterru%2ecom' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        ['https://%62otmasterru.com/x', 'https://botmasterru%2ecom/x'].each do |spam_url|
+          result = described_class.classify("заходите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url} не должен обходить блок"
+          expect(result[:reason]).to eq(:spam_link)
+        end
+      end
+
+      it 'dot-сегменты не обходят blocked URL: /clean/../phish/login = /phish/login' do
+        # домен белый (allowlist), блок только URL-уровня — как у phishing_links
+        SpamAllowlistEntry.create!(domain: 'shared-host.example')
+        SpamBlockedEntry.create!(entry_type: :url, value: 'shared-host.example/phish/login',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('войдите https://shared-host.example/clean/../phish/login',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'dot-сегменты через %2e не обходят blocked URL: /clean/%2e%2e/phish' do
+        SpamAllowlistEntry.create!(domain: 'shared-host.example')
+        SpamBlockedEntry.create!(entry_type: :url, value: 'shared-host.example/phish',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('войдите https://shared-host.example/clean/%2e%2e/phish',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'свернутый dot-сегмент не блочит невинный путь: /phish/../clean ≠ /phish' do
+        SpamAllowlistEntry.create!(domain: 'shared-host.example')
+        SpamBlockedEntry.create!(entry_type: :url, value: 'shared-host.example/phish',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('вот документ https://shared-host.example/phish/../clean',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:pass)
+      end
     end
 
     context 'карантин suspect' do

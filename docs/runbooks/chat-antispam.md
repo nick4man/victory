@@ -63,6 +63,25 @@ suspect-домен/URL из сообщения от IP из ipsum (спам-IP) 
   при этом работают сразу. Проверить наполнение: `SpamAllowlistEntry.count`
   (ожидается ~10k после первого прогона `spam_feeds_sync`).
 
+## JSON API модерации (основной способ)
+
+Token-gated эндпоинты (тот же `?token=$ADMIN_TOKEN`, что у вебхуков;
+CSRF снят только для `?token=`-вызовов):
+
+- `POST /admin/spam_blocked_entries` — ручная блокировка. Параметры:
+  `url` (нормализация та же, что у фильтра: www/IDN/порт/dot-сегменты
+  сводятся к одному ключу), опционально `status` (`blocked` по умолчанию,
+  `suspect` — в карантин). Источник записи принудительно `local`:
+  синк фидов её не стирает. Ответ: `201 { ok: true, entry: {...} }`.
+- `GET /admin/spam_blocked_entries` — выборка. Фильтры: `source`,
+  `status`, `entry_type`; пагинация `limit` (≤500, по умолчанию 100) +
+  `offset`. По умолчанию только действующие записи; `with_deleted=1`
+  добавляет снятые блоки (в ответе у каждой записи есть `deleted_at`).
+- `DELETE /admin/spam_blocked_entries/:id` — разблокировка (soft-delete,
+  действует немедленно; для `entry_type = ip` сбрасывает и CIDR-кеш).
+
+Ручная работа через Rails console (ниже) — fallback, когда API недоступен.
+
 ## Жалоба «бот не отвечает на моё сообщение» / ложная блокировка
 
 1. Найти конверсацию и глазами на `metadata['security_events']` — там
@@ -70,13 +89,16 @@ suspect-домен/URL из сообщения от IP из ipsum (спам-IP) 
    excerpt текста.
 2. Лог web-контейнера: строки `[SpamFilter] reason=...`.
 3. Проверить запись: `SpamBlockedEntry.find_by(entry_type: :domain,
-   value: '<домен>')` — статус, source, hits.
-4. Разблок **локальной** записи: `entry.update!(deleted_at: Time.current)`
-   (soft-delete действует немедленно).
+   value: '<домен>')` — статус, source, hits (поиск в консоли по value
+   работает, уникальность в БД — по value_digest).
+4. Разблок **локальной** записи: `DELETE /admin/spam_blocked_entries/:id`
+   (см. раздел выше) либо `entry.update!(deleted_at: Time.current)` —
+   soft-delete действует немедленно.
 5. Разблок **фидовой** записи: добавить домен в allowlist
-   (`SpamAllowlistEntry.create!(domain: '...', manual: true)`) — allowlist
+   (`POST`-записи в API нет — `SpamAllowlistEntry.create!(domain: '...', manual: true)`
+   в консоли) — allowlist
    снимает доменный блок, но позволяет blocked-URL на этом домене; чтобы
-   снять и их, soft-delete'ить записи `entry_type = url` этого домена.
+   снять и их, удалить записи `entry_type = url` этого домена через API.
    Важно: allowlist-запись без `manual = true` сотрётся следующим синком.
 6. Если домен сидит во внешнем фиде и ложное срабатывание системное —
   разобрать с источником (у hagezi есть форма ложных позитивов) — синк

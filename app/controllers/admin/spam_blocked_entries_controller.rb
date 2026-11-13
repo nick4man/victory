@@ -14,7 +14,10 @@ module Admin
     skip_before_action :verify_authenticity_token, if: -> { params[:token].present? }
 
     def index
-      scope = SpamBlockedEntry.unscoped.order(updated_at: :desc)
+      # по умолчанию — действующие записи (default_scope); снятые блоки
+      # отдаём только по явному флагу, иначе их невозможно отличить
+      scope = params[:with_deleted].present? ? SpamBlockedEntry.unscoped : SpamBlockedEntry.all
+      scope = scope.order(updated_at: :desc)
       scope = scope.where(source: params[:source]) if params[:source].present?
       scope = scope.where(status: params[:status]) if params[:status].present?
       scope = scope.where(entry_type: params[:entry_type]) if params[:entry_type].present?
@@ -35,6 +38,8 @@ module Admin
     def destroy
       entry = SpamBlockedEntry.unscoped.find(params[:id])
       entry.update_columns(deleted_at: Time.current, updated_at: Time.current)
+      # иначе ip_blocked? продолжал бы дропать адрес из кеша до CIDR_CACHE_TTL
+      Rails.cache.delete(SpamBlockedEntry::CIDR_CACHE_KEY) if entry.entry_type_ip?
       render json: { ok: true }
     end
 
@@ -53,6 +58,7 @@ module Admin
         source:     entry.source,
         hits:       entry.hits,
         blocked_at: entry.blocked_at&.iso8601,
+        deleted_at: entry.deleted_at&.iso8601,
         updated_at: entry.updated_at.iso8601
       }
     end

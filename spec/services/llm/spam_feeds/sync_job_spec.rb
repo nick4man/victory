@@ -70,6 +70,24 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect { described_class.perform_now }.not_to change(SpamBlockedEntry, :count)
   end
 
+  it 'URL длиннее B-tree-лимита PG (~3 КБ) импортируется без ошибки' do
+    # реальный phishing-links отдаёт ключи до ~5 КБ: уникальный B-tree по value
+    # падал бы PG::ProgramLimitExceeded посреди каждого синка; уникальность
+    # держит value_digest (SHA-256), value — обычный текст без индекса
+    long_path = "/#{'a' * 3_200}"
+    long_url = "http://long-key.example#{long_path}"
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_links'][:url])
+      .to_return(status: 200, body: "#{long_url}\nhttp://short-key.example/x\n")
+
+    stats = described_class.perform_now
+
+    entry = SpamBlockedEntry.find_by(entry_type: :url, value: "long-key.example#{long_path}")
+    expect(entry).to be_present
+    expect(entry).to be_status_blocked
+    expect(entry.value_digest).to eq(SpamBlockedEntry.digest_for("long-key.example#{long_path}"))
+    expect(stats['phishing_links']).to eq(2)
+  end
+
   it 'не трогает локальные записи (source = local)' do
     local = SpamBlockedEntry.create!(entry_type: :domain, value: 'local-spam.example',
                                      status: :suspect, source: 'local')

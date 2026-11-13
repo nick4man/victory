@@ -92,6 +92,20 @@ RSpec.describe 'Admin::SpamBlockedEntries', type: :request do
 
       expect(response).to have_http_status(:ok)
     end
+
+    it 'по умолчанию скрывает soft-deleted, с with_deleted=1 отдаёт их с deleted_at' do
+      entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'gone-entry.example',
+                                       status: :blocked, source: 'local')
+      entry.update_columns(deleted_at: Time.current)
+
+      admin_get admin_spam_blocked_entries_path
+      expect(response.parsed_body['entries'].map { |e| e['value'] }).not_to include('gone-entry.example')
+
+      admin_get admin_spam_blocked_entries_path, params: { with_deleted: '1' }
+      body = response.parsed_body['entries'].find { |e| e['value'] == 'gone-entry.example' }
+      expect(body).to be_present
+      expect(body['deleted_at']).to be_present
+    end
   end
 
   describe 'DELETE /admin/spam_blocked_entries/:id' do
@@ -115,6 +129,16 @@ RSpec.describe 'Admin::SpamBlockedEntries', type: :request do
       result = Llm::SpamFilter.classify('что скажете про forgive.example?',
                                         ip: '198.51.100.10', visitor_token: 'v-1')
       expect(result[:action]).to eq(:pass)
+    end
+
+    it 'разблокировка IP-записи сбрасывает CIDR-кеш: адрес не дропается' do
+      entry = SpamBlockedEntry.create!(entry_type: :ip, value: '198.51.100.0/28',
+                                       status: :blocked, source: 'firehol_botscout')
+      expect(SpamBlockedEntry.ip_blocked?('198.51.100.7')).to be(true) # кеш подсетей заполнен
+
+      delete admin_spam_blocked_entry_path(entry), params: { token: AdminAuthHelpers::ADMIN_TEST_TOKEN }
+
+      expect(SpamBlockedEntry.ip_blocked?('198.51.100.7')).to be(false)
     end
   end
 end

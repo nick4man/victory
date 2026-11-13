@@ -92,6 +92,9 @@ module Llm
         end
 
         retire_stale(synced, run_at)
+        # протухание могло увести в soft-delete CIDR-подсети — кеш ip_blocked?
+        # иначе продолжал бы дропать адреса до часа (CIDR_CACHE_TTL)
+        Rails.cache.delete(SpamBlockedEntry::CIDR_CACHE_KEY)
         stats['tranco_allowlist'] = sync_allowlist
         Rails.logger.info("[SpamFeeds] синк завершён: #{stats.inspect}")
         stats
@@ -164,7 +167,8 @@ module Llm
           type, key = cfg[:entry_type] == :ip ? [:ip, token] : normalize_entry(cfg.fetch(:entry_type, :domain), token)
           next unless key
 
-          batch << { entry_type: type.to_s, value: key, source: source, status: status.to_s,
+          batch << { entry_type: type.to_s, value: key, value_digest: SpamBlockedEntry.digest_for(key),
+                     source: source, status: status.to_s,
                      seen_at: run_at, blocked_at: (run_at if status == :blocked),
                      created_at: run_at, updated_at: run_at }
           flush.call if batch.size >= BATCH
@@ -174,17 +178,19 @@ module Llm
 
       # Запись чанка с группировкой по фактическому типу записей: типы
       # складываем в аккумулятор вызывающего импорта, который опубликует
-      # источник в synced только после полного успешного прохода по фиду
+      # источник в synced только после полного успешного прохода по фиду.
+      # Поиск/конфликт — по value_digest (SHA-256): value текстом до ~5 КБ
+      # неиндексируем B-tree PG, уникальность держит дайджест-индекс.
       def flush_batch(batch, source, status, run_at, synced)
         return if batch.empty?
 
         batch.group_by { |r| r[:entry_type] }.each do |type, rows|
-          values = rows.map { |r| r[:value] }
-          scope = SpamBlockedEntry.unscoped.where(entry_type: type, value: values)
+          digests = rows.map { |r| r[:value_digest] }
+          scope = SpamBlockedEntry.unscoped.where(entry_type: type, value_digest: digests)
 
           scope.where.not(deleted_at: nil)
                .update_all(deleted_at: nil, seen_at: run_at, updated_at: run_at)
-          SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_value)
+          SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_digest)
           scope.update_all(seen_at: run_at, updated_at: run_at)
           if status == :blocked
             scope.where(status: 'suspect')

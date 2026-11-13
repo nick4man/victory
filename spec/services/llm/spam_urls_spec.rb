@@ -89,6 +89,47 @@ RSpec.describe Llm::SpamUrls do
       expect(described_class.normalize('https://сбербанк。ру/x')[:host]).to start_with('xn--')
     end
 
+    it 'percent-encoded хост декодируется: %62otmasterru.com = botmasterru.com' do
+      expect(described_class.normalize('https://%62otmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'точка через %2e проходит проверку домена: botmasterru%2ecom = botmasterru.com' do
+      expect(described_class.normalize('https://botmasterru%2ecom/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'percent-encoded userinfo и порт не меняют ключ' do
+      expect(described_class.normalize('https://%75ser%40botmasterru.com:443/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'слэш через %2F в хосте — мусор, не URL' do
+      expect(described_class.normalize('https://botmasterru.com%2Fevil/x')).to be_nil
+    end
+
+    it 'dot-сегменты сводятся: /clean/../phish/login = /phish/login' do
+      expect(described_class.normalize('https://shared-host.example/clean/../phish/login'))
+        .to eq(host: 'shared-host.example', path: '/phish/login')
+    end
+
+    it 'dot-сегменты через percent-encoded точки: /clean/%2e%2e/phish = /phish' do
+      expect(described_class.normalize('https://shared-host.example/clean/%2E%2e/phish'))
+        .to eq(host: 'shared-host.example', path: '/phish')
+    end
+
+    it 'одиночный /./ не меняет путь; /phish/.. → корень' do
+      expect(described_class.normalize('https://example.com/a/./b'))
+        .to eq(host: 'example.com', path: '/a/b')
+      expect(described_class.normalize('https://example.com/phish/..'))
+        .to eq(host: 'example.com', path: nil)
+    end
+
+    it 'выход за корень не портит ключ: /../x = /x' do
+      expect(described_class.normalize('https://example.com/../x'))
+        .to eq(host: 'example.com', path: '/x')
+    end
+
     it 'мусор не падает, возвращает nil' do
       expect(described_class.normalize('not a url')).to be_nil
     end
