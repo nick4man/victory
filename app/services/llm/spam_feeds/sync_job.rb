@@ -48,7 +48,7 @@ module Llm
         'phishing_links'    => { url: 'https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/master/phishing-links-ACTIVE.txt',
                                  format: :urls, entry_type: :url, min_rows: 1_000 }
       }.freeze
-      # URLhaus с октября 2026 отдаёт keyless-экспорты 410 — нужен бесплатный
+      # URLhaus: keyless-экспорты abuse.ch отдают 410 — нужен бесплатный
       # Auth-Key (auth.abuse.ch), URL с ключом кладётся в ENV; без ключа фид
       # пропускается, остальные источники работают
       URLHAUS_FEED = {
@@ -91,6 +91,9 @@ module Llm
           stats[source] = import_feed(source, cfg.merge(entry_type: :ip), run_at, synced)
         end
 
+        # источники публикуются на каждом чанке — перед протуханием сжимаем,
+        # иначе retire_stale уходил бы с сотнями дублей в IN (...) большого фида
+        synced.each_value(&:uniq!)
         retire_stale(synced, run_at)
         # протухание могло увести в soft-delete CIDR-подсети — кеш ip_blocked?
         # иначе продолжал бы дропать адреса до часа (CIDR_CACHE_TTL)

@@ -89,14 +89,26 @@ module Llm
     #   или nil для корня. Запись и проверка обязаны сводить `/clean/../x`
     #   и `/x` к одному ключу: у URL-only фидов (phishing_links) доменной
     #   записи нет, и несвённый dot-сегмент — полный обход блока пути.
-    #   %2e декодируем в точку заранее: иначе %2e%2e не распознался бы как «..».
+    #   Percent-escape'и над unreserved-символами (`%70` = `p`) декодируем
+    #   до свёртки: иначе `/%70hish` обходил blocked `/phish`.
     def normalize_path(path)
       return nil if path.blank?
 
-      p = "/#{path}".gsub(/%2e/i, '.')
+      p = decode_unreserved("/#{path}")
       p = remove_dot_segments(p)
-      p = p.sub(%r{/+\z}, '')
+      p = p.sub(%r{/*$}, '')
       p.presence
+    end
+
+    # RFC 3986 unreserved — A-Z / a-z / 0-9 / -._~: escape над ними это то
+    # же значение, декодируем в символ. Прочие escape'и сохраняем как есть,
+    # но hex приводим к нижнему регистру: `%2F` и `%2f` в сыром виде
+    # разводили бы разные ключи одного ресурса.
+    def decode_unreserved(str)
+      str.gsub(/%([0-9a-f]{2})/i) do
+        ch = Regexp.last_match(1).hex.chr
+        ch.match?(/[a-z0-9.\-_~]/i) ? ch : Regexp.last_match(0).downcase
+      end
     end
 
     # RFC 3986 §5.2.4 remove_dot_segments — побеговая реализация по строке.

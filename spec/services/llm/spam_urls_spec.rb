@@ -130,6 +130,16 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'example.com', path: '/x')
     end
 
+    it 'unreserved-символы в пути декодируются из %XX: %70 = p, ключ тот же' do
+      expect(described_class.normalize('https://example.com/%70hish/%6cogin'))
+        .to eq(host: 'example.com', path: '/phish/login')
+    end
+
+    it 'зарезервированные эскейпы пути сохраняются, hex приводится к нижнему регистру' do
+      expect(described_class.normalize('https://example.com/a%2Fb'))
+        .to eq(host: 'example.com', path: '/a%2fb')
+    end
+
     it 'мусор не падает, возвращает nil' do
       expect(described_class.normalize('not a url')).to be_nil
     end

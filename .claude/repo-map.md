@@ -1142,27 +1142,6 @@ private
 def sanitized_return_path(value)
 </file>
 
-<file path="app/controllers/admin/spam_blocked_entries_controller.rb">
-module Admin
-⋮----
-class SpamBlockedEntriesController < ApplicationController
-include AdminTokenAuth
-⋮----
-skip_before_action :verify_authenticity_token, if: -> { params[:token].present? }
-⋮----
-def index
-⋮----
-def create
-⋮----
-def destroy
-⋮----
-private
-⋮----
-def index_limit
-⋮----
-def serialize(entry)
-</file>
-
 <file path="app/controllers/admin/topnlab_status_controller.rb">
 module Admin
 ⋮----
@@ -1756,21 +1735,6 @@ extend ActiveSupport::Concern
 private
 ⋮----
 def render_not_found(reason = nil)
-</file>
-
-<file path="app/controllers/concerns/visitor_identity.rb">
-module VisitorIdentity
-extend ActiveSupport::Concern
-⋮----
-COOKIE_NAME = :visitor_token
-COOKIE_TTL  = 90.days
-⋮----
-included do
-before_action :ensure_visitor_token
-⋮----
-def ensure_visitor_token
-⋮----
-def current_visitor_token
 </file>
 
 <file path="app/controllers/dashboard/admin/client_documents_controller.rb">
@@ -3596,17 +3560,6 @@ retry_on Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 def perform(article_id)
 </file>
 
-<file path="app/jobs/embed_lead_event_job.rb">
-require 'digest'
-⋮----
-class EmbedLeadEventJob < ApplicationJob
-queue_as :low_priority
-⋮----
-retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
-⋮----
-def perform(lead_event_id)
-</file>
-
 <file path="app/jobs/embed_property_job.rb">
 require 'digest'
 ⋮----
@@ -4733,101 +4686,6 @@ private
 def notify_property_owner
 </file>
 
-<file path="app/models/inquiry.rb">
-include AASM
-⋮----
-PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
-⋮----
-def self.ransackable_attributes(auth_object = nil)
-⋮----
-def self.ransackable_associations(auth_object = nil)
-⋮----
-def self.statistics(period = :all)
-⋮----
-def self.calculate_conversion_rate(scope = all)
-⋮----
-def self.calculate_avg_response_time(scope = all)
-⋮----
-def full_contact_info
-⋮----
-def formatted_phone
-⋮----
-def type_label
-⋮----
-def status_label
-⋮----
-def status_badge_class
-⋮----
-def priority_badge_class
-⋮----
-def response_time_minutes
-⋮----
-def overdue?
-⋮----
-def scheduled_soon?
-⋮----
-def assign_to!(agent_user)
-⋮----
-def unassign!
-⋮----
-def mark_processed!
-⋮----
-def cancel_with_reason!(reason)
-⋮----
-def sync_to_crm!
-⋮----
-def synced_to_crm?
-⋮----
-def set_metadata(key, value)
-⋮----
-def get_metadata(key)
-⋮----
-def from_mobile?
-⋮----
-def has_utm_params?
-⋮----
-def utm_string
-⋮----
-def notify_admins!
-⋮----
-def notify_user_of_status_change!
-⋮----
-def property_title
-⋮----
-def property_url
-⋮----
-def agent_name
-⋮----
-Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
-⋮----
-def normalize_phone
-⋮----
-def set_default_source
-⋮----
-def detect_staff_test_submission
-⋮----
-def assign_to_agent
-⋮----
-def send_notifications
-⋮----
-def sync_to_crm
-⋮----
-def push_to_work_bot
-⋮----
-def notify_status_change
-⋮----
-def broadcast_cabinet_status_change
-⋮----
-def phone_format
-⋮----
-def preferred_date_in_future
-⋮----
-def property_or_message_required
-# Mortgage inquiries carry program details in metadata, not a property
-# FK — exempt them from the property-or-message rule so /services/mortgage
-# applications validate cleanly.
-</file>
-
 <file path="app/models/landing_content.rb">
 class LandingContent < ApplicationRecord
 ⋮----
@@ -4858,83 +4716,6 @@ class LeadEventEmbedding < ApplicationRecord
 has_neighbors :embedding
 ⋮----
 belongs_to :lead_event
-</file>
-
-<file path="app/models/lead_event.rb">
-class LeadEvent < ApplicationRecord
-SOURCES = ['site_form', 'site_valuation', 'site_mortgage', 'tg_dm', 'manual', 'crm_webhook'].freeze
-STAGES  = ['new', 'first_contact', 'show', 'contract', 'deal', 'closed_won', 'closed_lost'].freeze
-TOPIC_KEYS = [
-⋮----
-SEGMENTS = ['cash', 'mortgage_approved', 'mortgage_pending', 'alternative', 'cold'].freeze
-SEGMENT_LABELS = {
-⋮----
-SEGMENT_UNKNOWN_LABEL = '❔ сегмент не указан'
-⋮----
-belongs_to :lead_ref, polymorphic: true
-belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
-⋮----
-belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
-belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
-⋮----
-belongs_to :property, optional: true
-⋮----
-has_many :show_reports, dependent: :destroy
-⋮----
-has_one :embedding_record, class_name: 'LeadEventEmbedding', dependent: :destroy
-⋮----
-after_commit :enqueue_embed_if_relevant_changed, on: %i[create update]
-⋮----
-validates :source,           inclusion: { in: SOURCES }
-validates :current_stage,    inclusion: { in: STAGES }
-validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
-validates :tg_chat_id, presence: true
-validates :segment, inclusion: { in: SEGMENTS }, allow_nil: true
-⋮----
-scope :open,     -> { where.not(current_stage: ['closed_won', 'closed_lost']) }
-scope :closed,   -> { where(current_stage: ['closed_won', 'closed_lost']) }
-scope :for_agent, ->(tg_user) { where(assigned_to: tg_user) }
-scope :awaiting_first_contact, lambda {
-    where(first_contact_at: nil)
-      .where.not(assigned_at: nil)
-      .where.not(current_stage: ['closed_won', 'closed_lost'])
-  }
-scope :in_topic, ->(key) { where(anchor_topic_key: key) }
-⋮----
-scope :assigned_by_tg, ->(tg_user) { where(assigned_by_id: tg_user.id) }
-scope :routed_by_tg,   ->(tg_user) { where(routed_by_id: tg_user.id) }
-⋮----
-scope :updated_in, ->(range) { where(updated_at: range) }
-⋮----
-scope :real,       -> { where(staff_test: false) }
-scope :staff_test_only, -> { where(staff_test: true) }
-⋮----
-scope :shown,     -> { where.not(first_show_at: nil) }
-scope :segmented, -> { where.not(segment: nil) }
-⋮----
-before_validation :detect_staff_test_submission, on: :create
-⋮----
-def open?
-⋮----
-def closed?
-⋮----
-def assigned?
-⋮----
-def segment_label
-⋮----
-def apply_segment!(value, by:)
-⋮----
-def anchor_url
-⋮----
-HISTORY_DEFAULT_CAPS = {
-⋮----
-def append_history(key:, entry:, cap: nil)
-⋮----
-private
-⋮----
-def enqueue_embed_if_relevant_changed
-⋮----
-def detect_staff_test_submission
 </file>
 
 <file path="app/models/listing_consent.rb">
@@ -7586,58 +7367,6 @@ def self.agent_contact(p)
 def self.amenities(p)
 </file>
 
-<file path="app/services/chat_tools/qualify_lead.rb">
-module ChatTools
-⋮----
-module QualifyLead
-PREMIUM_DISTRICTS = [
-⋮----
-URGENCY_HOT  = %w[сейчас срочно немедленно сегодня завтра].freeze
-URGENCY_NEAR = %w[месяц неделя ближайшие квартал].freeze
-URGENCY_FAR  = %w[год позже подумаю когда-нибудь рассматриваю].freeze
-⋮----
-INTENT_TO_INQUIRY_TYPE = {
-⋮----
-ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
-⋮----
-PRIORITY_URGENT_THRESHOLD = 6
-PRIORITY_HIGH_THRESHOLD   = 4
-⋮----
-DEDUPE_WINDOW = 5.minutes
-⋮----
-def self.schema
-⋮----
-def self.call(args = {})
-⋮----
-def self.compute_score(args)
-⋮----
-def self.enum_for(score)
-⋮----
-def self.build_reasoning(args, score, priority)
-⋮----
-def self.maybe_create_inquiry(args, priority, breakdown, reasoning)
-⋮----
-# Если service_type указывает на оценочный сервис — Inquiry должна быть
-# типа 'evaluation' (даже если intent=invest/buy), чтобы попасть в
-⋮----
-def self.format_message(priority, score, reasoning, inquiry)
-</file>
-
-<file path="app/services/chat_tools/run_investment_audit.rb">
-module ChatTools
-⋮----
-module RunInvestmentAudit
-⋮----
-REALTY_TO_PV_TYPE = { 'flat' => 'apartment', 'commerce' => 'commercial' }.freeze
-CONDITION_TO_PV   = { 'normal' => 'average', 'renovated' => 'good', 'euro' => 'excellent' }.freeze
-⋮----
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.build_valuation(prop)
-</file>
-
 <file path="app/services/chat_tools/search_properties.rb">
 module ChatTools
 ⋮----
@@ -7662,21 +7391,6 @@ MAX_LIMIT = 10
 def self.schema
 ⋮----
 def self.call(args)
-</file>
-
-<file path="app/services/chat_tools/submit_review.rb">
-module ChatTools
-⋮----
-module SubmitReview
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.sanitize_short(value, max)
-⋮----
-def self.sanitize_long(value, max)
-⋮----
-def self.notify_moderator(review)
 </file>
 
 <file path="app/services/chat_tools/url.rb">
@@ -8475,27 +8189,6 @@ def try_yandex
 def perform(uri, req)
 </file>
 
-<file path="app/services/kpi/agency_digest.rb">
-module Kpi
-⋮----
-class AgencyDigest
-def initialize(date: Date.current)
-⋮----
-def build_text
-⋮----
-private
-⋮----
-def agency_totals(metrics)
-⋮----
-def per_staff_table(metrics)
-⋮----
-def format_staff_line(metric)
-⋮----
-def pipeline_block
-⋮----
-def highlights(metrics)
-</file>
-
 <file path="app/services/kpi/morning_digest.rb">
 module Kpi
 ⋮----
@@ -8699,40 +8392,6 @@ class ManualSource
 def call(_payload)
 </file>
 
-<file path="app/services/lead/intake/site_source.rb">
-module Lead
-class Intake
-⋮----
-class SiteSource
-def initialize(source)
-⋮----
-def call(payload)
-⋮----
-private
-⋮----
-def find_known_user(payload)
-⋮----
-# Привязка к существующей сайтовой сущности:
-#   * site_valuation — PropertyValuation (валюация на сайте)
-#   * site_form/site_mortgage — Inquiry (универсальная форма)
-#   * fallback (если ничего не передали) — также Inquiry, чтобы не создавать
-#     BuyerOrder без crm_id (он требует NOT NULL crm_id из CRM).
-def lead_ref_for(payload)
-⋮----
-def fallback_inquiry(payload)
-⋮----
-def digits(phone)
-⋮----
-def build_summary(payload)
-⋮----
-def normalize_phone(phone)
-⋮----
-ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
-def normalize_service_type(payload)
-⋮----
-def mask_phone(phone)
-</file>
-
 <file path="app/services/lead/intake/tg_dm_source.rb">
 module Lead
 class Intake
@@ -8755,26 +8414,6 @@ def infer_inquiry_type(intent)
 def build_name(payload)
 ⋮----
 def build_metadata(payload, returning_client:, match_strategy: nil, match_confidence: nil)
-</file>
-
-<file path="app/services/lead/intake.rb">
-module Lead
-⋮----
-class Intake
-SUPPORTED_SOURCES = %w[site_form site_valuation site_mortgage tg_dm manual crm_webhook].freeze
-⋮----
-Result = Struct.new(:success, :lead_event, :error, :threaded, keyword_init: true) do
-def success?
-⋮----
-def threaded?
-⋮----
-def self.call(...)
-⋮----
-def initialize(source:, payload:, announcer: Telegram::WorkBot::LeadAnnouncer)
-⋮----
-def call
-⋮----
-def valid_source?
 </file>
 
 <file path="app/services/lead/property_resolver.rb">
@@ -9755,24 +9394,6 @@ class AssignCancelCallback < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class AssignToCallback < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def log_reassignment_audit(lead, prev_assignee, new_assignee)
-⋮----
-def log_soft_error(result, error_msg)
-⋮----
-def delete_picker(lead)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/base.rb">
 attr_accessor :_manager_only, :_director_only
 ⋮----
@@ -9791,38 +9412,6 @@ def initialize(callback_query:, tg_user:, args:, client: Telegram::Client.new)
 raise NotImplementedError, "#{self.class} must implement #handle"
 ⋮----
 def reply_in_topic(text, **opts)
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class DashboardDrillCallback < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def handle_drill(target)
-⋮----
-def refresh_main
-⋮----
-def render_leads_detail
-⋮----
-# Top-5 hot (high-priority topics + recent activity)
-⋮----
-def render_tasks_detail
-⋮----
-def render_staff_detail
-⋮----
-def render_search_prompt
-⋮----
-def edit(text, markup)
-⋮----
-def back_keyboard
-⋮----
-def time_ago(time)
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/link_staff_callback.rb">
@@ -10031,25 +9620,6 @@ def tag_in_crm(lead)
 def delete_anchor_messages(lead)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/stage_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class StageCallback < Base
-ALLOWED = ['show', 'contract'].freeze
-⋮----
-def handle
-⋮----
-private
-⋮----
-def authorized?(lead)
-⋮----
-def nudge_segment(lead)
-⋮----
-def propose_conductor(lead)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/task_action_callback.rb">
 module Telegram
 module WorkBot
@@ -10154,93 +9724,6 @@ def answer(outcome)
 def in_private_chat?
 </file>
 
-<file path="app/services/telegram/work_bot/commands/assign.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Assign < Base
-⋮----
-PICKER_MAX_USERS = 10
-PICKER_BUTTONS_PER_ROW = 2
-⋮----
-def handle
-⋮----
-private
-⋮----
-def render_picker(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/bargain.rb">
-def handle
-⋮----
-def record!(lead, price)
-⋮----
-def notify_directors(lead, price)
-⋮----
-lines << "Цена: <b>#{property&.price_formatted || '—'}</b> · предлагают: <b>#{delimited(price)} ₽</b>"
-⋮----
-def plural(n)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/base.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Base
-⋮----
-def manager_only(val = true)
-⋮----
-def manager_only?
-⋮----
-def director_only(val = true)
-⋮----
-def director_only?
-⋮----
-def public_command(val = true)
-⋮----
-def self_audited(val = true)
-⋮----
-def self_audited?
-⋮----
-def public_command?
-⋮----
-attr_reader :tg_user, :message, :args, :client
-⋮----
-def initialize(message:, args:, tg_user:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-protected
-⋮----
-def handle
-⋮----
-def reply(text, **opts)
-⋮----
-def assignee_or_manager?(lead)
-⋮----
-def escape_html(text)
-⋮----
-def dm(text, to: tg_user, **opts)
-⋮----
-def resolve_lead!
-⋮----
-def find_lead_via_reply
-⋮----
-def open_wizard(flow_key, seed_record = nil, seed_id: nil)
-⋮----
-def lead_not_found_hint(cmd)
-⋮----
-private
-⋮----
-def dispatch
-⋮----
-def audit!(outcome, args:, error_class: nil, error_message: nil)
-⋮----
-def command_key
-</file>
-
 <file path="app/services/telegram/work_bot/commands/cancel.rb">
 module Telegram
 module WorkBot
@@ -10263,22 +9746,6 @@ module Commands
 ⋮----
 class Cheatsheet < Base
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/close.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Close < Base
-⋮----
-OUTCOME_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse_args
 </file>
 
 <file path="app/services/telegram/work_bot/commands/dashboard.rb">
@@ -10325,23 +9792,6 @@ private
 def notify_target(target)
 ⋮----
 def notify_other_managers(target)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/doc.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Doc < Base
-def handle
-⋮----
-# /doc без args — формат текущий checklist
-⋮----
-# /doc <tokens> — apply changes
-⋮----
-private
-⋮----
-def find_lead_via_reply
 </file>
 
 <file path="app/services/telegram/work_bot/commands/done.rb">
@@ -10396,38 +9846,6 @@ module Commands
 ⋮----
 class Menu < Base
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/note.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Note < Base
-def handle
-⋮----
-private
-⋮----
-def push_to_crm(lead, text)
-⋮----
-def persist_to_metadata(lead, text)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/objections.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Objections < Base
-def handle
-⋮----
-private
-⋮----
-def summary_for_lead(lead)
-⋮----
-def render(title, property, s)
-⋮----
-def plural(n)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/promote.rb">
@@ -10485,60 +9903,6 @@ REOPEN_WINDOW = 24.hours
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/commands/route.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Route < Base
-⋮----
-def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/segment.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Segment < Base
-SEGMENT_MAP = {
-⋮----
-def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/show.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Show < Base
-def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/stage.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Stage < Base
-STAGE_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def propose_conductor(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/task.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Task < Base
-def handle
-</file>
-
 <file path="app/services/telegram/work_bot/commands/tutorial.rb">
 module Telegram
 module WorkBot
@@ -10558,19 +9922,6 @@ def card_delivered?(result)
 def dm_unavailable_hint
 ⋮----
 def group_chat?
-</file>
-
-<file path="app/services/telegram/work_bot/commands/unstage.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Unstage < Base
-def handle
-⋮----
-private
-⋮----
-def find_lead_via_reply
 </file>
 
 <file path="app/services/telegram/work_bot/commands/whoami_force.rb">
@@ -10921,29 +10272,6 @@ def escape_html(text)
 def manager?
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module LeadPicking
-RECENT_LIMIT = 5
-⋮----
-def lead_step
-⋮----
-def lead
-⋮----
-def accept_lead(value)
-⋮----
-def lead_gate
-⋮----
-private
-⋮----
-def recent_leads
-⋮----
-def lead_label(lead)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/menu.rb">
 module Telegram
 module WorkBot
@@ -10987,65 +10315,6 @@ def closed_ago(at)
 def accept_task(value)
 ⋮----
 def new_task_callback(task)
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class TaskFlow < Flow
-include LeadPicking
-⋮----
-flow 'task', 'Задача с дедлайном'
-⋮----
-TITLE_MAX = 255
-⋮----
-def steps
-⋮----
-def skip?(step)
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def finish
-⋮----
-private
-⋮----
-def quick_dates
-⋮----
-def assignee_options
-⋮----
-def accept_due(value)
-⋮----
-def accept_title(value)
-⋮----
-def accept_assignee(value)
-⋮----
-def crm_line(status)
-</file>
-
-<file path="app/services/telegram/work_bot/anchor_migrator.rb">
-module Telegram
-module WorkBot
-⋮----
-class AnchorMigrator
-def initialize(lead_event, target_topic_key, actor:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def valid_target?
-⋮----
-def delete_old_anchor
-⋮----
-def merged_metadata
-⋮----
-def push_note_to_crm
-⋮----
-def log_skip(reason)
 </file>
 
 <file path="app/services/telegram/work_bot/anomaly_detector_job.rb">
@@ -11239,37 +10508,6 @@ def group_commands
 def tg_format(entries)
 </file>
 
-<file path="app/services/telegram/work_bot/daily_digest_job.rb">
-module Telegram
-module WorkBot
-⋮----
-class DailyDigestJob
-include Sidekiq::Job
-⋮----
-sidekiq_options queue: :scheduled, retry: 1
-⋮----
-QUIET_START_HOUR = 21
-QUIET_END_HOUR = 8
-⋮----
-def perform
-⋮----
-private
-⋮----
-def quiet_hours?
-⋮----
-def build_digest_for(director)
-⋮----
-# Phase 15.5 — LLM-summary вчерашних обсуждений в group chat.
-# Композиция с SummarizeGroupMessages tool. Soft-fail: если LLM down или
-# < MIN_SOURCES messages — секция skip'ается (digest всё равно уйдёт).
-⋮----
-# Композиция: SummarizeGroupMessages tool с period='yesterday'.
-⋮----
-def group_chat_summary(director)
-⋮----
-def send_digest(director, digest_markdown)
-</file>
-
 <file path="app/services/telegram/work_bot/deal_mirror.rb">
 module Telegram
 module WorkBot
@@ -11290,42 +10528,6 @@ def format_teaser
 def log_skip(reason)
 ⋮----
 def escape(text)
-</file>
-
-<file path="app/services/telegram/work_bot/director_dashboard.rb">
-module Telegram
-module WorkBot
-⋮----
-class DirectorDashboard
-Result = Struct.new(:markdown, :keyboard, keyword_init: true)
-⋮----
-def initialize(tg_user:, period: :today)
-⋮----
-def self.call(**)
-⋮----
-def call
-⋮----
-private
-⋮----
-def build_markdown
-⋮----
-def header
-⋮----
-def leads_section
-⋮----
-def tasks_section
-⋮----
-def staff_section
-⋮----
-def weekly_kpi_section
-⋮----
-def compute_kpi(range)
-⋮----
-def trend(now, prev)
-⋮----
-def alerts_section
-⋮----
-def build_keyboard
 </file>
 
 <file path="app/services/telegram/work_bot/dispatcher_digest.rb">
@@ -11390,70 +10592,6 @@ def send_ack(text)
 def deliver(text)
 ⋮----
 def reply(text)
-</file>
-
-<file path="app/services/telegram/work_bot/hashtag_handler.rb">
-module Telegram
-module WorkBot
-⋮----
-class HashtagHandler
-AHTUNG_REGEX = /(?:\A|\s)
-⋮----
-dm_text = "🚨 <b>#ахтунг</b> от @#{escape(author)} в #{escape(topic)}\n" \
-⋮----
-def escape(text)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_announcer.rb">
-ROUTING_BUTTONS_PER_ROW = 3
-⋮----
-def self.refresh!(lead_event, client: Telegram::Client.new)
-⋮----
-STAGE_EMOJI = {
-⋮----
-def initialize(lead_event, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def repost_to(target_topic_key)
-⋮----
-def format_card_text
-⋮----
-def keyboard_for_card(topic_key = @lead.anchor_topic_key)
-⋮----
-def send_card(topic_key)
-⋮----
-def resolve_target_topic
-⋮----
-lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
-⋮----
-# Valuation block — when lead_ref is completed PropertyValuation.
-# Это блок добавляется TG editMessageText'ом после того как
-# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
-# + PropertyValuationJob#push_to_lead_card). До completion блок
-# отсутствует, card будет sparser.
-⋮----
-lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
-⋮----
-def stage_icon
-⋮----
-def source_label
-⋮----
-def phone_suffix(phone)
-⋮----
-def stage_row
-⋮----
-# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
-# поэтому «нет reply на якорь» исчезает как класс ошибки.
-def work_row
-⋮----
-def routing_keyboard_for(topic_key)
-⋮----
-def escape(text)
-⋮----
-def fmt_rub(amount)
-⋮----
-def report_url(valuation)
 </file>
 
 <file path="app/services/telegram/work_bot/lead_assignment.rb">
@@ -12073,37 +11211,6 @@ def aggregate_confidence(segments)
 def hallucination?(text)
 </file>
 
-<file path="app/services/telegram/work_bot/weekly_summary_job.rb">
-module Telegram
-module WorkBot
-⋮----
-class WeeklySummaryJob
-include Sidekiq::Job
-⋮----
-sidekiq_options queue: :scheduled, retry: 1
-⋮----
-def perform
-⋮----
-private
-⋮----
-def build_summary
-⋮----
-# BOTTLENECK — воронка показов. Падение расчёта не должно ронять всю сводку.
-def show_funnel_block(range)
-⋮----
-def compute(range)
-⋮----
-def trend(now, prev)
-⋮----
-def top_performers(range)
-⋮----
-def overdue_anomalies(range)
-⋮----
-def llm_cost_report
-⋮----
-def send_summary(director, markdown)
-</file>
-
 <file path="app/services/telegram/alert_throttle.rb">
 module Telegram
 ⋮----
@@ -12151,46 +11258,6 @@ def resolve
 private
 ⋮----
 def build_tiers
-</file>
-
-<file path="app/services/telegram/escalation_notifier.rb">
-module Telegram
-⋮----
-class EscalationNotifier
-MAX_HISTORY_PREVIEW = 6
-⋮----
-def initialize(conversation, summary, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def format_message
-⋮----
-def phone_line
-⋮----
-def email_line
-⋮----
-def role_icon(role)
-⋮----
-def escape(text)
-</file>
-
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
-⋮----
-def call
-⋮----
-def serialize(m)
-⋮----
-def log_and_ignore(reason)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/telegram/inbox_saver.rb">
@@ -12265,29 +11332,6 @@ def blocked_error?(msg)
 def chat_not_found?(msg)
 ⋮----
 def skip(reason)
-</file>
-
-<file path="app/services/telegram/reaction_handler.rb">
-module Telegram
-⋮----
-class ReactionHandler
-ACK_EMOJI = ['👍', '🔥', '✅'].freeze
-⋮----
-def initialize(payload, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def handle_task_reaction(tg_user)
-⋮----
-def send_multitask_hint(tg_user, open_tasks)
-⋮----
-def find_lead_by_message
-⋮----
-def pick_ack_emoji
-⋮----
-def maybe_advance_to_first_contact(lead, tg_user)
 </file>
 
 <file path="app/services/telegram/topic_registry.rb">
@@ -13444,24 +12488,6 @@ def build_document
 def register_fonts(doc)
 </file>
 
-<file path="app/services/audit_report_notifier.rb">
-def self.notify(valuation)
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-def send_pdf(client, chat_id)
-⋮----
-require 'stringio'
-⋮----
-lines << "  · Наличными: <b>#{fmt2(@audit['ei_cash'])}</b>"
-⋮----
-lines << "  · Депозит:   <b>#{fmt2(@audit['ei_deposit'])}</b>"
-⋮----
-def escape(text)
-</file>
-
 <file path="app/services/avito_feed_mapper.rb">
 class AvitoFeedMapper
 ⋮----
@@ -14032,46 +13058,6 @@ def all_admin_slugs
 def neighbors_of(slug)
 </file>
 
-<file path="app/services/staff_submission_detector.rb">
-class StaffSubmissionDetector
-STAFF_TEST_REASONS = %w[
-⋮----
-TEST_EMAIL_RX = /(?:@test\.|@example\.|test@|example@|\+test@|phase\d.*test|stub@)/i.freeze
-⋮----
-TEST_NAME_RX = /\b(тест|test|phase\d.*test|sample|dummy|fixture)\b/i.freeze
-⋮----
-Result = Struct.new(:staff_test, :matched_by, keyword_init: true) do
-def to_h_attrs
-⋮----
-def self.detect(email: nil, phone: nil, name: nil, tg_user_id: nil)
-⋮----
-def initialize(email:, phone:, name:, tg_user_id:)
-⋮----
-def detect
-⋮----
-private
-⋮----
-def tag(reason)
-⋮----
-def email_matches_staff?
-⋮----
-def phone_matches_staff?
-⋮----
-def tg_matches_staff?
-⋮----
-STAFF_FIRST_NAMES_CACHE_KEY = 'staff_submission_detector:first_names_v1'
-⋮----
-def name_matches_staff_first?
-⋮----
-# Exact match (имя submitter'а = staff first_name полностью)
-</file>
-
-<file path="config/routes.rb">
-require 'sidekiq/web'
-⋮----
-LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
-</file>
-
 <file path="app/controllers/pages_controller.rb">
 class PagesController < ApplicationController
 ⋮----
@@ -14142,24 +13128,15 @@ def awake?
 def notify(chat_id, thread_id, text)
 </file>
 
-<file path="app/models/conversation.rb">
-class Conversation < ApplicationRecord
-belongs_to :user, optional: true
-belongs_to :assigned_user, class_name: 'User', optional: true
-has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
+<file path="app/jobs/embed_lead_event_job.rb">
+require 'digest'
 ⋮----
-enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
+class EmbedLeadEventJob < ApplicationJob
+queue_as :low_priority
 ⋮----
-scope :for_visitor, ->(token) { where(visitor_token: token) }
-scope :open_state, -> { where(status: %i[active escalated]) }
+retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
-PER_MSG_CHAR_CAP = 1000
-⋮----
-def history_for_llm(limit: 30)
-⋮----
-def escalate!(reason: nil)
-⋮----
-def display_name
+def perform(lead_event_id)
 </file>
 
 <file path="app/models/crm_card_transition.rb">
@@ -14260,6 +13237,180 @@ private
 def normalize_city_name
 </file>
 
+<file path="app/models/inquiry.rb">
+include AASM
+⋮----
+PHONE_OPTIONAL_SOURCES = %w[tg_dm crm_webhook].freeze
+⋮----
+def self.ransackable_attributes(auth_object = nil)
+⋮----
+def self.ransackable_associations(auth_object = nil)
+⋮----
+def self.statistics(period = :all)
+⋮----
+def self.calculate_conversion_rate(scope = all)
+⋮----
+def self.calculate_avg_response_time(scope = all)
+⋮----
+def full_contact_info
+⋮----
+def formatted_phone
+⋮----
+def type_label
+⋮----
+def status_label
+⋮----
+def status_badge_class
+⋮----
+def priority_badge_class
+⋮----
+def response_time_minutes
+⋮----
+def overdue?
+⋮----
+def scheduled_soon?
+⋮----
+def assign_to!(agent_user)
+⋮----
+def unassign!
+⋮----
+def mark_processed!
+⋮----
+def cancel_with_reason!(reason)
+⋮----
+def sync_to_crm!
+⋮----
+def synced_to_crm?
+⋮----
+def set_metadata(key, value)
+⋮----
+def get_metadata(key)
+⋮----
+def test?
+⋮----
+def from_mobile?
+⋮----
+def has_utm_params?
+⋮----
+def utm_string
+⋮----
+def notify_admins!
+⋮----
+def notify_user_of_status_change!
+⋮----
+def property_title
+⋮----
+def property_url
+⋮----
+def agent_name
+⋮----
+Rails.logger.warn("[Inquiry##{id}] auto_create_referral failed: #{e.class}: #{e.message.truncate(200)}")
+⋮----
+def normalize_phone
+⋮----
+def set_default_source
+⋮----
+def detect_staff_test_submission
+⋮----
+def assign_to_agent
+⋮----
+def send_notifications
+⋮----
+def sync_to_crm
+⋮----
+def push_to_work_bot
+⋮----
+def notify_status_change
+⋮----
+def broadcast_cabinet_status_change
+⋮----
+def phone_format
+⋮----
+def preferred_date_in_future
+⋮----
+def property_or_message_required
+# Mortgage inquiries carry program details in metadata, not a property
+# FK — exempt them from the property-or-message rule so /services/mortgage
+# applications validate cleanly.
+</file>
+
+<file path="app/models/lead_event.rb">
+class LeadEvent < ApplicationRecord
+SOURCES = ['site_form', 'site_valuation', 'site_mortgage', 'tg_dm', 'manual', 'crm_webhook'].freeze
+STAGES  = ['new', 'first_contact', 'show', 'contract', 'deal', 'closed_won', 'closed_lost'].freeze
+TOPIC_KEYS = [
+⋮----
+SEGMENTS = ['cash', 'mortgage_approved', 'mortgage_pending', 'alternative', 'cold'].freeze
+SEGMENT_LABELS = {
+⋮----
+SEGMENT_UNKNOWN_LABEL = '❔ сегмент не указан'
+⋮----
+belongs_to :lead_ref, polymorphic: true
+belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
+⋮----
+belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
+belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
+⋮----
+belongs_to :property, optional: true
+⋮----
+has_many :show_reports, dependent: :destroy
+⋮----
+has_one :embedding_record, class_name: 'LeadEventEmbedding', dependent: :destroy
+⋮----
+after_commit :enqueue_embed_if_relevant_changed, on: %i[create update]
+⋮----
+validates :source,           inclusion: { in: SOURCES }
+validates :current_stage,    inclusion: { in: STAGES }
+validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
+validates :tg_chat_id, presence: true
+validates :segment, inclusion: { in: SEGMENTS }, allow_nil: true
+⋮----
+scope :open,     -> { where.not(current_stage: ['closed_won', 'closed_lost']) }
+scope :closed,   -> { where(current_stage: ['closed_won', 'closed_lost']) }
+scope :for_agent, ->(tg_user) { where(assigned_to: tg_user) }
+scope :awaiting_first_contact, lambda {
+    where(first_contact_at: nil)
+      .where.not(assigned_at: nil)
+      .where.not(current_stage: ['closed_won', 'closed_lost'])
+  }
+scope :in_topic, ->(key) { where(anchor_topic_key: key) }
+⋮----
+scope :assigned_by_tg, ->(tg_user) { where(assigned_by_id: tg_user.id) }
+scope :routed_by_tg,   ->(tg_user) { where(routed_by_id: tg_user.id) }
+⋮----
+scope :updated_in, ->(range) { where(updated_at: range) }
+⋮----
+scope :real,       -> { where(staff_test: false) }
+scope :staff_test_only, -> { where(staff_test: true) }
+⋮----
+scope :shown,     -> { where.not(first_show_at: nil) }
+scope :segmented, -> { where.not(segment: nil) }
+⋮----
+before_validation :detect_staff_test_submission, on: :create
+⋮----
+def open?
+⋮----
+def closed?
+⋮----
+def assigned?
+⋮----
+def segment_label
+⋮----
+def apply_segment!(value, by:)
+⋮----
+def anchor_url
+⋮----
+HISTORY_DEFAULT_CAPS = {
+⋮----
+def append_history(key:, entry:, cap: nil)
+⋮----
+private
+⋮----
+def enqueue_embed_if_relevant_changed
+⋮----
+def detect_staff_test_submission
+</file>
+
 <file path="app/models/property_valuation_embedding.rb">
 class PropertyValuationEmbedding < ApplicationRecord
 has_neighbors :embedding
@@ -14313,6 +13464,46 @@ private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 def self.page_url(args)
 </file>
 
+<file path="app/services/chat_tools/qualify_lead.rb">
+PREMIUM_DISTRICTS = [
+⋮----
+URGENCY_HOT  = %w[сейчас срочно немедленно сегодня завтра].freeze
+URGENCY_NEAR = %w[месяц неделя ближайшие квартал].freeze
+URGENCY_FAR  = %w[год позже подумаю когда-нибудь рассматриваю].freeze
+⋮----
+INTENT_TO_INQUIRY_TYPE = {
+⋮----
+ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+⋮----
+PRIORITY_URGENT_THRESHOLD = 6
+PRIORITY_HIGH_THRESHOLD   = 4
+⋮----
+DEDUPE_WINDOW = 5.minutes
+⋮----
+def self.schema
+⋮----
+def self.call(args = {})
+⋮----
+def self.compute_score(args)
+⋮----
+def self.enum_for(score)
+⋮----
+def self.build_reasoning(args, score, priority)
+⋮----
+# Если service_type указывает на оценочный сервис — Inquiry должна быть
+# типа 'evaluation' (даже если intent=invest/buy), чтобы попасть в
+# auto_route_from=site_valuation → топик #ОЦЕНКА.
+⋮----
+# Phone/name дублируются в metadata для LeadAnnouncer card —
+# он читает meta['name'] / meta['phone'].
+⋮----
+priority:                  priority,    # LeadAnnouncer reads meta['priority']
+⋮----
+service_type:              service_type, # LeadAnnouncer renders badge
+⋮----
+base = "Лид квалифицирован: #{priority.upcase} (#{score}/10). #{reasoning}"
+</file>
+
 <file path="app/services/chat_tools/registry.rb">
 module ChatTools
 ⋮----
@@ -14326,6 +13517,36 @@ def schemas
 def call(name, args)
 ⋮----
 def deep_symbolize(obj)
+</file>
+
+<file path="app/services/chat_tools/run_investment_audit.rb">
+module ChatTools
+⋮----
+module RunInvestmentAudit
+⋮----
+REALTY_TO_PV_TYPE = { 'flat' => 'apartment', 'commerce' => 'commercial' }.freeze
+CONDITION_TO_PV   = { 'normal' => 'average', 'renovated' => 'good', 'euro' => 'excellent' }.freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.build_valuation(prop)
+</file>
+
+<file path="app/services/chat_tools/submit_review.rb">
+module ChatTools
+⋮----
+module SubmitReview
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.sanitize_short(value, max)
+⋮----
+def self.sanitize_long(value, max)
+⋮----
+def self.notify_moderator(review)
 </file>
 
 <file path="app/services/crm_cards/checker.rb">
@@ -14454,6 +13675,80 @@ def field(kind, key)
 def option_label(field, value)
 </file>
 
+<file path="app/services/kpi/agency_digest.rb">
+module Kpi
+⋮----
+class AgencyDigest
+def initialize(date: Date.current)
+⋮----
+def build_text
+⋮----
+private
+⋮----
+def agency_totals(metrics)
+⋮----
+def per_staff_table(metrics)
+⋮----
+def format_staff_line(metric)
+⋮----
+def pipeline_block
+# staff_test=false: тестовые сабмиты сотрудников и probe-прогоны
+# чат-бота (issue #214) не считаются в pipeline-метриках агентства.
+⋮----
+def highlights(metrics)
+</file>
+
+<file path="app/services/lead/intake/site_source.rb">
+module Lead
+class Intake
+⋮----
+class SiteSource
+def initialize(source)
+⋮----
+def call(payload)
+⋮----
+private
+⋮----
+def find_known_user(payload)
+⋮----
+# Привязка к существующей сайтовой сущности:
+#   * site_valuation — PropertyValuation (валюация на сайте)
+#   * site_form/site_mortgage — Inquiry (универсальная форма)
+#   * fallback (если ничего не передали) — также Inquiry, чтобы не создавать
+#     BuyerOrder без crm_id (он требует NOT NULL crm_id из CRM).
+def lead_ref_for(payload)
+⋮----
+def fallback_inquiry(payload)
+⋮----
+def digits(phone)
+⋮----
+def build_summary(payload)
+⋮----
+def normalize_phone(phone)
+⋮----
+ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+def normalize_service_type(payload)
+⋮----
+def mask_phone(phone)
+</file>
+
+<file path="app/services/lead/intake.rb">
+SUPPORTED_SOURCES = %w[site_form site_valuation site_mortgage tg_dm manual crm_webhook].freeze
+⋮----
+Result = Struct.new(:success, :lead_event, :error, :threaded, keyword_init: true) do
+def success?
+⋮----
+def threaded?
+⋮----
+def self.call(...)
+⋮----
+def initialize(source:, payload:, announcer: Telegram::WorkBot::LeadAnnouncer)
+⋮----
+def target_chat_id(metadata)
+⋮----
+def adapter_for(source)
+</file>
+
 <file path="app/services/llm/spam_feeds/zip.rb">
 module Llm
 module SpamFeeds
@@ -14546,6 +13841,121 @@ def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
 def request(req)
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class AssignToCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def log_reassignment_audit(lead, prev_assignee, new_assignee)
+⋮----
+def log_soft_error(result, error_msg)
+⋮----
+def delete_picker(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class DashboardDrillCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def handle_drill(target)
+⋮----
+def refresh_main
+⋮----
+def render_leads_detail
+⋮----
+# Top-5 hot (high-priority topics + recent activity). .real — без
+# staff_test/probe-записей (issue #214).
+⋮----
+def render_tasks_detail
+⋮----
+def render_staff_detail
+⋮----
+def render_search_prompt
+⋮----
+def edit(text, markup)
+⋮----
+def back_keyboard
+⋮----
+def time_ago(time)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks/stage_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class StageCallback < Base
+ALLOWED = ['show', 'contract'].freeze
+⋮----
+def handle
+⋮----
+private
+⋮----
+def authorized?(lead)
+⋮----
+def nudge_segment(lead)
+⋮----
+def propose_conductor(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/bargain.rb">
+def handle
+⋮----
+def record!(lead, price)
+⋮----
+def notify_directors(lead, price)
+⋮----
+lines << "Цена: <b>#{property&.price_formatted || '—'}</b> · предлагают: <b>#{delimited(price)} ₽</b>"
+⋮----
+def plural(n)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/close.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Close < Base
+⋮----
+OUTCOME_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def parse_args
+</file>
+
+<file path="app/services/telegram/work_bot/commands/doc.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Doc < Base
+def handle
+⋮----
+# /doc без args — формат текущий checklist
+⋮----
+# /doc <tokens> — apply changes
+⋮----
+private
+⋮----
+def find_lead_via_reply
+</file>
+
 <file path="app/services/telegram/work_bot/commands/help.rb">
 module Telegram
 module WorkBot
@@ -14578,6 +13988,68 @@ def group_chat?
 def send_full_via_dm(text)
 </file>
 
+<file path="app/services/telegram/work_bot/commands/note.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Note < Base
+def handle
+⋮----
+private
+⋮----
+def push_to_crm(lead, text)
+⋮----
+def persist_to_metadata(lead, text)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/objections.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Objections < Base
+def handle
+⋮----
+private
+⋮----
+def summary_for_lead(lead)
+⋮----
+def render(title, property, s)
+⋮----
+def plural(n)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/route.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Route < Base
+⋮----
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/segment.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Segment < Base
+SEGMENT_MAP = {
+⋮----
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/show.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Show < Base
+def handle
+</file>
+
 <file path="app/services/telegram/work_bot/commands/start_test.rb">
 module WorkBot
 module Commands
@@ -14604,6 +14076,223 @@ def summary
 .gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
 ⋮----
 def without_comments(text)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module LeadPicking
+RECENT_LIMIT = 5
+⋮----
+def lead_step
+⋮----
+def lead
+⋮----
+def accept_lead(value)
+⋮----
+def lead_gate
+⋮----
+private
+⋮----
+def recent_leads
+⋮----
+def lead_label(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class TaskFlow < Flow
+include LeadPicking
+⋮----
+flow 'task', 'Задача с дедлайном'
+⋮----
+TITLE_MAX = 255
+⋮----
+def steps
+⋮----
+def skip?(step)
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def quick_dates
+⋮----
+def assignee_options
+⋮----
+def accept_due(value)
+⋮----
+def accept_title(value)
+⋮----
+def accept_assignee(value)
+⋮----
+def crm_line(status)
+</file>
+
+<file path="app/services/telegram/work_bot/anchor_migrator.rb">
+module Telegram
+module WorkBot
+⋮----
+class AnchorMigrator
+def initialize(lead_event, target_topic_key, actor:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def test_lead?
+⋮----
+def valid_target?
+⋮----
+def delete_old_anchor
+⋮----
+def merged_metadata
+⋮----
+def push_note_to_crm
+⋮----
+def log_skip(reason)
+</file>
+
+<file path="app/services/telegram/work_bot/daily_digest_job.rb">
+module Telegram
+module WorkBot
+⋮----
+class DailyDigestJob
+include Sidekiq::Job
+⋮----
+sidekiq_options queue: :scheduled, retry: 1
+⋮----
+QUIET_START_HOUR = 21
+QUIET_END_HOUR = 8
+⋮----
+def perform
+⋮----
+private
+⋮----
+def quiet_hours?
+⋮----
+def build_digest_for(director)
+⋮----
+# Phase 15.5 — LLM-summary вчерашних обсуждений в group chat.
+# Композиция с SummarizeGroupMessages tool. Soft-fail: если LLM down или
+# < MIN_SOURCES messages — секция skip'ается (digest всё равно уйдёт).
+⋮----
+# Композиция: SummarizeGroupMessages tool с period='yesterday'.
+⋮----
+def group_chat_summary(director)
+⋮----
+def send_digest(director, digest_markdown)
+</file>
+
+<file path="app/services/telegram/work_bot/director_dashboard.rb">
+module Telegram
+module WorkBot
+⋮----
+class DirectorDashboard
+Result = Struct.new(:markdown, :keyboard, keyword_init: true)
+⋮----
+def initialize(tg_user:, period: :today)
+⋮----
+def self.call(**)
+⋮----
+def call
+⋮----
+private
+⋮----
+def build_markdown
+⋮----
+def header
+⋮----
+def leads_section
+⋮----
+def tasks_section
+⋮----
+def staff_section
+⋮----
+def weekly_kpi_section
+⋮----
+def compute_kpi(range)
+⋮----
+def trend(now, prev)
+⋮----
+def alerts_section
+⋮----
+def build_keyboard
+</file>
+
+<file path="app/services/telegram/work_bot/hashtag_handler.rb">
+module Telegram
+module WorkBot
+⋮----
+class HashtagHandler
+AHTUNG_REGEX = /(?:\A|\s)
+⋮----
+dm_text = "🚨 <b>#ахтунг</b> от @#{escape(author)} в #{escape(topic)}\n" \
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/lead_announcer.rb">
+ROUTING_BUTTONS_PER_ROW = 3
+⋮----
+def self.refresh!(lead_event, client: Telegram::Client.new)
+⋮----
+STAGE_EMOJI = {
+⋮----
+def initialize(lead_event, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def repost_to(target_topic_key)
+⋮----
+def format_card_text
+⋮----
+def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+⋮----
+def test_lead?
+⋮----
+def send_card(topic_key)
+⋮----
+def resolve_target_topic
+⋮----
+lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
+⋮----
+# Valuation block — when lead_ref is completed PropertyValuation.
+# Это блок добавляется TG editMessageText'ом после того как
+# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
+# + PropertyValuationJob#push_to_lead_card). До completion блок
+# отсутствует, card будет sparser.
+⋮----
+lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
+⋮----
+def stage_icon
+⋮----
+def source_label
+⋮----
+def phone_suffix(phone)
+⋮----
+def stage_row
+⋮----
+# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
+# поэтому «нет reply на якорь» исчезает как класс ошибки.
+def work_row
+⋮----
+def routing_keyboard_for(topic_key)
+⋮----
+def escape(text)
+⋮----
+def fmt_rub(amount)
+⋮----
+def report_url(valuation)
 </file>
 
 <file path="app/services/telegram/work_bot/router.rb">
@@ -14634,6 +14323,39 @@ def verify_code_in_dm
 def reply(text)
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/weekly_summary_job.rb">
+module Telegram
+module WorkBot
+⋮----
+class WeeklySummaryJob
+include Sidekiq::Job
+⋮----
+sidekiq_options queue: :scheduled, retry: 1
+⋮----
+def perform
+⋮----
+private
+⋮----
+def build_summary
+⋮----
+# BOTTLENECK — воронка показов. Падение расчёта не должно ронять всю сводку.
+def show_funnel_block(range)
+⋮----
+def compute(range)
+# .real — без staff_test/probe-записей (issue #214): сводка считает
+# только боевые лиды.
+⋮----
+def trend(now, prev)
+⋮----
+def top_performers(range)
+⋮----
+def overdue_anomalies(range)
+⋮----
+def llm_cost_report
+⋮----
+def send_summary(director, markdown)
 </file>
 
 <file path="app/services/telegram/client.rb">
@@ -14706,6 +14428,73 @@ def stream_to_io(remote_path, io)
 def with_network_retry(label)
 ⋮----
 def api_call(method, body = {}, retried: false)
+</file>
+
+<file path="app/services/telegram/escalation_notifier.rb">
+module Telegram
+⋮----
+class EscalationNotifier
+MAX_HISTORY_PREVIEW = 6
+⋮----
+def initialize(conversation, summary, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def target_chat_id
+⋮----
+def format_message
+⋮----
+def phone_line
+⋮----
+def email_line
+⋮----
+def role_icon(role)
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_text(msg)
+</file>
+
+<file path="app/services/telegram/reaction_handler.rb">
+module Telegram
+⋮----
+class ReactionHandler
+ACK_EMOJI = ['👍', '🔥', '✅'].freeze
+⋮----
+def initialize(payload, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def handle_task_reaction(tg_user)
+⋮----
+def own_dm_chat?(tg_user)
+⋮----
+def send_multitask_hint(tg_user, open_tasks)
+⋮----
+def find_lead_by_message
+⋮----
+def pick_ack_emoji
+⋮----
+def maybe_advance_to_first_contact(lead, tg_user)
 </file>
 
 <file path="app/services/valuations/ai_synthetic_comps.rb">
@@ -14819,6 +14608,26 @@ def same_city?(property, distance_km = nil)
 def weight_for(cos, distance_km)
 </file>
 
+<file path="app/services/audit_report_notifier.rb">
+def self.notify(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+def target_chat_id
+⋮----
+def test_marker
+⋮----
+def send_pdf(client, chat_id)
+⋮----
+require 'stringio'
+⋮----
+lines << "  · Депозит:   <b>#{fmt2(@audit['ei_deposit'])}</b>"
+⋮----
+def escape(text)
+</file>
+
 <file path="app/services/contact_form_spam_guard.rb">
 class ContactFormSpamGuard
 ⋮----
@@ -14838,6 +14647,71 @@ def call
 private
 ⋮----
 def spam(reason)
+</file>
+
+<file path="app/services/staff_submission_detector.rb">
+class StaffSubmissionDetector
+STAFF_TEST_REASONS = %w[
+⋮----
+TEST_MODE_MATCHED_BY = 'lead_test_mode'
+⋮----
+TEST_EMAIL_RX = /(?:@test\.|@example\.|test@|example@|\+test@|phase\d.*test|stub@)/i.freeze
+⋮----
+TEST_NAME_RX = /\b(тест|test|phase\d.*test|sample|dummy|fixture)\b/i.freeze
+⋮----
+Result = Struct.new(:staff_test, :matched_by, keyword_init: true) do
+def to_h_attrs
+⋮----
+def self.detect(email: nil, phone: nil, name: nil, tg_user_id: nil)
+⋮----
+def initialize(email:, phone:, name:, tg_user_id:)
+⋮----
+def detect
+⋮----
+private
+⋮----
+def tag(reason)
+⋮----
+def email_matches_staff?
+⋮----
+def phone_matches_staff?
+⋮----
+def tg_matches_staff?
+⋮----
+STAFF_FIRST_NAMES_CACHE_KEY = 'staff_submission_detector:first_names_v1'
+⋮----
+def name_matches_staff_first?
+⋮----
+# Exact match (имя submitter'а = staff first_name полностью)
+</file>
+
+<file path="config/routes.rb">
+require 'sidekiq/web'
+⋮----
+LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
+</file>
+
+<file path="app/controllers/admin/spam_blocked_entries_controller.rb">
+module Admin
+⋮----
+class SpamBlockedEntriesController < ApplicationController
+include AdminTokenAuth
+⋮----
+skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
+⋮----
+def index
+⋮----
+def create
+⋮----
+def destroy
+⋮----
+private
+⋮----
+def valid_api_token_param?
+⋮----
+def index_limit
+⋮----
+def serialize(entry)
 </file>
 
 <file path="app/controllers/chat/conversations_controller.rb">
@@ -14883,6 +14757,31 @@ def sanitize_page_ctx(raw_ctx)
 def stamp_page(conv, page_ctx)
 </file>
 
+<file path="app/controllers/concerns/visitor_identity.rb">
+module VisitorIdentity
+extend ActiveSupport::Concern
+⋮----
+COOKIE_NAME = :visitor_token
+COOKIE_TTL  = 90.days
+⋮----
+PROBE_TOKEN_PATTERN = /\Aprobe-([a-z0-9][a-z0-9-]{0,15})-([0-9a-f]{16})\z/.freeze
+⋮----
+def self.probe_token(name = nil)
+⋮----
+def self.valid_probe_token?(token)
+⋮----
+def self.probe_signature(base)
+⋮----
+private_class_method :probe_signature
+⋮----
+included do
+before_action :ensure_visitor_token
+⋮----
+def ensure_visitor_token
+⋮----
+def current_visitor_token
+</file>
+
 <file path="app/controllers/webhooks/news_ingest_controller.rb">
 module Webhooks
 ⋮----
@@ -14910,67 +14809,26 @@ def safe_parse_time(value)
 def upsert_article(attrs)
 </file>
 
-<file path="app/jobs/embed_property_valuation_job.rb">
-require 'digest'
+<file path="app/models/conversation.rb">
+class Conversation < ApplicationRecord
+belongs_to :user, optional: true
+belongs_to :assigned_user, class_name: 'User', optional: true
+has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
 ⋮----
-class EmbedPropertyValuationJob < ApplicationJob
-queue_as :low_priority
+enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
 ⋮----
-retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
+scope :for_visitor, ->(token) { where(visitor_token: token) }
+scope :open_state, -> { where(status: %i[active escalated]) }
 ⋮----
-def perform(property_valuation_id)
-</file>
-
-<file path="app/jobs/llm_reply_job.rb">
-class LlmReplyJob < ApplicationJob
-queue_as :default
+def test_probe?
 ⋮----
-def perform(conversation_id, message_id = nil)
+PER_MSG_CHAR_CAP = 1000
 ⋮----
-private
+def history_for_llm(limit: 30)
 ⋮----
-def message_page_snapshot(conv, message_id)
+def escalate!(reason: nil)
 ⋮----
-def message_payload(m)
-</file>
-
-<file path="app/models/property_valuation.rb">
-TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
-TYPES_REQUIRING_LAND_AREA = %w[land].freeze
-⋮----
-def to_property_params
-⋮----
-def land_area_in_sqm
-⋮----
-def full_name
-⋮----
-def price_range_formatted
-⋮----
-def estimated_price_formatted
-⋮----
-def confidence_percentage
-⋮----
-def accuracy_level
-⋮----
-def created_at_formatted
-⋮----
-def enqueue_embedding
-⋮----
-def report_label
-⋮----
-def generate_token
-⋮----
-def resolve_coordinates
-⋮----
-def normalize_phone
-⋮----
-def floor_not_greater_than_total
-⋮----
-def photos_limit
-⋮----
-Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
-⋮----
-def broadcast_cabinet_completion
+def display_name
 </file>
 
 <file path="app/models/spam_allowlist_entry.rb">
@@ -15038,31 +14896,6 @@ def schemas
 def call(name, args, asked_by: nil)
 ⋮----
 def deep_symbolize(obj)
-</file>
-
-<file path="app/services/chat_tools/estimate_property_valuation.rb">
-module ChatTools
-⋮----
-module EstimatePropertyValuation
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-⋮----
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.build_valuation(args)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.compact_response(pv, result)
-⋮----
-# Нет локальных аналогов (issue #172) — бот обязан озвучить
-# ориентировочность оценки, см. description в .schema.
-⋮----
-def self.run_failure(pv, error_message)
 </file>
 
 <file path="app/services/embedding/property_valuation_text_template.rb">
@@ -15191,6 +15024,118 @@ private
 def enrich_comparables(comps)
 ⋮----
 def base_only
+</file>
+
+<file path="app/services/telegram/work_bot/commands/assign.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Assign < Base
+⋮----
+PICKER_MAX_USERS = 10
+PICKER_BUTTONS_PER_ROW = 2
+⋮----
+def handle
+⋮----
+private
+⋮----
+def render_picker(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/base.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Base
+⋮----
+def manager_only(val = true)
+⋮----
+def manager_only?
+⋮----
+def director_only(val = true)
+⋮----
+def director_only?
+⋮----
+def public_command(val = true)
+⋮----
+def self_audited(val = true)
+⋮----
+def self_audited?
+⋮----
+def public_command?
+⋮----
+attr_reader :tg_user, :message, :args, :client
+⋮----
+def initialize(message:, args:, tg_user:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+protected
+⋮----
+def handle
+⋮----
+def reply(text, **opts)
+⋮----
+def assignee_or_manager?(lead)
+⋮----
+def escape_html(text)
+⋮----
+def dm(text, to: tg_user, **opts)
+⋮----
+def resolve_lead!
+⋮----
+def find_lead_via_reply
+⋮----
+def guard_staff_test!(lead)
+⋮----
+def staff_test_refused?
+⋮----
+def open_wizard(flow_key, seed_record = nil, seed_id: nil)
+⋮----
+def lead_not_found_hint(cmd)
+⋮----
+private
+⋮----
+def dispatch
+⋮----
+def audit!(outcome, args:, error_class: nil, error_message: nil)
+⋮----
+def command_key
+</file>
+
+<file path="app/services/telegram/work_bot/commands/stage.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Stage < Base
+STAGE_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def propose_conductor(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/task.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Task < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/unstage.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Unstage < Base
+def handle
 </file>
 
 <file path="Gemfile">
@@ -15357,30 +15302,96 @@ group :development, :test do
 end
 </file>
 
-<file path="app/models/spam_blocked_entry.rb">
-class SpamBlockedEntry < ApplicationRecord
+<file path="app/jobs/embed_property_valuation_job.rb">
+require 'digest'
 ⋮----
-QUORUM = 3
-HIT_WINDOW = 24.hours
-HIT_KEYS_CAP = 20
-CIDR_CACHE_KEY = 'spam_blocked_cidrs'
-CIDR_CACHE_TTL = 1.hour
+class EmbedPropertyValuationJob < ApplicationJob
+queue_as :low_priority
 ⋮----
-enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
-enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
+retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
-default_scope { not_deleted }
-scope :not_deleted, -> { where(deleted_at: nil) }
+def perform(property_valuation_id)
+</file>
+
+<file path="app/jobs/llm_reply_job.rb">
+class LlmReplyJob < ApplicationJob
+queue_as :default
 ⋮----
-validates :value, presence: true
+def perform(conversation_id, message_id = nil)
 ⋮----
-def self.ip_blocked?(ip)
+private
 ⋮----
-def self.find_block_for(host:, path: nil)
+def with_lead_test_mode(conv)
 ⋮----
-def self.record_hit!(entry, ip:, visitor_token: nil)
+def message_page_snapshot(conv, message_id)
 ⋮----
-def self.block_locally!(raw, status: :blocked)
+def message_payload(m)
+</file>
+
+<file path="app/models/property_valuation.rb">
+TYPES_REQUIRING_AREA = %w[apartment room house commercial garage].freeze
+TYPES_REQUIRING_LAND_AREA = %w[land].freeze
+⋮----
+def to_property_params
+⋮----
+def land_area_in_sqm
+⋮----
+def full_name
+⋮----
+def price_range_formatted
+⋮----
+def estimated_price_formatted
+⋮----
+def confidence_percentage
+⋮----
+def accuracy_level
+⋮----
+def created_at_formatted
+⋮----
+def enqueue_embedding
+⋮----
+def report_label
+⋮----
+def test?
+⋮----
+def generate_token
+⋮----
+def resolve_coordinates
+⋮----
+def normalize_phone
+⋮----
+def floor_not_greater_than_total
+⋮----
+def photos_limit
+⋮----
+Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
+⋮----
+def broadcast_cabinet_completion
+</file>
+
+<file path="app/services/chat_tools/estimate_property_valuation.rb">
+module ChatTools
+⋮----
+module EstimatePropertyValuation
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.build_valuation(args)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.compact_response(pv, result)
+⋮----
+# Нет локальных аналогов (issue #172) — бот обязан озвучить
+# ориентировочность оценки, см. description в .schema.
+⋮----
+def self.run_failure(pv, error_message)
 </file>
 
 <file path="app/services/external_listings/yrl_parser.rb">
@@ -15777,6 +15788,40 @@ def rate_limited?
 def serialize(m)
 </file>
 
+<file path="app/models/spam_blocked_entry.rb">
+class SpamBlockedEntry < ApplicationRecord
+⋮----
+QUORUM = 3
+HIT_WINDOW = 24.hours
+HIT_KEYS_CAP = 20
+CIDR_CACHE_KEY = 'spam_blocked_cidrs'
+CIDR_CACHE_TTL = 1.hour
+⋮----
+enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
+enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
+⋮----
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :value, presence: true
+⋮----
+before_validation :assign_value_digest
+⋮----
+def self.digest_for(value)
+⋮----
+def self.ip_blocked?(ip)
+⋮----
+def self.find_block_for(host:, path: nil)
+⋮----
+def self.record_hit!(entry, ip:, visitor_token: nil)
+⋮----
+def self.block_locally!(raw, status: :blocked)
+⋮----
+private
+⋮----
+def assign_value_digest
+</file>
+
 <file path="app/services/llm/spam_filter.rb">
 module Llm
 ⋮----
@@ -15873,6 +15918,13 @@ def extract(text)
 #   path без query/якоря, nil если вход не похож на URL
 def normalize(raw)
 ⋮----
+# percent-encoding в хосте декодируем до всех проверок: браузер
+# разрешает %62otmasterru.com и botmasterru%2ecom именно в
+# botmasterru.com, а без декода оба обходили blocked-запись. Декодируем
+# раньше userinfo/порта — иначе %40/%3A (%user@host/, %:8080) разошлись
+# бы с проверками ниже. %2F в хосте — мусор, не URL: после декода это
+# слэш, и такой вход отбрасываем, а не гадаем.
+⋮----
 # userinfo не должна менять ключ: https://user@botmasterru.com/x
 # обходил blocked-домен, превращаясь в «user@botmasterru.com»; хост
 # отделяем по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host»
@@ -15887,6 +15939,24 @@ authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.
 # 'www.evil' и обходил blocked-домен 'evil'
 ⋮----
 authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
+⋮----
+# мусорный вход не должен ронять фильтр — это просто не URL
+⋮----
+# @param path [String, nil] путь без query/якоря
+# @return [String, nil] путь с убранными dot-сегментами (RFC 3986 §5.2.4)
+#   или nil для корня. Запись и проверка обязаны сводить `/clean/../x`
+#   и `/x` к одному ключу: у URL-only фидов (phishing_links) доменной
+#   записи нет, и несвённый dot-сегмент — полный обход блока пути.
+#   Percent-escape'и над unreserved-символами (`%70` = `p`) декодируем
+⋮----
+def normalize_path(path)
+⋮----
+# RFC 3986 unreserved — A-Z / a-z / 0-9 / -._~: escape над ними это то
+# же значение, декодируем в символ. Прочие escape'и сохраняем как есть,
+⋮----
+def decode_unreserved(str)
+⋮----
+def remove_dot_segments(input)
 </file>
 
 </files>

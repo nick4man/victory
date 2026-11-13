@@ -27,8 +27,14 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
       t.datetime :deleted_at
       t.timestamps
     end
+    # Единственность строки на (entry_type, value_digest) держим ПОЛНЫМ
+    # индексом, без исключения soft-deleted: с частичным (deleted_at IS NULL)
+    # create_or_find_by! для удалённого ключа молча плодил вторую активную
+    # строку (когда-то удалённая + активная = конфликт unique на реанимации
+    # flush_batch и падение всего синка), а реанимация через rescue
+    # RecordNotUnique возвращала ту же единственную строку
     add_index :spam_blocked_entries, %i[entry_type value_digest],
-              unique: true, where: 'deleted_at IS NULL',
+              unique: true,
               name: 'idx_spam_blocked_entries_type_digest'
     add_index :spam_blocked_entries, :deleted_at
     add_index :spam_blocked_entries, %i[status entry_type]

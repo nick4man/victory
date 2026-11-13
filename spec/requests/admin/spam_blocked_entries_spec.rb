@@ -21,6 +21,28 @@ RSpec.describe 'Admin::SpamBlockedEntries', type: :request do
         .not_to change(SpamBlockedEntry, :count)
     end
 
+    it 'cookie-сессия + мусорный ?token: запрос отклонён, запись не создаётся' do
+      admin_get admin_spam_blocked_entries_path # валидный токен засевает session[:admin_token_digest]
+
+      expect do
+        post admin_spam_blocked_entries_path, params: { url: 'csrf-attack.example', token: 'wrong-token' }
+      end.not_to change(SpamBlockedEntry, :count)
+
+      # невалидный ?token не падает на cookie-сессию: редирект на вход,
+      # CSRF-снятие для мусорного токена не применяется
+      expect(response).to have_http_status(:found)
+    end
+
+    it 'cookie-сессия + мусорный ?token на DELETE: запись не снимается' do
+      entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'keep-blocked.example',
+                                       status: :blocked, source: 'local')
+      admin_get admin_spam_blocked_entries_path # сессия засеяна
+
+      delete admin_spam_blocked_entry_path(entry), params: { token: 'wrong-token' }
+
+      expect(entry.reload.deleted_at).to be_nil
+    end
+
     it 'с токеном пускает' do
       admin_get admin_spam_blocked_entries_path
 

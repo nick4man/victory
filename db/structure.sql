@@ -4672,7 +4672,7 @@ CREATE UNIQUE INDEX idx_spam_allowlist_entries_domain ON public.spam_allowlist_e
 -- Name: idx_spam_blocked_entries_type_digest; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_spam_blocked_entries_type_digest ON public.spam_blocked_entries USING btree (entry_type, value_digest) WHERE (deleted_at IS NULL);
+CREATE UNIQUE INDEX idx_spam_blocked_entries_type_digest ON public.spam_blocked_entries USING btree (entry_type, value_digest);
 
 
 --

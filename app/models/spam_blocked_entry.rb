@@ -7,7 +7,7 @@
 # текстом может достигать ~5 КБ (URL phishing-фидов), а B-tree PG выше
 # ~2700 байт на ключ не индексирует.
 class SpamBlockedEntry < ApplicationRecord
-  # suspect → blocked, если домен прилетел от стольких разных сессий/IP
+  # suspect → blocked, если домен прилетел от стольких РАЗНЫХ IP
   # за окно: один спамер ≠ повод блочить, три независимых — повод.
   QUORUM = 3
   HIT_WINDOW = 24.hours

@@ -211,7 +211,7 @@ RSpec.describe SpamBlockedEntry do
       expect(entry.source).to eq('local')
     end
 
-    it 'soft-deleted запись реанимируется local-записью' do
+    it 'soft-deleted запись реанимируется той же строкой, без дублей' do
       entry = described_class.create!(entry_type: :domain, value: 'back.example',
                                       status: :blocked, source: 'phishing_domains')
       entry.update_columns(deleted_at: Time.current)
@@ -219,7 +219,10 @@ RSpec.describe SpamBlockedEntry do
       result = described_class.block_locally!('back.example')
 
       expect(result[:ok]).to be(true)
+      expect(result[:value].id).to eq(entry.id)
       expect(result[:value]).to be_status_blocked
+      expect(described_class.unscoped.where(value_digest: described_class.digest_for('back.example')).count)
+        .to eq(1)
       expect(described_class.find_by(value: 'back.example')).to eq(result[:value])
     end
 

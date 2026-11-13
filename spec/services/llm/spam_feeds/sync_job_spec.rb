@@ -88,6 +88,30 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(stats['phishing_links']).to eq(2)
   end
 
+  it 'цикл «разблок → повторная блокировка → синк фида» не плодит строки и не роняет импорт' do
+    # регрессия: с частичным unique-индексом удалённая строка + create_or_find_by!
+    # давали две активные копии, а реанимация во flush_batch падала на индексе
+    SpamBlockedEntry.block_locally!('resurrect-me.example')
+    entry = SpamBlockedEntry.find_by!(value: 'resurrect-me.example')
+    entry.update_columns(deleted_at: Time.current) # разблокировка
+
+    SpamBlockedEntry.block_locally!('resurrect-me.example') # повторная блокировка
+    digest = SpamBlockedEntry.digest_for('resurrect-me.example')
+    expect(SpamBlockedEntry.unscoped.where(value_digest: digest).count).to eq(1)
+
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||resurrect-me.example^\n||other-spam.example^\n")
+
+    stats = described_class.perform_now
+
+    expect(stats['hagezi_tif']).to eq(2)
+    expect(SpamBlockedEntry.unscoped.where(value_digest: digest).count).to eq(1)
+    # source у существующей записи синк не перезаписывает (владение — local),
+    # главное — импорт не упал и осталась одна строка
+    expect(SpamBlockedEntry.find_by(value: 'resurrect-me.example'))
+      .to have_attributes(source: 'local', status: 'blocked', deleted_at: nil)
+  end
+
   it 'не трогает локальные записи (source = local)' do
     local = SpamBlockedEntry.create!(entry_type: :domain, value: 'local-spam.example',
                                      status: :suspect, source: 'local')

@@ -9,9 +9,11 @@ module Admin
     include AdminTokenAuth
 
     # POST/DELETE без сессии дергаются ops-скриптами по ?token= — CSRF там
-    # не применим (токен сам секрет, как у вебхуков); cookie-сессия после
-    # /admin/login проходит стандартную проверку подлинности формой.
-    skip_before_action :verify_authenticity_token, if: -> { params[:token].present? }
+    # не применим (токен сам секрет, как у вебхуков). Снимаем проверку только
+    # для ВАЛИДНОГО токена: с мусорным ?token= запрос идёт по cookie-пути
+    # и обязан пройти стандартную проверку подлинности формы (иначе CSRF-лазейка
+    # в админской сессии — ревью Kimi, раунд 7)
+    skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
 
     def index
       # по умолчанию — действующие записи (default_scope); снятые блоки
@@ -44,6 +46,19 @@ module Admin
     end
 
     private
+
+    # CSRF снимаем только для валидного API-токена (см. skip_before_action
+    # выше); мусорный ?token= в контексте cookie-сессии не даёт права
+    # обходить проверку подлинности формы
+    def valid_api_token_param?
+      expected = ENV['ADMIN_TOKEN'].to_s
+      return false if expected.blank? || params[:token].blank?
+
+      ::ActiveSupport::SecurityUtils.secure_compare(
+        ::Digest::SHA256.hexdigest(params[:token].to_s),
+        ::Digest::SHA256.hexdigest(expected)
+      )
+    end
 
     def index_limit
       [[params.fetch(:limit, 100).to_i, 1].max, 500].min

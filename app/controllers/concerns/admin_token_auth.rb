@@ -94,6 +94,11 @@ module AdminTokenAuth
         session[:admin_token_digest] = expected_digest
         return true
       end
+      # Невалидный ?token — стоп, без fallback на cookie: иначе POST с любым
+      # мусорным токеном в контексте живой админской сессии проходил бы вне
+      # CSRF-проверки (контроллеры снимают verify_authenticity_token по факту
+      # наличия параметра, см. Admin::SpamBlockedEntriesController)
+      return false
     end
 
     cookie_digest = session[:admin_token_digest].to_s

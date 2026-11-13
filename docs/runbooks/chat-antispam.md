@@ -1,6 +1,6 @@
 # Runbook: антиспам чат-бота сайта (issue #219)
 
-_Актуален на 12.11.26. Пайплайн обработки входящего сообщения чат-виджета
+_Актуален на 13.11.26. Пайплайн обработки входящего сообщения чат-виджета
 (`Chat::MessagesController#create`), слои по порядку:_
 
 1. **Rate-limit** — 5 сообщений/мин на visitor_token (Redis), без изменений.
@@ -37,7 +37,7 @@ suspect-домен/URL из сообщения от IP из ipsum (спам-IP) 
   matomo referrer-spam, Phishing.Database домены → `blocked`; hagezi
   shorteners → `suspect`) и URL-фиды (Phishing.Database phishing-links →
   `blocked` на уровне полного host+path, не домена; URLhaus → тоже URL-фид,
-  но keyless-экспорты abuse.ch отдают 410 с октября 2026 — нужен бесплатный
+  но keyless-экспорты abuse.ch отдают 410 — нужен бесплатный
   Auth-Key с auth.abuse.ch, полный URL с ключом кладётся в ENV
   `URLHAUS_EXPORT_URL`, без ключа фид пропускается) и IP-фиды (ipsum
   level 3, firehol cleantalk/stopforumspam/botscout 7d) → `blocked`;

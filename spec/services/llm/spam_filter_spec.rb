@@ -180,6 +180,18 @@ RSpec.describe Llm::SpamFilter do
 
         expect(result[:action]).to eq(:pass)
       end
+
+      it 'percent-encoded unreserved в пути не обходит blocked URL: %70hish = phish' do
+        SpamAllowlistEntry.create!(domain: 'shared-host.example')
+        SpamBlockedEntry.create!(entry_type: :url, value: 'shared-host.example/phish/login',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('войдите https://shared-host.example/%70hish/login',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
     end
 
     context 'карантин suspect' do
@@ -205,6 +217,20 @@ RSpec.describe Llm::SpamFilter do
         expect(entry).to be_present
         expect(entry).to be_status_suspect
         expect(entry.source).to eq('local')
+      end
+
+      it 'повторный карантин после soft-delete реанимирует ту же строку, без дублей' do
+        described_class.classify('продвижение ботов на revive-quarantine.example — дёшево',
+                                 ip: '198.51.100.10', visitor_token: visitor)
+        entry = SpamBlockedEntry.find_by!(value: 'revive-quarantine.example')
+        entry.update_columns(deleted_at: Time.current)
+
+        described_class.classify('снова продвижение ботов на revive-quarantine.example',
+                                 ip: '198.51.100.11', visitor_token: visitor)
+
+        digest = SpamBlockedEntry.digest_for('revive-quarantine.example')
+        expect(SpamBlockedEntry.unscoped.where(value_digest: digest).count).to eq(1)
+        expect(SpamBlockedEntry.find_by(value: 'revive-quarantine.example').id).to eq(entry.id)
       end
 
       it 'allowlist-домен с плохим путём: карантин на уровне URL, не домена' do
