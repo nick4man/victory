@@ -22,7 +22,8 @@ RSpec.describe LlmReplyJob do
   end
 
   it 'probe-диалог: флаг выставлен на время LLM-прогона и снят после' do
-    conv = Conversation.create!(visitor_token: 'probe-qa-1', status: :active)
+    conv = Conversation.create!(visitor_token: SecureRandom.hex(16), status: :active,
+                                metadata: { 'test_probe' => true })
     captured = stub_responder
 
     described_class.new.perform(conv.id)
@@ -42,7 +43,8 @@ RSpec.describe LlmReplyJob do
   end
 
   it 'флаг снимается даже при исключении в LLM-прогоне' do
-    conv = Conversation.create!(visitor_token: 'probe-qa-2', status: :active)
+    conv = Conversation.create!(visitor_token: SecureRandom.hex(16), status: :active,
+                                metadata: { 'test_probe' => true })
     stub_responder(raising: true)
 
     expect { described_class.new.perform(conv.id) }.to raise_error('LLM down')

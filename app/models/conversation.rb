@@ -12,12 +12,15 @@ class Conversation < ApplicationRecord
   scope :for_visitor, ->(token) { where(visitor_token: token) }
   scope :open_state, -> { where(status: %i[active escalated]) }
 
-  # Тестовый прогон чат-виджета (issue #214): visitor_token с префиксом
-  # probe- (задаётся через ?visitor_token=probe-<name>). Лиды такого диалога
-  # помечаются metadata['test'] и публикуются в тестовый TG-чат, а не в
-  # ДИСПЕТЧЕРСКУЮ.
+  # Тестовый прогон чат-виджета (issue #214, защита #229): маркер живёт в
+  # metadata['test_probe'] — его ставит чат-виджет при создании диалога, если
+  # визит активирован с секретом (?visitor_token=probe-<имя>&probe_key=...).
+  # Сам visitor_token — обычный случайный (SecureRandom): префикс probe- у
+  # токена убран, т.к. он делал токен предсказуемым и общим для всех
+  # посетителей с одним именем прогона. Лиды такого диалога помечаются
+  # metadata['test'] и публикуются в тестовый TG-чат, а не в ДИСПЕТЧЕРСКУЮ.
   def test_probe?
-    visitor_token.to_s.start_with?('probe-')
+    metadata.is_a?(Hash) && metadata['test_probe'] == true
   end
 
   # Renders messages in OpenAI-compatible chat format for LLM API calls.
