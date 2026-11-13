@@ -402,6 +402,37 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9++++ (блокер): CRM отражает телефон в другом формате
+    # (8 (900) …), чем ушёл в запрос (79001234567) — литерал не
+    # совпадает; режем телефоноподобные последовательности паттерном.
+    it 'переформатированный телефон (8 с разделителями) — вычищен из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', message: 'звонили с 8 (900) 123-45-67' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('звонили с', '[FILTERED]')
+        expect(e.message).not_to include('123-45-67')
+      }
+    end
+
+    # Регресс round 9++++ (блокер): emoji в комментарии отражается CRM
+    # суррогатной парой (\ud83d\ude00), escaped_forms давал \u1f600 —
+    # теперь текст канонизируется unescape_json до сырых символов.
+    it 'комментарий с emoji, отражённый суррогатной парой в битом JSON, — вычищен' do
+      stub_request(:post, import_re)
+        .to_return(status: 400, body: 'rejected comment=квартира \ud83d\ude00')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров',
+                             comment: 'квартира 😀', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('rejected comment=')
+        expect(e.message).not_to include('\ud83d', '\ude00', '😀')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then

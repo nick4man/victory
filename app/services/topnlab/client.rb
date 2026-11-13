@@ -17,6 +17,8 @@ module Topnlab
   class Client
     class Error < StandardError; end
 
+    JSON_ESCAPES = { 'n' => "\n", 'r' => "\r", 't' => "\t", '"' => '"', '\\' => '\\', '/' => '/' }.freeze
+
     # Неоднозначный транспортный исход: запрос мог быть принят CRM, а ответ
     # потерян (ReadTimeout, обрыв после отправки, EOF/WriteTimeout/SSL).
     # Подкласс Error, чтобы существующие rescue Topnlab::Client::Error
@@ -400,19 +402,16 @@ module Topnlab
     end
 
     # Вычищает из текста строковые значения тела запроса (appkey/phone/
-    # fullname/comment/user_mail/to_number). Длинные литералы (≥ 4 символов)
-    # режем как подстроку; короткие (имя «Аня», «Юя») — только по границам
-    # слова, чтобы не резать подстроки внутри чужих слов. Каждый литерал
-    # ищем и в escaped-формах: CRM, отразив запрос, отдаёт его в JSON-виде
-    # (переводы строк → \n), а сырой фрагмент битого JSON может держать
-    # не-ASCII в \uXXXX-форме — точная подстрока тогда не совпадает
-    # (ревью PR #210, round 9/9++).
+    # fullname/comment/user_mail/to_number). Текст предварительно
+    # канонизируется: JSON-escaped формы (\n, \uXXXX, суррогатные пары,
+    # \/) декодируются обратно в сырые символы — иначе каждая форма отражения
+    # CRM требовала бы отдельного литерала (ревью PR #210, round 9+++).
+    # Длинные литералы (≥ 4 символов) режем как подстроку; короткие
+    # (имя «Аня», «Юя») — только по границам слова.
     def scrub_request_literals(text, request_body)
       return text unless request_body
 
-      # JSON допускает `\/` — отражённый CRM литерал с экранированным слэшем
-      # нормализуем до точного совпадения.
-      text = text.gsub('\\/', '/')
+      text = unescape_json(text)
       request_body.each_value do |v|
         next unless v.is_a?(String) && v.present?
 
@@ -421,30 +420,34 @@ module Topnlab
                else
                  text.gsub(/\b#{Regexp.escape(v)}\b/u, '[FILTERED]')
                end
-        escaped_forms(v).each do |escaped|
-          next if escaped == v
-
-          # \uXXXX-hex CRM может отдать в любом регистре.
-          text = text.gsub(/#{Regexp.escape(escaped)}/i, '[FILTERED]')
-        end
       end
-      # Переформатированные формы телефона литералом не покрываются (CRM
-      # могла отразить «+7 (900) 123-45-67», а в запрос ушло «7900…») —
-      # режем телефоноподобные последовательности целиком (round 9+++).
-      text.gsub(/\+\d[\d\s()-]{9,}\d/, '[FILTERED]').gsub(/\b\d{11}\b/, '[FILTERED]')
+      # Переформатированные телефоны (+7 (900) …, 8 (900) …) литералом не
+      # покрываются — режем телефоноподобные последовательности целиком.
+      text.gsub(/(?:\+\d|8)[\d\s()-]{9,}\d/, '[FILTERED]').gsub(/\b\d{11}\b/, '[FILTERED]')
     end
 
-    # Литерал в формах, в каких он может появиться в отражённом CRM ответе:
-    #   JSON-escaped — то, что реально ушло по проводу (body.to_json: \n, \");
-    #   \uXXXX — ASCII-escaped не-ASCII (сырой фрагмент битого JSON);
-    #   комбинация обоих.
-    def escaped_forms(str)
-      json_form = JSON.generate(str)[1..-2]
-      unicode_form = str.each_char.map { |c| c.ord > 127 ? format('\\u%04x', c.ord) : c }.join
-      combined = str.each_char.map do |c|
-        c.ord > 127 ? format('\\u%04x', c.ord) : JSON.generate(c)[1..-2]
-      end.join
-      [json_form, unicode_form, combined].uniq
+    # Канонизация escaped-форм: суррогатные пары (\ud83d\ude00 → 😀), затем
+    # одиночные \uXXXX, затем короткие escapes (\n, \", \/, \\). Не является
+    # полноценным JSON-парсером — достаточно приближения для скраббинга;
+    # битые последовательности оставляем как есть.
+    def unescape_json(text)
+      text = text.gsub(/\\u(d[89ab][0-9a-f]{2})\\u(d[c-f][0-9a-f]{2})/i) do
+        surrogate_pair(Regexp.last_match(1), Regexp.last_match(2)) || Regexp.last_match(0)
+      end
+      text = text.gsub(/\\u([0-9a-f]{4})/i) do
+        Regexp.last_match(1).to_i(16).chr(Encoding::UTF_8)
+      rescue RangeError
+        Regexp.last_match(0)
+      end
+      text.gsub(/\\([nrt"\\\/])/) { JSON_ESCAPES.fetch(Regexp.last_match(1)) }
+    end
+
+    def surrogate_pair(hi_hex, lo_hex)
+      hi = hi_hex.to_i(16)
+      lo = lo_hex.to_i(16)
+      ((hi - 0xD800) * 0x400 + (lo - 0xDC00) + 0x10000).chr(Encoding::UTF_8)
+    rescue RangeError
+      nil
     end
 
     # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
