@@ -50,8 +50,9 @@ module Telegram
         def render_leads_detail
           lines = ['🎯 <b>Лиды — детально</b>', '']
 
-          # Top-5 hot (high-priority topics + recent activity)
-          hot = LeadEvent.open.order(updated_at: :desc).limit(5).includes(:assigned_to)
+          # Top-5 hot (high-priority topics + recent activity). .real — без
+          # staff_test/probe-записей (issue #214).
+          hot = LeadEvent.open.real.order(updated_at: :desc).limit(5).includes(:assigned_to)
           if hot.any?
             lines << '<b>Топ-5 активных:</b>'
             hot.each do |le|
@@ -61,7 +62,7 @@ module Telegram
           end
 
           # Лиды, которые ждут первого контакта дольше 30 минут.
-          overdue = LeadEvent.awaiting_first_contact.where('assigned_at < ?', 30.minutes.ago).limit(5)
+          overdue = LeadEvent.real.awaiting_first_contact.where('assigned_at < ?', 30.minutes.ago).limit(5)
           if overdue.any?
             lines << ''
             lines << '<b>⚠️ Ждут первого контакта (более 30 мин):</b>'
@@ -107,7 +108,7 @@ module Telegram
             open = ::Task.where(assignee_id: s.id, status: 'open').count
             done_today = ::Task.where(assignee_id: s.id, status: 'done', updated_at: Time.current.all_day).count
             overdue = ::Task.where(assignee_id: s.id, status: 'open').where('due_at < ?', Time.current).count
-            leads_open = LeadEvent.where(assigned_to_id: s.id).open.count
+            leads_open = LeadEvent.real.where(assigned_to_id: s.id).open.count
 
             lines << "<b>#{s.mention}</b> (#{s.role})"
             lines << "  • Задачи: #{open} в работе / #{done_today} закрыто сегодня / #{overdue} просрочено"
