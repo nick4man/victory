@@ -261,5 +261,27 @@ RSpec.describe 'Chat::Messages', type: :request do
       bodies = conversation.reload.history_for_llm.map { |m| m[:content] }
       expect(bodies.join).not_to include('botmasterru')
     end
+
+    # Репро-spec issue #219 (kb-qa): эскалация/CRM — отдельный контракт,
+    # в юнит-спеках SpamFilter не покрыт.
+    it 'спам-URL: нет LLM-ответа, нет эскалации и лида в CRM' do
+      SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+      responder = instance_double(
+        Llm::ChatResponder,
+        call: { reply: 'Тестовый ответ агента', escalate: true, summary: nil,
+                model: 'test-double', tool_log: [] }
+      )
+      allow(Llm::ChatResponder).to receive(:new).and_return(responder)
+
+      expect do
+        post_message('http://www.botmasterru.com/product52284/')
+        perform_enqueued_jobs
+      end.not_to change(Inquiry, :count)
+
+      expect(Llm::ChatResponder).not_to have_received(:new)
+      expect(conversation.reload.chat_messages.where(role: :assistant)).to be_empty
+      expect(conversation).not_to be_status_escalated
+      expect(TelegramNotifyJob).not_to have_been_enqueued
+    end
   end
 end
