@@ -88,4 +88,41 @@ class SpamBlockedEntry < ApplicationRecord
       entry.update_columns(attrs)
     end
   end
+
+  # Ручная пометка URL/домена как спама (issue #219, модерация через
+  # /admin/spam_blocked_entries). Нормализация та же, что у фильтра: запись
+  # и проверка обязаны встречаться на одном ключе, иначе ручной бан
+  # обходится написанием с www/IDN/портом. Источник записи принудительно
+  # local: фидовая запись, выпавшая из фида, протухла бы вместе с ручной
+  # пометкой (retire_stale владеет только своими источниками), а так бан
+  # держится, пока его самим не снимут; синк при этом по-прежнему свежит
+  # seen_at ключа и повышает статус подтверждённым фидом.
+  def self.block_locally!(raw, status: :blocked)
+    url = Llm::SpamUrls.normalize(raw)
+    return { ok: false, error: :invalid_url } unless url
+
+    status = status.to_s
+    return { ok: false, error: :invalid_status } unless statuses.key?(status)
+
+    entry_type, value = if url[:path].present?
+                          [:url, "#{url[:host]}#{url[:path]}"]
+                        else
+                          [:domain, url[:host]]
+                        end
+
+    entry = unscoped.create_or_find_by!(entry_type: entry_type, value: value) do |e|
+      e.status = status
+      e.source = 'local'
+      e.blocked_at = Time.current if status == 'blocked'
+    end
+    # существующая запись (фидовая/удалённая/иного статуса) перезаписывается:
+    # человек знает точнее фида и карантина
+    unless !entry.deleted_at? && entry.source == 'local' && entry.status == status
+      entry.update_columns(deleted_at: nil, status: status, source: 'local',
+                           blocked_at: status == 'blocked' ? Time.current : nil,
+                           updated_at: Time.current)
+      entry.reload
+    end
+    { ok: true, value: entry }
+  end
 end

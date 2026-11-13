@@ -153,4 +153,86 @@ RSpec.describe SpamBlockedEntry do
       expect(described_class.ip_blocked?('not-an-ip')).to be(false)
     end
   end
+
+  describe '.block_locally!' do
+    it 'голый домен → domain-запись, blocked, source local' do
+      result = described_class.block_locally!('WWW.Evil-Example.com')
+
+      expect(result[:ok]).to be(true)
+      entry = result[:value]
+      expect(entry).to be_entry_type_domain
+      expect(entry).to be_status_blocked
+      expect(entry.source).to eq('local')
+      expect(entry.value).to eq('evil-example.com')
+      expect(entry.blocked_at).to be_present
+    end
+
+    it 'URL с путём → url-запись host+path (блок одной страницы, не хоста)' do
+      result = described_class.block_locally!('https://t.me/spam_channel?utm_source=x')
+
+      expect(result[:ok]).to be(true)
+      entry = result[:value]
+      expect(entry).to be_entry_type_url
+      expect(entry.value).to eq('t.me/spam_channel')
+    end
+
+    it 'IDN-омограф пишется punycode-ключом: тот же ключ, что у фильтра' do
+      result = described_class.block_locally!('http://sberbаnk.ru/login') # «а» кириллическая
+
+      expect(result[:ok]).to be(true)
+      expect(result[:value].value).to start_with('xn--')
+    end
+
+    it 'идемпотентен: повторный вызов не плодит записи' do
+      described_class.block_locally!('botmasterru.com')
+
+      expect { described_class.block_locally!('botmasterru.com') }
+        .not_to change(described_class, :count)
+    end
+
+    it 'фидовая suspect-запись становится local blocked и больше не владение синка' do
+      entry = described_class.create!(entry_type: :domain, value: 'fishy.example',
+                                      status: :suspect, source: 'hagezi_tif')
+
+      result = described_class.block_locally!('fishy.example')
+
+      expect(result[:value].id).to eq(entry.id)
+      expect(entry.reload).to be_status_blocked
+      expect(entry.source).to eq('local')
+    end
+
+    it 'soft-deleted запись реанимируется local-записью' do
+      entry = described_class.create!(entry_type: :domain, value: 'back.example',
+                                      status: :blocked, source: 'phishing_domains')
+      entry.update_columns(deleted_at: Time.current)
+
+      result = described_class.block_locally!('back.example')
+
+      expect(result[:ok]).to be(true)
+      expect(result[:value]).to be_status_blocked
+      expect(described_class.find_by(value: 'back.example')).to eq(result[:value])
+    end
+
+    it 'ручной suspect: новый домен в карантин с source local' do
+      result = described_class.block_locally!('watch.example', status: :suspect)
+
+      expect(result[:ok]).to be(true)
+      expect(result[:value]).to be_status_suspect
+      expect(result[:value].blocked_at).to be_nil
+    end
+
+    it 'мусорный вход → ok false, запись не создаётся' do
+      result = described_class.block_locally!('not a url')
+
+      expect(result[:ok]).to be(false)
+      expect(result[:error]).to eq(:invalid_url)
+    end
+
+    it 'невалидный статус → ok false' do
+      result = described_class.block_locally!('evil.example', status: :nope)
+
+      expect(result[:ok]).to be(false)
+      expect(result[:error]).to eq(:invalid_status)
+    end
+  end
 end

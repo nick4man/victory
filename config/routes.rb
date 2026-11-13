@@ -750,6 +750,11 @@ Rails.application.routes.draw do
         get :settlements
       end
     end
+
+    # Антиспам-блок-лист чат-бота (issue #219) — ручная модерация:
+    # пометка URL/домена как спама (source = local), выборка, разблокировка.
+    # JSON-only, потребитель — ops-скрипты / будущий админ-UI.
+    resources :spam_blocked_entries, only: %i[index create destroy]
   end
 
   # ============================================
