@@ -473,5 +473,25 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
       expect(card.export_error).not_to include('test-key')
     end
+
+    # Сквозной регресс ревью PR #210 (round 9, блокер 1): телефон и ФИО
+    # клиента внутри сериализованного JSON в message ошибки — конечный
+    # card.export_error (БД, журнал переходов, Telegram) их не содержит.
+    it 'PII внутри сериализованного JSON в message не доезжает до export_error' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: {
+                     status: 'error',
+                     message: { phone: '79101234567', fullname: 'Анна', code: 409 }.to_json
+                   }.to_json)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: true)
+      expect(card.export_error).to include('409')
+      expect(card.export_error).not_to include('79101234567', 'Анна')
+    end
   end
 end

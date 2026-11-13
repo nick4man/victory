@@ -287,12 +287,12 @@ module Topnlab
       # В сообщение об ошибке — только allowlist безопасных полей: полное
       # тело ответа отражает запрос (appkey, телефон, имя, комментарий) и
       # попало бы в export_error → журнал переходов → Telegram-модераторов
-      # (ревью PR #210, round 8). scrub — последний рубеж на случай отражения
-      # ключа внутри message.
+      # (ревью PR #210, round 8). scrub/literals — последний рубеж на случай
+      # отражения значений запроса внутри message (round 9).
       if res.is_a?(Hash) && res.key?('status')
         # Явный прикладной отказ CRM: запрос обработан и отклонён —
         # повтор безопасен (export_retryable).
-        raise Error, "importClient failed: #{scrub(filter_pii(res).slice('status', 'message', 'error').inspect)}"
+        raise Error, "importClient failed: #{error_excerpt(res, body)}"
       end
 
       # 200 с телом неожиданной формы (нет поля status): запрос мог быть
@@ -315,14 +315,20 @@ module Topnlab
       body[:stage_id] = stage_id.to_i if stage_id
 
       res = http_post_json('/call/main/transferClient/', body)
-      unless res.is_a?(Hash) && res['status'] == 'ok'
-        # Только allowlist безопасных полей: полное тело отражает запрос
-        # (client_id, email агента) и попало бы в export_error/Outcome#warning
-        # (ревью PR #210, round 8).
-        raise Error, "transferClient failed: #{scrub(filter_pii(res).slice('status', 'message', 'error').inspect)}"
+      return res if res.is_a?(Hash) && res['status'] == 'ok'
+
+      # HTTP 200 с телом неожиданной формы (null, массив, скаляр): обращение
+      # к Hash-методам на таком значении бросало бы NoMethodError/ArgumentError
+      # мимо контракта Topnlab::Client::Error — а потребители (LeadStageTransition)
+      # ловят только Error, и смена стадии прерывалась бы чужим исключением
+      # (ревью PR #210, round 9).
+      unless res.is_a?(Hash) && res.key?('status')
+        raise Error, "transferClient failed: ответ 200 неожиданной формы (#{res.class}) — не JSON-объект со status"
       end
 
-      res
+      # Явный прикладной отказ CRM: тело отражает запрос (email агента) —
+      # только allowlist + скраббинг значений запроса (round 8/9).
+      raise Error, "transferClient failed: #{error_excerpt(res, body)}"
     end
 
     private
@@ -352,21 +358,60 @@ module Topnlab
     end
 
     # Рекурсивно удаляет PII-поля (PII_KEYS) из распарсенного тела.
+    # Строковые значения дополнительно пытаемся разобрать как вложенный
+    # сериализованный JSON: CRM может отразить запрос внутри message/error
+    # строкой — тогда PII-ключи вырезаются рекурсивно, а не проходят целиком
+    # (ревью PR #210, round 9). Не-JSON строки возвращаются как есть — их
+    # добирает скраббинг значений запроса (scrub_request_literals).
     def filter_pii(value)
       case value
       when Hash then value.except(*PII_KEYS).transform_values { |v| filter_pii(v) }
       when Array then value.map { |v| filter_pii(v) }
+      when String
+        begin
+          filter_pii(JSON.parse(value))
+        rescue JSON::ParserError
+          value
+        end
       else value
       end
     end
 
+    # Фрагмент ошибки для raise: allowlist безопасных полей (status/message/
+    # error), вложенный JSON в строках разобран (filter_pii), ключ вычищен
+    # (scrub), а затем fail-closed: из текста удаляются точные значения
+    # исходного запроса (телефон, имя, комментарий, email агента). Какой бы
+    # формы ни было отражение CRM, PII запроса в сообщении не выживает —
+    # оно попало бы в export_error и Telegram-модераторов (round 9).
+    def error_excerpt(res, request_body)
+      text = filter_pii(res).slice('status', 'message', 'error').inspect
+      scrub_request_literals(scrub(text), request_body)
+    end
+
+    # Вычищает из текста строковые значения тела запроса длиной ≥ 4 символов
+    # (appkey/phone/fullname/comment/user_mail/to_number). Короткие и числовые
+    # значения пропускаем: замена подстрок вида «1» или id стадии выглядела бы
+    # ложным срабатыванием.
+    def scrub_request_literals(text, request_body)
+      return text unless request_body
+
+      request_body.each_value do |v|
+        next unless v.is_a?(String) && v.length >= 4
+
+        text = text.gsub(v, '[FILTERED]')
+      end
+      text
+    end
+
     # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
-    # по значению ключа; не-JSON — только scrub (структурно фильтровать
-    # нечего). Сокращает вызывающий код.
-    def safe_body_excerpt(body)
-      scrub(filter_pii(JSON.parse(body)).inspect)
+    # по значению ключа; не-JSON — scrub + вычитка значений исходного запроса
+    # (CRM может отразить телефон/имя/email в произвольном тексте ошибки —
+    # ревью PR #210, round 9). Сокращает вызывающий код.
+    def safe_body_excerpt(body, request_body: nil)
+      text = filter_pii(JSON.parse(body)).inspect
+      scrub_request_literals(scrub(text), request_body)
     rescue JSON::ParserError
-      scrub(body)
+      scrub_request_literals(scrub(body), request_body)
     end
 
     # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
@@ -416,7 +461,7 @@ module Topnlab
       req['Content-Type'] = 'application/json'
       req.body = body.to_json
       response = perform(req, retry_network: retry_network)
-      parse(response, "POST #{path}")
+      parse(response, "POST #{path}", request_body: body)
     end
 
     # retry_network: false — только importClient (не идемпотентен, см. import_client).
@@ -478,7 +523,10 @@ module Topnlab
       URI.encode_www_form(pairs)
     end
 
-    def parse(response, label)
+    # request_body: тело ушедшего запроса — его PII-значения вычищаются из
+    # фрагмента ответа даже вне JSON-структуры (round 9). GET'ы передают
+    # только key-параметр, его закрывает scrub.
+    def parse(response, label, request_body: nil)
       body = response.body.to_s
       case response.code.to_i
       when 200, 201
@@ -489,17 +537,17 @@ module Topnlab
         Rails.logger.warn("Topnlab #{label}: 404 not found")
         nil
       when 400..499
-        raise Error, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body).truncate(500)}"
+        raise Error, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body, request_body: request_body).truncate(500)}"
       else
         # 5xx и прочие непредвиденные коды: ответ мог прийти от шлюза уже
         # ПОСЛЕ того, как backend принял запрос — исход неоднозначен, это
         # не доказательство «заявка не создана» (ревью PR #210).
-        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body).truncate(500)}"
+        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body, request_body: request_body).truncate(500)}"
       end
     rescue JSON::ParserError => e
       # 200/201 с битым телом: запрос мог быть принят, а ответ обрезан —
       # тоже неоднозначный исход (ревью PR #210).
-      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{safe_body_excerpt(body).truncate(300)}"
+      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{safe_body_excerpt(body, request_body: request_body).truncate(300)}"
     end
 
     def throttle!(kind)

@@ -277,6 +277,39 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс ревью PR #210 (round 9, блокер 1): filter_pii удалял только
+    # PII-КЛЮЧИ структуры, а сериализованный JSON внутри строкового message
+    # проходил целиком — телефон и ФИО уезжали в export_error и Telegram.
+    it 'PII внутри сериализованного JSON в message — не попадает в ошибку' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: {
+                     status: 'error',
+                     message: { phone: '79001234567', fullname: 'Иван Петров', code: 409 }.to_json
+                   }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('409')
+        expect(e.message).not_to include('79001234567', 'Иван Петров')
+      }
+    end
+
+    # Регресс round 9 (блокер 1): не-JSON тело HTTP-ошибки содержит PII
+    # запроса — safe_body_excerpt вычищает значения тела запроса, а не только
+    # appkey.
+    it 'PII в не-JSON теле HTTP-ошибки — не попадает в ошибку' do
+      stub_request(:post, import_re)
+        .to_return(status: 400, body: 'rejected: phone=79001234567 fullname=Иван Петров key=test-key')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('79001234567', 'Иван Петров', 'test-key')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then
@@ -320,6 +353,48 @@ RSpec.describe Topnlab::Client do
       end.to raise_error(Topnlab::Client::Error) { |e|
         expect(e.message).to include('FILTERED')
         expect(e.message).not_to include('test-key')
+      }
+    end
+
+    # Регресс round 9 (блокер 2): 200 с телом null/массив/скаляр — раньше
+    # filter_pii(res).slice(...) на таких значениях бросал NoMethodError/
+    # ArgumentError мимо контракта Topnlab::Client::Error, а потребители
+    # (LeadStageTransition) ловят только Error.
+    it 'ответ 200 null — Topnlab::Client::Error, а не NoMethodError' do
+      stub_request(:post, transfer_re).to_return(status: 200, body: 'null')
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error, /не JSON-объект/)
+    end
+
+    it 'ответ 200 массивом — Topnlab::Client::Error, а не ArgumentError' do
+      stub_request(:post, transfer_re).to_return(status: 200, body: [].to_json)
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error, /не JSON-объект/)
+    end
+
+    it 'ответ 200 JSON-скаляром — Topnlab::Client::Error' do
+      stub_request(:post, transfer_re).to_return(status: 200, body: '"ok"')
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error, /не JSON-объект/)
+    end
+
+    # Регресс round 9 (блокер 1): email агента из тела запроса, отражённый
+    # в message, не должен доехать до текста ошибки → Outcome#warning.
+    it 'email агента, отражённый в message, — вычищен из текста ошибки' do
+      stub_request(:post, transfer_re)
+        .to_return(status: 200, body: { status: 'error', message: 'no such agent agent@victory62.org' }.to_json)
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('no such agent', '[FILTERED]')
+        expect(e.message).not_to include('agent@victory62.org')
       }
     end
   end

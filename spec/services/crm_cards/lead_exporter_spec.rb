@@ -100,6 +100,23 @@ RSpec.describe CrmCards::LeadExporter do
     expect(outcome.warning).to include('[FILTERED]')
   end
 
+  # Сквозной регресс ревью PR #210 (round 9, блокер 1): email агента из
+  # тела запроса, отражённый CRM в message ошибки transfer_client, не должен
+  # доехать до Outcome#warning → журнал/export_error/Telegram.
+  it 'email агента, отражённый в ошибке transfer_client, не доезжает до warning' do
+    real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+      .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/transferClient/})
+      .to_return(status: 200, body: { status: 'error', message: 'no such agent irina@victory.test' }.to_json)
+
+    outcome = described_class.new(topnlab: real_client).call(card)
+
+    expect(outcome.crm_id).to eq('4455')
+    expect(outcome.warning).to include('ответственный не назначен')
+    expect(outcome.warning).not_to include('irina@victory.test')
+  end
+
   it 'лид переназначили после отправки — ответственным в CRM становится текущий назначенный' do
     petr = TelegramUser.create!(tg_user_id: 98_402, tg_username: 'petr', status: 'active', email: 'petr@victory.test')
     lead.update!(assigned_to: petr)
