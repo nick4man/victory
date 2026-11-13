@@ -137,6 +137,17 @@ RSpec.describe 'Admin::SpamBlockedEntries', type: :request do
       expect(body).to be_present
       expect(body['deleted_at']).to be_present
     end
+
+    it 'with_deleted=0 и with_deleted=false не раскрывают soft-deleted' do
+      entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'strict-hidden.example',
+                                       status: :blocked, source: 'local')
+      entry.update_columns(deleted_at: Time.current)
+
+      [0, 'false'].each do |flag|
+        admin_get admin_spam_blocked_entries_path, params: { with_deleted: flag }
+        expect(response.parsed_body['entries'].map { |e| e['value'] }).not_to include('strict-hidden.example')
+      end
+    end
   end
 
   describe 'DELETE /admin/spam_blocked_entries/:id' do

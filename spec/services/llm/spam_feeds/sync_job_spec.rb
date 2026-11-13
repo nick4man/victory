@@ -273,6 +273,39 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'keep-block.example').status).to eq('blocked')
   end
 
+  it 'повышение suspect → blocked забирает владение: сбой blocked-фида после апгрейда не понижает' do
+    # прогон 1: ключ только в shorteners → suspect, владелец shorteners
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||up.example^\n")
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'up.example')
+    expect(entry.status).to eq('suspect')
+    expect(entry.source).to eq('hagezi_shorteners')
+
+    # прогон 2: ключ появляется в TIF → blocked; владение забирает TIF
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||up.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||up.example^\n")
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'up.example')
+    expect(entry.status).to eq('blocked')
+    expect(entry.source).to eq('hagezi_tif')
+
+    # прогон 3: TIF падает, shorteners живы; если бы владельцем остался
+    # shorteners, downgrade понизил бы подтверждённый blocked (fail-open)
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 500)
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||up.example^\n")
+
+    described_class.perform_now
+
+    expect(SpamBlockedEntry.find_by(value: 'up.example').status).to eq('blocked')
+  end
+
   it 'падение одного фида не роняет остальные' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)

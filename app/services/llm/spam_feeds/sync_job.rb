@@ -214,7 +214,15 @@ module Llm
             # blocked-источник подтвердил ключ: свежий blocked_at — метка для
             # downgrade_unconfirmed_blocked
             scope.update_all(seen_at: run_at, blocked_at: run_at, updated_at: run_at)
-            scope.where(status: 'suspect')
+            # повышение suspect → blocked забирает и владение: иначе при
+            # последующем сбое blocked-фида запись осталась бы под владельцем-
+            # suspect'ом, downgrade увидел бы его в synced и понизил бы
+            # подтверждённый blocked (fail-open — ревью Kimi, раунд 13).
+            # local повышаем без смены владельца — контракт «local синк не
+            # трогает» (кроме самого повышения статуса).
+            scope.where(status: 'suspect').where.not(source: 'local')
+                 .update_all(status: 'blocked', blocked_at: run_at, source: source, updated_at: run_at)
+            scope.where(status: 'suspect', source: 'local')
                  .update_all(status: 'blocked', blocked_at: run_at, updated_at: run_at)
           else
             # suspect-источник не трогает blocked_at: запись остаётся

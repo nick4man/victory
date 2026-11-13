@@ -17,8 +17,8 @@ module Admin
 
     def index
       # по умолчанию — действующие записи (default_scope); снятые блоки
-      # отдаём только по явному флагу, иначе их невозможно отличить
-      scope = params[:with_deleted].present? ? SpamBlockedEntry.unscoped : SpamBlockedEntry.all
+      # отдаём только по явному булеву флагу, иначе их невозможно отличить
+      scope = ActiveModel::Type::Boolean.new.cast(params[:with_deleted]) ? SpamBlockedEntry.unscoped : SpamBlockedEntry.all
       scope = scope.order(updated_at: :desc)
       scope = scope.where(source: params[:source]) if params[:source].present?
       scope = scope.where(status: params[:status]) if params[:status].present?

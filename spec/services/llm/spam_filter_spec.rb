@@ -211,6 +211,17 @@ RSpec.describe Llm::SpamFilter do
         end
       end
 
+      it 'спец-схема без // не обходит blocked-домен: https:/host, https:host, https:\host' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        ['https:/%62otmasterru.com/x', 'https:%62otmasterru.com/x', 'https:\\%62otmasterru.com/x'].each do |spam_url|
+          result = described_class.classify("смотрите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url.inspect} не должен обходить блок"
+        end
+      end
+
       it 'percent-encoded UTF-8 в IDN-хосте не обходит blocked-запись' do
         # %D0%B1 = кириллическая «б»; WHATWG ведёт %D0%B1otmasterru.com
         # (б + латинское «otmasterru») именно в этот punycode-домен
