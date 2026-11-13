@@ -378,23 +378,33 @@ module Topnlab
     end
 
     # Фрагмент ошибки для raise: allowlist безопасных полей (status/message/
-    # error), вложенный JSON в строках разобран (filter_pii), ключ вычищен
-    # (scrub), а затем fail-closed: из текста удаляются точные значения
-    # исходного запроса (телефон, имя, комментарий, email агента). Какой бы
-    # формы ни было отражение CRM, PII запроса в сообщении не выживает —
-    # оно попало бы в export_error и Telegram-модераторов (round 9).
+    # error), вложенный JSON в строках разобран (filter_pii), строковые
+    # значения вычищены ДО inspect — inspect удваивает бэкслеши, и
+    # escaped-формы литералов (\n, \uXXXX) в отражённом ответе перестали бы
+    # совпадать (ревью PR #210, round 9++). Затем scrub: key= и appkey.
     def error_excerpt(res, request_body)
-      text = filter_pii(res).slice('status', 'message', 'error').inspect
-      scrub_request_literals(scrub(text), request_body)
+      filtered = filter_pii(res).slice('status', 'message', 'error')
+      scrub(scrub_strings(filtered, request_body).inspect)
+    end
+
+    # Рекурсивно прогоняет строковые листья через scrub литералов запроса.
+    def scrub_strings(value, request_body)
+      case value
+      when Hash then value.transform_values { |v| scrub_strings(v, request_body) }
+      when Array then value.map { |v| scrub_strings(v, request_body) }
+      when String then scrub_request_literals(scrub(value), request_body)
+      else value
+      end
     end
 
     # Вычищает из текста строковые значения тела запроса (appkey/phone/
     # fullname/comment/user_mail/to_number). Длинные литералы (≥ 4 символов)
     # режем как подстроку; короткие (имя «Аня», «Юя») — только по границам
     # слова, чтобы не резать подстроки внутри чужих слов. Каждый литерал
-    # ищем и в \uXXXX-форме: сырой фрагмент битого JSON в сообщении парсера
-    # экранирование не декодирует, и не-ASCII имя там проходит иначе
-    # (ревью PR #210, round 9).
+    # ищем и в escaped-формах: CRM, отразив запрос, отдаёт его в JSON-виде
+    # (переводы строк → \n), а сырой фрагмент битого JSON может держать
+    # не-ASCII в \uXXXX-форме — точная подстрока тогда не совпадает
+    # (ревью PR #210, round 9/9++).
     def scrub_request_literals(text, request_body)
       return text unless request_body
 
@@ -404,23 +414,29 @@ module Topnlab
         text = if v.length >= 4
                  text.gsub(v, '[FILTERED]')
                else
-                 # Короткие литералы (имя «Аня», «Юя») — по границам слова,
-                 # чтобы не резать подстроки внутри чужих слов.
                  text.gsub(/\b#{Regexp.escape(v)}\b/u, '[FILTERED]')
                end
-        escaped = unicode_escaped(v)
-        next if escaped == v
+        escaped_forms(v).each do |escaped|
+          next if escaped == v
 
-        # \uXXXX-форма: hex-цифры CRM может отдать в любом регистре.
-        text = text.gsub(/#{Regexp.escape(escaped)}/i, '[FILTERED]')
+          # \uXXXX-hex CRM может отдать в любом регистре.
+          text = text.gsub(/#{Regexp.escape(escaped)}/i, '[FILTERED]')
+        end
       end
       text
     end
 
-    # Тот же литерал, что CRM могла показать в битом JSON: не-ASCII символы
-    # в \uXXXX-экранированной форме.
-    def unicode_escaped(str)
-      str.each_char.map { |c| c.ord > 127 ? format('\\u%04x', c.ord) : c }.join
+    # Литерал в формах, в каких он может появиться в отражённом CRM ответе:
+    #   JSON-escaped — то, что реально ушло по проводу (body.to_json: \n, \");
+    #   \uXXXX — ASCII-escaped не-ASCII (сырой фрагмент битого JSON);
+    #   комбинация обоих.
+    def escaped_forms(str)
+      json_form = JSON.generate(str)[1..-2]
+      unicode_form = str.each_char.map { |c| c.ord > 127 ? format('\\u%04x', c.ord) : c }.join
+      combined = str.each_char.map do |c|
+        c.ord > 127 ? format('\\u%04x', c.ord) : JSON.generate(c)[1..-2]
+      end.join
+      [json_form, unicode_form, combined].uniq
     end
 
     # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
@@ -428,8 +444,8 @@ module Topnlab
     # (CRM может отразить телефон/имя/email в произвольном тексте ошибки —
     # ревью PR #210, round 9). Сокращает вызывающий код.
     def safe_body_excerpt(body, request_body: nil)
-      text = filter_pii(JSON.parse(body)).inspect
-      scrub_request_literals(scrub(text), request_body)
+      text = scrub_strings(filter_pii(JSON.parse(body)), request_body).inspect
+      scrub(text)
     rescue JSON::ParserError
       scrub_request_literals(scrub(body), request_body)
     end

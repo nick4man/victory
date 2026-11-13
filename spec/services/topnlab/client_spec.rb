@@ -339,8 +339,24 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9++ (блокер): CRM отражает запрос в JSON-escaped виде —
+    # перевод строки в комментарии уходит по проводу как \n, и точная
+    # подстрока с реальным переводом строки в отражении не совпадает.
+    it 'комментарий с переводом строки в JSON-escaped отражении — вычищен из текста' do
+      comment = "звонить после 18\nДоп. телефон: +79005553535"
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', message: "duplicate: #{comment.to_json[1..-2]}" }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form', comment: comment)
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('duplicate', '[FILTERED]')
+        expect(e.message).not_to include('Доп. телефон', '79005553535', 'звонить после 18')
+      }
+    end
+
     # Регресс round 9 (пропуск PII): сырое тело ответа может содержать имя
-    # в \uXXXX-форме — экранирование в фрагменте ошибки не декодируется,
+    # в \\uXXXX-форме — экранирование в фрагменте ошибки не декодируется,
     # прямой gsub литерала её не ловит.
     it 'имя в \\uXXXX-форме в не-JSON теле ошибки — вычищено из текста' do
       stub_request(:post, import_re)

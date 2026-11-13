@@ -510,5 +510,25 @@ RSpec.describe CrmCards::Workflow do
       expect(card.export_error).to include('invalid JSON')
       expect(card.export_error).not_to include('test-key', '79101234567')
     end
+
+    # Сквозной регресс ревью PR #210 (round 9++): комментарий с переводом
+    # строки и доп. телефоном клиента — CRM отражает запрос в JSON-escaped
+    # виде (\n), точная подстрока не совпадает; итоговый export_error их не
+    # содержит.
+    it 'комментарий и доп. телефон в JSON-escaped отражении CRM не доезжают до export_error' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      card.update!(payload: card.payload.merge('phone_extra' => '79109990000', 'comment' => "Ищет комнату\nу вокзала"))
+      wire_comment = ["Ищет комнату\nу вокзала", 'Доп. телефон: +79109990000'].join("\n").to_json[1..-2]
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: { status: 'error', message: "rejected: #{wire_comment}" }.to_json)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: true)
+      expect(card.export_error).to include('rejected', '[FILTERED]')
+      expect(card.export_error).not_to include('Доп. телефон', '79109990000', 'Ищет комнату')
+    end
   end
 end
