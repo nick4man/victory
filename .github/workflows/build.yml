@@ -8,6 +8,14 @@ name: Build images
 #   что образ собирается и приложение грузится в production-режиме.
 # - workflow_dispatch: как push (sha + VERSION) — ручная пересборка.
 #
+# Безопасность образа: после пуша web-образа Grype-скан (anchore/scan-action)
+# гоняет CVE OS-пакетов/системных библиотек → SARIF в code-scanning
+# (Security → Code scanning alerts). fail-build: false — отчёт без блокировки:
+# чужие CVE базового образа не должны ронять релизы; триаж порога (severity) —
+# отдельным шагом после накопления статистики. Для push-событий джоба
+# provenance-web подписывает образ криптоподписью «собран этим CI из этого
+# коммита» (actions/attest-build-provenance).
+#
 # Выкатка образов — НЕ здесь: прод тянет образы сам (bin/rollout на хосте),
 # у CI нет доступа к прод-серверу. См. docs/ci-cd-pipeline-plan.md, фаза 1.
 
@@ -19,6 +27,10 @@ on:
     branches: [main, 'dev/**']
   workflow_dispatch:
 
+# security-events (SARIF → code-scanning) и id-token/attestations (подпись
+# provenance) выданы точечно на уровне джоб — job-level permissions полностью
+# переопределяют workflow-level, поэтому на таких джобах contents/packages
+# продублированы явно.
 permissions:
   contents: read
   packages: write
@@ -98,6 +110,11 @@ jobs:
     name: Образ web (+ zeitwerk:check)
     needs: prep
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Grype SARIF → code-scanning alerts
+      security-events: write
     steps:
       - uses: actions/checkout@v7
 
@@ -151,6 +168,67 @@ jobs:
             docker tag "$IMG:sha-${{ needs.prep.outputs.sha }}" "$IMG:${{ needs.prep.outputs.version }}"
             docker push "$IMG:${{ needs.prep.outputs.version }}"
           fi
+
+      # Сканируем локально загруженный образ (это тот же sha-образ, что ушёл
+      # в реестр). fail-build: false — отчёт без блокировки релизов чужими
+      # CVE базового образа; severity-cutoff фиксируем явно, чтобы триаж
+      # порога не зависел от дефолта экшена.
+      - name: Grype scan образа → SARIF
+        uses: anchore/scan-action@v7
+        with:
+          image: "${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}"
+          fail-build: false
+          severity-cutoff: critical
+          output-file: grype-web.sarif
+
+      - name: Grype SARIF → code-scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: grype-web.sarif
+          category: grype-image-web
+
+  # Криптоподпись «образ собран этим CI из этого коммита» — supply chain
+  # и расследования. Только push: на PR образ в реестр не пушится, дайджеста
+  # нет. Digest читаем из реестра (imagetools не тянет слои на раннер);
+  # логин в GHCR обязателен — attest-build-provenance с push-to-registry: true
+  # берёт credentials из docker config раннера и пишет аттестацию в реестр.
+  provenance-web:
+    name: Provenance web
+    needs: [prep, web]
+    if: needs.prep.outputs.push == '1'
+    runs-on: ubuntu-latest
+    permissions:
+      # OIDC-токен для подписи + запись аттестации в реестр (packages)
+      id-token: write
+      attestations: write
+      packages: write
+    steps:
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Digest запушенного образа
+        id: digest
+        env:
+          IMAGE: "${{ env.REGISTRY }}/victory-web:sha-${{ needs.prep.outputs.sha }}"
+        run: |
+          set -euo pipefail
+          DIGEST=$(docker buildx imagetools inspect "$IMAGE" --format '{{.Manifest.Digest}}')
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Пустой digest для $IMAGE — аттестации не будет"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: "${{ env.REGISTRY }}/victory-web"
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: true
 
   services:
     name: Образ ${{ matrix.service }}

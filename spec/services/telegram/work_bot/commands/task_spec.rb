@@ -141,4 +141,21 @@ RSpec.describe Telegram::WorkBot::Commands::Task do
       run('15.05.26 текст', message: group_message('/task …'))
     end
   end
+
+  # Issue #224 (ревью PR #221, round 5, блокер 2): /task для test-лида
+  # отклоняется — иначе LeadTaskCreator создаст боевой Task и может
+  # пропатчить CRM.
+  describe 'test-лиды (round 5)' do
+    let!(:test_lead) do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                        anchor_message_id: 322, staff_test: true)
+    end
+
+    it '/task по lead_id тест-лида — отказ, Task не создаётся' do
+      expect { run("#{test_lead.id} 15.05.26 текст", message: dm_message("/task #{test_lead.id} …")) }
+        .not_to change(::Task, :count)
+      expect(sent.join).to include('тестовый')
+    end
+  end
 end

@@ -170,7 +170,9 @@ module Telegram
       reply_to_id = msg.dig('reply_to_message', 'message_id')
       return log_and_ignore('no reply_to_message_id') if reply_to_id.blank?
 
-      conv = Conversation.find_by(telegram_message_id: reply_to_id)
+      # Пара (chat, message_id): ID уникальны только внутри чата (issue #214 —
+      # эскалации уходят и в рабочий, и в тестовый чат).
+      conv = Conversation.find_by(telegram_chat_id: msg.dig('chat', 'id'), telegram_message_id: reply_to_id)
       return log_and_ignore("no conversation for tg_message_id=#{reply_to_id}") unless conv
 
       text = msg['text'].to_s.strip

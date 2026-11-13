@@ -39,5 +39,19 @@ RSpec.describe Telegram::WorkBot::WeeklySummaryJob do
     it 'возвращает :done' do
       expect(described_class.new.perform).to eq(:done)
     end
+
+    # Issue #214 (ревью PR #221, round 4): probe/staff_test-лиды не должны
+    # попадать в сводку — она считается по LeadEvent.real.
+    it 'probe-лиды (staff_test) не входят в счётчик «Лиды» сводки' do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                        staff_test: true, metadata: { 'test' => true })
+
+      described_class.new.perform
+
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_including('🎯 Лиды: <b>0</b>'), anything
+      )
+    end
   end
 end

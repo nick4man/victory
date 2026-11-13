@@ -116,7 +116,7 @@ jobs:
           exit 1
 
       - name: Start Redis
-        run: docker run -d --name ci-redis -p 6379:6379 redis:7-alpine
+        run: docker run -d --name ci-redis -p 6379:6379 redis:8.10.3
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -125,8 +125,21 @@ jobs:
           bundler-cache: true
 
       # structure.sql грузится через psql — нужен клиент мажорной версии 15.
+      # Раннеры GitHub периодически теряют DNS на apt-зеркалах (см. run
+      # 43051035771: «Temporary failure resolving 'security.ubuntu.com'») —
+      # одна попытка без ретраев убивает весь RSpec-job по инфраструктурной
+      # причине, не доходя до кода. Три попытки с паузой закрывают флейк.
       - name: Install postgresql-client
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed; retrying in 30s" >&2
+            sleep 30
+          done
+          echo 'apt-get failed after 3 attempts' >&2
+          exit 1
 
       - name: Prepare test database
         env: &rspec_env
@@ -146,6 +159,13 @@ jobs:
           # нужно лишь потому, что Telegram::Client отказывается стартовать с
           # пустым, — поэтому явная заглушка вместо чего-то похожего на секрет.
           TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          # Секреты тестового TG-бота (issue #214) для интеграционного spec'а
+          # spec/services/telegram/test_chat_delivery_spec.rb — он читает их из
+          # ENV и skip'ается, когда не заданы. Без значений job зелёный.
+          # Только для веток репозитория: PR из форков секреты не получают
+          # (там spec и должен skip'аться).
+          TELEGRAM_TEST_BOT_TOKEN: ${{ secrets.TELEGRAM_TEST_BOT_TOKEN }}
+          TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
           # Llm::OmniClient падает в initialize, если любая из двух пуста и в
           # цепочках есть модели через шлюз (direct-only `kimi/…` — исключение),
           # то есть спеки с дефолтными цепочками не могут создать клиент.
