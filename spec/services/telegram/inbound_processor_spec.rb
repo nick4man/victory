@@ -86,7 +86,8 @@ RSpec.describe Telegram::InboundProcessor do
                            telegram_chat_id: staff_chat, telegram_message_id: 100)
     end
     let!(:probe_conv) do
-      Conversation.create!(visitor_token: 'probe-esc-1', status: :active,
+      Conversation.create!(visitor_token: SecureRandom.hex(16), status: :active,
+                           metadata: { 'test_probe' => true },
                            telegram_chat_id: test_chat, telegram_message_id: 100)
     end
 

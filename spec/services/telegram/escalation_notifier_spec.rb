@@ -6,7 +6,10 @@ RSpec.describe Telegram::EscalationNotifier do
   let(:client) { instance_double(Telegram::Client) }
 
   describe 'тест-режим чат-бота (issue #214)' do
-    let(:conv) { Conversation.create!(visitor_token: 'probe-maria-1211', status: :active) }
+    let(:conv) do
+      Conversation.create!(visitor_token: SecureRandom.hex(16), status: :active,
+                           metadata: { 'test_probe' => true })
+    end
 
     around do |example|
       old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
