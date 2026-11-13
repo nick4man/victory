@@ -115,6 +115,34 @@ RSpec.describe Llm::SpamUrls do
       expect(described_class.normalize('https://botmasterru.com%2Fevil/x')).to be_nil
     end
 
+    it 'пустой порт отрезается: example.com: = example.com (WHATWG)' do
+      expect(described_class.normalize('https://botmasterru.com:/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'tab/newline внутри хоста вырезаются (WHATWG) перед нормализацией' do
+      expect(described_class.normalize("https://botmaster\tru.com/x"))
+        .to eq(host: 'botmasterru.com', path: '/x')
+      expect(described_class.normalize("https://botmaster\nru.com/x"))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'percent-encoded UTF-8 в хосте декодируется до IDNA: %D0%B1… = кириллица в punycode' do
+      expect(described_class.normalize('https://%D0%B1otmasterru.com/x')[:host])
+        .to start_with('xn--')
+    end
+
+    it 'невалидный percent-encoded UTF-8 в хосте — мусор, не URL' do
+      expect(described_class.normalize('https://%D0example.com/x')).to be_nil
+    end
+
+    it 'Unicode-путь и percent-encoded форма сходятся в один ключ' do
+      unicode = described_class.normalize('https://shared-host.example/фишинг/login')[:path]
+      encoded = described_class.normalize('https://shared-host.example/%d1%84%d0%b8%d1%88%d0%b8%d0%bd%d0%b3/login')[:path]
+      expect(encoded).to eq(unicode)
+      expect(unicode).to start_with('/%D1%84')
+    end
+
     it 'dot-сегменты сводятся: /clean/../phish/login = /phish/login' do
       expect(described_class.normalize('https://shared-host.example/clean/../phish/login'))
         .to eq(host: 'shared-host.example', path: '/phish/login')

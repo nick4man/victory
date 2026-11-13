@@ -115,6 +115,15 @@ RSpec.describe 'Admin::SpamBlockedEntries', type: :request do
       expect(response).to have_http_status(:ok)
     end
 
+    it 'отрицательный offset прижимается к нулю' do
+      SpamBlockedEntry.create!(entry_type: :domain, value: 'neg-offset.example', status: :blocked, source: 'local')
+
+      admin_get admin_spam_blocked_entries_path, params: { offset: -5 }
+
+      expect(response).to have_http_status(:ok)
+      expect(response.parsed_body['entries'].map { |e| e['value'] }).to include('neg-offset.example')
+    end
+
     it 'по умолчанию скрывает soft-deleted, с with_deleted=1 отдаёт их с deleted_at' do
       entry = SpamBlockedEntry.create!(entry_type: :domain, value: 'gone-entry.example',
                                        status: :blocked, source: 'local')

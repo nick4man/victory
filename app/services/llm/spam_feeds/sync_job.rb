@@ -119,7 +119,7 @@ module Llm
         return 0 if body.nil?
 
         status = cfg[:status] || :blocked
-        total = count_tokens(body, cfg)
+        total = count_valid_tokens(body, cfg)
         if total < cfg[:min_rows]
           Rails.logger.warn("[SpamFeeds] #{source}: подозрительно мало записей " \
                             "(#{total} < #{cfg[:min_rows]}) — выгрузка отклонена")
@@ -145,11 +145,19 @@ module Llm
         body&.close! if body && !body.closed?
       end
 
-      def count_tokens(body, cfg)
+      # Порог min_rows считает записи, реально прошедшие нормализацию: токены,
+      # отброшенные валидацией (корневые URL из URL-фида, мусор), к порогу не
+      # подходят — иначе 999 бесполезных строк + 1 валидная проходили порог,
+      # источник публиковался как synced, а retire_stale стирал боевой список
+      # (обход защиты от усечённой выгрузки — ревью Kimi, раунд 10)
+      def count_valid_tokens(body, cfg)
         count = 0
         body.each_line do |line|
           token = parse_token(line, cfg[:format] || :plain)
-          count += 1 if token.present?
+          next if token.blank?
+
+          _type, key = cfg[:entry_type] == :ip ? [:ip, token] : normalize_entry(cfg.fetch(:entry_type, :domain), token)
+          count += 1 if key
         end
         count
       end

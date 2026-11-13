@@ -7,7 +7,7 @@ module Llm
   # расходится с входом: IDN-омографы (sberbаnk.ru с русской «а»), www-,
   # query/utm-метки и якоря давали бы разные ключи одного ресурса.
   module SpamUrls
-    SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^\s<>"']+}i
+    SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^ <>"']+}i
     # «голый» хост латиницей с необязательным путём. Кириллица в regex
     # намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
     # как домен и улетал в карантин.
@@ -72,13 +72,21 @@ module Llm
       # botmasterru.com, а без декода оба обходили blocked-запись. Декодируем
       # раньше порта — иначе %3A (%:8080) разошёлся бы с проверкой ниже.
       # %2F в хосте — мусор, не URL: после декода это слэш, и такой вход
-      # отбрасываем, а не гадаем.
-      authority = authority.gsub(/%[0-9a-f]{2}/i) { |hex| hex[1..].hex.chr }
+      # отбрасываем, а не гадаем. Байты декодируем единым UTF-8-потоком:
+      # побайтовый chr давал бинарную строку, и %D0%B1otmasterru.com
+      # (кириллическая «б» — IDN-омограф) отбрасывался вместо punycode,
+      # обходя IDN-запись блок-листа.
+      authority = decode_percent_utf8(authority)
+      return nil if authority.nil?
+
       return nil if authority.match?(%r{[/\\\s]})
       # второй проход на случай %40 в «хосте» (evil%40botmasterru.com): браузер
       # такой хост не принимает, а нам безопаснее сматчить хост и дропнуть
       authority = authority.rpartition('@').last if authority.include?('@')
-      authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
+      # порт менял ключ: example.com:443 ≠ example.com; пустой порт
+      # (example.com:) WHATWG молча отрезает — иначе запись не находилась
+      # digest-поиском и пустой порт обходил blocked-домен
+      authority = authority.sub(/:\d*\z/, '')
       authority = authority.downcase
       # IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — точки ДО IDNA:
       # иначе «botmasterru。com» уходил в punycode-лейбл и проверку на '.'
@@ -111,9 +119,58 @@ module Llm
       return nil if path.blank?
 
       p = decode_unreserved("/#{path}")
+      # non-ASCII байты пути — в единую каноническую форму: Unicode-URL
+      # /фишинг и его percent-encoded эквивалент иначе получали разные ключи,
+      # и для URL-only фидов (доменной записи нет) blocked-путь обходился
+      # другой написанием (и наоборот). WHATWG сериализует путь percent-encoded
+      # с uppercase hex — обе формы сходятся к ней.
+      p = decode_multibyte_escapes(p)
       p = remove_dot_segments(p)
       p = p.sub(%r{/*$}, '')
+      p = percent_encode_non_ascii(p)
       p.presence
+    end
+
+    # Percent-escape'и хоста — единым потоком байт: склеиваем подряд идущие
+    # %XX и декодируем как UTF-8. Невалидная последовательность (обрезанная
+    # кодовая точка и т.п.) — мусор: WHATWG такой хост не принимает, и вход
+    # отбрасываем целиком, а не угадываем.
+    def decode_percent_utf8(str)
+      str.gsub(/(?:%[0-9a-f]{2})+/i) do |seq|
+        decoded = percent_bytes_to_utf8(seq)
+        return nil if decoded.nil?
+
+        decoded
+      end
+    end
+
+    # Байты одной non-ASCII run пути раскодируем в символы: зарезервированные
+    # однобайтовые escape'и (%2F и т.п.) не трогаем — '/' из них сломал бы
+    # структуру пути. Невалидный UTF-8 и смешанные run с разделителями
+    # оставляем как есть (после lowercasing hex — см. decode_unreserved).
+    def decode_multibyte_escapes(str)
+      str.gsub(/(?:%[0-9a-f]{2})+/i) do |seq|
+        bytes = seq.scan(/%([0-9a-f]{2})/i).flatten.map(&:hex)
+        next seq.downcase if bytes.all? { |b| b < 0x80 }
+
+        decoded = percent_bytes_to_utf8(seq)
+        next seq.downcase if decoded.nil? || decoded.match?(%r{[/\\?#]})
+
+        decoded
+      end
+    end
+
+    # Каноническая форма non-ASCII в пути — uppercase percent-encoded UTF-8,
+    # как сериализует WHATWG: литеральные Unicode-символы и раскодированные
+    # escape'и получают один ключ.
+    def percent_encode_non_ascii(str)
+      str.gsub(/[^\x00-\x7F]/) { |ch| ch.bytes.map { |b| format('%%%02X', b) }.join }
+    end
+
+    def percent_bytes_to_utf8(seq)
+      bytes = seq.scan(/%([0-9a-f]{2})/i).flatten.map(&:hex)
+      decoded = bytes.pack('C*').force_encoding(Encoding::UTF_8)
+      decoded.valid_encoding? ? decoded : nil
     end
 
     # RFC 3986 unreserved — A-Z / a-z / 0-9 / -._~: escape над ними это то

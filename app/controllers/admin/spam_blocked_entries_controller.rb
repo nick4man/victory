@@ -24,7 +24,7 @@ module Admin
       scope = scope.where(status: params[:status]) if params[:status].present?
       scope = scope.where(entry_type: params[:entry_type]) if params[:entry_type].present?
 
-      entries = scope.limit(index_limit).offset(params[:offset].to_i)
+      entries = scope.limit(index_limit).offset(index_offset)
       render json: { ok: true, entries: entries.map { |e| serialize(e) } }
     end
 
@@ -62,6 +62,12 @@ module Admin
 
     def index_limit
       [[params.fetch(:limit, 100).to_i, 1].max, 500].min
+    end
+
+    # отрицательный offset ушёл бы в PostgreSQL и дал 500 — как и limit,
+    # прижимаем снизу нулём
+    def index_offset
+      [params[:offset].to_i, 0].max
     end
 
     def serialize(entry)

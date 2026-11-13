@@ -145,6 +145,53 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:reason]).to eq(:spam_link)
       end
 
+      it 'пустой порт не обходит blocked-домен: https://botmasterru.com:/x' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        result = described_class.classify('посмотрите https://botmasterru.com:/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'tab/newline внутри хоста не обходят blocked-домен (WHATWG вырезает их)' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        ["https://botmaster\tru.com/x", "https://botmaster\nru.com/x"].each do |spam_url|
+          result = described_class.classify("заходите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url.inspect} не должен обходить блок"
+        end
+      end
+
+      it 'percent-encoded UTF-8 в IDN-хосте не обходит blocked-запись' do
+        # %D0%B1 = кириллическая «б»; WHATWG ведёт %D0%B1otmasterru.com
+        # (б + латинское «otmasterru») именно в этот punycode-домен
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'xn--otmasterru-9qi.com', status: :blocked, source: 'local')
+
+        result = described_class.classify('заходите https://%D0%B1otmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'Unicode-путь и percent-encoded форма — один blocked-ключ' do
+        normalized = Llm::SpamUrls.normalize('https://shared-host.example/фишинг/login')
+        SpamBlockedEntry.create!(entry_type: :url, value: "shared-host.example#{normalized[:path]}",
+                                 status: :blocked, source: 'phishing_links')
+
+        ['https://shared-host.example/фишинг/login',
+         'https://shared-host.example/%d1%84%d0%b8%d1%88%d0%b8%d0%bd%d0%b3/login'].each do |spam_url|
+          result = described_class.classify("войдите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url} не должен обходить блок"
+        end
+      end
+
       it 'percent-encoded хост не обходит blocked-домен: %62otmasterru.com и botmasterru%2ecom' do
         SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
 

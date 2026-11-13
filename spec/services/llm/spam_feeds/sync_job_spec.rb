@@ -209,6 +209,26 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'only-one.example')).to be_nil
   end
 
+  it 'min_rows считает только валидные записи: 999 корневых URL + 1 валидный отклонены' do
+    stub_const('Llm::SpamFeeds::SyncJob::DOMAIN_FEEDS',
+               described_class::DOMAIN_FEEDS.merge(
+                 'phishing_links' => described_class::DOMAIN_FEEDS['phishing_links'].merge(min_rows: 1_000)
+               ))
+    existing = SpamBlockedEntry.create!(entry_type: :url, value: 'keep.example/x',
+                                        status: :blocked, source: 'phishing_links')
+    # 999 корневых URL отклоняет normalize_entry (пустой путь у URL-фида),
+    # валидная запись одна — под порогом 1000 выгрузка целиком отклонена
+    body = ((1..999).map { |i| "http://root-#{i}.example" } + ["http://valid.example/path"]).join("\n") + "\n"
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_links'][:url])
+      .to_return(status: 200, body: body)
+
+    stats = described_class.perform_now
+
+    expect(stats['phishing_links']).to eq(0)
+    expect(existing.reload.deleted_at).to be_nil
+    expect(SpamBlockedEntry.find_by(value: 'valid.example/path')).to be_nil
+  end
+
   it 'падение одного фида не роняет остальные' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)
