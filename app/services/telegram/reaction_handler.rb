@@ -66,6 +66,10 @@ module Telegram
     def handle_task_reaction(tg_user)
       msg_id = @rx['message_id']
       return nil if msg_id.blank?
+      # Issue #214 / review round 5 — реакция закрывает задачу ТОЛЬКО в DM
+      # исполнителя. message_id уникален лишь внутри чата: 👍 на сообщении 42
+      # в тестовом чате закрыл бы боевую задачу из DM с тем же ID.
+      return nil unless own_dm_chat?(tg_user)
 
       tasks_in_dm = ::Task.where(tg_message_id: msg_id, assignee_id: tg_user.id).to_a
       return nil if tasks_in_dm.empty?
@@ -88,6 +92,14 @@ module Telegram
       :task_completed
     end
 
+    # DM исполнителя = личка: chat.id реакции должен совпадать с dm_chat_id
+    # (или с tg_user_id, если dm_chat_id не заведён). Любой другой чат
+    # (рабочая группа, тестовый чат) — не закрывает задачи по реакции.
+    def own_dm_chat?(tg_user)
+      rx_chat_id = @rx.dig('chat', 'id')
+      rx_chat_id.present? && [tg_user.dm_chat_id, tg_user.tg_user_id].compact.include?(rx_chat_id)
+    end
+
     def send_multitask_hint(tg_user, open_tasks)
       chat_id = tg_user.dm_chat_id || tg_user.tg_user_id
       return if chat_id.blank?
@@ -103,9 +115,12 @@ module Telegram
 
     def find_lead_by_message
       msg_id = @rx['message_id']
-      return nil if msg_id.blank?
+      chat_id = @rx.dig('chat', 'id')
+      return nil if msg_id.blank? || chat_id.blank?
 
-      LeadEvent.find_by(anchor_message_id: msg_id)
+      # Пара (chat, message_id): Telegram уникален только внутри чата.
+      # Issue #214 — второй чат (тестовый), глобальный lookup опасен.
+      LeadEvent.find_by(tg_chat_id: chat_id, anchor_message_id: msg_id)
     end
 
     # Из new_reaction array выбираем первый ack-emoji (если он есть).
@@ -126,6 +141,10 @@ module Telegram
     def maybe_advance_to_first_contact(lead, tg_user)
       return if lead.current_stage != 'new'
       return if lead.first_contact_at.present?
+      # Issue #224 / review round 5 — реакция на probe-карточку не двигает
+      # боевую воронку: LeadStageTransition шлёт стадию в CRM и при включённом
+      # broadcast создаёт клиентские уведомления.
+      return if lead.staff_test?
 
       Rails.logger.info("[ReactionHandler] lead=#{lead.id} ack-react by #{tg_user.mention} → first_contact")
       WorkBot::LeadStageTransition.new(lead, 'first_contact', actor: tg_user, client: @client).call

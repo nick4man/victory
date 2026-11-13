@@ -378,4 +378,30 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       expect(b[:callback_data].bytesize).to be <= 64
     end
   end
+
+  # Issue #224 (ревью PR #221, round 5, блокер): wizard-путь обходил гейт
+  # прямого /task — picker брал LeadEvent.open без .real, а TaskFlow#finish
+  # звал LeadTaskCreator без проверки staff_test?.
+  describe 'test-лиды (round 5)' do
+    let!(:test_lead) do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'apartments', tg_chat_id: -1_003_779_115_845,
+                        anchor_thread_id: 17, anchor_message_id: 556, assigned_to: agent,
+                        staff_test: true, metadata: { 'name' => 'Probe Клиент' })
+    end
+
+    it 'seed wiz:s:task:<test_lead_id> — гейт на входе, Task не создаётся' do
+      expect {
+        tap_callback("wiz:s:task:#{test_lead.id}", chat_type: 'supergroup')
+      }.not_to change(::Task, :count)
+      expect(last_text).to include('тестовый')
+    end
+
+    it 'picker предлагает боевые лиды и не предлагает test-лидов' do
+      tap_callback('wiz:s:task')
+      labels = dms.last[:keyboard].flatten.map { |b| b[:text] }
+      expect(labels.any? { |l| l.include?("##{test_lead.id}") }).to be(false)
+      expect(labels.any? { |l| l.include?("##{lead.id}") }).to be(true)
+    end
+  end
 end

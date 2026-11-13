@@ -54,6 +54,17 @@ module ChatTools
     end
 
     def self.call(args)
+      # Тест-режим чат-бота (issue #214): отзыв из probe-прогона не пишем в
+      # боевую модерацию и не шлём уведомление модератору — инструмент
+      # отключён с явным отказом (LLM сообщит это в тестовом диалоге).
+      if Thread.current[:lead_test_mode] == true
+        return {
+          success: false,
+          error:   'test_mode',
+          message: 'submit_review отключён в тестовом режиме прогона (issue #214).'
+        }
+      end
+
       args = args.to_h.transform_keys(&:to_sym)
 
       property = if args[:property_slug].present?
@@ -88,12 +99,14 @@ module ChatTools
       end
     end
 
+    # sanitize_text возвращает nil на пустом входе (presence) — без &. безопасный
+    # вызов с пустым email/phone/title падал бы с NoMethodError.
     def self.sanitize_short(value, max)
-      ChatTools::Format.sanitize_text(value.to_s).strip.truncate(max)
+      ChatTools::Format.sanitize_text(value.to_s)&.truncate(max)
     end
 
     def self.sanitize_long(value, max)
-      ChatTools::Format.sanitize_text(value.to_s).strip.truncate(max, omission: '')
+      ChatTools::Format.sanitize_text(value.to_s)&.truncate(max, omission: '')
     end
 
     def self.notify_moderator(review)

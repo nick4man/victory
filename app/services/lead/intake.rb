@@ -58,6 +58,22 @@ module Lead
 
       ref, metadata = result
 
+      # Issue #227 — кран SITE_CHATBOT_FORCE_TEST=1: ВСЕ site-лиды (в т.ч.
+      # прогон без флага и с правдоподобными контактами) идут в тестовый чат,
+      # ДИСПЕТЧЕРСКАЯ не трогается вовсе. Ставится на период тестирования.
+      if Chat::TestMode.force_test? && Chat::TestMode.site_source?(@source)
+        metadata = (metadata || {}).merge('test' => true)
+      end
+
+      # Issue #227 — маршрутизация по staff_test: lead_ref (Inquiry и др.)
+      # авто-помечен StaffSubmissionDetector по своим контактам сотрудника —
+      # без явного флага в payload. Карточка уходит в тестовый чат, получает
+      # тот же изоляционный класс, что probe-прогон (#214): tg_chat_id,
+      # anchor без топика, 🧪-бейдж. Боевой маршрут без staff_test не тронут.
+      if metadata.is_a?(Hash) && metadata['test'] != true && ref.respond_to?(:staff_test?) && ref.staff_test? == true
+        metadata = metadata.merge('test' => true)
+      end
+
       # BOTTLENECK — вернувшийся клиент дописывается в существующую карточку,
       # а не плодит вторую. TgDmSource при cross-channel match уже дописал
       # сообщение в metadata['client_history'] существующего LeadEvent; до этого
@@ -89,7 +105,7 @@ module Lead
         lead_ref:         ref,
         property:         Lead::PropertyResolver.for_ref(ref),
         source:           @source,
-        tg_chat_id:       Telegram::TopicRegistry.chat_id,
+        tg_chat_id:       target_chat_id(metadata),
         anchor_topic_key: 'dispatcher',
         current_stage:    'new',
         metadata:         metadata
@@ -104,6 +120,15 @@ module Lead
     end
 
     private
+
+    # Тест-лиды (issue #214) живут в тестовом чате (ENV['TELEGRAM_TEST_CHAT_ID']).
+    # ENV не задан — возвращаем рабочий chat_id, но LeadAnnouncer такую карточку
+    # не опубликует (skip с warning): ДИСПЕТЧЕРСКАЯ не трогается в любом случае.
+    def target_chat_id(metadata)
+      return Telegram::TopicRegistry.chat_id unless metadata.is_a?(Hash) && metadata['test'] == true
+
+      ENV['TELEGRAM_TEST_CHAT_ID'].presence&.to_i || Telegram::TopicRegistry.chat_id
+    end
 
     def valid_source?
       SUPPORTED_SOURCES.include?(@source)

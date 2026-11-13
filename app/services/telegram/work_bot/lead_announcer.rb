@@ -5,6 +5,10 @@ module Telegram
     # Публикует якорную карточку нового лида в Telegram-чате АН.
     #
     # Маршрут публикации:
+    #   0. Тест-прогон чат-бота (lead.metadata['test'], issue #214) →
+    #      TELEGRAM_TEST_CHAT_ID без топика; ENV не задан — пропуск карточки
+    #      с warning, ДИСПЕТЧЕРСКАЯ не трогается. Route-кнопок и
+    #      anchor_thread_id у такой карточки нет.
     #   1. Если у источника есть auto_route (lookup в config/telegram_topics.yml
     #      по auto_route_from) — публикуем сразу в специализированный топик,
     #      минуя ДИСПЕТЧЕРСКУЮ. Пример: заявка с формы оценки → #ОЦЕНКА.
@@ -61,8 +65,11 @@ module Telegram
         result = send_card(topic_key)
         return false if result.nil?
 
+        # Тест-лид живёт в тестовом чате без топика (issue #214) — писать
+        # сюда thread_id рабочей группы нельзя: anchor_url и последующие
+        # отправки с этим message_thread_id ушли бы не туда.
         @lead.update!(
-          anchor_thread_id: Telegram::TopicRegistry.thread_id(topic_key),
+          anchor_thread_id: (test_lead? ? nil : Telegram::TopicRegistry.thread_id(topic_key)),
           anchor_message_id: result['message_id'],
           anchor_topic_key: topic_key,
           dispatcher_message_id: (topic_key == 'dispatcher' ? result['message_id'] : nil)
@@ -94,6 +101,11 @@ module Telegram
       # Прочитали бы из модели — ряд кнопок маршрутизации уехал бы в #КВАРТИРЫ
       # вместе с карточкой, и лид можно было бы маршрутизировать повторно.
       def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+        # Тест-лид (issue #214): карточка живёт в тестовом чате без топиков —
+        # кнопки маршрутизации/стадий не рисуем, иначе callback уведёт карточку
+        # в рабочую группу (AnchorMigrator дополнительно gated).
+        return nil if test_lead?
+
         rows = routing_keyboard_for(topic_key)[:inline_keyboard]
         rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
         rows << stage_row if @lead.open?
@@ -103,7 +115,35 @@ module Telegram
 
       private
 
+      def test_lead?
+        return true if (@lead.metadata || {})['test'] == true
+
+        # Issue #227: lead_ref авто-помечен staff_test (StaffSubmissionDetector
+        # по контактам сотрудника) — изоляция та же, что у metadata['test'],
+        # даже если флаг в payload не пришёл. Без respond_to? — lead_ref
+        # полиморфный (BuyerOrder/Property staff_test не знают).
+        lead_ref = @lead.lead_ref
+        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
+      end
+
       def send_card(topic_key)
+        # Тест-лиды (issue #214) публикуются в тестовый чат целиком — не в
+        # рабочую группу и не в топики. Без TELEGRAM_TEST_CHAT_ID пропускаем
+        # с warning: ДИСПЕТЧЕРСКАЯ не трогается.
+        if test_lead?
+          test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+          unless test_chat
+            Rails.logger.warn("[LeadAnnouncer] lead=#{@lead.id} test lead, TELEGRAM_TEST_CHAT_ID не задан — пропуск публикации")
+            return nil
+          end
+          return @client.send_message(
+            format_card,
+            chat_id: test_chat.to_i,
+            reply_markup: keyboard_for_card(topic_key),
+            parse_mode: 'HTML'
+          )
+        end
+
         is_general = Telegram::TopicRegistry.general_topic?(topic_key)
         thread_id  = Telegram::TopicRegistry.thread_id(topic_key)
 
@@ -141,6 +181,10 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
+        # Тест-прогон чат-бота (issue #214) и staff_test-лиды (issue #227) —
+        # карточка ушла в тестовый чат, бейдж отличает её от боевых лидов
+        # при просмотре логов/скриншотов.
+        test_badge = '🧪 <b>ТЕСТ</b>' if test_lead?
         # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
         # после express-валуации (см. ChatTools::QualifyLead). Помогает
         # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,
@@ -151,7 +195,7 @@ module Telegram
                         when 'cma'        then '🟠 <b>SALE CMA</b>'
                         when 'buyer_scan' then '🟢 <b>BUYER SCAN</b>'
                         end
-        badge_line = [priority_badge, returning_badge, service_badge].compact.join(' · ')
+        badge_line = [priority_badge, returning_badge, service_badge, test_badge].compact.join(' · ')
         lines << badge_line if badge_line.present?
         # BOTTLENECK — сегмент всегда виден: пустой сегмент должен раздражать.
         lines << @lead.segment_label
