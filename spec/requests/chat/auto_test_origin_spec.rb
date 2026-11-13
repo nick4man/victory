@@ -52,6 +52,45 @@ RSpec.describe 'Chat::AutoTest по происхождению', type: :request 
     expect(conversation.reload.metadata['auto_test']).to be(true)
   end
 
+  # Rev #230: запрос на боевой endpoint, но Origin/Referer со staging/localhost
+  # (виджет стучится напрямую) → auto_test; внешний Referer боевого клиента
+  # (поисковик/агрегатор) → без изменений.
+  describe 'Origin/Referer (rev #230)' do
+    it 'прод-хост + Origin со staging → auto_test' do
+      get chat_conversation_path(format: :json),
+          headers: { 'HOST' => 'victory62.org', 'Origin' => 'https://staging.victory62.org' }
+      expect(response).to have_http_status(:ok)
+
+      expect(conversation.reload.metadata['auto_test']).to be(true)
+    end
+
+    it 'прод-хост + Referer с localhost → auto_test' do
+      get chat_conversation_path(format: :json),
+          headers: { 'HOST' => 'victory62.org', 'Referer' => 'http://localhost:3000/' }
+      expect(response).to have_http_status(:ok)
+
+      expect(conversation.reload.metadata['auto_test']).to be(true)
+    end
+
+    it 'прод-хост + внешний Referer (поисковик) → боевой, без auto_test' do
+      get chat_conversation_path(format: :json),
+          headers: { 'HOST' => 'victory62.org', 'Referer' => 'https://www.google.com/search?q=test' }
+      expect(response).to have_http_status(:ok)
+
+      expect(conversation.reload.metadata['auto_test']).not_to be(true)
+      expect(conversation).not_to be_lead_test_mode
+    end
+
+    it 'прод-хост + прод Origin/Referer → боевой, без auto_test' do
+      get chat_conversation_path(format: :json),
+          headers: { 'HOST' => 'victory62.org', 'Origin' => 'https://victory62.org',
+                     'Referer' => 'https://www.victory62.org/' }
+      expect(response).to have_http_status(:ok)
+
+      expect(conversation.reload.metadata['auto_test']).not_to be(true)
+    end
+  end
+
   it 'POST сообщения с staging-хоста тоже помечает сессию' do
     get chat_conversation_path(format: :json), headers: { 'HOST' => 'staging.victory62.org' }
 

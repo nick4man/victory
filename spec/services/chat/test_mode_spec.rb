@@ -46,8 +46,13 @@ RSpec.describe Chat::TestMode do
       old_prod.nil? ? ENV.delete('SITE_CHATBOT_PROD_HOSTS') : ENV['SITE_CHATBOT_PROD_HOSTS'] = old_prod
     end
 
-    def request_double(host:, remote_ip: '203.0.113.10')
-      instance_double(ActionDispatch::Request, host: host, remote_ip: remote_ip)
+    def request_double(host:, remote_ip: '203.0.113.10', origin: nil, referer: nil)
+      headers = {}
+      headers['Origin'] = origin if origin
+      headers['Referer'] = referer if referer
+      request = instance_double(ActionDispatch::Request, host: host, remote_ip: remote_ip)
+      allow(request).to receive(:headers).and_return(headers)
+      request
     end
 
     it 'прод-домены (с/без www, регистр, порт) — прод' do
@@ -76,6 +81,42 @@ RSpec.describe Chat::TestMode do
       ENV['SITE_CHATBOT_OFFICE_IPS'] = '192.168.1.'
       request = request_double(host: 'victory62.org', remote_ip: '192.168.1.77')
       expect(described_class.auto_test_request?(request)).to be(true)
+    end
+
+    # Rev #230: виджет со staging/localhost может стучаться на боевой endpoint
+    # напрямую — такой запрос ловим по Origin/Referer.
+    it 'прод-хост, но Origin/Referer со staging или localhost → true' do
+      staging_req = request_double(host: 'victory62.org', origin: 'https://staging.victory62.org')
+      localhost_req = request_double(host: 'victory62.org', referer: 'http://localhost:3000/')
+      private_req = request_double(host: 'victory62.org', origin: 'http://192.168.0.15:3000')
+
+      expect(described_class.auto_test_request?(staging_req)).to be(true)
+      expect(described_class.auto_test_request?(localhost_req)).to be(true)
+      expect(described_class.auto_test_request?(private_req)).to be(true)
+    end
+
+    it 'прод-хост с внешним Referer (поисковик/агрегатор) → false (боевой клиент)' do
+      request = request_double(host: 'victory62.org', referer: 'https://www.google.com/search?q=kvartira')
+
+      expect(described_class.auto_test_request?(request)).to be(false)
+    end
+
+    it 'прод-хост + прод Origin/Referer → false' do
+      request = request_double(host: 'victory62.org', origin: 'https://victory62.org',
+                               referer: 'https://www.victory62.org/catalog')
+
+      expect(described_class.auto_test_request?(request)).to be(false)
+    end
+
+    it 'dev_origin?: поддомены боевых доменов — dev, чужие внешние домены — нет' do
+      expect(described_class.dev_origin?('staging.victory62.org')).to be(true)
+      expect(described_class.dev_origin?('dev.victory62.org')).to be(true)
+      expect(described_class.dev_origin?('victory62.org')).to be(false) # сам прод-домен
+      expect(described_class.dev_origin?('www.victory62.org')).to be(false) # в списке prod_hosts
+      expect(described_class.dev_origin?('evil-victory62.org')).to be(false) # не поддомен
+      expect(described_class.dev_origin?('app.local')).to be(true)
+      expect(described_class.dev_origin?(nil)).to be(false)
+      expect(described_class.dev_origin?('not a url')).to be(false)
     end
 
     it 'офисный пул: точный адрес и префикс подсети, чужие — нет' do
