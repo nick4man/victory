@@ -16,8 +16,9 @@ module Chat
   # эвристика рискует заблокировать реального клиента (неприемлемо).
   module TestMode
     # Источники Lead::Intake, которые порождают лиды чат-бота/сайта.
-    # Кран (п.1) действует только на них: tg_dm / manual / crm_webhook
-    # чат-ботом сайта не являются и боевым маршрутом не трогаются.
+    # Кран (п.1) действует только на записи чат-бота среди них: tg_dm /
+    # manual / crm_webhook чат-ботом сайта не являются и боевым маршрутом
+    # не трогаются.
     SITE_SOURCES = %w[site_form site_valuation site_mortgage].freeze
 
     DEFAULT_PROD_HOSTS = 'victory62.org,www.victory62.org'
@@ -28,6 +29,16 @@ module Chat
 
     def self.site_source?(source)
       SITE_SOURCES.include?(source.to_s)
+    end
+
+    # Кран — строго про лиды чат-бота (rev #230): у записи чат-бота при
+    # создании лида всегда есть Inquiry source='site_chatbot' (её делает
+    # QualifyLead), поэтому кран не задевает обычные боевые формы сайта
+    # (ContactFormsController/PropertyValuationsController идут теми же
+    # site_* источниками). Без этого реальные заявки клиентов уехали бы в
+    # тестовый чат на время прогона.
+    def self.force_test_inquiry?(inquiry)
+      inquiry.is_a?(Inquiry) && inquiry.source == 'site_chatbot'
     end
 
     # П.2 issue #227: сессия, начатая не с прод-домена или с офисного IP,

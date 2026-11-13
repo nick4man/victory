@@ -55,7 +55,10 @@
 | `SESSION_TIMEOUT` | `1800` | session expiry (sec) |
 | `ADMIN_TOKEN` | — | query-param admin guard (Admin::Reviews, Admin::Articles) |
 | `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта (`@anvictorybot`) |
-| `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214): диалоги виджета с `?visitor_token=probe-<name>` → лиды `metadata['test']=true` публикуются сюда, а не в ДИСПЕТЧЕРСКУЮ, и не синкаются в CRM. Пусто — тест-лиды создаются без публикации в TG |
+| `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214/#227): сюда публикуются ВСЕ тест-лиды чат-бота — probe-диалоги (`?visitor_token=probe-<name>`), авто-детект сотрудника (`staff_test` по сильному правилу), auto-test по происхождению (не-прод хост / офисный IP) и все лиды при кране `SITE_CHATBOT_FORCE_TEST=1` — вместо ДИСПЕТЧЕРСКОЙ. Пусто — тест-лиды создаются без публикации в TG, эскалации/PDF тест-лидов пропускаются (fail-closed) |
+| `SITE_CHATBOT_FORCE_TEST` | — | ENV-кран (issue #227): `1` = ВСЕ лиды чат-бота (`Inquiry source='site_chatbot'`) тестовые, ДИСПЕТЧЕРСКАЯ не трогается; обычные боевые формы сайта краном не задеваются. Ставится на прогоны, снимается перед боевым периодом |
+| `SITE_CHATBOT_PROD_HOSTS` | `victory62.org,www.victory62.org` | прод-домены виджета (issue #227): сессии с ДРУГИХ хостов (staging, localhost) автоматически тестовые (auto-test по происхождению) |
+| `SITE_CHATBOT_OFFICE_IPS` | — | офисный IP-пул, comma-separated; точный IP или префикс подсети (`192.168.1.` матчит `192.168.1.x`). Сессии с этих IP автоматически тестовые |
 | `TELEGRAM_TEST_BOT_TOKEN` | — (только GitHub Secrets) | токен ТЕСТОВОГО бота для CI-интеграционного spec'а `spec/services/telegram/test_chat_delivery_spec.rb`; продовый код не читает |
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
 | `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |

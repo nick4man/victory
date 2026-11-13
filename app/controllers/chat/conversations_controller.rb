@@ -67,8 +67,11 @@ module Chat
         email:      conv.email,
         # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг, чтобы
         # показать состояние сессии (probe-куку виджет прочитать не может —
-        # она httponly).
+        # она httponly). test_mode (#227, rev #230) — полный режим диалога
+        # (probe ИЛИ auto-test по происхождению ИЛИ ENV-кран): тумблер его
+        # не отражает, для него в виджете отдельный индикатор.
         test_probe: conv.test_probe?,
+        test_mode:  conv.lead_test_mode?,
         messages:   conv.chat_messages.recent.map { |m| serialize_message(m) }
       }
     end

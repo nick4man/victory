@@ -23,9 +23,40 @@ class ExpressReportNotifier
   DEFAULT_THREAD_ID = 24 # топик #ОЦЕНКА (см. config/telegram_topics.yml)
 
   def deliver
-    chat_id   = (ENV['TELEGRAM_VALUATIONS_CHAT_ID'].presence || DEFAULT_CHAT_ID).to_i
-    thread_id = ENV.fetch('TELEGRAM_VALUATIONS_THREAD_ID', DEFAULT_THREAD_ID).to_i.then { |i| i.positive? ? i : nil }
-    token     = ENV['TELEGRAM_BOT_TOKEN'].to_s
+    if test_valuation?
+      test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+      if test_chat.blank?
+        # Fail-closed (rev #230): тестовая оценка в рабочую группу не идёт.
+        Rails.logger.warn("[ExpressReportNotifier] valuation=#{@v.id} тестовая, TELEGRAM_TEST_CHAT_ID не задан — пропуск")
+        return false
+      end
+      return deliver_to(test_chat.to_i, thread_id: nil)
+    end
+
+    deliver_to(default_chat_id, thread_id: default_thread_id)
+  end
+
+  private
+
+  # Issue #227 (rev #230): тестовая оценка — metadata['test'] или staff_test
+  # по сильному правилу детектора (слабое name_staff_first боевой маршрут
+  # не меняет) — сводка/PDF не попадают в рабочую группу.
+  def test_valuation?
+    return true if @v.metadata.is_a?(Hash) && @v.metadata['test'] == true
+
+    StaffSubmissionDetector.hard_isolation?(@v)
+  end
+
+  def default_chat_id
+    (ENV['TELEGRAM_VALUATIONS_CHAT_ID'].presence || DEFAULT_CHAT_ID).to_i
+  end
+
+  def default_thread_id
+    ENV.fetch('TELEGRAM_VALUATIONS_THREAD_ID', DEFAULT_THREAD_ID).to_i.then { |i| i.positive? ? i : nil }
+  end
+
+  def deliver_to(chat_id, thread_id:)
+    token = ENV['TELEGRAM_BOT_TOKEN'].to_s
     return false if chat_id.zero? || token.empty?
 
     client = Telegram::Client.new(token: token)
@@ -34,8 +65,6 @@ class ExpressReportNotifier
     send_pdf(client, chat_id, thread_id)
     true
   end
-
-  private
 
   def send_pdf(client, chat_id, thread_id)
     pdf_bytes = PdfGeneratorService.new(@v).call

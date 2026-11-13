@@ -153,6 +153,44 @@ RSpec.describe Telegram::WorkBot::LeadAnnouncer do
       expect(lead.reload.anchor_topic_key).to eq('dispatcher')
     end
 
+    # Rev #230: слабое правило name_staff_first (совпадение только по имени)
+    # не основание для изоляции — реальный клиент «Надежда» должен получить
+    # боевую карточку в ДИСПЕТЧЕРСКУЮ.
+    describe 'staff_test только по name_staff_first (rev #230)' do
+      let(:weak_inquiry) do
+        create(:inquiry, source: 'site_form', staff_test: true, staff_test_matched_by: 'name_staff_first')
+      end
+      let(:lead) do
+        LeadEvent.create!(
+          lead_ref:         weak_inquiry,
+          source:           'site_form',
+          tg_chat_id:       -1_003_779_115_845,
+          anchor_topic_key: 'dispatcher',
+          current_stage:    'new',
+          metadata:         { 'name' => weak_inquiry.name, 'phone' => weak_inquiry.phone }
+        )
+      end
+
+      it 'идёт боевым маршрутом в ДИСПЕТЧЕРСКУЮ с топиком' do
+        allow(Telegram::TopicRegistry).to receive(:thread_id).and_return(4)
+        expect(client).to receive(:send_message) do |_text, kwargs|
+          expect(kwargs[:chat_id]).to eq(-1_003_779_115_845)
+          expect(kwargs[:message_thread_id]).to eq(4)
+          { 'message_id' => 603 }
+        end
+        expect(described_class.new(lead, client: client).call).to be(true)
+      end
+
+      it 'не рендерит ТЕСТ-бейдж' do
+        expect(described_class.new(lead, client: client).format_card_text).not_to include('ТЕСТ')
+      end
+
+      it 'AnchorMigrator мигрирует такой лид (не тестовый)' do
+        migrator = Telegram::WorkBot::AnchorMigrator.new(lead, 'appraisal', actor: create(:user), client: client)
+        expect(migrator.send(:test_lead?)).to be(false)
+      end
+    end
+
     # lead_ref полиморфный: BuyerOrder/Property staff_test не знают — проверка
     # через respond_to? не должна падать, боевой маршрут не тронут.
     it 'lead_ref без staff_test? (Property) идёт боевым маршрутом' do

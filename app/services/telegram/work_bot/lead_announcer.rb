@@ -5,10 +5,12 @@ module Telegram
     # Публикует якорную карточку нового лида в Telegram-чате АН.
     #
     # Маршрут публикации:
-    #   0. Тест-прогон чат-бота (lead.metadata['test'], issue #214) →
-    #      TELEGRAM_TEST_CHAT_ID без топика; ENV не задан — пропуск карточки
-    #      с warning, ДИСПЕТЧЕРСКАЯ не трогается. Route-кнопок и
-    #      anchor_thread_id у такой карточки нет.
+    #   0. Тест-прогон чат-бота: lead.metadata['test'] (issue #214) ИЛИ
+    #      staff_test по сильному правилу детектора (issue #227, rev #230:
+    #      слабое name_staff_first боевой маршрут не меняет — клиент «Надежда»
+    #      не должен потерять карточку) → TELEGRAM_TEST_CHAT_ID без топика;
+    #      ENV не задан — пропуск карточки с warning, ДИСПЕТЧЕРСКАЯ не трогается.
+    #      Route-кнопок и anchor_thread_id у такой карточки нет.
     #   1. Если у источника есть auto_route (lookup в config/telegram_topics.yml
     #      по auto_route_from) — публикуем сразу в специализированный топик,
     #      минуя ДИСПЕТЧЕРСКУЮ. Пример: заявка с формы оценки → #ОЦЕНКА.
@@ -118,12 +120,11 @@ module Telegram
       def test_lead?
         return true if (@lead.metadata || {})['test'] == true
 
-        # Issue #227: lead_ref авто-помечен staff_test (StaffSubmissionDetector
-        # по контактам сотрудника) — изоляция та же, что у metadata['test'],
-        # даже если флаг в payload не пришёл. Без respond_to? — lead_ref
-        # полиморфный (BuyerOrder/Property staff_test не знают).
-        lead_ref = @lead.lead_ref
-        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
+        # Issue #227 (rev #230): lead_ref авто-помечен staff_test — изоляция
+        # та же, что у metadata['test'], даже если флаг в payload не пришёл.
+        # hard_isolation? отсекает слабое правило name_staff_first: клиент
+        # «Надежда» (совпадение только по имени) не теряет боевую карточку.
+        StaffSubmissionDetector.hard_isolation?(@lead.lead_ref)
       end
 
       def send_card(topic_key)

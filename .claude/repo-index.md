@@ -232,6 +232,7 @@ app/services/cabinet/consent_requester.rb — class Cabinet::ConsentRequester, c
 app/services/cabinet_invitation_dispatcher.rb — class CabinetInvitationDispatcher
 app/services/cabinet_invitation_sms_service.rb — class CabinetInvitationSmsService
 app/services/cabinet_invitation_tg_service.rb — class CabinetInvitationTgService
+app/services/chat/test_mode.rb — module Chat, module TestMode
 app/services/chat_tools/aggregate_market.rb — module ChatTools, module AggregateMarket
 app/services/chat_tools/base.rb — module ChatTools, module Base
 app/services/chat_tools/calculate_mortgage.rb — module ChatTools, module CalculateMortgage

@@ -90,6 +90,29 @@ class PropertyValuationJob < ApplicationJob
     client = Telegram::Client.new
     Telegram::WorkBot::LeadAnnouncer.refresh!(lead, client: client)
 
+    # Issue #227 (rev #230): тест-лид — PDF не едет в рабочую группу:
+    # reply к anchor в тестовом чате; без TELEGRAM_TEST_CHAT_ID — пропуск
+    # (fail-closed). Тест = metadata['test'] ИЛИ staff_test по сильному
+    # правилу детектора (слабое name_staff_first боевой маршрут не меняет).
+    if lead_isolated?(lead)
+      test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+      if test_chat.blank?
+        Rails.logger.warn("[PropertyValuationJob] valuation=#{valuation.id} тест-лид, TELEGRAM_TEST_CHAT_ID не задан — пропуск PDF")
+        return
+      end
+      pdf_bytes = PdfGeneratorService.new(valuation).call
+      io = StringIO.new(pdf_bytes)
+      client.send_document(
+        { io: io, filename: "valuation-#{valuation.report_number || valuation.token}.pdf",
+          content_type: 'application/pdf' },
+        chat_id: test_chat.to_i,
+        caption: "🧪 ТЕСТ · 📐 Экспресс-оценка #{valuation.report_label}",
+        parse_mode: 'HTML',
+        reply_to_message_id: lead.anchor_message_id
+      )
+      return
+    end
+
     # PDF как reply к anchor — staff видит link в карточке + сразу PDF.
     pdf_bytes = PdfGeneratorService.new(valuation).call
     io = StringIO.new(pdf_bytes)
@@ -104,6 +127,15 @@ class PropertyValuationJob < ApplicationJob
     )
   rescue StandardError => e
     Rails.logger.warn("[PropertyValuationJob] push_to_lead_card failed for #{valuation.id}: #{e.class} #{e.message.to_s.truncate(160)}")
+  end
+
+  # metadata['test'] проставлен Intake (#227) или раньше (#214);
+  # staff_test — авто-детектор по контактам, hard_isolation? отсекает
+  # слабое name_staff_first.
+  def lead_isolated?(lead)
+    return true if lead.metadata.is_a?(Hash) && lead.metadata['test'] == true
+
+    StaffSubmissionDetector.hard_isolation?(lead.lead_ref)
   end
 
   def create_crm_lead(valuation)
