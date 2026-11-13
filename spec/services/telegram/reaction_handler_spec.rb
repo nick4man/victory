@@ -21,6 +21,12 @@ RSpec.describe Telegram::ReactionHandler do
                       anchor_message_id: 42, staff_test: true)
   end
 
+  let!(:real_lead) do
+    LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                      anchor_topic_key: 'dispatcher', tg_chat_id: staff_chat,
+                      anchor_message_id: 43)
+  end
+
   it 'реакция в рабочем чате с тем же message_id не находит probe-лида из тестового чата' do
     expect(Telegram::WorkBot::LeadStageTransition).not_to receive(:new)
 
@@ -29,15 +35,27 @@ RSpec.describe Telegram::ReactionHandler do
     expect(result).to eq(:not_on_anchor)
   end
 
-  it 'реакция на якорь в чате, где лид опубликован, переводит его в first_contact' do
+  it 'реакция на якорь боевого лида переводит его в first_contact' do
     transition = instance_double(Telegram::WorkBot::LeadStageTransition, call: true)
     expect(Telegram::WorkBot::LeadStageTransition).to receive(:new)
-      .with(probe_lead, 'first_contact', actor: agent, client: anything)
+      .with(real_lead, 'first_contact', actor: agent, client: anything)
       .and_return(transition)
+
+    result = described_class.new(reaction_payload(staff_chat, 43), client: double('client')).call
+
+    expect(result).to eq(:handled)
+  end
+
+  # Issue #224 (ревью PR #221, round 5, блокер): реакция на probe-карточку
+  # не двигает стадию — LeadStageTransition шлёт стадию в CRM и при
+  # ENABLE_LEAD_STAGE_BROADCAST=true создаёт клиентские уведомления.
+  it 'реакция на probe-карточку не переводит лид в first_contact' do
+    expect(Telegram::WorkBot::LeadStageTransition).not_to receive(:new)
 
     result = described_class.new(reaction_payload(test_chat, 42), client: double('client')).call
 
     expect(result).to eq(:handled)
+    expect(probe_lead.reload.current_stage).to eq('new')
   end
 
   # Issue #224 (ревью PR #221, round 5, блокер 1): реакция закрывает задачу

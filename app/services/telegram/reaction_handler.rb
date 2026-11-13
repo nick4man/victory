@@ -141,6 +141,10 @@ module Telegram
     def maybe_advance_to_first_contact(lead, tg_user)
       return if lead.current_stage != 'new'
       return if lead.first_contact_at.present?
+      # Issue #224 / review round 5 — реакция на probe-карточку не двигает
+      # боевую воронку: LeadStageTransition шлёт стадию в CRM и при включённом
+      # broadcast создаёт клиентские уведомления.
+      return if lead.staff_test?
 
       Rails.logger.info("[ReactionHandler] lead=#{lead.id} ack-react by #{tg_user.mention} → first_contact")
       WorkBot::LeadStageTransition.new(lead, 'first_contact', actor: tg_user, client: @client).call
