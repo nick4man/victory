@@ -296,7 +296,7 @@ module Topnlab
 
       res = http_post_json('/call/main/transferClient/', body)
       unless res.is_a?(Hash) && res['status'] == 'ok'
-        raise Error, "transferClient failed: #{res.inspect}"
+        raise Error, "transferClient failed: #{scrub(res)}"
       end
 
       res

@@ -191,4 +191,22 @@ RSpec.describe Topnlab::Client do
       expect(a_request(:post, import_re)).to have_been_made.twice
     end
   end
+
+  describe '#transfer_client' do
+    let(:transfer_re) { %r{/call/main/transferClient/} }
+
+    # Тот же регресс, что и для import_client: тело ответа отражает запрос
+    # (appkey), без scrub ключ уехал бы в error_log и Telegram.
+    it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
+      stub_request(:post, transfer_re)
+        .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'no agent' }.to_json)
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+  end
 end
