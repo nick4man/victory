@@ -23,7 +23,7 @@ class CreateSpamBlocklist < ActiveRecord::Migration[8.1]
       t.jsonb    :hit_tokens,   null: false, default: []   # последние {ip, vt, at} — кворум по IP
       t.datetime :last_hit_at
       t.datetime :seen_at                                    # последний синк-прогон, где ключ был в фиде (протухание)
-      t.datetime :blocked_at                                 # момент перехода suspect → blocked
+      t.datetime :blocked_at                                 # для фидовых записей — метка ПОСЛЕДНЕГО ПОДТВЕРЖДЕНИЯ blocked-источником (не первичной блокировки)
       t.datetime :deleted_at
       t.timestamps
     end

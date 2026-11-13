@@ -2611,7 +2611,8 @@ CREATE TABLE public.spam_blocked_entries (
     blocked_at timestamp(6) without time zone,
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    confirmations jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 
 
@@ -8133,6 +8134,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261114120000'),
 ('20261112120000'),
 ('20261112090100'),
 ('20261112090000'),

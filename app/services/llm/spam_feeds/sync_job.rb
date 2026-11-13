@@ -182,6 +182,7 @@ module Llm
           batch << { entry_type: type.to_s, value: key, value_digest: SpamBlockedEntry.digest_for(key),
                      source: source, status: status.to_s,
                      seen_at: run_at, blocked_at: (run_at if status == :blocked),
+                     confirmations: (status == :blocked ? { source => run_at.iso8601 } : {}),
                      created_at: run_at, updated_at: run_at }
           flush.call if batch.size >= BATCH
         end
@@ -212,8 +213,13 @@ module Llm
           SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_digest)
           if status == :blocked
             # blocked-источник подтвердил ключ: свежий blocked_at — метка для
-            # downgrade_unconfirmed_blocked
+            # downgrade_unconfirmed_blocked; confirmations[source] — метка для
+            # защиты от протухания/понижения при сбое другого фида, ранее
+            # подтвердившего тот же ключ (ревью Kimi, раунд 14)
             scope.update_all(seen_at: run_at, blocked_at: run_at, updated_at: run_at)
+            scope.where(status: 'blocked')
+                 .update_all(["confirmations = COALESCE(confirmations, '{}'::jsonb) || ?::jsonb",
+                              { source => run_at.iso8601 }.to_json])
             # повышение suspect → blocked забирает и владение: иначе при
             # последующем сбое blocked-фида запись осталась бы под владельцем-
             # suspect'ом, downgrade увидел бы его в synced и понизил бы
@@ -270,13 +276,20 @@ module Llm
       # Протухание: активная запись не-local источника, чья выгрузка в этом
       # прогоне удалась, но который не видан в нём (seen_at старше прогона) —
       # soft-delete. Источник, чья выгрузка НЕ удалась, не трогаем: сбой
-      # источника ≠ пустой список. Записи source = local вне этой логики.
+      # источника ≠ пустой список. Запись, которую в прошлом подтвердил
+      # blocked-фид, сейчас упавший, тоже не трогаем: сбой ≠ исчезновение
+      # ключа (fail-closed, раунд 14 — иначе сбой одного из пересекающихся
+      # blocked-фидов стирал бы запись по факту владельца, выпустившего ключ
+      # из своего списка). Успешный в прогоне источник защиты не даёт — у
+      # него был шанс оставить ключ, и он им не воспользовался.
+      # Записи source = local вне этой логики.
       def retire_stale(synced, run_at)
         synced.each do |entry_type, sources|
-          SpamBlockedEntry.unscoped
-                          .where(entry_type: entry_type, source: sources, deleted_at: nil)
-                          .where('seen_at < ? OR seen_at IS NULL', run_at)
-                          .in_batches(of: 10_000) { |rel| rel.update_all(deleted_at: run_at) }
+          scope = SpamBlockedEntry.unscoped
+                                  .where(entry_type: entry_type, source: sources, deleted_at: nil)
+                                  .where('seen_at < ? OR seen_at IS NULL', run_at)
+          scope = exclude_failed_confirmed(scope, entry_type, sources)
+          scope.in_batches(of: 10_000) { |rel| rel.update_all(deleted_at: run_at) }
         end
       end
 
@@ -287,16 +300,37 @@ module Llm
       # подтверждения, см. flush_batch). Значит владелец ключ из состава
       # выпустил — понижаем до suspect, вечный blocked невозможен. Сбой
       # владельца его из synced убирает — понижения нет (fail-closed: сбой
-      # источника ≠ исчезновение ключа, контракт runbook). local-записей тут
-      # нет по построению: в synced попадают только имена фидов.
+      # источника ≠ исчезновение ключа, контракт runbook). Запись с
+      # подтверждением от упавшего blocked-фида (раунд 14) тоже не понижаем.
+      # local-записей тут нет по построению: в synced попадают только имена
+      # фидов.
       def downgrade_unconfirmed_blocked(synced, run_at)
         synced.each do |entry_type, sources|
-          SpamBlockedEntry.unscoped
-                          .where(entry_type: entry_type, status: 'blocked', deleted_at: nil, source: sources)
-                          .where('seen_at >= ?', run_at)
-                          .where('blocked_at < ? OR blocked_at IS NULL', run_at)
-                          .in_batches(of: 10_000) { |rel| rel.update_all(status: 'suspect', blocked_at: nil, updated_at: run_at) }
+          scope = SpamBlockedEntry.unscoped
+                                  .where(entry_type: entry_type, status: 'blocked', deleted_at: nil, source: sources)
+                                  .where('seen_at >= ?', run_at)
+                                  .where('blocked_at < ? OR blocked_at IS NULL', run_at)
+          scope = exclude_failed_confirmed(scope, entry_type, sources)
+          scope.in_batches(of: 10_000) { |rel| rel.update_all(status: 'suspect', blocked_at: nil, updated_at: run_at) }
         end
+      end
+
+      # Конфигурированные источники типа, не отсинковавшиеся в этом прогоне —
+      # потенциальные «ранние подтверждатели» записей типа
+      def failed_sources(entry_type, synced_sources)
+        configured = entry_type.to_sym == :ip ? IP_FEEDS.keys : (DOMAIN_FEEDS.merge(URLHAUS_FEED)).keys
+        configured - synced_sources
+      end
+
+      # Исключаем записи, у которых confirmations ссылаются на источники из
+      # failed: такой источник ключ раньше подтверждал, а сейчас упал — сбой
+      # ≠ исчезновение ключа (fail-closed, раунд 14)
+      def exclude_failed_confirmed(scope, entry_type, synced_sources)
+        failed = failed_sources(entry_type, synced_sources)
+        return scope if failed.empty?
+
+        placeholders = failed.map { '?' }.join(', ')
+        scope.where.not("jsonb_exists_any(confirmations, ARRAY[#{placeholders}]::text[])", *failed)
       end
 
       def sync_allowlist

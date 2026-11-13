@@ -248,6 +248,32 @@ RSpec.describe Llm::SpamFilter do
         end
       end
 
+      it 'mixed percent-encoded путь: Unicode + %2F сходятся с escape-записью фида к одному ключу' do
+        # запись в форме фида (полностью percent-encoded)
+        SpamBlockedEntry.create!(entry_type: :url,
+                                 value: 'shared-host.example/%D1%84%D0%B8%D1%88%D0%B8%D0%BD%D0%B3%2Flogin',
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('смотрите https://shared-host.example/фишинг%2Flogin',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+      end
+
+      it 'mixed percent-encoded путь: escape-сообщение сходится с записью, созданной из Unicode-формы' do
+        # запись создана из сообщения с литеральным Unicode (письменность
+        # фида/эвристики нормализует значение при записи — обе письменности
+        # сходятся к одному ключу)
+        normalized = Llm::SpamUrls.normalize('https://shared-host.example/фишинг%2Flogin')
+        SpamBlockedEntry.create!(entry_type: :url, value: "shared-host.example#{normalized[:path]}",
+                                 status: :blocked, source: 'phishing_links')
+
+        result = described_class.classify('смотрите https://shared-host.example/%D1%84%D0%B8%D1%88%D0%B8%D0%BD%D0%B3%2Flogin',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+      end
+
       it 'percent-encoded хост не обходит blocked-домен: %62otmasterru.com и botmasterru%2ecom' do
         SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
 

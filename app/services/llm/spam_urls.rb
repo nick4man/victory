@@ -187,14 +187,16 @@ module Llm
     # Байты одной non-ASCII run пути раскодируем в символы: зарезервированные
     # однобайтовые escape'и (%2F и т.п.) не трогаем — '/' из них сломал бы
     # структуру пути. Невалидный UTF-8 и смешанные run с разделителями
-    # оставляем как есть (после lowercasing hex — см. decode_unreserved).
+    # оставляем как есть — с hex в ВЕРХНЕМ регистре (каноническая форма
+    # WHATWG-serialization; смешанный run %D1%84…%2F иначе получал lowercase
+    # hex и расходился с записью фида в ключе — ревью Kimi, раунд 14)
     def decode_multibyte_escapes(str)
       str.gsub(/(?:%[0-9a-f]{2})+/i) do |seq|
         bytes = seq.scan(/%([0-9a-f]{2})/i).flatten.map(&:hex)
-        next seq.downcase if bytes.all? { |b| b < 0x80 }
+        next seq.upcase if bytes.all? { |b| b < 0x80 }
 
         decoded = percent_bytes_to_utf8(seq)
-        next seq.downcase if decoded.nil? || decoded.match?(%r{[/\\?#]})
+        next seq.upcase if decoded.nil? || decoded.match?(%r{[/\\?#]})
 
         decoded
       end
@@ -215,12 +217,13 @@ module Llm
 
     # RFC 3986 unreserved — A-Z / a-z / 0-9 / -._~: escape над ними это то
     # же значение, декодируем в символ. Прочие escape'и сохраняем как есть,
-    # но hex приводим к нижнему регистру: `%2F` и `%2f` в сыром виде
-    # разводили бы разные ключи одного ресурса.
+    # hex — в ВЕРХНЕМ регистре: `%2F` и `%2f` в сыром виде разводили бы
+    # разные ключи одного ресурса, а каноническая serialization WHATWG —
+    # uppercase hex (единая форма с percent_encode_non_ascii, раунд 14)
     def decode_unreserved(str)
       str.gsub(/%([0-9a-f]{2})/i) do
         ch = Regexp.last_match(1).hex.chr
-        ch.match?(/[a-z0-9.\-_~]/i) ? ch : Regexp.last_match(0).downcase
+        ch.match?(/[a-z0-9.\-_~]/i) ? ch : Regexp.last_match(0).upcase
       end
     end
 

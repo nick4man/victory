@@ -1696,31 +1696,6 @@ extend ActiveSupport::Concern
 def upload_image
 </file>
 
-<file path="app/controllers/concerns/admin_token_auth.rb">
-module AdminTokenAuth
-extend ActiveSupport::Concern
-⋮----
-included do
-⋮----
-before_action :set_no_index_headers
-before_action :require_admin_access
-helper_method :admin_authenticated?
-⋮----
-private
-⋮----
-def set_no_index_headers
-⋮----
-def require_admin_access
-⋮----
-def admin_authenticated?
-⋮----
-def devise_present?
-⋮----
-def devise_admin?
-⋮----
-def token_admin?
-</file>
-
 <file path="app/controllers/concerns/coming_soon_section.rb">
 module ComingSoonSection
 extend ActiveSupport::Concern
@@ -3325,6 +3300,25 @@ discard_on ActiveJob::DeserializationError
 retry_on StandardError, wait: :polynomially_longer, attempts: 3
 ⋮----
 def perform(property_id)
+</file>
+
+<file path="app/jobs/sandbox/codespace_ready_job.rb">
+module Sandbox
+⋮----
+class CodespaceReadyJob
+include Sidekiq::Job
+sidekiq_options queue: :low_priority, retry: false
+⋮----
+ATTEMPTS = 12
+DELAY = 15
+⋮----
+def perform(chat_id, attempt = 1, thread_id = nil)
+⋮----
+private
+⋮----
+def awake?
+⋮----
+def notify(chat_id, thread_id, text)
 </file>
 
 <file path="app/jobs/seo/generate_property_meta_job.rb">
@@ -9085,6 +9079,40 @@ def skip(reason)
 def match_agency(external)
 </file>
 
+<file path="app/services/sandbox/codespace.rb">
+module Sandbox
+⋮----
+class Codespace
+API = 'https://api.github.com'
+DISPLAY_NAME = ENV.fetch('SANDBOX_CODESPACE_NAME', 'crm-sandbox')
+⋮----
+STARTING_STATES = %w[Provisioning Starting Queued Rebuilding Awaiting].freeze
+⋮----
+class Error < StandardError; end
+⋮----
+Status = Struct.new(:name, :state, :branch, :web_url, :last_used_at, keyword_init: true) do
+def awake? = state == 'Available'
+def starting? = STARTING_STATES.include?(state)
+⋮----
+def self.start! = new.start!
+def self.status = new.status
+⋮----
+def status
+⋮----
+def start!
+⋮----
+private
+⋮----
+def token
+⋮----
+def find!
+⋮----
+def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
+def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
+⋮----
+def request(req)
+</file>
+
 <file path="app/services/seo/how_to_extractor.rb">
 module Seo
 ⋮----
@@ -9809,6 +9837,38 @@ def authorized?(task)
 def format_duration(seconds)
 </file>
 
+<file path="app/services/telegram/work_bot/commands/help.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Help < Base
+⋮----
+ENTRIES = [
+⋮----
+def handle
+⋮----
+# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
+# Шлём один-line redirect inline + полный список приватно в DM.
+# В DM-чате — inline как раньше.
+⋮----
+private
+⋮----
+def append_section(lines, header, level)
+⋮----
+def entries_for(level)
+⋮----
+def staff?
+⋮----
+def manager?
+⋮----
+def director?
+⋮----
+def group_chat?
+⋮----
+def send_full_via_dm(text)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/lead.rb">
 module Telegram
 module WorkBot
@@ -9901,6 +9961,34 @@ class ResumeBatch < Base
 REOPEN_WINDOW = 24.hours
 ⋮----
 def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/start_test.rb">
+module WorkBot
+module Commands
+⋮----
+class StartTest < Base
+⋮----
+SUMMARY_PATH = Rails.root.join('docs/sandbox/current-test.md')
+TEST_BOT = ENV.fetch('SANDBOX_TEST_BOT_USERNAME', '@anvictory_testsbot')
+⋮----
+SUMMARY_LIMIT = 3500
+⋮----
+def handle
+⋮----
+def command_key = '/starttest'
+⋮----
+private
+⋮----
+def chat_id = message.dig('chat', 'id')
+⋮----
+def headline(status)
+⋮----
+def summary
+⋮----
+.gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
+⋮----
+def without_comments(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/tutorial.rb">
@@ -10854,6 +10942,36 @@ def active?(at: Time.current)
 def next_window_start(from: Time.current)
 ⋮----
 def defer_until(at: Time.current)
+</file>
+
+<file path="app/services/telegram/work_bot/router.rb">
+module Telegram
+module WorkBot
+⋮----
+class Router
+WORK_CHAT_ID = -1_003_779_115_845
+CODE_REGEX   = /\A\d{6}\z/
+COMMAND_PREFIX = '/'
+⋮----
+COMMANDS = {
+⋮----
+def initialize(message, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def dispatch_command(text)
+⋮----
+def handle_learn_topic(rest)
+⋮----
+def dm_code?
+⋮----
+def verify_code_in_dm
+⋮----
+def reply(text)
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/segment_keyboard.rb">
@@ -13058,6 +13176,31 @@ def all_admin_slugs
 def neighbors_of(slug)
 </file>
 
+<file path="app/controllers/concerns/admin_token_auth.rb">
+module AdminTokenAuth
+extend ActiveSupport::Concern
+⋮----
+included do
+⋮----
+before_action :set_no_index_headers
+before_action :require_admin_access
+helper_method :admin_authenticated?
+⋮----
+private
+⋮----
+def set_no_index_headers
+⋮----
+def require_admin_access
+⋮----
+def admin_authenticated?
+⋮----
+def devise_present?
+⋮----
+def devise_admin?
+⋮----
+def token_admin?
+</file>
+
 <file path="app/controllers/pages_controller.rb">
 class PagesController < ApplicationController
 ⋮----
@@ -13107,25 +13250,6 @@ def perform(date_str = nil)
 private
 ⋮----
 def send_to_directors(text)
-</file>
-
-<file path="app/jobs/sandbox/codespace_ready_job.rb">
-module Sandbox
-⋮----
-class CodespaceReadyJob
-include Sidekiq::Job
-sidekiq_options queue: :low_priority, retry: false
-⋮----
-ATTEMPTS = 12
-DELAY = 15
-⋮----
-def perform(chat_id, attempt = 1, thread_id = nil)
-⋮----
-private
-⋮----
-def awake?
-⋮----
-def notify(chat_id, thread_id, text)
 </file>
 
 <file path="app/jobs/embed_lead_event_job.rb">
@@ -13807,40 +13931,6 @@ def redis_connection
 require 'redis' unless defined?(Redis)
 </file>
 
-<file path="app/services/sandbox/codespace.rb">
-module Sandbox
-⋮----
-class Codespace
-API = 'https://api.github.com'
-DISPLAY_NAME = ENV.fetch('SANDBOX_CODESPACE_NAME', 'crm-sandbox')
-⋮----
-STARTING_STATES = %w[Provisioning Starting Queued Rebuilding Awaiting].freeze
-⋮----
-class Error < StandardError; end
-⋮----
-Status = Struct.new(:name, :state, :branch, :web_url, :last_used_at, keyword_init: true) do
-def awake? = state == 'Available'
-def starting? = STARTING_STATES.include?(state)
-⋮----
-def self.start! = new.start!
-def self.status = new.status
-⋮----
-def status
-⋮----
-def start!
-⋮----
-private
-⋮----
-def token
-⋮----
-def find!
-⋮----
-def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
-def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
-⋮----
-def request(req)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
 module Telegram
 module WorkBot
@@ -13956,38 +14046,6 @@ private
 def find_lead_via_reply
 </file>
 
-<file path="app/services/telegram/work_bot/commands/help.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Help < Base
-⋮----
-ENTRIES = [
-⋮----
-def handle
-⋮----
-# Phase 12 Iter 36 — в групповых чатах /help spamит общий поток.
-# Шлём один-line redirect inline + полный список приватно в DM.
-# В DM-чате — inline как раньше.
-⋮----
-private
-⋮----
-def append_section(lines, header, level)
-⋮----
-def entries_for(level)
-⋮----
-def staff?
-⋮----
-def manager?
-⋮----
-def director?
-⋮----
-def group_chat?
-⋮----
-def send_full_via_dm(text)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/note.rb">
 module Telegram
 module WorkBot
@@ -14048,34 +14106,6 @@ module Commands
 ⋮----
 class Show < Base
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/start_test.rb">
-module WorkBot
-module Commands
-⋮----
-class StartTest < Base
-⋮----
-SUMMARY_PATH = Rails.root.join('docs/sandbox/current-test.md')
-TEST_BOT = ENV.fetch('SANDBOX_TEST_BOT_USERNAME', '@anvictory_testsbot')
-⋮----
-SUMMARY_LIMIT = 3500
-⋮----
-def handle
-⋮----
-def command_key = '/starttest'
-⋮----
-private
-⋮----
-def chat_id = message.dig('chat', 'id')
-⋮----
-def headline(status)
-⋮----
-def summary
-⋮----
-.gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
-⋮----
-def without_comments(text)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
@@ -14293,36 +14323,6 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
-</file>
-
-<file path="app/services/telegram/work_bot/router.rb">
-module Telegram
-module WorkBot
-⋮----
-class Router
-WORK_CHAT_ID = -1_003_779_115_845
-CODE_REGEX   = /\A\d{6}\z/
-COMMAND_PREFIX = '/'
-⋮----
-COMMANDS = {
-⋮----
-def initialize(message, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def dispatch_command(text)
-⋮----
-def handle_learn_topic(rest)
-⋮----
-def dm_code?
-⋮----
-def verify_code_in_dm
-⋮----
-def reply(text)
-⋮----
-def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/weekly_summary_job.rb">
@@ -14689,29 +14689,6 @@ def name_matches_staff_first?
 require 'sidekiq/web'
 ⋮----
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
-</file>
-
-<file path="app/controllers/admin/spam_blocked_entries_controller.rb">
-module Admin
-⋮----
-class SpamBlockedEntriesController < ApplicationController
-include AdminTokenAuth
-⋮----
-skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
-⋮----
-def index
-⋮----
-def create
-⋮----
-def destroy
-⋮----
-private
-⋮----
-def valid_api_token_param?
-⋮----
-def index_limit
-⋮----
-def serialize(entry)
 </file>
 
 <file path="app/controllers/chat/conversations_controller.rb">
@@ -15765,6 +15742,31 @@ def success(payload)
 def error(message)
 </file>
 
+<file path="app/controllers/admin/spam_blocked_entries_controller.rb">
+module Admin
+⋮----
+class SpamBlockedEntriesController < ApplicationController
+include AdminTokenAuth
+⋮----
+skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
+⋮----
+def index
+⋮----
+def create
+⋮----
+def destroy
+⋮----
+private
+⋮----
+def valid_api_token_param?
+⋮----
+def index_limit
+⋮----
+def index_offset
+⋮----
+def serialize(entry)
+</file>
+
 <file path="app/controllers/chat/messages_controller.rb">
 module Chat
 ⋮----
@@ -15873,7 +15875,7 @@ private
 ⋮----
 def import_feed(source, cfg, run_at, synced)
 ⋮----
-def count_tokens(body, cfg)
+def count_valid_tokens(body, cfg)
 ⋮----
 def import_batches(body, source, cfg, status, run_at, synced)
 ⋮----
@@ -15886,8 +15888,20 @@ def normalize_entry(default_type, token)
 # Протухание: активная запись не-local источника, чья выгрузка в этом
 # прогоне удалась, но который не видан в нём (seen_at старше прогона) —
 # soft-delete. Источник, чья выгрузка НЕ удалась, не трогаем: сбой
-# источника ≠ пустой список. Записи source = local вне этой логики.
+# источника ≠ пустой список. Запись, которую в прошлом подтвердил
+# blocked-фид, сейчас упавший, тоже не трогаем: сбой ≠ исчезновение
+# ключа (fail-closed, раунд 14 — иначе сбой одного из пересекающихся
+# blocked-фидов стирал бы запись по факту владельца, выпустившего ключ
+# из своего списка). Успешный в прогоне источник защиты не даёт — у
+# него был шанс оставить ключ, и он им не воспользовался.
+# Записи source = local вне этой логики.
 def retire_stale(synced, run_at)
+⋮----
+def downgrade_unconfirmed_blocked(synced, run_at)
+⋮----
+def failed_sources(entry_type, synced_sources)
+⋮----
+def exclude_failed_confirmed(scope, entry_type, synced_sources)
 ⋮----
 def sync_allowlist
 ⋮----
@@ -15898,65 +15912,17 @@ def fetch(url, redirects: MAX_REDIRECTS)
 module Llm
 ⋮----
 module SpamUrls
-SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^\s<>"']+}i
-# «голый» хост латиницей с необязательным путём. Кириллица в regex
-# намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
-# как домен и улетал в карантин.
-BARE_HOST_RE = %r{\b[a-z0-9](?:[a-z0-9-]{0,61}\.)+[a-z]{2,24}(?:/[^\s<>"']*)?}i
-# разделённые пробелами домены («botmasterru .com») — типовая обфускация.
-# Одна точка тоже матчится (группа в середине — *): иначе «botmasterru .com»
-# не дотянул бы до обязательной «внутренней» точки.
-SPACED_HOST_RE = /\b[a-z0-9][a-z0-9-]{0,61}(?:\s?\.\s?[a-z0-9-]{1,61})*\s?\.\s?[a-z]{2,24}\b/i
-TRAILING_PUNCT = /[.,!?;:)\]}"']+\z/
 ⋮----
-module_function
+SCHEME_PREFIX = 'h(?:(?:[\t\n\r]?t){2}|x[\t\n\r]?x)[\t\n\r]?p[\t\n\r]?s?[\t\n\r]?:(?:[\t\n\r]?[/\\\\])*'
+SCHEME_URL_RE = %r{
 ⋮----
-def extract(text)
+p = decode_unreserved("/#{path}")
 ⋮----
-# @param raw [String]
-# @return [Hash, nil] { host:, path: } — host в punycode-lowercase,
-#   path без query/якоря, nil если вход не похож на URL
-def normalize(raw)
+# Percent-escape'и хоста — единым потоком байт: склеиваем подряд идущие
 ⋮----
-# percent-encoding в хосте декодируем до всех проверок: браузер
-# разрешает %62otmasterru.com и botmasterru%2ecom именно в
-# botmasterru.com, а без декода оба обходили blocked-запись. Декодируем
-# раньше userinfo/порта — иначе %40/%3A (%user@host/, %:8080) разошлись
-# бы с проверками ниже. %2F в хосте — мусор, не URL: после декода это
-# слэш, и такой вход отбрасываем, а не гадаем.
+def decode_percent_utf8(str)
 ⋮----
-# userinfo не должна менять ключ: https://user@botmasterru.com/x
-# обходил blocked-домен, превращаясь в «user@botmasterru.com»; хост
-# отделяем по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host»
-⋮----
-authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
-⋮----
-# IDN-разделители (· U+3002, ． U+FF0E, ｡ U+FF61) — точки ДО IDNA:
-# иначе «botmasterru。com» уходил в punycode-лейбл и проверку на '.'
-# проходил мимо, не сматчив blocked-домен
-⋮----
-# www снимаем после userinfo: https://user@www.evil/x иначе оставлял
-# 'www.evil' и обходил blocked-домен 'evil'
-⋮----
-authority = authority.sub(/\.\z/, '')   # финальная точка FQDN-стиля
-⋮----
-# мусорный вход не должен ронять фильтр — это просто не URL
-⋮----
-# @param path [String, nil] путь без query/якоря
-# @return [String, nil] путь с убранными dot-сегментами (RFC 3986 §5.2.4)
-#   или nil для корня. Запись и проверка обязаны сводить `/clean/../x`
-#   и `/x` к одному ключу: у URL-only фидов (phishing_links) доменной
-#   записи нет, и несвённый dot-сегмент — полный обход блока пути.
-#   Percent-escape'и над unreserved-символами (`%70` = `p`) декодируем
-⋮----
-def normalize_path(path)
-⋮----
-# RFC 3986 unreserved — A-Z / a-z / 0-9 / -._~: escape над ними это то
-# же значение, декодируем в символ. Прочие escape'и сохраняем как есть,
-⋮----
-def decode_unreserved(str)
-⋮----
-def remove_dot_segments(input)
+def decode_multibyte_escapes(str)
 </file>
 
 </files>

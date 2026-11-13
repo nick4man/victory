@@ -201,9 +201,9 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'example.com', path: '/a/b')
     end
 
-    it 'зарезервированные эскейпы пути сохраняются, hex приводится к нижнему регистру' do
+    it 'зарезервированные эскейпы пути сохраняются, hex приводится к ВЕРХНЕМУ регистру (WHATWG-сериализация)' do
       expect(described_class.normalize('https://example.com/a%2Fb'))
-        .to eq(host: 'example.com', path: '/a%2fb')
+        .to eq(host: 'example.com', path: '/a%2Fb')
     end
 
     it 'мусор не падает, возвращает nil' do

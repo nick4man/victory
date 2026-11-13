@@ -96,8 +96,9 @@ module AdminTokenAuth
       end
       # Невалидный ?token — стоп, без fallback на cookie: иначе POST с любым
       # мусорным токеном в контексте живой админской сессии проходил бы вне
-      # CSRF-проверки (контроллеры снимают verify_authenticity_token по факту
-      # наличия параметра, см. Admin::SpamBlockedEntriesController)
+      # CSRF-проверки (контроллеры снимают verify_authenticity_token, только
+      # когда токен валиден и digest записан в сессию, см.
+      # Admin::SpamBlockedEntriesController)
       return false
     end
 

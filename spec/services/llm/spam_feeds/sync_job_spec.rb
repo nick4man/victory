@@ -306,6 +306,41 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'up.example').status).to eq('blocked')
   end
 
+  it 'сбой ранее подтвердившего blocked-фида при выпуске ключа владельцем не протухает запись' do
+    # прогон 1: ключ в двух blocked-фидах → blocked, подтверждения обоих
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||keep-multi.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 200, body: "keep-multi.example\n")
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'keep-multi.example')
+    expect(entry.status).to eq('blocked')
+    expect(entry.confirmations.keys).to contain_exactly('hagezi_tif', 'phishing_domains')
+
+    # прогон 2: владелец (TIF) успешно отдал список уже без ключа,
+    # phishing_domains упал — запись не должна протухать по чужому сбою
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||other-tif.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 500)
+
+    described_class.perform_now
+    entry = SpamBlockedEntry.find_by(value: 'keep-multi.example')
+    expect(entry.deleted_at).to be_nil
+    expect(entry.status).to eq('blocked')
+
+    # прогон 3: оба фида живы и ключа не видят — защита снята, запись протухает
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||other-tif.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['phishing_domains'][:url])
+      .to_return(status: 200, body: "other-phish.example\n")
+
+    described_class.perform_now
+
+    expect(SpamBlockedEntry.unscoped.find_by(value: 'keep-multi.example').deleted_at).to be_present
+  end
+
   it 'падение одного фида не роняет остальные' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)
