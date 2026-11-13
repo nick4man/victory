@@ -59,17 +59,24 @@ module Llm
 
       authority, path = s.split('/', 2)
       authority = authority.to_s
+      # userinfo не должна менять ключ: https://user@botmasterru.com/x
+      # обходил blocked-домен, превращаясь в «user@botmasterru.com». Отделяем
+      # по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host». Первый проход
+      # — по сырому authority, ДО percent-decoding: %2F/%5C валидны именно в
+      # userinfo (WHATWG-URL: new URL('https://%75ser%2Fx@botmasterru.com/x')
+      # даёт host == botmasterru.com), а декод всего authority превращал их
+      # в слэш и отбрасывал весь вход мимо blocked-домена.
+      authority = authority.rpartition('@').last if authority.include?('@')
       # percent-encoding в хосте декодируем до всех проверок: браузер
       # разрешает %62otmasterru.com и botmasterru%2ecom именно в
       # botmasterru.com, а без декода оба обходили blocked-запись. Декодируем
-      # раньше userinfo/порта — иначе %40/%3A (%user@host/, %:8080) разошлись
-      # бы с проверками ниже. %2F в хосте — мусор, не URL: после декода это
-      # слэш, и такой вход отбрасываем, а не гадаем.
+      # раньше порта — иначе %3A (%:8080) разошёлся бы с проверкой ниже.
+      # %2F в хосте — мусор, не URL: после декода это слэш, и такой вход
+      # отбрасываем, а не гадаем.
       authority = authority.gsub(/%[0-9a-f]{2}/i) { |hex| hex[1..].hex.chr }
       return nil if authority.match?(%r{[/\\\s]})
-      # userinfo не должна менять ключ: https://user@botmasterru.com/x
-      # обходил blocked-домен, превращаясь в «user@botmasterru.com»; хост
-      # отделяем по ПОСЛЕДНЕМУ '@' — user@foo@host иначе давал «foo@host»
+      # второй проход на случай %40 в «хосте» (evil%40botmasterru.com): браузер
+      # такой хост не принимает, а нам безопаснее сматчить хост и дропнуть
       authority = authority.rpartition('@').last if authority.include?('@')
       authority = authority.sub(/:\d+\z/, '') # порт менял ключ: example.com:443 ≠ example.com
       authority = authority.downcase

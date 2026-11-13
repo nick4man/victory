@@ -123,6 +123,18 @@ RSpec.describe Llm::SpamFilter do
         end
       end
 
+      it 'percent-encoded userinfo со слэшем не обходит blocked-домен (WHATWG: хост валиден)' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        ['https://%75ser%2Fx@botmasterru.com/x', 'https://%75ser%5Cx@botmasterru.com/x'].each do |spam_url|
+          result = described_class.classify("посмотрите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url} не должен обходить блок"
+          expect(result[:reason]).to eq(:spam_link)
+        end
+      end
+
       it 'userinfo с www не обходит blocked-домен: https://user@www.botmasterru.com/x' do
         SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
 

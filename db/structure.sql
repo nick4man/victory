@@ -8130,7 +8130,7 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public;
+SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261112120000'),

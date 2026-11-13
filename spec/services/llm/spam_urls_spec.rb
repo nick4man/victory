@@ -104,6 +104,13 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'botmasterru.com', path: '/x')
     end
 
+    it '%2F/%5C валидны в userinfo, а не в хосте: userinfo отсекается до декода' do
+      expect(described_class.normalize('https://%75ser%2Fx@botmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+      expect(described_class.normalize('https://%75ser%5Cx@botmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
     it 'слэш через %2F в хосте — мусор, не URL' do
       expect(described_class.normalize('https://botmasterru.com%2Fevil/x')).to be_nil
     end
