@@ -229,6 +229,30 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'valid.example/path')).to be_nil
   end
 
+  it 'домен, выпавший из blocked-фида, но живой в suspect-фиде, понижается до suspect' do
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||down.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||down.example^\n")
+
+    described_class.perform_now
+    expect(SpamBlockedEntry.find_by(value: 'down.example').status).to eq('blocked')
+
+    # второй прогон: TIF домен больше не отдаёт (пустая выгрузка отклонена),
+    # шортенеры — по-прежнему; blocked не должен «липнуть» без blocked-фида
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: '')
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||down.example^\n")
+
+    described_class.perform_now
+
+    entry = SpamBlockedEntry.find_by(value: 'down.example')
+    expect(entry.status).to eq('suspect')
+    expect(entry.source).to eq('hagezi_shorteners')
+    expect(entry.deleted_at).to be_nil
+  end
+
   it 'падение одного фида не роняет остальные' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 500)

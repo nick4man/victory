@@ -7,7 +7,11 @@ module Llm
   # расходится с входом: IDN-омографы (sberbаnk.ru с русской «а»), www-,
   # query/utm-метки и якоря давали бы разные ключи одного ресурса.
   module SpamUrls
-    SCHEME_URL_RE = %r{(?:https?|hxxps?)://[^ <>"']+}i
+    # tab/LF/CR WHATWG вырезает из URL до разбора — схема с такими символами
+    # внутри всё равно URL (ht\ttps://… = https://…, обход blocked-домена —
+    # ревью Kimi, раунд 11), поэтому допускаем их между символами схемы;
+    # в остальной части токена — только пробел является разделителем
+    SCHEME_URL_RE = %r{h(?:(?:[\t\n\r]?t){2}|x[\t\n\r]?x)[\t\n\r]?p[\t\n\r]?s?://[^ <>"']+}i
     # «голый» хост латиницей с необязательным путём. Кириллица в regex
     # намеренно запрещена: иначе «м.кв» в описании квартиры читался бы
     # как домен и улетал в карантин.
@@ -32,7 +36,33 @@ module Llm
       raw += rest.scan(BARE_HOST_RE)
       rest = rest.gsub(BARE_HOST_RE, ' ')
       raw += rest.scan(SPACED_HOST_RE).map { |s| s.gsub(/\s+/, '') }
-      raw.map { |r| r.sub(TRAILING_PUNCT, '') }.reject(&:empty?).uniq
+      raw.map { |r| strip_trailing_punct(r) }.reject(&:empty?).uniq
+    end
+
+    # Концевая пунктуация предложения — не часть URL, но ')'/']'/'}'/кавычки
+    # валидны в пути WHATWG. Для схема-URL их не срезаем никогда (иначе
+    # blocked 'host/phish(login)' из фида расходился с проверкой — extract
+    # съедал ')' из ключа); предложную .!,;: и кавычки срезаем. «Голые» хоста
+    # идут через полный TRAILING_PUNCT со сверкой парности: (t.me/x) → t.me/x,
+    # а t.me/x(1) сохраняется.
+    def strip_trailing_punct(token)
+      return token.sub(/[.,!?;:'"]+\z/, '') if token.match?(%r{\Ah(?:(?:[\t\n\r]?t){2}|x[\t\n\r]?x)[\t\n\r]?p[\t\n\r]?s?://}i)
+
+      t = token
+      loop do
+        if t.match?(/[.,!?;:]\z/)
+          t = t[0..-2]
+        elsif (m = t.match(/([)\]}>"'])\z/))
+          pairs = { ')' => '(', ']' => '[', '}' => '{', '>' => '<', "'" => "'", '"' => '"' }
+          balanced = t.count(pairs[m[1]]) >= t.count(m[1])
+          break if balanced
+
+          t = t[0..-2]
+        else
+          break
+        end
+      end
+      t
     end
 
     # @param raw [String]
@@ -41,6 +71,10 @@ module Llm
     def normalize(raw)
       s = raw.to_s.strip
       return nil if s.empty?
+
+      # WHATWG вырезает ASCII tab/LF/CR из URL до разбора: ht\ttps://…,
+      # botmaster\tru.com — это валидные ссылки (ревью Kimi, раунд 11)
+      s = s.gsub(/[\t\n\r]/, '')
 
       # WHATWG URL для специальных схем (http/https, в т.ч. defang-hxxp):
       # бэкслеш — разделитель пути, повторные слэши после схемы схлопываются.

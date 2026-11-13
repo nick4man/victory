@@ -143,6 +143,22 @@ RSpec.describe Llm::SpamUrls do
       expect(unicode).to start_with('/%D1%84')
     end
 
+    it 'скобки в пути схема-URL сохраняются; у «голых» хостов срезаются только непарные' do
+      expect(described_class.extract('войдите https://host.example/phish(login)'))
+        .to eq(['https://host.example/phish(login)'])
+      expect(described_class.extract('подпишись (t.me/spam_channel)'))
+        .to eq(['t.me/spam_channel'])
+      expect(described_class.extract('канал t.me/spam_channel(1)'))
+        .to eq(['t.me/spam_channel(1)'])
+    end
+
+    it 'tab внутри схемы допускается извлечением и вырезается нормализацией' do
+      expect(described_class.extract("смотрите ht\ttps://host.example/x"))
+        .to eq(["ht\ttps://host.example/x"])
+      expect(described_class.normalize("ht\ttps://host.example/x"))
+        .to eq(host: 'host.example', path: '/x')
+    end
+
     it 'dot-сегменты сводятся: /clean/../phish/login = /phish/login' do
       expect(described_class.normalize('https://shared-host.example/clean/../phish/login'))
         .to eq(host: 'shared-host.example', path: '/phish/login')
