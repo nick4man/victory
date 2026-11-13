@@ -94,6 +94,7 @@ app/controllers/admin/referrals_controller.rb — module Admin, class ReferralsC
 app/controllers/admin/residential_complexes_controller.rb — module Admin, class ResidentialComplexesController
 app/controllers/admin/reviews_controller.rb — module Admin, class ReviewsController
 app/controllers/admin/sessions_controller.rb — module Admin, class SessionsController
+app/controllers/admin/spam_blocked_entries_controller.rb — module Admin, class SpamBlockedEntriesController
 app/controllers/admin/topnlab_status_controller.rb — module Admin, class TopnlabStatusController
 app/controllers/admin/users_controller.rb — module Admin, class UsersController
 app/controllers/admin/zhk_discrepancies_controller.rb — module Admin, class ZhkDiscrepanciesController
