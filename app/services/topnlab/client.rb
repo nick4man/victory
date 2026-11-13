@@ -310,17 +310,19 @@ module Topnlab
       data.is_a?(Hash) && data.any? && data.each_value.all?(Hash)
     end
 
-    # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` — то есть в БД и на
-    # админ-страницу. Если Topnlab когда-нибудь отразит запрос в error-теле,
-    # туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того, как строка станет логом.
-    # Строки (тела ответов) фильтруем напрямую: inspect экранирует кавычки
-    # и ломал бы regex в ветке для Hash.
+    # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` и `CrmCard#export_error`
+    # — то есть в БД, на админ-страницу и в Telegram. Если Topnlab отразит
+    # запрос в error-теле, туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того,
+    # как строка станет логом: regex закрывает типовые формы `key=…`, а само
+    # значение ключа — из любой вложенности, включая сериализованный JSON
+    # внутри строки (ревью PR #210).
     def scrub(data)
-      if data.is_a?(String)
-        return data.gsub(/((?:app)?key"?\s*[=:]\s*"?)[^&"',\s}\\]+/i, '\1[FILTERED]')
-      end
-
-      data.inspect.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}]+/i, '\1[FILTERED]')
+      text = data.is_a?(String) ? data : data.inspect
+      redacted = text.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}\\]+/i, '\1[FILTERED]')
+      # Вложенный сериализованный JSON (экранированные кавычки внутри строки)
+      # обходит regex — вырезаем само значение ключа напрямую, независимо от
+      # формы вложенности (ревью PR #210).
+      @api_key.present? ? redacted.gsub(@api_key, '[FILTERED]') : redacted
     end
 
     # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).

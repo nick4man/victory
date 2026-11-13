@@ -45,11 +45,26 @@ module CrmCards
 
     def export_failed(card)
       Permissions.moderators.each { |moderator| deliver(moderator, "⚠️ <b>Выгрузка карточки ##{card.id} не удалась</b>", card) }
-      dm(card.responsible, "⚠️ Выгрузка карточки ##{card.id} в CRM не удалась — у модератора кнопка повтора.")
+      dm(card.responsible, export_failed_hint(card))
       refresh_lead_anchor(card)
     end
 
     private
+
+    # Текст ответственному при сбое выгрузки. Номер есть, а статус не
+    # записан — кнопки повтора в CardView нет вовсе, и «у модератора кнопка
+    # повтора» было бы ложью: нужна ручная сверка и правка статуса (ревью
+    # PR #210). Неоднозначный сбой (ответ CRM потерялся) — повтор только
+    # после такой же сверки.
+    def export_failed_hint(card)
+      if card.crm_id.present?
+        "⚠️ Заявка создана в CRM под номером #{card.crm_id}, но статус не записан — модератор сверит и поправит вручную."
+      elsif card.export_retryable == false
+        '⚠️ Ответ CRM потерялся — заявка могла создаться. Модератор сверит её с CRM по телефону и запустит повтор после сверки.'
+      else
+        "⚠️ Выгрузка карточки ##{card.id} в CRM не удалась — у модератора кнопка повтора."
+      end
+    end
 
     # @return [Boolean] доставлено ли
     def deliver(user, header, card)

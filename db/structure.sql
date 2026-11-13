@@ -761,7 +761,8 @@ CREATE TABLE public.crm_cards (
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
-    export_attempt_token character varying
+    export_attempt_token character varying,
+    export_retryable boolean DEFAULT true NOT NULL
 );
 
 
@@ -7988,6 +7989,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261113100000'),
 ('20261112120000'),
 ('20261112034116'),
 ('20261108210000'),

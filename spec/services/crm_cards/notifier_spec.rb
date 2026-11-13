@@ -79,6 +79,28 @@ RSpec.describe CrmCards::Notifier do
     expect(sent.find { |m| m[:chat_id] == agent.dm_chat_id }[:text]).to include('кнопка повтора')
   end
 
+  # Регресс ревью PR #210 (round 5): номер есть, а статус не записан — кнопки
+  # повтора в CardView нет, «у модератора кнопка повтора» было бы ложью.
+  it 'заявка создана, статус не записан: автору — про ручную сверку, без «кнопки повтора»' do
+    card.update!(status: 'export_failed', crm_id: '4455', export_retryable: false,
+                 export_error: 'Заявка уже создана в CRM под номером 4455, но статус не записан.')
+
+    notifier.export_failed(card)
+
+    text = sent.find { |m| m[:chat_id] == agent.dm_chat_id }[:text]
+    expect(text).to include('4455', 'сверит и поправит вручную')
+    expect(text).not_to include('кнопка повтора')
+  end
+
+  it 'неоднозначный сбой: автору — сверить заявку с CRM перед повтором' do
+    card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
+
+    notifier.export_failed(card)
+
+    expect(sent.find { |m| m[:chat_id] == agent.dm_chat_id }[:text])
+      .to include('Ответ CRM потерялся', 'сверит её с CRM')
+  end
+
   it 'сбой отправки в Telegram не роняет конвейер' do
     allow(tg_client).to receive(:send_message).and_raise(Telegram::Client::Error, 'bot was blocked')
 

@@ -109,11 +109,10 @@ module CrmCards
     # Только для ExportJob. Захват approved → exporting атомарный: двойной
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
     # Токен попытки ставится тем же update_all: проснувшаяся stale-попытка
-    # ничего не перезапишет. Живость попытки — статусная строка, а не
-    # advisory lock: свежий 'exporting' блокирует retry безусловно (разрыв
-    # соединения отпускает lock раньше, чем завершится HTTP-вызов),
-    # stale-окно требует ещё и свободного ExportLock — смерть владельца
-    # закрывает сессию (ревью PR #210).
+    # ничего не перезапишет. Retry из 'exporting' (свежего или stale) в
+    # retry_export! запрещён безусловно: advisory lock отпускается с закрытием
+    # DB-сессии раньше завершения HTTP-вызова importClient, по свободному
+    # lockу живость попытки не доказать (ревью PR #210).
     def export!(card)
       unless ExportLock.try_acquire(card)
         Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} выгрузку уже ведёт другой процесс — job пропущен")
@@ -139,7 +138,12 @@ module CrmCards
       begin
         outcome = exporter.call(card)
       rescue StandardError => e
-        return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token)
+        # Topnlab::Client::Error — CRM ответила отказом: заявка не создана,
+        # повтор безопасен. Сырые сетевые ошибки (ReadTimeout и т.п.) после
+        # отправки неоднозначны — CRM могла принять заявку, повтор только
+        # после ручной сверки модератора с CRM (ревью #210).
+        return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token,
+                            retryable: e.is_a?(Topnlab::Client::Error))
       end
 
       # Запись номера — условная по токену и атомарная: retry мог сменить
@@ -191,32 +195,36 @@ module CrmCards
       result
     end
 
-    def retry_export!(card, actor:)
+    def retry_export!(card, actor:, confirmed: false)
       result = card.with_lock do
         next deny(moderator_denial(actor, 'Повторять выгрузку')) unless moderator?(actor)
         next deny('Повтор есть только у заявок — объект вносится в CRM вручную.') unless card.kind_lead?
-        if card.status_exporting?
-          unless card.export_stale?
-            # Свежая попытка жива, пока сама не перевела статус: разрыв
-            # соединения отпускает advisory lock мгновенно, но HTTP-вызов
-            # importClient при этом ещё может выполняться. Retry запрещён
-            # безусловно — второй неидемпотентный вызов исключён (ревью #210).
-            next deny('Выгрузка ещё выполняется — дождись её завершения.')
-          end
-          # Stale: владелец молчит дольше любых HTTP-таймаутов. Повтор
-          # возможен, только если владелец доказуемо мёртв — его сессия
-          # закрыта и advisory lock свободен (свежий 'exporting' сюда
-          # не доходит: блокируется веткой выше без проверки lock).
-          next deny('Предыдущая попытка ещё держит выгрузку — дождись её завершения.') if ExportLock.in_progress?(card)
-        else
-          next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
-        end
         next deny("Заявка уже есть в CRM (#{card.crm_id}) — повтор завёл бы вторую. Статус правится вручную.") if card.crm_id.present?
 
-        transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
+        if card.status_exporting?
+          # Свежий 'exporting' — попытка жива и сама переведёт статус.
+          # Stale 'exporting' — исход неизвестен: advisory lock отпускается
+          # с закрытием DB-сессии раньше завершения HTTP-вызова importClient,
+          # по свободному lockу живость попытки не доказать (ревью #210).
+          # Автоматический повтор из неоднозначного исхода запрещён — только
+          # ручная сверка модератора с CRM и его явное подтверждение.
+          next deny('Выгрузка ещё выполняется — дождись её завершения.') unless card.export_stale?
+          next deny('Исход выгрузки неизвестен: сверь заявку с CRM и запусти повтор после сверки.') unless confirmed
+        else
+          next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
+          if card.status_export_failed? && card.export_retryable == false && !confirmed
+            # ReadTimeout/обрыв после отправки: CRM могла принять заявку, а
+            # ответ потеряться — повтор завёл бы дубль. Только сверка с CRM
+            # глазами и явное подтверждение модератора (ревью #210).
+            next deny('CRM могла принять заявку, а ответ потеряться. Сверь заявку с CRM и запусти повтор после сверки.')
+          end
+        end
+
+        transition!(card, to: 'approved', actor: actor,
+                        comment: confirmed ? 'повтор выгрузки после ручной сверки с CRM' : 'повтор выгрузки')
         # Токен чистим: живая старая попытка проснётся, увидит nil/чужой
         # токен и ничего не перезапишет (гонка с retry_export!, PR #210).
-        card.update!(export_error: nil, export_attempt_token: nil)
+        card.update!(export_error: nil, export_attempt_token: nil, export_retryable: true)
         ok(card)
       end
       ExportJob.perform_later(card.id) if result.ok?
@@ -314,14 +322,14 @@ module CrmCards
       Result.new(ok: false, error: error)
     end
 
-    def fail_export!(card, error:, attempt_token: nil)
+    def fail_export!(card, error:, attempt_token: nil, retryable: nil)
       message = error.to_s.truncate(500)
       result = card.with_lock do
         next deny('Карточка не выгружается.') unless card.status_exporting?
         next deny('Чужая попытка выгрузки — статус не трогаем.') if attempt_token && !attempt_current?(card, attempt_token)
 
         transition!(card, to: 'export_failed', actor: nil, comment: message)
-        card.update!(export_error: message)
+        card.update!(export_error: message, export_retryable: retryable)
         ok(card)
       end
       notifier.export_failed(card) if result.ok?
@@ -342,7 +350,7 @@ module CrmCards
     def lost_export_status!(card, outcome, reason, attempt_token: nil)
       Rails.logger.error("[CrmCards::Workflow] card=#{card.id} создана в CRM #{outcome.crm_id}, но статус не записан: #{reason}")
       fail_export!(card, error: "Заявка уже создана в CRM под номером #{outcome.crm_id}, но статус не записан (#{reason}). " \
-                                'Не повторяй выгрузку — поправь статус вручную.', attempt_token: attempt_token)
+                                'Не повторяй выгрузку — поправь статус вручную.', attempt_token: attempt_token, retryable: false)
     end
 
     # Попытка актуальна, только если её токен до сих пор на карточке:

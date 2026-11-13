@@ -9,6 +9,8 @@ module CrmCards
   module CardView
     KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
     RETRY_HINT = 'Если это таймаут — сначала найди клиента в CRM по телефону: заявка могла создаться.'
+    VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
+                  'модератор запускает повтор кнопкой «Повторить после сверки с CRM».'
     MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
                          'Копию договора приложи в CRM. Затем нажми «Внесено в CRM» и введи номер карточки.'
 
@@ -56,8 +58,17 @@ module CrmCards
       when 'draft', 'needs_rework' then author_rows(card) if owner || moderator
       when 'pending_review' then moderator_rows(card) if moderator
       when 'approved' then approved_rows(card, owner, moderator)
-      when 'exporting' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.export_stale? && card.crm_id.blank?
-      when 'export_failed' then [[button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")]] if moderator && card.kind_lead? && card.crm_id.blank?
+      when 'exporting'
+        # Исход неизвестен (lock не доказательство живости, ревью #210):
+        # автоматического повтора нет — только кнопка «после сверки с CRM».
+        [[button('🔁 Повторить после сверки с CRM', "crm_card:#{card.id}:retry_confirmed")]] if moderator && card.export_stale? && card.crm_id.blank?
+      when 'export_failed'
+        # Неоднозначный сбой (ответ CRM потерялся) — повтор только после
+        # ручной сверки; отказ CRM — обычная кнопка повтора.
+        ambiguous = card.export_retryable == false
+        label = ambiguous ? '🔁 Повторить после сверки с CRM' : '🔁 Повторить выгрузку'
+        callback = ambiguous ? "crm_card:#{card.id}:retry_confirmed" : "crm_card:#{card.id}:retry"
+        [[button(label, callback)]] if moderator && card.kind_lead? && card.crm_id.blank?
       end || []
     end
 
@@ -119,11 +130,12 @@ module CrmCards
 
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
       when 'exporting'
-        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
+        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут — исход неизвестен. #{VERIFY_HINT}"] : []
       when 'exported'
         exported_lines(card)
       when 'export_failed'
-        ['', "⚠️ <b>Выгрузка не удалась:</b> #{escape(card.export_error)}", "<i>#{RETRY_HINT}</i>"]
+        hint = card.export_retryable == false ? VERIFY_HINT : RETRY_HINT
+        ['', "⚠️ <b>Выгрузка не удалась:</b> #{escape(card.export_error)}", "<i>#{hint}</i>"]
       else []
       end
     end

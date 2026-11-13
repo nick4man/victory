@@ -176,6 +176,33 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс ревью PR #210 (round 5): сериализованный JSON внутри строки
+    # ломает regex scrub'а (экранированные кавычки) — значение ключа
+    # вычищается напрямую, независимо от формы вложенности.
+    it 'appkey внутри сериализованного JSON в строке — вычищен из текста ошибки' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+
+    it 'сырое тело HTTP-ошибки с экранированным JSON — ключ тоже вычищен' do
+      stub_request(:post, import_re)
+        .to_return(status: 500, body: '{"status":"error","request":"{\\"appkey\\":\\"test-key\\"}"}')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then
@@ -200,6 +227,19 @@ RSpec.describe Topnlab::Client do
     it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
       stub_request(:post, transfer_re)
         .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'no agent' }.to_json)
+
+      expect do
+        client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('FILTERED')
+        expect(e.message).not_to include('test-key')
+      }
+    end
+
+    # Тот же регресс round 5: сериализованный JSON внутри строки.
+    it 'appkey внутри сериализованного JSON в строке — вычищен из текста ошибки' do
+      stub_request(:post, transfer_re)
+        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
 
       expect do
         client.transfer_client(order_id: 4455, email: 'agent@victory62.org')

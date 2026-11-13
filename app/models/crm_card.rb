@@ -61,9 +61,10 @@ class CrmCard < ApplicationRecord
   end
 
   # Заявка, застрявшая дольше EXPORT_STALE_AFTER: джоб не встал в очередь
-  # после одобрения (approved) — самый частый случай. Статус exporting retry
-  # разрешает без ожидания: ExportLock.in_progress? отличает живую попытку
-  # (отказ) от умершей (лок отпущен закрытием соединения — повтор безопасен).
+  # после одобрения (approved) — самый частый случай, повторяется модератором
+  # без сверки: попытка так и не началась. Для exporting stale — исход
+  # неизвестен (lock не доказательство живости, ревью #210): Workflow требует
+  # ручной сверки с CRM.
   def export_stale?
     kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
   end

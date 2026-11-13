@@ -85,12 +85,19 @@ RSpec.describe CrmCards::CardView do
     expect(callbacks(described_class.render(card, viewer: director))).to eq([])
   end
 
-  it 'зависшая выгрузка: предупреждение и повтор модератору' do
+  it 'зависшая выгрузка: предупреждение и повтор модератору только после сверки с CRM' do
     card.update!(status: 'exporting')
     card.update_columns(updated_at: 20.minutes.ago)
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('висит дольше 15 минут')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
+    expect(described_class.render(card, viewer: director)[:text]).to include('висит дольше 15 минут', 'исход неизвестен')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry_confirmed"])
+  end
+
+  it 'неоднозначный сбой выгрузки — повтор только после сверки с CRM' do
+    card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
+
+    expect(described_class.render(card, viewer: director)[:text]).to include('Net::ReadTimeout', 'Повторить после сверки')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry_confirmed"])
   end
 
   it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do

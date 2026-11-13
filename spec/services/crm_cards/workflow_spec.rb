@@ -198,7 +198,7 @@ RSpec.describe CrmCards::Workflow do
 
       workflow.export!(card)
 
-      expect(card.reload).to have_attributes(status: 'export_failed', crm_id: '4455')
+      expect(card.reload).to have_attributes(status: 'export_failed', crm_id: '4455', export_retryable: false)
       expect(card.export_error).to include('4455').and include('Не повторяй')
       retry_result = nil
       expect { retry_result = workflow.retry_export!(card, actor: director) }.not_to have_enqueued_job(CrmCards::ExportJob)
@@ -234,15 +234,32 @@ RSpec.describe CrmCards::Workflow do
       expect(Rails.logger).to have_received(:error).with(a_string_including('номером 4455', "##{card.id}"))
     end
 
-    it 'ошибка CRM — export_failed с текстом; повтор только модератором' do
+    it 'ошибка CRM — export_failed с текстом; повторяемый сбой, повтор только модератором' do
       allow(exporter).to receive(:call).and_raise(Topnlab::Client::Error, 'POST /call/main/importClient/: HTTP 502')
 
       workflow.export!(card)
 
-      expect(card.reload).to have_attributes(status: 'export_failed', export_error: a_string_including('HTTP 502'))
+      expect(card.reload).to have_attributes(status: 'export_failed', export_error: a_string_including('HTTP 502'),
+                                             export_retryable: true)
       expect(notifier).to have_received(:export_failed).with(card)
       expect(workflow.retry_export!(card, actor: agent).error).to include('только модератор')
       expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+      expect(card.reload).to be_status_approved
+    end
+
+    # Регресс ревью PR #210 (round 5): ReadTimeout/обрыв после отправки —
+    # CRM могла принять заявку, а ответ потеряться. Сбой неоднозначен:
+    # автоматический повтор запрещён, только ручная сверка модератора с CRM.
+    it 'потерянный ответ CRM — неоднозначный сбой: повтор только после сверки' do
+      allow(exporter).to receive(:call).and_raise(Net::ReadTimeout)
+
+      workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      retry_result = workflow.retry_export!(card, actor: director)
+      expect(retry_result.error).to include('Сверь заявку с CRM')
+      expect { workflow.retry_export!(card, actor: director, confirmed: true) }
+        .to have_enqueued_job(CrmCards::ExportJob).with(card.id)
       expect(card.reload).to be_status_approved
     end
 
@@ -252,13 +269,12 @@ RSpec.describe CrmCards::Workflow do
       expect { workflow.retry_export!(card, actor: director) }.to have_enqueued_job(CrmCards::ExportJob).with(card.id)
     end
 
-    # Регресс ревью PR #210 (блокер 1): пока живая попытка держит advisory
-    # lock, retry отказывает и второй job не стартует — второй неидемпотентный
+    # Регресс ревью PR #210: пока попытка жива (свежий 'exporting'), retry
+    # отказывает и второй job не стартует — второй неидемпотентный
     # importClient невозможен, гонки двух живых попыток нет.
     it 'живая выгрузка блокирует повтор: retry отказывает, вторая попытка не стартует' do
       retry_result = nil
       second_result = nil
-      allow(CrmCards::ExportLock).to receive(:in_progress?).and_return(true)
       lock_calls = 0
       allow(CrmCards::ExportLock).to receive(:try_acquire).and_wrap_original do |m, c|
         lock_calls += 1
@@ -266,8 +282,7 @@ RSpec.describe CrmCards::Workflow do
       end
       allow(exporter).to receive(:call) do |c|
         # Первая попытка «в сети» внутри exporter.call: модератор жмёт
-        # «Повторить» (другой процесс — in_progress? правда) и второй job
-        # встаёт в очередь (try_acquire занят).
+        # «Повторить» и второй job встаёт в очередь (try_acquire занят).
         retry_result = workflow.retry_export!(c.reload, actor: director)
         second_result = workflow.export!(c.reload)
         outcome
@@ -282,17 +297,12 @@ RSpec.describe CrmCards::Workflow do
       expect(exporter).to have_received(:call).once
     end
 
-    # Регресс ревью PR #210 (блокер 1, сценарий ревьюера): разрыв соединения
-    # владельца отпускает advisory lock, НО первая попытка ещё внутри
-    # exporter.call и HTTP-вызов importClient ещё может выполняться. Retry
-    # обязан отказать по свежему статусу 'exporting' — вторая попытка и
-    # второго вызова exporter не существует, даже когда lock свободен.
-    it 'живая попытка со свободным lock: retry отказывает, второго exporter.call нет' do
+    # Регресс ревью PR #210: retry из 'exporting' не смотрит на advisory
+    # lock вовсе — свежий статус уже отвечает «живо». Второй export! не
+    # пройдёт атомарный захват статуса, даже когда lock свободен.
+    it 'живая попытка: retry отказывает по статусу, второго exporter.call нет' do
       retry_result = nil
       second_result = nil
-      # Моделируем разрыв соединения владельца: in_progress? лжёт «свободно»,
-      # хотя первая попытка ещё в сети.
-      allow(CrmCards::ExportLock).to receive(:in_progress?).and_return(false)
       allow(exporter).to receive(:call) do |c|
         retry_result = workflow.retry_export!(c.reload, actor: director)
         second_result = workflow.export!(c.reload)
@@ -309,25 +319,43 @@ RSpec.describe CrmCards::Workflow do
       expect(exporter).to have_received(:call).once
     end
 
-    # Регресс ревью PR #210 (блокер 1, восстановление): владелец мёртв — его
-    # сессия закрыта (advisory lock свободен) и карточка stale. Retry проходит,
-    # вторая попытка выгружается; проснувшаяся первая попытка не перезаписывает
-    # номер: условная по токену атомарная запись отсекает её, даже если токен
-    # сменился между проверкой и записью.
-    it 'мёртвая попытка: retry проходит, stale-попытка не перезаписывает номер' do
+    # Регресс ревью PR #210 (round 5, сценарий ревьюера): stale 'exporting'
+    # при свободном advisory lock — первая попытка всё ещё жива внутри
+    # exporter.call (разрыв DB-сессии отпускает lock раньше HTTP-вызова, по
+    # lockу живость не доказать). Автоматический retry запрещён: второго
+    # exporter.call не существует, пока первая попытка жива.
+    it 'stale-выгрузка: автоматический retry отказывает — второго exporter.call нет' do
+      retry_result = nil
+      allow(exporter).to receive(:call) do |c|
+        c.update_columns(updated_at: 20.minutes.ago)
+        retry_result = workflow.retry_export!(c.reload, actor: director)
+        CrmCards::LeadExporter::Outcome.new(crm_id: '1111', warning: nil)
+      end
+
+      expect(workflow.export!(card)).to be_ok
+
+      expect(retry_result).not_to be_ok
+      expect(retry_result.error).to include('Исход выгрузки неизвестен')
+      expect(card.reload).to have_attributes(status: 'exported', crm_id: '1111')
+      expect(exporter).to have_received(:call).once
+    end
+
+    # Восстановление после сверки: модератор нашёл клиента в CRM глазами,
+    # дубля нет — подтверждённый повтор запускается; проснувшаяся первая
+    # попытка не перезаписывает номер: условная по токену запись отсекает её.
+    it 'повтор после ручной сверки: вторая попытка выгружается, живая первая не перезаписывает номер' do
       first_call = true
       retry_result = nil
       second_result = nil
-      allow(CrmCards::ExportLock).to receive(:in_progress?).and_return(false)
       allow(exporter).to receive(:call) do |c|
         next CrmCards::LeadExporter::Outcome.new(crm_id: '2222', warning: nil) unless first_call
 
         first_call = false
-        # Первая попытка умирает (процесс падает — сессия и lock закрыты),
-        # карточка делается stale: модератор жмёт «Повторить», вторая
-        # попытка проходит целиком, пока первая ещё «в сети».
+        # Первая попытка «в сети», карточка stale: модератор сверил CRM и
+        # подтвердил повтор — вторая попытка проходит целиком, пока первая
+        # ещё выполняется.
         c.update_columns(updated_at: 20.minutes.ago)
-        retry_result = workflow.retry_export!(c.reload, actor: director)
+        retry_result = workflow.retry_export!(c.reload, actor: director, confirmed: true)
         second_result = workflow.export!(c.reload)
         CrmCards::LeadExporter::Outcome.new(crm_id: '1111', warning: nil)
       end
@@ -340,6 +368,24 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload).to have_attributes(status: 'exported', crm_id: '2222')
       expect(exporter).to have_received(:call).twice
       expect(notifier).to have_received(:exported).once
+    end
+
+    # Сквозной регресс ревью PR #210 (round 5, блокер 1): реальный
+    # Topnlab::Client с WebMock; ответ CRM отражает appkey сериализованным
+    # JSON внутри строки. Секрет не должен доехать до export_error
+    # (БД, журнал переходов, Telegram-модераторы).
+    it 'appkey из ошибочного ответа CRM не доезжает до export_error' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: true)
+      expect(card.export_error).to include('[FILTERED]')
+      expect(card.export_error).not_to include('test-key')
     end
   end
 end
