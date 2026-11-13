@@ -281,6 +281,22 @@ RSpec.describe CrmCards::Workflow do
       expect(real_workflow.retry_export!(card, actor: director).error).to include('Повтор запрещён')
     end
 
+    # Сквозная регрессия ревью PR #210 (round 9+++++): status:null с insertedId
+    # не доказательство отказа — заявка могла быть создана, «Повторить
+    # выгрузку» дал бы второй importClient и дубль.
+    it 'status null с insertedId — неоднозначный исход: retryable false, повтор запрещён' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: { status: nil, insertedId: 4455 }.to_json)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      expect(real_workflow.retry_export!(card, actor: director).error).to include('Повтор запрещён')
+    end
+
     # Регресс ревью PR #210 (round 6/7): неоднозначный транспортный исход —
     # CRM могла принять заявку, а ответ потеряться. Новый importClient
     # запрещён безусловно (сверка глазами не закрывает окно между проверкой

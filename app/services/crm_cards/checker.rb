@@ -48,7 +48,15 @@ module CrmCards
       # StaffSubmissionDetector, в том числе клиенту, чьё имя совпало с именем
       # сотрудника («Ирина»). Запрет по нему навсегда закрыл бы такому клиенту
       # дорогу в CRM — модератор видит пометку в карточке (CardView) и решает сам.
+      # Исключение — probe-прогон бота (issue #214): lead_test_mode ставится
+      # только по metadata['test'] — такой лид запрещён в CRM на уровне Inquiry
+      # (test? глушит sync_to_crm!), и здесь он тоже обязан быть заблокирован:
+      # прогон правдоподобен и с заполненными assigned_to/first_contact_at
+      # прошёл бы модерацию (ревью PR #210, round 9+++++).
       errors = []
+      if lead.staff_test_matched_by == StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+        errors << ['lead', 'Тестовый прогон бота — в CRM не выгружается.']
+      end
       errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
       errors << ['lead', 'Лид никому не назначен — сначала назначь ответственного.'] unless lead.assigned?
       if lead.first_contact_at.nil? && lead.current_stage == 'new'

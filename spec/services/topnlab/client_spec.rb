@@ -417,6 +417,21 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9++++ (блокер): телефон без кода страны вовсе —
+    # «7 (900) 123-45-67» — не попадал ни под литерал (в запросе «7900…»),
+    # ни под +7/8-паттерны.
+    it 'переформатированный телефон (7 без плюса) — вычищен из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', message: 'звонили с 7 (900) 123-45-67' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('звонили с', '[FILTERED]')
+        expect(e.message).not_to include('123-45-67')
+      }
+    end
+
     # Регресс round 9++++ (блокер): emoji в комментарии отражается CRM
     # суррогатной парой (\ud83d\ude00), escaped_forms давал \u1f600 —
     # теперь текст канонизируется unescape_json до сырых символов.
@@ -431,6 +446,18 @@ RSpec.describe Topnlab::Client do
         expect(e.message).to include('rejected comment=')
         expect(e.message).not_to include('\ud83d', '\ude00', '😀')
       }
+    end
+
+    # Регресс round 9+++++ (блокер): не-ok status с insertedId (например
+    # {"status":null,"insertedId":4455}) — заявка могла быть создана; повтор
+    # дал бы дубль. Неоднозначный исход, повтор запрещён (AmbiguousError).
+    it 'status null с insertedId — AmbiguousError, не повторяемый отказ' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: nil, insertedId: 4455 }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError, /insertedId/)
     end
 
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
