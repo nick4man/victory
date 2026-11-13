@@ -8,9 +8,9 @@ module CrmCards
   # Только для личных сообщений: в тексте телефон клиента.
   module CardView
     KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
-    RETRY_HINT = 'Если это таймаут — сначала найди клиента в CRM по телефону: заявка могла создаться.'
+    RETRY_HINT = 'Отказ детерминирован: CRM обработала запрос и отклонила заявку — повтор безопасен.'
     VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
-                  'модератор запускает повтор кнопкой «Повторить после сверки с CRM».'
+                  'модератор привязывает номер кнопкой «Номер из CRM» (новый importClient не вызывается).'
     MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
                          'Копию договора приложи в CRM. Затем нажми «Внесено в CRM» и введи номер карточки.'
 
@@ -60,15 +60,21 @@ module CrmCards
       when 'approved' then approved_rows(card, owner, moderator)
       when 'exporting'
         # Исход неизвестен (lock не доказательство живости, ревью #210):
-        # автоматического повтора нет — только кнопка «после сверки с CRM».
-        [[button('🔁 Повторить после сверки с CRM', "crm_card:#{card.id}:retry_confirmed")]] if moderator && card.export_stale? && card.crm_id.blank?
+        # новый importClient запрещён — только привязка номера, найденного
+        # в CRM после сверки (ревью PR #210, round 7).
+        [[button('📎 Номер из CRM', "wiz:s:crm_attach:#{card.id}")]] if moderator && card.export_stale? && card.crm_id.blank?
       when 'export_failed'
-        # Неоднозначный сбой (ответ CRM потерялся) — повтор только после
-        # ручной сверки; отказ CRM — обычная кнопка повтора.
-        ambiguous = card.export_retryable == false
-        label = ambiguous ? '🔁 Повторить после сверки с CRM' : '🔁 Повторить выгрузку'
-        callback = ambiguous ? "crm_card:#{card.id}:retry_confirmed" : "crm_card:#{card.id}:retry"
-        [[button(label, callback)]] if moderator && card.kind_lead? && card.crm_id.blank?
+        # Неоднозначный сбой (ответ CRM потерялся) — привязка номера из CRM;
+        # отказ CRM — обычная кнопка повтора.
+        buttons = []
+        if moderator && card.kind_lead? && card.crm_id.blank?
+          if card.export_retryable == false
+            buttons << button('📎 Номер из CRM', "wiz:s:crm_attach:#{card.id}")
+          else
+            buttons << button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")
+          end
+        end
+        buttons.any? ? [buttons] : []
       end || []
     end
 
@@ -128,7 +134,7 @@ module CrmCards
       when 'approved'
         return ['', MANUAL_EXPORT_HINT] if card.kind_object?
 
-        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут. #{RETRY_HINT}"] : []
+        card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут: джоб не встал в очередь — попытка не начиналась, повтор безопасен."] : []
       when 'exporting'
         card.export_stale? ? ['', "⚠️ Выгрузка висит дольше 15 минут — исход неизвестен. #{VERIFY_HINT}"] : []
       when 'exported'

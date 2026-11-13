@@ -280,13 +280,22 @@ module Topnlab
       body[:to_number]                  = to_number if to_number.present?
 
       res = http_post_json('/call/main/importClient/', body, retry_network: false)
-      unless res.is_a?(Hash) && res['status'] == 'ok'
-        # Тело ответа может отражать запрос — без scrub в ошибке уехал бы
-        # appkey в БД (export_error, журнал переходов) и Telegram-модераторам.
+      if res.is_a?(Hash) && res['status'] == 'ok'
+        return res
+      end
+
+      # Тело ответа может отражать запрос — без scrub в ошибке уехал бы
+      # appkey в БД (export_error, журнал переходов) и Telegram-модераторам.
+      if res.is_a?(Hash) && res.key?('status')
+        # Явный прикладной отказ CRM: запрос обработан и отклонён —
+        # повтор безопасен (export_retryable).
         raise Error, "importClient failed: #{scrub(res)}"
       end
 
-      res
+      # 200 с телом неожиданной формы (нет поля status): запрос мог быть
+      # принят, а ответ обрезан/перекодирован — исход неоднозначен,
+      # повтор только после сверки с CRM (ревью PR #210).
+      raise AmbiguousError, "importClient ответил 200 телом без status: #{scrub(res)}"
     end
 
     # POST /call/main/transferClient/ — назначить лид агенту в Topnlab по email.
@@ -451,11 +460,18 @@ module Topnlab
       when 404
         Rails.logger.warn("Topnlab #{label}: 404 not found")
         nil
-      else
+      when 400..499
         raise Error, "#{label}: HTTP #{response.code} — #{scrub(body).truncate(500)}"
+      else
+        # 5xx и прочие непредвиденные коды: ответ мог прийти от шлюза уже
+        # ПОСЛЕ того, как backend принял запрос — исход неоднозначен, это
+        # не доказательство «заявка не создана» (ревью PR #210).
+        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{scrub(body).truncate(500)}"
       end
     rescue JSON::ParserError => e
-      raise Error, "#{label}: invalid JSON (#{e.message}) — body=#{scrub(body).truncate(300)}"
+      # 200/201 с битым телом: запрос мог быть принят, а ответ обрезан —
+      # тоже неоднозначный исход (ревью PR #210).
+      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{scrub(body).truncate(300)}"
     end
 
     def throttle!(kind)

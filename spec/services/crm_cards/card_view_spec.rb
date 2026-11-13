@@ -68,10 +68,10 @@ RSpec.describe CrmCards::CardView do
       .to include('Вернули на доработку', '@oksana', 'Уточни бюджет')
   end
 
-  it 'сбой выгрузки: текст ошибки и совет проверить CRM; повтор — только модератору' do
-    card.update!(status: 'export_failed', export_error: 'HTTP 502')
+  it 'сбой выгрузки: текст ошибки и пометка детерминированности; повтор — только модератору' do
+    card.update!(status: 'export_failed', export_error: '403 Forbidden')
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('HTTP 502', 'найди клиента в CRM по телефону')
+    expect(described_class.render(card, viewer: director)[:text]).to include('403 Forbidden', 'повтор безопасен')
     expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
     expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
   end
@@ -85,19 +85,25 @@ RSpec.describe CrmCards::CardView do
     expect(callbacks(described_class.render(card, viewer: director))).to eq([])
   end
 
-  it 'зависшая выгрузка: предупреждение и повтор модератору только после сверки с CRM' do
+  it 'зависшая выгрузка: предупреждение и кнопка привязки номера из CRM' do
     card.update!(status: 'exporting')
     card.update_columns(updated_at: 20.minutes.ago)
 
     expect(described_class.render(card, viewer: director)[:text]).to include('висит дольше 15 минут', 'исход неизвестен')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry_confirmed"])
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}"])
   end
 
-  it 'неоднозначный сбой выгрузки — повтор только после сверки с CRM' do
+  it 'неоднозначный сбой выгрузки — привязка номера из CRM вместо повтора' do
     card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('Net::ReadTimeout', 'Повторить после сверки')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry_confirmed"])
+    expect(described_class.render(card, viewer: director)[:text]).to include('Net::ReadTimeout', 'Номер из CRM')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}"])
+  end
+
+  it 'детерминированный сбой выгрузки — обычная кнопка повтора' do
+    card.update!(status: 'export_failed', export_error: '403 Forbidden', export_retryable: true)
+
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
   end
 
   it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do

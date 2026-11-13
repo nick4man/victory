@@ -139,12 +139,12 @@ module CrmCards
       begin
         outcome = exporter.call(card)
       rescue StandardError => e
-        # Topnlab::Client::Error — CRM ответила отказом: заявка не создана,
-        # повтор безопасен. AmbiguousError (ReadTimeout, обрыв после отправки)
-        # и прочие сырые сетевые ошибки неоднозначны — CRM могла принять
-        # заявку, повтор только после ручной сверки модератора с CRM (ревью
-        # PR #210, round 6: perform оборачивает транспорт в Error, поэтому
-        # различаем подклассом).
+        # Явный отказ CRM/ошибка до отправки (Error: 403, 4xx, status:error,
+        # OpenTimeout) — заявка точно не создана, повтор безопасен.
+        # AmbiguousError (ReadTimeout, обрыв после отправки, 5xx, битое тело,
+        # ok без insertedId) — CRM могла принять заявку, повтор без сверки
+        # завёл бы дубль: восстановление только через привязку номера из CRM
+        # (ревью PR #210, round 7).
         return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token,
                             retryable: e.is_a?(Topnlab::Client::Error) &&
                                        !e.is_a?(Topnlab::Client::AmbiguousError))
@@ -199,39 +199,69 @@ module CrmCards
       result
     end
 
-    def retry_export!(card, actor:, confirmed: false)
+    # Автоматический повтор выгрузки — только из детерминированного отказа
+    # (export_failed с export_retryable == true): запрос дошёл до CRM и был
+    # явно отклонён, вторая заявка невозможна. Из неоднозначного исхода
+    # (stale 'exporting', AmbiguousError, ok без insertedId) новый importClient
+    # запрещён безусловно: сверка модератора глазами не отменяет уже
+    # выполненную CRM-заявку — окно между сверкой и повтором открыто
+    # (ревью PR #210, round 7). Там восстановление — attach_export_number!:
+    # модератор находит заявку в CRM по телефону (или вносит её руками)
+    # и привязывает номер, новый importClient не вызывается.
+    def retry_export!(card, actor:)
       result = card.with_lock do
         next deny(moderator_denial(actor, 'Повторять выгрузку')) unless moderator?(actor)
         next deny('Повтор есть только у заявок — объект вносится в CRM вручную.') unless card.kind_lead?
         next deny("Заявка уже есть в CRM (#{card.crm_id}) — повтор завёл бы вторую. Статус правится вручную.") if card.crm_id.present?
 
         if card.status_exporting?
-          # Свежий 'exporting' — попытка жива и сама переведёт статус.
-          # Stale 'exporting' — исход неизвестен: advisory lock отпускается
-          # с закрытием DB-сессии раньше завершения HTTP-вызова importClient,
-          # по свободному lockу живость попытки не доказать (ревью #210).
-          # Автоматический повтор из неоднозначного исхода запрещён — только
-          # ручная сверка модератора с CRM и его явное подтверждение.
-          next deny('Выгрузка ещё выполняется — дождись её завершения.') unless card.export_stale?
-          next deny('Исход выгрузки неизвестен: сверь заявку с CRM и запусти повтор после сверки.') unless confirmed
+          # 'exporting' — попытка жива или её исход неизвестен (stale):
+          # HTTP-вызов с ограниченными таймаутами давно завершился, но CRM
+          # могла принять заявку, а ответ потеряться. Повтор — только после
+          # сверки с CRM и привязки номера (attach_export_number!).
+          next deny('Выгрузка ещё выполняется или её исход неизвестен — повтор запрещён, привяжи номер из CRM после сверки.')
         else
-          next deny("Повторять нечего (#{label(card)}).") unless card.status_export_failed? || card.export_stale?
-          if card.status_export_failed? && card.export_retryable == false && !confirmed
-            # ReadTimeout/обрыв после отправки: CRM могла принять заявку, а
-            # ответ потеряться — повтор завёл бы дубль. Только сверка с CRM
-            # глазами и явное подтверждение модератора (ревью #210).
-            next deny('CRM могла принять заявку, а ответ потеряться. Сверь заявку с CRM и запусти повтор после сверки.')
+          next deny('Повтор есть только у заявок в статусе «сбой выгрузки» или «одобрена».') unless card.status_export_failed? || card.status_approved?
+          if card.status_export_failed? && card.export_retryable == false
+            # ReadTimeout/обрыв/5xx/битое тело: CRM могла принять заявку,
+            # повтор завёл бы дубль — только сверка и привязка номера (round 7).
+            next deny('CRM могла принять заявку, а ответ потеряться. Повтор запрещён — сверь заявку с CRM и привяжи номер кнопкой «Номер из CRM».')
           end
         end
 
-        transition!(card, to: 'approved', actor: actor,
-                        comment: confirmed ? 'повтор выгрузки после ручной сверки с CRM' : 'повтор выгрузки')
+        transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
         # Токен чистим: живая старая попытка проснётся, увидит nil/чужой
         # токен и ничего не перезапишет (гонка с retry_export!, PR #210).
         card.update!(export_error: nil, export_attempt_token: nil, export_retryable: true)
         ok(card)
       end
       ExportJob.perform_later(card.id) if result.ok?
+      result
+    end
+
+    # Восстановление из неоднозначного исхода БЕЗ нового importClient:
+    # модератор сверил заявку с CRM по телефону (или внёс её в CRM руками)
+    # и вводит найденный номер. Токен попытки чистим — если она ещё жива
+    # (статус 'exporting'), её проснувшийся результат проигнорируется
+    # условной записью по токену и не перезапишет привязанный номер
+    # (ревью PR #210, round 7).
+    def attach_export_number!(card, crm_id:, actor:)
+      digits = crm_id.to_s.strip
+      result = card.with_lock do
+        next deny(moderator_denial(actor, 'Привязывать номер из CRM')) unless moderator?(actor)
+        next deny('Привязка — только у заявок.') unless card.kind_lead?
+        next deny('Номер карточки в CRM — только цифры.') unless digits.match?(/\A\d{1,12}\z/)
+        unless card.status_export_failed? || card.status_exporting? || card.status_approved?
+          next deny("Привязывать нечего (#{label(card)}).")
+        end
+
+        transition!(card, to: 'exported', actor: actor, comment: "привязан номер из CRM после сверки: #{digits}")
+        card.update!(crm_id: digits, exported_at: Time.current, export_error: nil,
+                     export_attempt_token: nil, export_retryable: true)
+        sync_lead_ref!(card)
+        ok(card)
+      end
+      notifier.exported(card) if result.ok?
       result
     end
 

@@ -92,13 +92,13 @@ RSpec.describe CrmCards::Notifier do
     expect(text).not_to include('кнопка повтора')
   end
 
-  it 'неоднозначный сбой: автору — сверить заявку с CRM перед повтором' do
+  it 'неоднозначный сбой: автору — сверка с CRM и привязка номера, без повторного importClient' do
     card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
 
     notifier.export_failed(card)
 
     expect(sent.find { |m| m[:chat_id] == agent.dm_chat_id }[:text])
-      .to include('Ответ CRM потерялся', 'сверит её с CRM')
+      .to include('Ответ CRM потерялся', 'привяжет номер')
   end
 
   it 'сбой отправки в Telegram не роняет конвейер' do

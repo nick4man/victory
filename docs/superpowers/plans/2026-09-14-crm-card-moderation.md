@@ -1963,7 +1963,7 @@ git commit -m "feat(crm_cards): уведомления участникам мо
   - `#create_object_card!(actor:, values:)` — новая карточка объекта;
   - `#update_fields!(card, values, actor:)` — `values` Hash ключ → нормализованное значение; `nil` удаляет поле;
   - `#submit!(card, actor:)`, `#return_for_rework!(card, actor:, comment:)`, `#approve!(card, actor:)`;
-  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:, confirmed: false)` — `confirmed: true` обязателен для неоднозначных исходов (stale `exporting`, сетевой обрыв): модератор сверил заявку с CRM глазами (ревью PR #210).
+  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:)` — только из детерминированного отказа; `#attach_export_number!(card, crm_id:, actor:)` — единственный recovery из неоднозначного исхода: привязка номера, найденного в CRM после сверки, новый importClient не вызывается (ревью PR #210, round 7).
 - Produces: `#can_edit?(card, actor, perms = Permissions.for(actor)) → Boolean`, `#edit_denial(card, perms) → String`.
 - Produces: `CrmCards::ExportJob.perform_later(card_id)`.
 
@@ -3342,8 +3342,8 @@ git commit -m "feat(work_bot): мастер правки поля карточк
 - Test: `spec/services/telegram/work_bot/crm_card_moderation_spec.rb`
 
 **Interfaces:**
-- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#retry_export!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
-- Produces: `crm_card:<card_id>:view|submit|retry|retry_confirmed`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`). Callback `retry_confirmed` (кнопка «Повторить после сверки с CRM» у неоднозначных исходов) обязан вызывать `Workflow#retry_export!` с `confirmed: true` — иначе неоднозначный сбой не повторится, а автоматический `retry` там не показывается вовсе (ревью PR #210).
+- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#attach_export_number!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
+- Produces: `crm_card:<card_id>:view|submit|retry`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`); мастер-шаг `crm_attach` (сид `card`) → `Workflow#attach_export_number!` — единственный recovery из неоднозначного исхода: модератор сверил заявку с CRM глазами и вводит найденный номер, новый importClient не вызывается (ревью PR #210, round 7).
 
 - [ ] **Step 1: Спека (красная)**
 

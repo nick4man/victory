@@ -55,6 +55,12 @@ RSpec.describe CrmCards::LeadExporter do
     expect { exporter.call(card) }.to raise_error(Topnlab::Client::AmbiguousError, /insertedId/)
   end
 
+  it 'невалидный (нечисловой) insertedId — тоже неоднозначный исход: номер не доезжает в БД и лог' do
+    allow(topnlab).to receive(:import_client).and_return({ 'status' => 'ok', 'insertedId' => 'abc<script>' })
+
+    expect { exporter.call(card) }.to raise_error(Topnlab::Client::AmbiguousError, /insertedId/)
+  end
+
   it 'сбой назначения ответственного не отменяет выгрузку, а возвращается предупреждением' do
     allow(topnlab).to receive(:import_client).and_return({ 'status' => 'ok', 'insertedId' => 4455 })
     allow(topnlab).to receive(:transfer_client).and_raise(Topnlab::Client::Error, 'transferClient failed')

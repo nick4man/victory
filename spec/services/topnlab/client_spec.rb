@@ -158,6 +158,33 @@ RSpec.describe Topnlab::Client do
       end.to raise_error(Topnlab::Client::AmbiguousError, /проверь CRM перед повторной выгрузкой/)
     end
 
+    # Регресс ревью PR #210 (round 7): ответ, пришедший ПОСЛЕ возможной
+    # обработки запроса (5xx, битое/неожиданное тело 200), не доказывает,
+    # что заявка не создана — неоднозначный исход, не явный отказ CRM.
+    it 'HTTP 502 — AmbiguousError, а не явный отказ' do
+      stub_request(:post, import_re).to_return(status: 502, body: 'Bad Gateway')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError, /HTTP 502/)
+    end
+
+    it 'malformed JSON в ответе 200 — AmbiguousError' do
+      stub_request(:post, import_re).to_return(status: 200, body: '<html>cut off')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError, /invalid JSON/)
+    end
+
+    it '200 с телом без поля status — AmbiguousError' do
+      stub_request(:post, import_re).to_return(status: 200, body: ['unexpected', 'shape'].to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError, /телом без status/)
+    end
+
     # Регресс ревью PR #210: отражённый в теле ответа appkey попадал в текст
     # ошибки → в export_error, журнал переходов и Telegram-модераторов.
     it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
