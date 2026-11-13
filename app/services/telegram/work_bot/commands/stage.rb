@@ -27,10 +27,8 @@ module Telegram
         def handle
           # Phase 15 — resolve_lead! сначала «съест» lead_id из @args если есть.
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('stage показ')) unless lead
-
-          guard = staff_test_guard(lead)
-          return guard if guard
 
           new_stage = STAGE_MAP[@args.downcase.strip]
           unless new_stage

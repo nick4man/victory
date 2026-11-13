@@ -10,6 +10,7 @@ module Telegram
         def handle
           # Phase 15 — resolve_lead! сначала consume lead_id если в DM.
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('note <текст>')) unless lead
 
           text = @args.to_s.strip

@@ -18,10 +18,8 @@ module Telegram
           # Phase 15 — resolve_lead! сначала «съест» lead_id если он есть в @args.
           # После этого @args содержит только username (или пусто).
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('assign')) unless lead
-
-          guard = staff_test_guard(lead)
-          return guard if guard
 
           username = @args.to_s.strip
 

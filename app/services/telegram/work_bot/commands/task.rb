@@ -19,9 +19,7 @@ module Telegram
           # После resolve_lead! @args = «dd.MM.yy <текст>» (как и было в group).
           typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
-
-          guard = staff_test_guard(lead)
-          return guard if guard
+          return :staff_test_refused if staff_test_refused?
 
           return open_wizard('task', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('task 15.05.26 текст')) unless lead
