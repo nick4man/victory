@@ -27,10 +27,11 @@ module CrmCards
       # ok без insertedId (или с невалидным номером) не доказывает, что заявка
       # не создана, — CRM могла принять запрос и ответить битым телом. Неоднозначный
       # исход: восстановление только через сверку/привязку номера из CRM
-      # (ревью PR #210, round 6/7). Валидация до Outcome: нечисловой номер не
-      # должен попасть в БД и лог.
+      # (ревью PR #210, round 6/7). Сырое значение в исключение не включаем —
+      # оно попало бы в export_error и Telegram (ревью PR #210, round 8);
+      # валидация до Outcome: нечисловой номер не должен попасть в БД и лог.
       unless crm_id.match?(/\A\d{1,12}\z/)
-        raise Topnlab::Client::AmbiguousError, "importClient ответил ok с невалидным insertedId=#{crm_id.inspect}"
+        raise Topnlab::Client::AmbiguousError, 'importClient ответил ok с невалидным insertedId'
       end
 
       Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible))

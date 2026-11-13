@@ -70,7 +70,7 @@
 | `app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb` | модератор возвращает на доработку |
 | `app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb` | модератор одобряет |
 | `app/services/telegram/work_bot/wizard/engine.rb` | регистрация мастеров в `FLOWS` / `SEED_STEP` |
-| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry|retry_confirmed` |
+| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry` (recovery из неоднозначного исхода — мастер `crm_attach` → `Workflow#attach_export_number!`, см. Task 14) |
 | `app/services/telegram/work_bot/callbacks_router.rb` | префикс `crm_card` |
 | `app/services/telegram/work_bot/lead_announcer.rb` | ряд «📋 Карточка CRM» / статус под карточкой лида |
 | `app/services/telegram/work_bot/lead_assignment.rb` | кнопка карточки в личку назначенному |

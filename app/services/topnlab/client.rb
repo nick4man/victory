@@ -284,18 +284,22 @@ module Topnlab
         return res
       end
 
-      # Тело ответа может отражать запрос — без scrub в ошибке уехал бы
-      # appkey в БД (export_error, журнал переходов) и Telegram-модераторам.
+      # В сообщение об ошибке — только allowlist безопасных полей: полное
+      # тело ответа отражает запрос (appkey, телефон, имя, комментарий) и
+      # попало бы в export_error → журнал переходов → Telegram-модераторов
+      # (ревью PR #210, round 8). scrub — последний рубеж на случай отражения
+      # ключа внутри message.
       if res.is_a?(Hash) && res.key?('status')
         # Явный прикладной отказ CRM: запрос обработан и отклонён —
         # повтор безопасен (export_retryable).
-        raise Error, "importClient failed: #{scrub(res)}"
+        raise Error, "importClient failed: #{scrub(filter_pii(res).slice('status', 'message', 'error').inspect)}"
       end
 
       # 200 с телом неожиданной формы (нет поля status): запрос мог быть
-      # принят, а ответ обрезан/перекодирован — исход неоднозначен,
-      # повтор только после сверки с CRM (ревью PR #210).
-      raise AmbiguousError, "importClient ответил 200 телом без status: #{scrub(res)}"
+      # принят, а ответ обрезан/перекодирован — исход неоднозначен, тело
+      # не показываем (там могут быть PII). Повтор — только привязка номера
+      # из CRM (ревью PR #210).
+      raise AmbiguousError, 'importClient ответил 200 телом без status (тело не показываем: возможен отражённый запрос)'
     end
 
     # POST /call/main/transferClient/ — назначить лид агенту в Topnlab по email.
@@ -312,7 +316,10 @@ module Topnlab
 
       res = http_post_json('/call/main/transferClient/', body)
       unless res.is_a?(Hash) && res['status'] == 'ok'
-        raise Error, "transferClient failed: #{scrub(res)}"
+        # Только allowlist безопасных полей: полное тело отражает запрос
+        # (client_id, email агента) и попало бы в export_error/Outcome#warning
+        # (ревью PR #210, round 8).
+        raise Error, "transferClient failed: #{scrub(filter_pii(res).slice('status', 'message', 'error').inspect)}"
       end
 
       res
@@ -326,19 +333,40 @@ module Topnlab
       data.is_a?(Hash) && data.any? && data.each_value.all?(Hash)
     end
 
+    PII_KEYS = %w[phone fullname name comment user_mail email to_number request payload].freeze
+
     # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` и `CrmCard#export_error`
     # — то есть в БД, на админ-страницу и в Telegram. Если Topnlab отразит
-    # запрос в error-теле, туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того,
-    # как строка станет логом: regex закрывает типовые формы `key=…`, а само
-    # значение ключа — из любой вложенности, включая сериализованный JSON
-    # внутри строки (ревью PR #210).
+    # запрос в error-теле, туда уедут TOPNLAB_API_KEY и PII клиента (телефон,
+    # имя, комментарий, email агента). Вырезаем до того, как строка станет
+    # логом: regex закрывает типовые формы `key=…`, само значение ключа
+    # вычищается из любой вложенности (включая сериализованный JSON внутри
+    # строки), а PII-поля рекурсивно удаляются из структуры (ревью PR #210).
     def scrub(data)
       text = data.is_a?(String) ? data : data.inspect
-      redacted = text.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}\\]+/i, '\1[FILTERED]')
+      redacted = text.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}\\]+/i, '\\1[FILTERED]')
       # Вложенный сериализованный JSON (экранированные кавычки внутри строки)
       # обходит regex — вырезаем само значение ключа напрямую, независимо от
       # формы вложенности (ревью PR #210).
       @api_key.present? ? redacted.gsub(@api_key, '[FILTERED]') : redacted
+    end
+
+    # Рекурсивно удаляет PII-поля (PII_KEYS) из распарсенного тела.
+    def filter_pii(value)
+      case value
+      when Hash then value.except(*PII_KEYS).transform_values { |v| filter_pii(v) }
+      when Array then value.map { |v| filter_pii(v) }
+      else value
+      end
+    end
+
+    # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
+    # по значению ключа; не-JSON — только scrub (структурно фильтровать
+    # нечего). Сокращает вызывающий код.
+    def safe_body_excerpt(body)
+      scrub(filter_pii(JSON.parse(body)).inspect)
+    rescue JSON::ParserError
+      scrub(body)
     end
 
     # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
@@ -461,17 +489,17 @@ module Topnlab
         Rails.logger.warn("Topnlab #{label}: 404 not found")
         nil
       when 400..499
-        raise Error, "#{label}: HTTP #{response.code} — #{scrub(body).truncate(500)}"
+        raise Error, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body).truncate(500)}"
       else
         # 5xx и прочие непредвиденные коды: ответ мог прийти от шлюза уже
         # ПОСЛЕ того, как backend принял запрос — исход неоднозначен, это
         # не доказательство «заявка не создана» (ревью PR #210).
-        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{scrub(body).truncate(500)}"
+        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body).truncate(500)}"
       end
     rescue JSON::ParserError => e
       # 200/201 с битым телом: запрос мог быть принят, а ответ обрезан —
       # тоже неоднозначный исход (ревью PR #210).
-      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{scrub(body).truncate(300)}"
+      raise AmbiguousError, "#{label}: invalid JSON (#{e.message}) — body=#{safe_body_excerpt(body).truncate(300)}"
     end
 
     def throttle!(kind)

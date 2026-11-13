@@ -90,7 +90,7 @@ RSpec.describe CrmCards::LeadExporter do
     stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
       .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
     stub_request(:post, %r{\Ahttps://crm\.example/call/main/transferClient/})
-      .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'no agent' }.to_json)
+      .to_return(status: 200, body: { status: 'error', message: 'no agent key=test-key' }.to_json)
 
     outcome = described_class.new(topnlab: real_client).call(card)
 

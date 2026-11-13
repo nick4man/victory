@@ -34,7 +34,7 @@ CRM** — по должности и статусу его учётки в Topnl
 | Лид с сайта → карточка в Telegram, назначение, стадии | `Lead::Intake`, `LeadAnnouncer`, `LeadAssignment`, `/stage` | вход конвейера; «контакт с клиентом» = стадия не `new` или `first_contact_at` |
 | Кнопка «Спам» | `Callbacks::SpamCallback` → лид `closed_lost` | закрытый лид не проходит машинную проверку |
 | Пошаговые мастера в личке | `Wizard::Engine` + `Flow` | заполнение, правка поля, возврат, одобрение, ручная выгрузка |
-| Создание заявки в CRM | `Topnlab::Client#import_client` — **не вызывается нигде** | единственный вызов — выгрузка одобренной карточки |
+| Создание заявки в CRM | `Topnlab::Client#import_client` | единственный вызов — выгрузка одобренной карточки (Workflow → LeadExporter) |
 | Назначение ответственного в CRM | `Topnlab::Client#transfer_client` | ответственный = текущий ответственный по лиду |
 | Должность и статус сотрудника из CRM | `users.crm_role_id / crm_role_name / crm_status`, ночной `TopnlabStaffSyncJob` | источник прав |
 | Связь «Telegram ↔ CRM» | `telegram_users.topnlab_user_id` (через `/whoami`) и `users.telegram_user_id` | обе обязаны указывать на одну учётку |

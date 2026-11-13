@@ -441,14 +441,13 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload).to have_attributes(status: 'exported', crm_id: '7788', export_error: nil)
     end
 
-    # Сквозной регресс ревью PR #210 (round 5, блокер 1): реальный
-    # Topnlab::Client с WebMock; ответ CRM отражает appkey сериализованным
-    # JSON внутри строки. Секрет не должен доехать до export_error
-    # (БД, журнал переходов, Telegram-модераторы).
+    # Сквозной регресс ревью PR #210 (round 5/8): реальный Topnlab::Client с
+    # WebMock; ответ CRM отражает appkey. Секрет не должен доехать до
+    # export_error (БД, журнал переходов, Telegram-модераторы).
     it 'appkey из ошибочного ответа CRM не доезжает до export_error' do
       real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
       stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
-        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
+        .to_return(status: 200, body: { status: 'error', message: 'duplicate key=test-key' }.to_json)
       real_workflow = described_class.new(notifier: notifier,
                                           exporter: CrmCards::LeadExporter.new(topnlab: real_client))
 
@@ -456,6 +455,22 @@ RSpec.describe CrmCards::Workflow do
 
       expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: true)
       expect(card.export_error).to include('[FILTERED]')
+      expect(card.export_error).not_to include('test-key')
+    end
+
+    # Сквозной регресс ревью PR #210 (round 8, блокер 1): ок-ответ с
+    # отражённым ключом в insertedId — раньше значение попадало в сообщение
+    # исключения через inspect и уезжало в export_error.
+    it 'appkey, отражённый в insertedId ок-ответа, не доезжает до export_error' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+        .to_return(status: 200, body: { status: 'ok', insertedId: 'test-key' }.to_json)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
       expect(card.export_error).not_to include('test-key')
     end
   end

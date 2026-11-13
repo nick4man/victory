@@ -187,9 +187,12 @@ RSpec.describe Topnlab::Client do
 
     # Регресс ревью PR #210: отражённый в теле ответа appkey попадал в текст
     # ошибки → в export_error, журнал переходов и Telegram-модераторов.
-    it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
+    # Round 8: в сообщение идёт только allowlist безопасных полей
+    # (status/message/error), отражение ключа внутри message вычищает
+    # value-scrub.
+    it 'ошибочный ответ, отражающий ключ в message, — appkey вычищен из текста ошибки' do
       stub_request(:post, import_re)
-        .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'duplicate' }.to_json)
+        .to_return(status: 200, body: { status: 'error', message: 'duplicate key=test-key' }.to_json)
 
       expect do
         client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
@@ -216,7 +219,7 @@ RSpec.describe Topnlab::Client do
     # вычищается напрямую, независимо от формы вложенности.
     it 'appkey внутри сериализованного JSON в строке — вычищен из текста ошибки' do
       stub_request(:post, import_re)
-        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
+        .to_return(status: 200, body: { status: 'error', message: { appkey: 'test-key' }.to_json }.to_json)
 
       expect do
         client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
@@ -228,13 +231,49 @@ RSpec.describe Topnlab::Client do
 
     it 'сырое тело HTTP-ошибки с экранированным JSON — ключ тоже вычищен' do
       stub_request(:post, import_re)
-        .to_return(status: 500, body: '{"status":"error","request":"{\\"appkey\\":\\"test-key\\"}"}')
+        .to_return(status: 500, body: '{"status":"error","message":"{\\"appkey\\":\\"test-key\\"}"}')
 
       expect do
         client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
       end.to raise_error(Topnlab::Client::Error) { |e|
         expect(e.message).to include('FILTERED')
         expect(e.message).not_to include('test-key')
+      }
+    end
+
+    # Регресс ревью PR #210 (round 8, блокер 2): полное тело ответа
+    # отражает запрос — телефон, имя, комментарий, email агента. Ошибка
+    # формируется из allowlist безопасных полей, PII в неё не попадает.
+    it 'отражённые в теле ответа phone/fullname/comment/user_mail — не попадают в ошибку' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: {
+                     status: 'error',
+                     request: {
+                       phone: '79001234567', fullname: 'Иван Петров',
+                       comment: 'звонить после 18', user_mail: 'agent@example.com'
+                     },
+                     message: 'duplicate'
+                   }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('duplicate')
+        expect(e.message).not_to include('79001234567', 'Иван Петров', 'звонить после 18', 'agent@example.com')
+      }
+    end
+
+    it 'PII в теле HTTP-ошибки — тоже не попадает в ошибку (путь через parse)' do
+      stub_request(:post, import_re)
+        .to_return(status: 500, body: {
+                     error: 'boom',
+                     request: { phone: '79001234567', user_mail: 'agent@example.com' }
+                   }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).not_to include('79001234567', 'agent@example.com')
       }
     end
 
@@ -259,9 +298,9 @@ RSpec.describe Topnlab::Client do
 
     # Тот же регресс, что и для import_client: тело ответа отражает запрос
     # (appkey), без scrub ключ уехал бы в error_log и Telegram.
-    it 'ошибочный ответ, отражающий запрос, — appkey вычищен из текста ошибки' do
+    it 'ошибочный ответ, отражающий ключ в message, — appkey вычищен из текста ошибки' do
       stub_request(:post, transfer_re)
-        .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'no agent' }.to_json)
+        .to_return(status: 200, body: { status: 'error', message: 'no agent key=test-key' }.to_json)
 
       expect do
         client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
@@ -274,7 +313,7 @@ RSpec.describe Topnlab::Client do
     # Тот же регресс round 5: сериализованный JSON внутри строки.
     it 'appkey внутри сериализованного JSON в строке — вычищен из текста ошибки' do
       stub_request(:post, transfer_re)
-        .to_return(status: 200, body: { status: 'error', request: { appkey: 'test-key' }.to_json }.to_json)
+        .to_return(status: 200, body: { status: 'error', message: { appkey: 'test-key' }.to_json }.to_json)
 
       expect do
         client.transfer_client(order_id: 4455, email: 'agent@victory62.org')
