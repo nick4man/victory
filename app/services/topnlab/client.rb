@@ -387,10 +387,12 @@ module Topnlab
       scrub(scrub_strings(filtered, request_body).inspect)
     end
 
-    # Рекурсивно прогоняет строковые листья через scrub литералов запроса.
+    # Рекурсивно прогоняет строковые листья И ключи хэшей через scrub
+    # литералов запроса — CRM может отразить телефон/имя ключом объекта
+    # ({"7900…":"…"}), а не значением (ревью PR #210, round 9+++).
     def scrub_strings(value, request_body)
       case value
-      when Hash then value.transform_values { |v| scrub_strings(v, request_body) }
+      when Hash then value.to_h { |k, v| [scrub_strings(k, request_body), scrub_strings(v, request_body)] }
       when Array then value.map { |v| scrub_strings(v, request_body) }
       when String then scrub_request_literals(scrub(value), request_body)
       else value
@@ -408,6 +410,9 @@ module Topnlab
     def scrub_request_literals(text, request_body)
       return text unless request_body
 
+      # JSON допускает `\/` — отражённый CRM литерал с экранированным слэшем
+      # нормализуем до точного совпадения.
+      text = text.gsub('\\/', '/')
       request_body.each_value do |v|
         next unless v.is_a?(String) && v.present?
 
@@ -423,7 +428,10 @@ module Topnlab
           text = text.gsub(/#{Regexp.escape(escaped)}/i, '[FILTERED]')
         end
       end
-      text
+      # Переформатированные формы телефона литералом не покрываются (CRM
+      # могла отразить «+7 (900) 123-45-67», а в запрос ушло «7900…») —
+      # режем телефоноподобные последовательности целиком (round 9+++).
+      text.gsub(/\+\d[\d\s()-]{9,}\d/, '[FILTERED]').gsub(/\b\d{11}\b/, '[FILTERED]')
     end
 
     # Литерал в формах, в каких он может появиться в отражённом CRM ответе:

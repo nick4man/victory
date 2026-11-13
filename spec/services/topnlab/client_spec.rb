@@ -370,6 +370,38 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9+++ (блокер): CRM может отразить телефон/имя КЛЮЧОМ
+    # вложенного объекта в message — скраббились только значения.
+    it 'телефон и имя в ключах вложенного message — вычищены из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: {
+                     status: 'error',
+                     message: { '79001234567' => 'Иван Петров', reason: 'duplicate' }
+                   }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('duplicate', '[FILTERED]')
+        expect(e.message).not_to include('79001234567', 'Иван Петров')
+      }
+    end
+
+    # Регресс round 9+++ (блокер): CRM отражает телефон в другом формате
+    # (+7 (900) 123-45-67), чем ушёл в запрос (79001234567) — литерал не
+    # совпадает; режем телефоноподобные последовательности паттерном.
+    it 'переформатированный телефон (+7 с разделителями) — вычищен из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', message: 'звонили с +7 (900) 123-45-67' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('звонили с', '[FILTERED]')
+        expect(e.message).not_to include('900', '123-45-67')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then
