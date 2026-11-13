@@ -105,7 +105,7 @@ RSpec.describe Telegram::WorkBot::Callbacks::AssignToCallback do
       invoke([lead.id.to_s, assignee.id.to_s])
 
       expect(tg_client).to have_received(:answer_callback_query)
-        .with('1234', hash_including(text: a_string_including('Тестовый лид'), show_alert: true))
+        .with('1234', hash_including(text: a_string_including('тестовый (probe)'), show_alert: true))
     end
   end
 end

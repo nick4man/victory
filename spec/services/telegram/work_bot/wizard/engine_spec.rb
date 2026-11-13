@@ -404,4 +404,32 @@ RSpec.describe Telegram::WorkBot::Wizard::Engine do
       expect(labels.any? { |l| l.include?("##{lead.id}") }).to be(true)
     end
   end
+
+  # Review round 7 (PR #228): lead_gate срабатывает только при старте с
+  # заполненным ctx — ручной ввод ID и старый pending-action его обходили.
+  describe 'test-лиды (round 7): ручной ввод ID и фини CloseFlow' do
+    let!(:test_lead) do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'apartments', tg_chat_id: -1_003_779_115_845,
+                        anchor_thread_id: 17, anchor_message_id: 556, assigned_to: agent,
+                        staff_test: true, metadata: { 'name' => 'Probe Клиент' })
+    end
+
+    it 'close-мастер: ручной ввод номера test-лида — отказ на шаге лида' do
+      tap_callback('wiz:s:close')
+      press('⌨️ Ввести номер лида')
+      say(test_lead.id.to_s)
+      expect(last_text).to include('тестовый')
+      expect(test_lead.reload.current_stage).to eq('new')
+    end
+
+    it 'CloseFlow#finish повторно проверяет staff_test? (старый pending-action)' do
+      flow = Telegram::WorkBot::Wizard::CloseFlow.new(
+        tg_user: manager, ctx: { 'lead' => test_lead.id, 'outcome' => 'closed_won' }, client: tg_client
+      )
+      result = flow.finish
+      expect(result[:text]).to include('тестовый')
+      expect(test_lead.reload.current_stage).to eq('new')
+    end
+  end
 end

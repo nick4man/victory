@@ -37,6 +37,10 @@ module Telegram
           found = ::LeadEvent.find_by(id: raw.to_i)
           return [nil, "Лид ##{raw} не найден. Проверь номер или выбери из списка."] unless found
           return [nil, "Лид ##{raw} уже закрыт (#{found.current_stage})."] unless found.open?
+          # Issue #214 / review round 7 — ручной ввод ID обходил lead_gate
+          # (тот срабатывает только при старте с заполненным ctx): без этой
+          # проверки CloseFlow доводил test-лид до LeadClosure и CRM-note.
+          return [nil, "🧪 Лид ##{raw} — тестовый (probe). Мастер для тест-лидов недоступен."] if found.staff_test?
 
           [found.id.to_s, nil]
         end
