@@ -201,4 +201,53 @@ RSpec.describe 'Chat::Messages', type: :request do
     greeting = conversation.chat_messages.find_by(role: :assistant)
     expect(greeting.body).to include('ещё считается')
   end
+
+  # issue #219: антиспам до вызова LLM. Реальный входящий спам от 12.11.2026 —
+  # рекламная ссылка, адресованная самим ботам. Контракт: спам-URL не доходит
+  # до ChatResponder/LLM (нет траты токенов), бот не отвечает содержательно и
+  # не эскалирует в CRM; обычные сообщения со ссылками на белые домены идут
+  # прежним путём.
+  describe 'антиспам: спам-ссылки до LLM не доходят (issue #219)' do
+    let(:spam_body) { 'http://www.botmasterru.com/product52284/' }
+
+    def responder_double(escalate: false)
+      instance_double(
+        Llm::ChatResponder,
+        call: { reply: 'Тестовый ответ агента', escalate: escalate, summary: nil,
+                model: 'test-double', tool_log: [] }
+      )
+    end
+
+    it 'спам-URL: LlmReplyJob (вызов LLM) не ставится в очередь' do
+      expect { post_message(spam_body) }
+        .not_to have_enqueued_job(LlmReplyJob)
+
+      expect(response).to have_http_status(:created)
+    end
+
+    it 'спам-URL: нет LLM-ответа, нет эскалации и лида в CRM' do
+      allow(Llm::ChatResponder).to receive(:new).and_return(responder_double(escalate: true))
+
+      expect do
+        post_message(spam_body)
+        perform_enqueued_jobs
+      end.not_to change(Inquiry, :count)
+
+      expect(Llm::ChatResponder).not_to have_received(:new)
+      expect(conversation.reload.chat_messages.where(role: :assistant)).to be_empty
+      expect(conversation).not_to be_status_escalated
+      expect(TelegramNotifyJob).not_to have_been_enqueued
+    end
+
+    it 'обычное сообщение с белой ссылкой проходит в LLM как раньше' do
+      allow(Llm::ChatResponder).to receive(:new).and_return(responder_double)
+
+      post_message('Посмотрите https://victory62.org/catalog — что скажете?')
+      perform_enqueued_jobs
+
+      expect(Llm::ChatResponder).to have_received(:new)
+      expect(conversation.reload.chat_messages.where(role: :assistant).last.body)
+        .to eq('Тестовый ответ агента')
+    end
+  end
 end
