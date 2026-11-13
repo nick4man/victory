@@ -37,6 +37,15 @@
       </button>
     </div>
 
+    <%# Тумблер «Тест-прогон» (issue #227): включён → сессия уходит под
+        probe-visitor_token, все лиды диалога — metadata['test']=true, в
+        тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не трогается. Механизм — перезагрузка
+        с ?visitor_token=probe-widget / =off (signed-куку из JS не подписать). %>
+    <label class="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-background text-[11px] text-muted-foreground cursor-pointer select-none">
+      <input type="checkbox" id="chat-widget-test-toggle" class="accent-foreground">
+      <span>🧪 Тест-прогон — диалог не попадёт к агентам</span>
+    </label>
+
     <div id="chat-widget-messages"
          class="flex-1 overflow-y-auto p-4 space-y-3 bg-background">
       <p id="chat-widget-loading"
@@ -106,6 +115,21 @@
   const conversationUrl = root.dataset.conversationUrl;
   const messagesUrl     = root.dataset.messagesUrl;
   const cableUrl        = root.dataset.cableUrl;
+  const testToggle      = document.getElementById('chat-widget-test-toggle');
+
+  // Тумблер «Тест-прогон» (issue #227): переключение — перезагрузка с
+  // visitor_token-параметром; VisitorIdentity фиксирует/снимает signed-куку.
+  if (testToggle) {
+    testToggle.addEventListener('change', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('visitor_token', testToggle.checked ? 'probe-widget' : 'off');
+      window.location.href = url.toString();
+    });
+  }
+
+  function applyTestToggleState () {
+    if (testToggle && conversation) testToggle.checked = conversation.test_probe === true;
+  }
 
   let conversation = null;
   let consumer = null;
@@ -188,6 +212,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       conversation = await res.json();
       renderHistory();
+      applyTestToggleState();
       subscribe();
     } catch (e) {
       showError('Не удалось загрузить чат: ' + e.message);

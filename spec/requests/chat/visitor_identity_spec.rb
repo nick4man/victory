@@ -26,6 +26,17 @@ RSpec.describe 'VisitorIdentity', type: :request do
     expect(normal).not_to be_test_probe
   end
 
+  # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг из JSON сессии
+  # (probe-кука httponly — из JS не прочитать).
+  it 'serialize отдаёт test_probe — виджет показывает состояние тумблера' do
+    open_chat(visitor_token: 'probe-widget')
+    expect(response.parsed_body['test_probe']).to be(true)
+
+    open_chat(visitor_token: 'off')
+    open_chat
+    expect(response.parsed_body['test_probe']).to be(false)
+  end
+
   it 'произвольный visitor_token из URL не принимается' do
     open_chat(visitor_token: 'hacked-token')
 

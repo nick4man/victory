@@ -58,5 +58,18 @@ module Chat
       meta['page'] = page_ctx
       conv.update_columns(metadata: meta) if conv.metadata != meta
     end
+
+    # Issue #227 (auto-test по происхождению): сессия с не-прод хоста или
+    # офисного IP автоматически тестовая. Флаг ставится один раз и не
+    # снимается: сессия, начатая на staging, не должна внезапно стать
+    # боевой при переходе за прокси/с другого IP.
+    def stamp_auto_test(conv)
+      return if conv.metadata.is_a?(Hash) && conv.metadata['auto_test'] == true
+      return unless Chat::TestMode.auto_test_request?(request)
+
+      meta = conv.metadata.is_a?(Hash) ? conv.metadata.dup : {}
+      meta['auto_test'] = true
+      conv.update_columns(metadata: meta)
+    end
   end
 end

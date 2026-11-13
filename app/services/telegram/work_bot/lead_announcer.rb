@@ -116,7 +116,14 @@ module Telegram
       private
 
       def test_lead?
-        (@lead.metadata || {})['test'] == true
+        return true if (@lead.metadata || {})['test'] == true
+
+        # Issue #227: lead_ref авто-помечен staff_test (StaffSubmissionDetector
+        # по контактам сотрудника) — изоляция та же, что у metadata['test'],
+        # даже если флаг в payload не пришёл. Без respond_to? — lead_ref
+        # полиморфный (BuyerOrder/Property staff_test не знают).
+        lead_ref = @lead.lead_ref
+        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
       end
 
       def send_card(topic_key)
@@ -174,9 +181,10 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
-        # Тест-прогон чат-бота (issue #214) — карточка ушла в тестовый чат,
-        # бейдж отличает её от боевых лидов при просмотре логов/скриншотов.
-        test_badge = '🧪 <b>ТЕСТ</b>' if meta['test'] == true
+        # Тест-прогон чат-бота (issue #214) и staff_test-лиды (issue #227) —
+        # карточка ушла в тестовый чат, бейдж отличает её от боевых лидов
+        # при просмотре логов/скриншотов.
+        test_badge = '🧪 <b>ТЕСТ</b>' if test_lead?
         # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
         # после express-валуации (см. ChatTools::QualifyLead). Помогает
         # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,

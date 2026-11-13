@@ -48,4 +48,29 @@ RSpec.describe LlmReplyJob do
     expect { described_class.new.perform(conv.id) }.to raise_error('LLM down')
     expect(Thread.current[:lead_test_mode]).to be(false)
   end
+
+  # Issue #227: auto-test по происхождению (staging/офисный IP) — контроллер
+  # пометил сессию metadata['auto_test'], job обязан выставить флаг.
+  it 'auto_test-сессия: флаг выставлен' do
+    conv = Conversation.create!(visitor_token: 'visitor-auto', status: :active, metadata: { 'auto_test' => true })
+    captured = stub_responder
+
+    described_class.new.perform(conv.id)
+
+    expect(captured[:flag]).to be(true)
+  end
+
+  # Issue #227: ENV-кран SITE_CHATBOT_FORCE_TEST=1 — боевой диалог тоже тестовый.
+  it 'ENV-кран SITE_CHATBOT_FORCE_TEST=1: флаг выставлен для боевого диалога' do
+    old = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
+    ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+    conv = Conversation.create!(visitor_token: 'visitor-force', status: :active)
+    captured = stub_responder
+
+    described_class.new.perform(conv.id)
+
+    expect(captured[:flag]).to be(true)
+  ensure
+    old.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old
+  end
 end
