@@ -325,6 +325,35 @@ RSpec.describe Topnlab::Client do
       }
     end
 
+    # Регресс round 9 (пропуск PII): короткие значения запроса (имя «Аня»)
+    # раньше не вычищались из-за порога ≥ 4 — теперь идут по границам слова.
+    it 'короткое имя (3 символа) в ошибке — вычищено из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 200, body: { status: 'error', message: 'duplicate Аня' }.to_json)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Аня', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('[FILTERED]')
+        expect(e.message).not_to include('Аня')
+      }
+    end
+
+    # Регресс round 9 (пропуск PII): сырое тело ответа может содержать имя
+    # в \uXXXX-форме — экранирование в фрагменте ошибки не декодируется,
+    # прямой gsub литерала её не ловит.
+    it 'имя в \\uXXXX-форме в не-JSON теле ошибки — вычищено из текста' do
+      stub_request(:post, import_re)
+        .to_return(status: 400, body: 'rejected \u0410\u043D\u044F key=test-key')
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Аня', source: 'site_form')
+      end.to raise_error(Topnlab::Client::Error) { |e|
+        expect(e.message).to include('[FILTERED]')
+        expect(e.message).not_to include('\u0410', 'Аня', 'test-key')
+      }
+    end
+
     it 'OpenTimeout (соединение не установилось) — повторяет как обычно и успевает' do
       stub_request(:post, import_re)
         .to_raise(Net::OpenTimeout).then

@@ -388,19 +388,39 @@ module Topnlab
       scrub_request_literals(scrub(text), request_body)
     end
 
-    # Вычищает из текста строковые значения тела запроса длиной ≥ 4 символов
-    # (appkey/phone/fullname/comment/user_mail/to_number). Короткие и числовые
-    # значения пропускаем: замена подстрок вида «1» или id стадии выглядела бы
-    # ложным срабатыванием.
+    # Вычищает из текста строковые значения тела запроса (appkey/phone/
+    # fullname/comment/user_mail/to_number). Длинные литералы (≥ 4 символов)
+    # режем как подстроку; короткие (имя «Аня», «Юя») — только по границам
+    # слова, чтобы не резать подстроки внутри чужих слов. Каждый литерал
+    # ищем и в \uXXXX-форме: сырой фрагмент битого JSON в сообщении парсера
+    # экранирование не декодирует, и не-ASCII имя там проходит иначе
+    # (ревью PR #210, round 9).
     def scrub_request_literals(text, request_body)
       return text unless request_body
 
       request_body.each_value do |v|
-        next unless v.is_a?(String) && v.length >= 4
+        next unless v.is_a?(String) && v.present?
 
-        text = text.gsub(v, '[FILTERED]')
+        text = if v.length >= 4
+                 text.gsub(v, '[FILTERED]')
+               else
+                 # Короткие литералы (имя «Аня», «Юя») — по границам слова,
+                 # чтобы не резать подстроки внутри чужих слов.
+                 text.gsub(/\b#{Regexp.escape(v)}\b/u, '[FILTERED]')
+               end
+        escaped = unicode_escaped(v)
+        next if escaped == v
+
+        # \uXXXX-форма: hex-цифры CRM может отдать в любом регистре.
+        text = text.gsub(/#{Regexp.escape(escaped)}/i, '[FILTERED]')
       end
       text
+    end
+
+    # Тот же литерал, что CRM могла показать в битом JSON: не-ASCII символы
+    # в \uXXXX-экранированной форме.
+    def unicode_escaped(str)
+      str.each_char.map { |c| c.ord > 127 ? format('\\u%04x', c.ord) : c }.join
     end
 
     # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
