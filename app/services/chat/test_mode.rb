@@ -98,8 +98,10 @@ module Chat
       prod_hosts.include?(host.to_s.downcase.split(':').first)
     end
 
-    # Переопределяется через ENV для стейджинга-прогонов с отдельного домена
-    # (добавить его сюда временно), по умолчанию — прод-домены АН.
+    # Переопределяется через ENV (SITE_CHATBOT_PROD_HOSTS, comma-separated) для
+    # прогонов через нестандартный боевой домен. ВНИМАНИЕ: не добавлять сюда
+    # стейджинг/localhost — хост из списка auto-test НЕ получает (механизм 4
+    # работает только для хостов вне этого списка).
     def self.prod_hosts
       (ENV['SITE_CHATBOT_PROD_HOSTS'].presence || DEFAULT_PROD_HOSTS)
         .split(',')

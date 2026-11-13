@@ -517,6 +517,8 @@ Rails.application.routes.draw do
     resource :conversation, only: %i[show update], controller: 'conversations' do
       resources :messages, only: %i[create], controller: '/chat/messages'
     end
+    # Тумблер «🧪 Тест-прогон» (issue #227) — same-origin POST с CSRF.
+    post 'conversation/test_mode', to: 'conversations#test_mode'
 
     # Legacy User↔User chat (kept for future internal messaging)
     resources :conversations, only: [:index] do

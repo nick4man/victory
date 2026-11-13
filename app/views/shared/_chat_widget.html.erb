@@ -37,14 +37,13 @@
       </button>
     </div>
 
-    <%# Тумблер «Тест-прогон» (issue #227): включён → сессия уходит под
-        probe-visitor_token серверного формата (HMAC probe-<name>-<16hex>,
-        выдаётся в JSON сессии — rev #230 round 3: самодельный токен из JS
-        VisitorIdentity отклоняет), все лиды диалога — metadata['test']=true,
-        в тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не трогается. Механизм — перезагрузка
-        с ?visitor_token=<token> / =off (signed-куку из JS не подписать).
-        Индикатор auto-теста — сессия тестовая по происхождению/ENV-крану
-        без тумблера (Chat::TestMode). %>
+    <%# Тумблер «Тест-прогон» (issue #227): включён → POST /chat/conversation/
+        test_mode (same-origin + CSRF) — сервер мятит свежий HMAC probe-токен
+        и ставит signed-куку, все лиды нового диалога — metadata['test']=true,
+        в тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не трогается. Токен из URL/JSON не
+        принимаем (rev #230 round 4): публичная выдача позволяла переключить
+        чужую сессию в тест-контур. Индикатор auto-теста — сессия тестовая по
+        происхождению/ENV-крану без тумблера (Chat::TestMode). %>
     <label class="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-background text-[11px] text-muted-foreground cursor-pointer select-none">
       <input type="checkbox" id="chat-widget-test-toggle" class="accent-foreground">
       <span>🧪 Тест-прогон — диалог не попадёт к агентам</span>
@@ -124,28 +123,27 @@
   const cableUrl        = root.dataset.cableUrl;
   const testToggle      = document.getElementById('chat-widget-test-toggle');
 
-  // Тумблер «Тест-прогон» (issue #227): переключение — перезагрузка с
-  // visitor_token-параметром; VisitorIdentity фиксирует/снимает signed-куку.
-  // Токен выдаёт ТОЛЬКО сервер (JSON поле probe_token, HMAC probe-<name>-<hex>,
-  // rev #230 round 3): самодельный probe-<random> база отклоняет. Храним его
-  // в localStorage — тестовый диалог стабилен на браузер, общего
-  // Conversation у разных посетителей нет.
+  // Тумблер «Тест-прогон» (issue #227): same-origin POST /chat/conversation/
+  // test_mode с CSRF-заголовком (rev #230, round 4) — токен мятит СЕРВЕР,
+  // из URL/JSON токен не принимаем: публичная выдача HMAC-токена позволяла
+  // переключить чужую сессию в тест-контур. Успех → перезагрузка: кука уже
+  // новая, виджет поднимется в свежем (тестовом/боевом) диалоге.
   const testAutoEl = document.getElementById('chat-widget-test-auto');
-
-  function currentProbeToken () {
-    let token = localStorage.getItem('chat-widget-probe-token');
-    if (!token && conversation && conversation.probe_token) {
-      token = conversation.probe_token;
-      localStorage.setItem('chat-widget-probe-token', token);
-    }
-    return token;
-  }
 
   if (testToggle) {
     testToggle.addEventListener('change', () => {
-      const url = new URL(window.location.href);
-      url.searchParams.set('visitor_token', testToggle.checked ? currentProbeToken() : 'off');
-      window.location.href = url.toString();
+      const wanted = testToggle.checked;
+      fetch('/chat/conversation/test_mode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify({ enabled: wanted })
+      }).then((res) => {
+        if (!res.ok) throw new Error(`test_mode: HTTP ${res.status}`);
+        window.location.reload();
+      }).catch(() => { testToggle.checked = !wanted; });
     });
   }
 

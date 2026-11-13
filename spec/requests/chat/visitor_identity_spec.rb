@@ -115,19 +115,14 @@ RSpec.describe 'VisitorIdentity', type: :request do
     expect(Conversation.order(:id).last.visitor_token).to eq(probe('bob-0002'))
   end
 
-  # Issue #227 (rev #230, round 3): тумблер получает probe-токен только от
-  # сервера — JSON сессии содержит подписанный VisitorIdentity.probe_token,
-  # самодельный токен из JS база отклоняет (см. спеки round 6 выше).
-  it 'serialize отдаёт probe_token подписанный сервером — тумблеру из JS хватает его для входа в тест-режим' do
+  # Issue #227 (rev #230, round 4): JSON сессии НЕ выдаёт probe_token —
+  # публичная выдача HMAC-токена позволила бы переключить чужую сессию в
+  # тест-контур на 90 дней. Тумблер идёт через POST /chat/conversation/
+  # test_mode (same-origin + CSRF), см. spec/requests/chat/test_mode_toggle_spec.rb.
+  it 'serialize НЕ содержит probe_token — публичной выдачи токена нет' do
     open_chat
 
-    token = response.parsed_body['probe_token']
-    expect(token).to match(VisitorIdentity::PROBE_TOKEN_PATTERN)
-    expect(VisitorIdentity.valid_probe_token?(token)).to be(true)
-
-    open_chat(visitor_token: token)
-    expect(response.parsed_body['test_probe']).to be(true)
-    expect(Conversation.order(:id).last.visitor_token).to eq(token)
+    expect(response.parsed_body).not_to have_key('probe_token')
   end
 
   # Issue #227 (rev #230): test_mode в JSON — полный режим диалога (probe ИЛИ

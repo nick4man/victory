@@ -34,6 +34,23 @@ module Chat
       render json: serialize(@conversation)
     end
 
+    # POST /chat/conversation/test_mode { enabled: true|false }
+    # Тумблер «🧪 Тест-прогон» виджета (issue #227). В отличие от
+    # show/update/create, CSRF-защита НЕ выключена: токен мятит сам сервер
+    # (никакого принятия токена из URL/JSON — rev #230, round 4: публичная
+    # выдача probe_token любому анониму позволяла переключить чужую сессию
+    # в тест-контур на 90 дней и разделить с жертвой один Conversation).
+    # Включение: свежий HMAC probe-токен сервера → новый тестовый диалог.
+    # Выключение: свежий случайный токен → новый пустой боевой диалог.
+    def test_mode
+      enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
+      set_visitor_token(enabled ? VisitorIdentity.probe_token : SecureRandom.hex(16))
+
+      @conversation = current_or_create_conversation
+      stamp_auto_test(@conversation)
+      render json: serialize(@conversation)
+    end
+
     private
 
     def current_or_create_conversation
@@ -70,13 +87,12 @@ module Chat
         # она httponly). test_mode (#227, rev #230) — полный режим диалога
         # (probe ИЛИ auto-test по происхождению ИЛИ ENV-кран): тумблер его
         # не отражает, для него в виджете отдельный индикатор.
+        # probe_token здесь НЕ выдаём (rev #230, round 4): публичная выдача
+        # HMAC-токена любому анониму позволила бы переключить чужую сессию
+        # в тест-контур. Тумблер идёт через POST /chat/conversation/test_mode
+        # (same-origin + CSRF, токен мятит сервер).
         test_probe: conv.test_probe?,
         test_mode:  conv.lead_test_mode?,
-        # Подписанный сервером probe-токен для тумблера (rev #230, round 3):
-        # HMAC-формат probe-<name>-<16hex> из VisitorIdentity — самодельный
-        # токен из JS база отклоняет. Виджет хранит его в localStorage и
-        # перезагружает страницу с ?visitor_token=<token>.
-        probe_token: VisitorIdentity.probe_token,
         messages:   conv.chat_messages.recent.map { |m| serialize_message(m) }
       }
     end
