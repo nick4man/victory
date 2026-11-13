@@ -4467,6 +4467,13 @@ CREATE INDEX idx_lead_events_anchor ON public.lead_events USING btree (anchor_th
 
 
 --
+-- Name: idx_lead_events_chat_anchor; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_lead_events_chat_anchor ON public.lead_events USING btree (tg_chat_id, anchor_message_id);
+
+
+--
 -- Name: idx_lead_events_crm_sync_failed; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -4950,10 +4957,10 @@ CREATE INDEX index_conversations_on_status ON public.conversations USING btree (
 
 
 --
--- Name: index_conversations_on_telegram_message_id; Type: INDEX; Schema: public; Owner: -
+-- Name: index_conversations_on_telegram_chat_and_message; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_conversations_on_telegram_message_id ON public.conversations USING btree (telegram_message_id) WHERE (telegram_message_id IS NOT NULL);
+CREATE UNIQUE INDEX index_conversations_on_telegram_chat_and_message ON public.conversations USING btree (telegram_chat_id, telegram_message_id) WHERE (telegram_message_id IS NOT NULL);
 
 
 --
@@ -7980,6 +7987,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261112120000'),
 ('20261108210000'),
 ('20261108120000'),
 ('20261107233000'),

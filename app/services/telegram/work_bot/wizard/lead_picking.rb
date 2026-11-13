@@ -46,6 +46,11 @@ module Telegram
           return nil if ctx['lead'].blank?
           return "⚠️ Лид ##{escape_html(ctx['lead'])} не найден." unless lead
           return "ℹ️ Лид ##{lead.id} уже закрыт (#{lead.current_stage})." unless lead.open?
+          # Issue #224 / review round 5 — test-лиды (probe-прогоны чат-бота)
+          # исключены из мастера: задача по ним создала бы боевой Task и
+          # могла бы запустить CRM-patch. Прямой /task гейтится в Commands::Task,
+          # здесь закрываем wizard-входы (/menu, wiz:s:task:<id>).
+          return "🧪 Лид ##{lead.id} — тестовый (probe). Задачи по тест-лидам не создаём." if lead.staff_test?
 
           nil
         end
@@ -54,7 +59,8 @@ module Telegram
 
         def recent_leads
           @recent_leads ||= begin
-            scope = ::LeadEvent.open.order(updated_at: :desc)
+            # .real — без staff_test/probe (issue #224, review round 5).
+            scope = ::LeadEvent.real.open.order(updated_at: :desc)
             scope = scope.for_agent(tg_user) unless manager?
             scope.limit(RECENT_LIMIT).to_a
           end

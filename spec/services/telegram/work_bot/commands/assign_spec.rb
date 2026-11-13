@@ -120,4 +120,30 @@ RSpec.describe Telegram::WorkBot::Commands::Assign do
       end
     end
   end
+
+  # Issue #224 (ревью PR #221, round 5, блокер 2): /assign для test-лида
+  # отклоняется — иначе LeadAssignment сохранит назначение и пошлёт DM
+  # реальному агенту.
+  describe 'test-лиды (round 5)' do
+    let!(:test_lead) do
+      LeadEvent.create!(lead_ref: lead_ref, source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                        anchor_message_id: 321, staff_test: true, metadata: { 'name' => 'Тест' })
+    end
+    let(:dm_test_msg) do
+      { 'message_id' => 1, 'from' => { 'id' => director.tg_user_id },
+        'chat' => { 'id' => director.tg_user_id, 'type' => 'private' },
+        'text' => "/assign #{test_lead.id} @irina" }
+    end
+
+    it '/assign по lead_id тест-лида — отказ, без LeadAssignment' do
+      expect(Telegram::WorkBot::LeadAssignment).not_to receive(:new)
+
+      described_class.new(message: dm_test_msg, args: "#{test_lead.id} @irina",
+                          tg_user: director, client: tg_client).call
+
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('тестовый'), hash_including(:chat_id))
+    end
+  end
 end

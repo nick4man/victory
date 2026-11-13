@@ -152,7 +152,8 @@ module Telegram
           reply_to = @message['reply_to_message']
           return nil unless reply_to
 
-          ::LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
+          # Пара (chat, message_id): ID уникальны только внутри чата (issue #214).
+          ::LeadEvent.find_by(tg_chat_id: @message.dig('chat', 'id'), anchor_message_id: reply_to['message_id'])
         end
 
         # Команда без аргументов — легаси-вход в мастер. Мастер идёт в личке;
@@ -178,6 +179,16 @@ module Telegram
         def lead_not_found_hint(cmd)
           "⚠️ Лид не найден. В group — reply на якорь лида. " \
             "В DM — укажи lead_id первым аргументом: <code>/#{cmd} 87 …</code>"
+        end
+
+        # Issue #214 / review round 5 — staff_test-лиды (probe-прогоны чат-бота)
+        # не должны дать мутирующим командам (/assign, /task, /stage) тронуть
+        # боевых агентов, Task и CRM: назначение шлёт DM реальному агенту,
+        # /task создаёт боевой Task с CRM-patch, /stage — LeadStageTransition.
+        # Возвращает ответ-отказ или nil (лид боевой / не найден).
+        def staff_test_guard(lead)
+          return nil unless lead&.staff_test?
+          reply("🧪 Лид ##{lead.id} — тестовый (probe). Команда для тест-лидов недоступна.")
         end
 
         private

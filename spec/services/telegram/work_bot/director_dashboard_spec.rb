@@ -29,5 +29,17 @@ RSpec.describe Telegram::WorkBot::DirectorDashboard do
       expect(result.markdown).to include('🎯 <b>Лиды</b>')
       expect(result.markdown).to include('✅ <b>Задачи</b>')
     end
+
+    # Issue #214 (ревью PR #221, round 4): probe/staff_test-лиды не должны
+    # попадать в операционные метрики директора.
+    it 'probe-лиды (staff_test) не входят в счётчик открытых лидов' do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                        staff_test: true, metadata: { 'test' => true })
+
+      result = described_class.new(tg_user: director).call
+
+      expect(result.markdown).to include('Открытых: <b>0</b>')
+    end
   end
 end
