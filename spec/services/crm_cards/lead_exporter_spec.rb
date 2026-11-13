@@ -49,10 +49,10 @@ RSpec.describe CrmCards::LeadExporter do
     expect(topnlab).to have_received(:import_client).with(hash_including(action: 1))
   end
 
-  it 'ответ без insertedId — ошибка, а не «успех без номера»' do
+  it 'ответ без insertedId — неоднозначный исход, а не «успех без номера»' do
     allow(topnlab).to receive(:import_client).and_return({ 'status' => 'ok' })
 
-    expect { exporter.call(card) }.to raise_error(Topnlab::Client::Error, /insertedId/)
+    expect { exporter.call(card) }.to raise_error(Topnlab::Client::AmbiguousError, /insertedId/)
   end
 
   it 'сбой назначения ответственного не отменяет выгрузку, а возвращается предупреждением' do

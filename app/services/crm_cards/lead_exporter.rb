@@ -24,7 +24,10 @@ module CrmCards
         action: values['action'] == 'rent' ? 0 : 1, object_type: values['object_type']
       )
       crm_id = response['insertedId'].to_s
-      raise Topnlab::Client::Error, 'importClient ответил ok без insertedId' if crm_id.blank?
+      # ok без insertedId не доказывает, что заявка не создана, — CRM могла
+      # принять запрос и ответить битым телом. Неоднозначный исход: повтор
+      # только после ручной сверки (ревью PR #210, round 6).
+      raise Topnlab::Client::AmbiguousError, 'importClient ответил ok без insertedId' if crm_id.blank?
 
       Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible))
     end

@@ -21,27 +21,19 @@ RSpec.describe CrmCards::ExportLock do
     conn.exec("SELECT pg_try_advisory_lock(#{described_class::NAMESPACE}, #{card.id})").getvalue(0, 0) == 't'
   end
 
-  def in_progress_raw(conn)
-    acquired = try_acquire_raw(conn)
-    conn.exec("SELECT pg_advisory_unlock(#{described_class::NAMESPACE}, #{card.id})") if acquired
-    !acquired
-  end
-
-  it 'лок занят: вторая сессия не захватывает, in_progress? правда, владелец непотревожен' do
+  it 'лок занят: вторая сессия не захватывает, владелец непотревожен' do
     other = raw_pg
     expect(described_class.try_acquire(card)).to be(true)
     expect(try_acquire_raw(other)).to be(false)
-    expect(in_progress_raw(other)).to be(true)
-    # проверка in_progress? захватила и отпустила временный лок — владельцу нетронут
+    # вторая попытка захвата не отпускает чужой лок — владельцу нетронут
     expect(try_acquire_raw(other)).to be(false)
   ensure
     other&.close
     described_class.release(card)
   end
 
-  it 'лок свободен: in_progress? ложь, вторая сессия захватывает' do
+  it 'лок свободен: вторая сессия захватывает' do
     other = raw_pg
-    expect(in_progress_raw(other)).to be(false)
     expect(try_acquire_raw(other)).to be(true)
   ensure
     other&.exec("SELECT pg_advisory_unlock(#{described_class::NAMESPACE}, #{card.id})")

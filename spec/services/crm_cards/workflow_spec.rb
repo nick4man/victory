@@ -247,11 +247,12 @@ RSpec.describe CrmCards::Workflow do
       expect(card.reload).to be_status_approved
     end
 
-    # Регресс ревью PR #210 (round 5): ReadTimeout/обрыв после отправки —
-    # CRM могла принять заявку, а ответ потеряться. Сбой неоднозначен:
-    # автоматический повтор запрещён, только ручная сверка модератора с CRM.
+    # Регресс ревью PR #210 (round 6): неоднозначный транспортный исход
+    # (на реальном пути perform оборачивает ReadTimeout в AmbiguousError) —
+    # CRM могла принять заявку, а ответ потеряться. Автоматический повтор
+    # запрещён, только ручная сверка модератора с CRM.
     it 'потерянный ответ CRM — неоднозначный сбой: повтор только после сверки' do
-      allow(exporter).to receive(:call).and_raise(Net::ReadTimeout)
+      allow(exporter).to receive(:call).and_raise(Topnlab::Client::AmbiguousError, 'ReadTimeout после отправки')
 
       workflow.export!(card)
 
@@ -261,6 +262,25 @@ RSpec.describe CrmCards::Workflow do
       expect { workflow.retry_export!(card, actor: director, confirmed: true) }
         .to have_enqueued_job(CrmCards::ExportJob).with(card.id)
       expect(card.reload).to be_status_approved
+    end
+
+    # Сквозной регресс ревью PR #210 (round 6): настоящий Topnlab::Client с
+    # WebMock оборачивает транспортный ReadTimeout в AmbiguousError — double
+    # с сырым Net::ReadTimeout этот путь не покрывает.
+    it 'реальный клиент: ReadTimeout → export_retryable false, автоповтор не ставит job' do
+      real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+      stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/}).to_raise(Net::ReadTimeout)
+      real_workflow = described_class.new(notifier: notifier,
+                                          exporter: CrmCards::LeadExporter.new(topnlab: real_client))
+
+      real_workflow.export!(card)
+
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      retry_result = nil
+      expect do
+        retry_result = real_workflow.retry_export!(card, actor: director)
+      end.not_to have_enqueued_job(CrmCards::ExportJob)
+      expect(retry_result.error).to include('Сверь заявку с CRM')
     end
 
     it 'одобренная заявка без выгрузки дольше 15 минут — модератор запускает её снова' do

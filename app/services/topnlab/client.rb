@@ -17,6 +17,13 @@ module Topnlab
   class Client
     class Error < StandardError; end
 
+    # Неоднозначный транспортный исход: запрос мог быть принят CRM, а ответ
+    # потерян (ReadTimeout, обрыв после отправки, EOF/WriteTimeout/SSL).
+    # Подкласс Error, чтобы существующие rescue Topnlab::Client::Error
+    # продолжали ловить; неидемпотентные вызовы повторяются только после
+    # ручной сверки с CRM (ревью PR #210).
+    class AmbiguousError < Error; end
+
     SLOW_DELAY = 6.0   # /get-ids, /get-entities
     FAST_DELAY = 1.0   # /mls, /parser, /logs
 
@@ -379,9 +386,12 @@ module Topnlab
     # ReadTimeout/ECONNRESET/EPIPE могут случиться уже ПОСЛЕ того, как Topnlab
     # принял запрос и создал заявку — транспортный повтор в этом случае завёл
     # бы вторую заявку молча. OpenTimeout (соединение не установилось, запрос
-    # точно не ушёл) ретраится всегда, независимо от retry_network. Все
-    # остальные вызовы (GET'ы, transfer_client, patch_entity) сохраняют
-    # прежнее поведение — ретраят все четыре исключения с тем же backoff'ом.
+    # точно не ушёл) ретраится всегда, независимо от retry_network. Неоднозначные
+    # исходы бросают AmbiguousError (подкласс Error): существующие rescue ловят
+    # их как раньше, а неидемпотентные вызовы повторяются только после сверки
+    # с CRM (ревью PR #210). Все остальные вызовы (GET'ы, transfer_client,
+    # patch_entity) сохраняют прежнее поведение — ретраят все четыре исключения
+    # с тем же backoff'ом.
     def perform(request, retry_network: true)
       http = Net::HTTP.new(request.uri.host, request.uri.port)
       http.use_ssl = (request.uri.scheme == 'https')
@@ -397,10 +407,13 @@ module Topnlab
             sleep(2 * attempts)
             retry
           end
-          raise Error, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
+          # OpenTimeout — запрос точно не ушёл, повтор безопасен; остальные —
+          # неоднозначный исход: CRM могла принять запрос.
+          klass = e.is_a?(Net::OpenTimeout) ? Error : AmbiguousError
+          raise klass, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
         end
 
-        raise Error,
+        raise AmbiguousError,
               'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
               "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
       rescue EOFError, Net::WriteTimeout, OpenSSL::SSL::SSLError => e
@@ -408,7 +421,7 @@ module Topnlab
         # это то же, что ReadTimeout; остальные вызовы видят исключение как раньше.
         raise if retry_network
 
-        raise Error,
+        raise AmbiguousError,
               'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
               "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
       end

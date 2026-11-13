@@ -70,7 +70,7 @@
 | `app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb` | модератор возвращает на доработку |
 | `app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb` | модератор одобряет |
 | `app/services/telegram/work_bot/wizard/engine.rb` | регистрация мастеров в `FLOWS` / `SEED_STEP` |
-| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry` |
+| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry|retry_confirmed` |
 | `app/services/telegram/work_bot/callbacks_router.rb` | префикс `crm_card` |
 | `app/services/telegram/work_bot/lead_announcer.rb` | ряд «📋 Карточка CRM» / статус под карточкой лида |
 | `app/services/telegram/work_bot/lead_assignment.rb` | кнопка карточки в личку назначенному |
@@ -1963,7 +1963,7 @@ git commit -m "feat(crm_cards): уведомления участникам мо
   - `#create_object_card!(actor:, values:)` — новая карточка объекта;
   - `#update_fields!(card, values, actor:)` — `values` Hash ключ → нормализованное значение; `nil` удаляет поле;
   - `#submit!(card, actor:)`, `#return_for_rework!(card, actor:, comment:)`, `#approve!(card, actor:)`;
-  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:)`.
+  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:, confirmed: false)` — `confirmed: true` обязателен для неоднозначных исходов (stale `exporting`, сетевой обрыв): модератор сверил заявку с CRM глазами (ревью PR #210).
 - Produces: `#can_edit?(card, actor, perms = Permissions.for(actor)) → Boolean`, `#edit_denial(card, perms) → String`.
 - Produces: `CrmCards::ExportJob.perform_later(card_id)`.
 
@@ -3343,7 +3343,7 @@ git commit -m "feat(work_bot): мастер правки поля карточк
 
 **Interfaces:**
 - Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#retry_export!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
-- Produces: `crm_card:<card_id>:view|submit|retry`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`).
+- Produces: `crm_card:<card_id>:view|submit|retry|retry_confirmed`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`). Callback `retry_confirmed` (кнопка «Повторить после сверки с CRM» у неоднозначных исходов) обязан вызывать `Workflow#retry_export!` с `confirmed: true` — иначе неоднозначный сбой не повторится, а автоматический `retry` там не показывается вовсе (ревью PR #210).
 
 - [ ] **Step 1: Спека (красная)**
 

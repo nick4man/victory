@@ -109,10 +109,11 @@ module CrmCards
     # Только для ExportJob. Захват approved → exporting атомарный: двойной
     # запуск джоба (ретрай Sidekiq, два процесса) не заведёт две заявки.
     # Токен попытки ставится тем же update_all: проснувшаяся stale-попытка
-    # ничего не перезапишет. Retry из 'exporting' (свежего или stale) в
-    # retry_export! запрещён безусловно: advisory lock отпускается с закрытием
-    # DB-сессии раньше завершения HTTP-вызова importClient, по свободному
-    # lockу живость попытки не доказать (ревью PR #210).
+    # ничего не перезапишет. Advisory lock здесь сериализует только вход
+    # джоба; повтор из 'exporting' (свежего или stale) в retry_export!
+    # запрещён безусловно — по свободному lockу живость HTTP-вызова не
+    # доказать — и восстанавливается только ручной сверкой с CRM (ревью
+    # PR #210).
     def export!(card)
       unless ExportLock.try_acquire(card)
         Rails.logger.warn("[CrmCards::Workflow] card=#{card.id} выгрузку уже ведёт другой процесс — job пропущен")
@@ -139,11 +140,14 @@ module CrmCards
         outcome = exporter.call(card)
       rescue StandardError => e
         # Topnlab::Client::Error — CRM ответила отказом: заявка не создана,
-        # повтор безопасен. Сырые сетевые ошибки (ReadTimeout и т.п.) после
-        # отправки неоднозначны — CRM могла принять заявку, повтор только
-        # после ручной сверки модератора с CRM (ревью #210).
+        # повтор безопасен. AmbiguousError (ReadTimeout, обрыв после отправки)
+        # и прочие сырые сетевые ошибки неоднозначны — CRM могла принять
+        # заявку, повтор только после ручной сверки модератора с CRM (ревью
+        # PR #210, round 6: perform оборачивает транспорт в Error, поэтому
+        # различаем подклассом).
         return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token,
-                            retryable: e.is_a?(Topnlab::Client::Error))
+                            retryable: e.is_a?(Topnlab::Client::Error) &&
+                                       !e.is_a?(Topnlab::Client::AmbiguousError))
       end
 
       # Запись номера — условная по токену и атомарная: retry мог сменить

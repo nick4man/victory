@@ -138,16 +138,24 @@ RSpec.describe Topnlab::Client do
       expect(a_request(:post, import_re)).to have_been_made.once
     end
 
-    it 'ECONNRESET после отправки — тоже без повтора' do
+    it 'ECONNRESET после отправки — тоже без повтора и с неоднозначным исходом' do
       stub_request(:post, import_re)
         .to_raise(Errno::ECONNRESET).then
         .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
 
       expect do
         client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
-      end.to raise_error(Topnlab::Client::Error, /сетевой сбой после отправки/)
+      end.to raise_error(Topnlab::Client::AmbiguousError, /сетевой сбой после отправки/)
 
       expect(a_request(:post, import_re)).to have_been_made.once
+    end
+
+    it 'ReadTimeout после отправки — неоднозначный исход (AmbiguousError)' do
+      stub_request(:post, import_re).to_raise(Net::ReadTimeout)
+
+      expect do
+        client.import_client(phone: '+7 900 123-45-67', name: 'Иван Петров', source: 'site_form')
+      end.to raise_error(Topnlab::Client::AmbiguousError, /проверь CRM перед повторной выгрузкой/)
     end
 
     # Регресс ревью PR #210: отражённый в теле ответа appkey попадал в текст
