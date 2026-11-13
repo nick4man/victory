@@ -192,6 +192,28 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:action]).to eq(:drop)
         expect(result[:reason]).to eq(:spam_link)
       end
+
+      it 'браузерный вариант https:\\@host/x не обходит blocked-домен (WHATWG)' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com',
+                                 status: :blocked, source: 'hagezi_tif')
+
+        result = described_class.classify('смотри https:\\@botmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
+
+      it 'браузерный вариант https:///host/x не обходит blocked-домен (WHATWG)' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com',
+                                 status: :blocked, source: 'hagezi_tif')
+
+        result = described_class.classify('смотри https:///botmasterru.com/x',
+                                          ip: '198.51.100.10', visitor_token: visitor)
+
+        expect(result[:action]).to eq(:drop)
+        expect(result[:reason]).to eq(:spam_link)
+      end
     end
 
     context 'карантин suspect' do

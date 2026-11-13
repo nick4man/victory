@@ -42,8 +42,17 @@ module Llm
       s = raw.to_s.strip
       return nil if s.empty?
 
-      s = s.sub(%r{\A(?:https?|hxxps?)://}i, '')
-      s = s.sub(%r{\A//}, '')
+      # WHATWG URL для специальных схем (http/https, в т.ч. defang-hxxp):
+      # бэкслеш — разделитель пути, повторные слэши после схемы схлопываются.
+      # Браузер из `https:\@evil/x` и `https:///evil/x` получает хост evil, а
+      # старая нормализация отбрасывала такой вход и пропускала ссылку мимо
+      # blocked-домена: обходы подтверждены WHATWG-разбором в Node.
+      if s.match?(%r{\A(?:https?|hxxps?):}i)
+        s = s.tr('\\', '/')
+        s = s.sub(%r{\A(?:https?|hxxps?):/+}i, '')
+      else
+        s = s.sub(%r{\A//}, '')
+      end
       s = s.split(/[?#]/).first.to_s
       s = s.gsub(/\s+/, '')
       s = s.sub(%r{/+\z}, '')

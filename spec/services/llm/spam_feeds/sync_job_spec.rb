@@ -122,6 +122,22 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(local.deleted_at).to be_nil
   end
 
+  it 'ручной разблок local-записи синк не отменяет, даже если ключ есть в фиде' do
+    local = SpamBlockedEntry.create!(entry_type: :domain, value: 'manual-unblock.example',
+                                     status: :blocked, source: 'local')
+    local.update_columns(deleted_at: Time.current) # DELETE через admin API
+
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||manual-unblock.example^\n||other-spam.example^\n")
+
+    stats = described_class.perform_now
+
+    expect(stats['hagezi_tif']).to eq(2)
+    expect(local.reload.deleted_at).to be_present # фид её не реанимировал
+    expect(SpamBlockedEntry.unscoped.where(entry_type: 'domain',
+                                           value_digest: local.value_digest).count).to eq(1)
+  end
+
   it 'локальный suspect, подтверждённый blocked-фидом, повышается до blocked' do
     local = SpamBlockedEntry.create!(entry_type: :domain, value: 'promote-me.example',
                                      status: :suspect, source: 'local')

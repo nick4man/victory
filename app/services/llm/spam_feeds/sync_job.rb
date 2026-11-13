@@ -154,11 +154,11 @@ module Llm
         count
       end
 
-      # Пакетный upsert чанками. Уникальный индекс частичный (deleted_at IS
-      # NULL): софт-делитная запись конфликта не даст, поэтому сначала
-      # реанимируем вернувшиеся ключи, потом вставляем новые (on_conflict
-      # skip), затем set-based помечаем seen_at и повышаем suspect → blocked
-      # подтверждённым фидом (в т.ч. локальную запись).
+      # Пакетный upsert чанками. Уникальный индекс полный (без исключения
+      # soft-deleted): вернувшийся ключ сначала реанимируем, но НЕ local —
+      # ручной разблок модератора синк не отменяет; новые вставляем
+      # (on_conflict skip), затем set-based помечаем seen_at и повышаем
+      # suspect → blocked подтверждённым фидом (в т.ч. локальную запись).
       def import_batches(body, source, cfg, status, run_at, synced)
         batch = []
         flush = -> { flush_batch(batch, source, status, run_at, synced) }
@@ -191,7 +191,11 @@ module Llm
           digests = rows.map { |r| r[:value_digest] }
           scope = SpamBlockedEntry.unscoped.where(entry_type: type, value_digest: digests)
 
+          # local из автоматической реанимации исключаем: разблок модератора
+          # синк не отменяет (контракт «local синк не трогает») — иначе домен
+          # из фида, удалённый вручную, возвращался бы в блок каждую ночь
           scope.where.not(deleted_at: nil)
+               .where.not(source: 'local')
                .update_all(deleted_at: nil, seen_at: run_at, updated_at: run_at)
           SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_digest)
           scope.update_all(seen_at: run_at, updated_at: run_at)

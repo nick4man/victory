@@ -135,6 +135,21 @@ RSpec.describe Llm::SpamUrls do
         .to eq(host: 'example.com', path: '/phish/login')
     end
 
+    it 'бэкслеш после спец-схемы = слэш (WHATWG): https:\\@evil/x → хост evil' do
+      expect(described_class.normalize('https:\\\\@botmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'лишние слэши после спец-схемы схлопываются (WHATWG): https:///evil/x → хост evil' do
+      expect(described_class.normalize('https:///botmasterru.com/x'))
+        .to eq(host: 'botmasterru.com', path: '/x')
+    end
+
+    it 'бэкслеш в пути спец-схемы = слэш (WHATWG): /a\\b → /a/b' do
+      expect(described_class.normalize('https://example.com/a\\b'))
+        .to eq(host: 'example.com', path: '/a/b')
+    end
+
     it 'зарезервированные эскейпы пути сохраняются, hex приводится к нижнему регистру' do
       expect(described_class.normalize('https://example.com/a%2Fb'))
         .to eq(host: 'example.com', path: '/a%2fb')
