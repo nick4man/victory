@@ -229,7 +229,7 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     expect(SpamBlockedEntry.find_by(value: 'valid.example/path')).to be_nil
   end
 
-  it 'домен, выпавший из blocked-фида, но живой в suspect-фиде, понижается до suspect' do
+  it 'домен, выпавший из УСПЕШНОГО blocked-фида, но живой в suspect-фиде, понижается до suspect' do
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
       .to_return(status: 200, body: "||down.example^\n")
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
@@ -238,10 +238,10 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
     described_class.perform_now
     expect(SpamBlockedEntry.find_by(value: 'down.example').status).to eq('blocked')
 
-    # второй прогон: TIF домен больше не отдаёт (пустая выгрузка отклонена),
-    # шортенеры — по-прежнему; blocked не должен «липнуть» без blocked-фида
+    # второй прогон: TIF успешно синкается, но ключа в нём больше нет —
+    # shorteners по-прежнему держат; blocked не должен «липнуть»
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
-      .to_return(status: 200, body: '')
+      .to_return(status: 200, body: "||other.example^\n")
     stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
       .to_return(status: 200, body: "||down.example^\n")
 
@@ -249,8 +249,28 @@ RSpec.describe Llm::SpamFeeds::SyncJob do
 
     entry = SpamBlockedEntry.find_by(value: 'down.example')
     expect(entry.status).to eq('suspect')
-    expect(entry.source).to eq('hagezi_shorteners')
     expect(entry.deleted_at).to be_nil
+  end
+
+  it 'сбой blocked-фида (HTTP 500) не понижает blocked: fail-closed по контракту' do
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 200, body: "||keep-block.example^\n")
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||keep-block.example^\n")
+
+    described_class.perform_now
+    expect(SpamBlockedEntry.find_by(value: 'keep-block.example').status).to eq('blocked')
+
+    # второй прогон: TIF падает, shorteners живы; сбой владельца — не
+    # подтверждение исчезновения ключа, запись остаётся blocked
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_tif'][:url])
+      .to_return(status: 500)
+    stub_request(:get, described_class::DOMAIN_FEEDS['hagezi_shorteners'][:url])
+      .to_return(status: 200, body: "||keep-block.example^\n")
+
+    described_class.perform_now
+
+    expect(SpamBlockedEntry.find_by(value: 'keep-block.example').status).to eq('blocked')
   end
 
   it 'падение одного фида не роняет остальные' do

@@ -187,6 +187,30 @@ RSpec.describe Llm::SpamFilter do
         expect(result[:reason]).to eq(:spam_link)
       end
 
+      it 'концевые .!,; пути схема-URL не срезаются: ключ фида и проверки совпадают' do
+        ['dot-host.example/phish.', 'bang-host.example/phish!', 'semi-host.example/phish;'].each do |blocked_url|
+          host, path = blocked_url.split('/', 2)
+          SpamBlockedEntry.create!(entry_type: :url, value: "#{host}/#{path}",
+                                   status: :blocked, source: 'phishing_links')
+
+          result = described_class.classify("войдите https://#{host}/#{path}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "blocked #{blocked_url} не должен обходиться"
+        end
+      end
+
+      it 'tab вокруг разделителя схемы не обходит blocked-домен (WHATWG: https:\t// = https://)' do
+        SpamBlockedEntry.create!(entry_type: :domain, value: 'botmasterru.com', status: :blocked, source: 'local')
+
+        ["https:\t//%62otmasterru.com/x", "https:/\t/%62otmasterru.com/x"].each do |spam_url|
+          result = described_class.classify("смотрите #{spam_url}",
+                                            ip: '198.51.100.10', visitor_token: visitor)
+
+          expect(result[:action]).to eq(:drop), "#{spam_url.inspect} не должен обходить блок"
+        end
+      end
+
       it 'percent-encoded UTF-8 в IDN-хосте не обходит blocked-запись' do
         # %D0%B1 = кириллическая «б»; WHATWG ведёт %D0%B1otmasterru.com
         # (б + латинское «otmasterru») именно в этот punycode-домен

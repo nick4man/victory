@@ -95,6 +95,7 @@ module Llm
         # иначе retire_stale уходил бы с сотнями дублей в IN (...) большого фида
         synced.each_value(&:uniq!)
         retire_stale(synced, run_at)
+        downgrade_unconfirmed_blocked(synced, run_at)
         # протухание могло увести в soft-delete CIDR-подсети — кеш ip_blocked?
         # иначе продолжал бы дропать адреса до часа (CIDR_CACHE_TTL)
         Rails.cache.delete(SpamBlockedEntry::CIDR_CACHE_KEY)
@@ -133,7 +134,7 @@ module Llm
         # импорта оставило бы источник в synced, и retire_stale стёр бы
         # записи необработанной части фида (контракт: сбой список не стирает)
         feed_synced = Hash.new { |h, k| h[k] = [] }
-        import_batches(body, source, cfg, status, run_at, feed_synced, synced)
+        import_batches(body, source, cfg, status, run_at, feed_synced)
         feed_synced.each { |type, sources| synced[type].concat(sources) }
         total
       rescue StandardError => e
@@ -167,9 +168,9 @@ module Llm
       # ручной разблок модератора синк не отменяет; новые вставляем
       # (on_conflict skip), затем set-based помечаем seen_at и повышаем
       # suspect → blocked подтверждённым фидом (в т.ч. локальную запись).
-      def import_batches(body, source, cfg, status, run_at, synced, run_synced)
+      def import_batches(body, source, cfg, status, run_at, synced)
         batch = []
-        flush = -> { flush_batch(batch, source, status, run_at, synced, run_synced) }
+        flush = -> { flush_batch(batch, source, status, run_at, synced) }
 
         body.each_line do |line|
           token = parse_token(line, cfg[:format] || :plain)
@@ -192,16 +193,15 @@ module Llm
       # источник в synced только после полного успешного прохода по фиду.
       # Поиск/конфликт — по value_digest (SHA-256): value текстом до ~5 КБ
       # неиндексируем B-tree PG, уникальность держит дайджест-индекс.
-      def flush_batch(batch, source, status, run_at, synced, run_synced)
+      # blocked_at у фидовых записей = время ПОСЛЕДНЕГО ПОДТВЕРЖДЕНИЯ
+      # blocked-источником (не первичной блокировки): так понижение раунда 12
+      # отличает «ключ подтверждён blocked-фидом сегодня» от «только suspect».
+      def flush_batch(batch, source, status, run_at, synced)
         return if batch.empty?
 
         batch.group_by { |r| r[:entry_type] }.each do |type, rows|
           digests = rows.map { |r| r[:value_digest] }
           scope = SpamBlockedEntry.unscoped.where(entry_type: type, value_digest: digests)
-          # живые владельцы прогона: полностью отсинкнувшиеся до этого момента
-          # источники типа плюс текущий. Записи мёртвого владельца (ушел из
-          # фидов / его выгрузка сегодня не удалась) им не подтверждаются
-          alive = Array(run_synced[type.to_sym]) | [source]
 
           # local из автоматической реанимации исключаем: разблок модератора
           # синк не отменяет (контракт «local синк не трогает») — иначе домен
@@ -210,21 +210,17 @@ module Llm
                .where.not(source: 'local')
                .update_all(deleted_at: nil, seen_at: run_at, updated_at: run_at)
           SpamBlockedEntry.insert_all(rows, unique_by: :idx_spam_blocked_entries_type_digest)
-          scope.update_all(seen_at: run_at, updated_at: run_at)
           if status == :blocked
+            # blocked-источник подтвердил ключ: свежий blocked_at — метка для
+            # downgrade_unconfirmed_blocked
+            scope.update_all(seen_at: run_at, blocked_at: run_at, updated_at: run_at)
             scope.where(status: 'suspect')
                  .update_all(status: 'blocked', blocked_at: run_at, updated_at: run_at)
           else
-            # suspect-источник подтвердил ключ, а blocked-владелец в этом
-            # прогоне не синкнулся (выпал из TIF, остался в shorteners):
-            # понижаем до suspect — иначе корень шортенера оставался
-            # заблокированным вопреки контракту (ревью Kimi, раунд 11)
-            scope.where(status: 'blocked').where.not(source: ['local', *alive])
-                 .update_all(status: 'suspect', blocked_at: nil, source: source, updated_at: run_at)
+            # suspect-источник не трогает blocked_at: запись остаётся
+            # неподтверждённой на blocked-уровне
+            scope.update_all(seen_at: run_at, updated_at: run_at)
           end
-          # владение следует за живым источником: иначе ушедший из фидов
-          # владелец держал запись «в заложниках», и понижение не срабатывало
-          scope.where.not(source: ['local', *alive]).update_all(source: source)
           synced[type.to_sym] << source
         end
         batch.clear
@@ -273,6 +269,25 @@ module Llm
                           .where(entry_type: entry_type, source: sources, deleted_at: nil)
                           .where('seen_at < ? OR seen_at IS NULL', run_at)
                           .in_batches(of: 10_000) { |rel| rel.update_all(deleted_at: run_at) }
+        end
+      end
+
+      # Понижение «липкого» blocked (ревью Kimi, раунд 12): запись живёт
+      # (seen_at свежий — suspect-источник её видит), владелец в этом прогоне
+      # отсинковался успешно, но ключ не подтвердил ни один blocked-источник
+      # (blocked_at старше прогона — у фидовых записей это метка последнего
+      # подтверждения, см. flush_batch). Значит владелец ключ из состава
+      # выпустил — понижаем до suspect, вечный blocked невозможен. Сбой
+      # владельца его из synced убирает — понижения нет (fail-closed: сбой
+      # источника ≠ исчезновение ключа, контракт runbook). local-записей тут
+      # нет по построению: в synced попадают только имена фидов.
+      def downgrade_unconfirmed_blocked(synced, run_at)
+        synced.each do |entry_type, sources|
+          SpamBlockedEntry.unscoped
+                          .where(entry_type: entry_type, status: 'blocked', deleted_at: nil, source: sources)
+                          .where('seen_at >= ?', run_at)
+                          .where('blocked_at < ? OR blocked_at IS NULL', run_at)
+                          .in_batches(of: 10_000) { |rel| rel.update_all(status: 'suspect', blocked_at: nil, updated_at: run_at) }
         end
       end
 
