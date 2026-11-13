@@ -75,6 +75,25 @@ RSpec.describe CrmCards::LeadExporter do
     expect(outcome.warning).to include('ответственный не назначен', 'ECONNREFUSED')
   end
 
+  # Сквозной регресс ревью PR #210 (блокер 2): ошибочный ответ CRM может
+  # отразить appkey запроса. Реальный клиент (не double) scrub'ит тело на
+  # raise, поэтому предупреждение — единственный носитель ошибки в
+  # export_error/журнал/Telegram — секрета не содержит.
+  it 'appkey, отражённый в ошибке transfer_client, не доезжает до warning' do
+    real_client = Topnlab::Client.new(api_key: 'test-key', base_url: 'https://crm.example')
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/importClient/})
+      .to_return(status: 200, body: { status: 'ok', insertedId: 4455 }.to_json)
+    stub_request(:post, %r{\Ahttps://crm\.example/call/main/transferClient/})
+      .to_return(status: 200, body: { status: 'error', appkey: 'test-key', message: 'no agent' }.to_json)
+
+    outcome = described_class.new(topnlab: real_client).call(card)
+
+    expect(outcome.crm_id).to eq('4455')
+    expect(outcome.warning).to include('ответственный не назначен')
+    expect(outcome.warning).not_to include('test-key')
+    expect(outcome.warning).to include('[FILTERED]')
+  end
+
   it 'лид переназначили после отправки — ответственным в CRM становится текущий назначенный' do
     petr = TelegramUser.create!(tg_user_id: 98_402, tg_username: 'petr', status: 'active', email: 'petr@victory.test')
     lead.update!(assigned_to: petr)
