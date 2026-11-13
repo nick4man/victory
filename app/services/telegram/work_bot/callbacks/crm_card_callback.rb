@@ -32,7 +32,12 @@ module Telegram
         # В карточке телефон клиента — показываем только в личке, даже если
         # кнопку нажали под лидом в группе.
         def show(card)
-          return ack('🚫 Карточку видят автор, ответственный по лиду и модераторы.', alert: true) unless viewer?(card)
+          perms = ::CrmCards::Permissions.for(tg_user)
+          # Отказ до author/responsible: /deactivate оставляет сотрудника автором
+          # карточек и ответственным по лидам, а телефон клиента показывать ему
+          # уже нельзя (находка ревью #95-1).
+          return ack("🚫 #{perms.denial}", alert: true) if perms.denial
+          return ack('🚫 Карточку видят автор, ответственный по лиду и модераторы.', alert: true) unless viewer?(card, perms)
           unless send_dm(::CrmCards::CardView.render(card, viewer: tg_user))
             return ack('Не могу написать в личку. Открой чат с ботом, нажми «Start» и нажми кнопку ещё раз.', alert: true)
           end
@@ -50,10 +55,9 @@ module Telegram
           ack(success_text)
         end
 
-        def viewer?(card)
+        def viewer?(card, perms)
           card.author_id == tg_user.id || card.responsible&.id == tg_user.id ||
-            card.lead_event&.assigned_to_id == tg_user.id ||
-            ::CrmCards::Permissions.for(tg_user).can?(:moderate)
+            card.lead_event&.assigned_to_id == tg_user.id || perms.can?(:moderate)
         end
 
         def redraw(view)

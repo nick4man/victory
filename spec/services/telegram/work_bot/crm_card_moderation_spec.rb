@@ -81,6 +81,16 @@ RSpec.describe 'модерация карточки CRM в Telegram' do
     expect(acks.last).to eq(['🚫 Карточку видят автор, ответственный по лиду и модераторы.', true])
   end
 
+  it 'деактивированный автор не видит карточку с телефоном клиента (находка ревью #95-1)' do
+    # /deactivate ставит status=inactive, но оставляет авторство карточки и лиды.
+    agent.update!(status: 'inactive')
+
+    tap_callback("crm_card:#{card.id}:view", user: agent, chat_type: 'supergroup')
+
+    expect(acks.last.first).to include('🚫', 'не активен')
+    expect(dms).to be_empty
+  end
+
   it 'повтор выгрузки — кнопкой модератора' do
     card.update!(status: 'export_failed', export_error: 'HTTP 502')
 
