@@ -47,8 +47,10 @@ class LlmReplyJob < ApplicationJob
 
   # Ставит thread-local флаг тест-режима на время LLM-прогона и снимает его
   # даже при исключении — иначе флаг протечёт в следующий job этого воркера.
+  # Issue #227: флаг = полный тест-режим сессии (probe-тумблер, auto-test
+  # по происхождению или ENV-кран SITE_CHATBOT_FORCE_TEST).
   def with_lead_test_mode(conv)
-    Thread.current[:lead_test_mode] = conv.test_probe?
+    Thread.current[:lead_test_mode] = conv.lead_test_mode?
     yield
   ensure
     Thread.current[:lead_test_mode] = false

@@ -34,6 +34,55 @@ RSpec.describe Telegram::EscalationNotifier do
 
       expect(described_class.new(conv, 'тест', client: client).call).to be_nil
     end
+
+    # Issue #227 (rev #230): изоляция эскалаций — не только probe. Auto-test
+    # по происхождению (metadata['auto_test']) и ENV-кран — тот же тестовый
+    # чат, иначе прогон с правдоподобными контактами эскалировал бы в
+    # ДИСПЕТЧЕРСКУЮ.
+    describe 'auto-test по происхождению (issue #227)' do
+      let(:conv) do
+        Conversation.create!(visitor_token: 'aabbccddeeff00112233445566778899',
+                             status: :active, metadata: { 'auto_test' => true })
+      end
+
+      it 'эскалирует в тестовый чат с 🧪 ТЕСТ-маркером' do
+        expect(client).to receive(:send_message) do |text, kwargs|
+          expect(kwargs[:chat_id]).to eq(-100_999_888)
+          expect(text).to include('🧪 ТЕСТ')
+          { 'message_id' => 43, 'chat' => { 'id' => -100_999_888 } }
+        end
+
+        expect(described_class.new(conv, 'auto-прогон', client: client).call).not_to be_nil
+      end
+    end
+
+    describe 'ENV-кран SITE_CHATBOT_FORCE_TEST (issue #227)' do
+      let(:conv) { Conversation.create!(visitor_token: 'aabbccddeeff00112233445566778899', status: :active) }
+
+      around do |example|
+        old_flag = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
+        ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+        example.run
+        old_flag.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old_flag
+      end
+
+      it 'любой диалог эскалирует в тестовый чат' do
+        expect(client).to receive(:send_message) do |text, kwargs|
+          expect(kwargs[:chat_id]).to eq(-100_999_888)
+          expect(text).to include('🧪 ТЕСТ')
+          { 'message_id' => 44, 'chat' => { 'id' => -100_999_888 } }
+        end
+
+        expect(described_class.new(conv, 'force-прогон', client: client).call).not_to be_nil
+      end
+
+      it 'без TELEGRAM_TEST_CHAT_ID — пропуск (fail-closed, рабочая группа не трогается)' do
+        ENV.delete('TELEGRAM_TEST_CHAT_ID')
+        expect(client).not_to receive(:send_message)
+
+        expect(described_class.new(conv, 'force-прогон', client: client).call).to be_nil
+      end
+    end
   end
 
   describe 'боевой режим (регрессия)' do

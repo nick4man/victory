@@ -52,7 +52,13 @@ module Telegram
       private
 
       def test_lead?
-        (@lead.metadata || {})['test'] == true
+        return true if (@lead.metadata || {})['test'] == true
+
+        # Issue #227 (rev #230): lead_ref staff_test — изоляция та же, что
+        # metadata['test'] (см. LeadAnnouncer#test_lead?), но только по
+        # сильному правилу детектора: слабое name_staff_first боевую
+        # маршрутизацию не отменяет.
+        StaffSubmissionDetector.hard_isolation?(@lead.lead_ref)
       end
 
       def valid_target?

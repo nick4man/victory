@@ -60,23 +60,24 @@ module VisitorIdentity
     # самодельное значение из URL не принимаем — сервер подписывает в куку
     # лишь то, что мог выдать только он (VisitorIdentity.probe_token).
     probe = params[:visitor_token].to_s.strip.downcase
-    if VisitorIdentity.valid_probe_token?(probe)
-      cookies.signed[COOKIE_NAME] = { value: probe, expires: COOKIE_TTL.from_now, httponly: true, same_site: :lax }
-      request.cookie_jar.signed[COOKIE_NAME] = probe
-      return
-    end
+    set_visitor_token(probe) && return if VisitorIdentity.valid_probe_token?(probe)
 
     return if cookies.signed[COOKIE_NAME].present?
 
-    token = SecureRandom.hex(16)
+    set_visitor_token(SecureRandom.hex(16))
+  end
+
+  # Фиксирует токен посетителя подписанной кукой и делает его видимым текущему
+  # запросу (без повторного чтения заголовка Cookie).
+  def set_visitor_token(token)
     cookies.signed[COOKIE_NAME] = {
-      value:    token,
-      expires:  COOKIE_TTL.from_now,
-      httponly: true,
+      value:     token,
+      expires:   COOKIE_TTL.from_now,
+      httponly:  true,
       same_site: :lax
     }
-    # Make available to current request immediately
     request.cookie_jar.signed[COOKIE_NAME] = token
+    true
   end
 
   def current_visitor_token

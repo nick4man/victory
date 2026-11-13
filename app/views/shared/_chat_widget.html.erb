@@ -37,6 +37,21 @@
       </button>
     </div>
 
+    <%# Тумблер «Тест-прогон» (issue #227): включён → POST /chat/conversation/
+        test_mode (same-origin + CSRF) — сервер мятит свежий HMAC probe-токен
+        и ставит signed-куку, все лиды нового диалога — metadata['test']=true,
+        в тестовый TG-чат, ДИСПЕТЧЕРСКАЯ не трогается. Токен из URL/JSON не
+        принимаем (rev #230 round 4): публичная выдача позволяла переключить
+        чужую сессию в тест-контур. Индикатор auto-теста — сессия тестовая по
+        происхождению/ENV-крану без тумблера (Chat::TestMode). %>
+    <label class="flex items-center gap-2 px-4 py-1.5 border-b border-border bg-background text-[11px] text-muted-foreground cursor-pointer select-none">
+      <input type="checkbox" id="chat-widget-test-toggle" class="accent-foreground">
+      <span>🧪 Тест-прогон — диалог не попадёт к агентам</span>
+      <span id="chat-widget-test-auto"
+            class="hidden ml-auto text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300"
+            title="Сессия помечена тестовой по происхождению или ENV-крану">auto-тест</span>
+    </label>
+
     <div id="chat-widget-messages"
          class="flex-1 overflow-y-auto p-4 space-y-3 bg-background">
       <p id="chat-widget-loading"
@@ -106,6 +121,40 @@
   const conversationUrl = root.dataset.conversationUrl;
   const messagesUrl     = root.dataset.messagesUrl;
   const cableUrl        = root.dataset.cableUrl;
+  const testToggle      = document.getElementById('chat-widget-test-toggle');
+
+  // Тумблер «Тест-прогон» (issue #227): same-origin POST /chat/conversation/
+  // test_mode с CSRF-заголовком (rev #230, round 4) — токен мятит СЕРВЕР,
+  // из URL/JSON токен не принимаем: публичная выдача HMAC-токена позволяла
+  // переключить чужую сессию в тест-контур. Успех → перезагрузка: кука уже
+  // новая, виджет поднимется в свежем (тестовом/боевом) диалоге.
+  const testAutoEl = document.getElementById('chat-widget-test-auto');
+
+  if (testToggle) {
+    testToggle.addEventListener('change', () => {
+      const wanted = testToggle.checked;
+      fetch('/chat/conversation/test_mode', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content || ''
+        },
+        body: JSON.stringify({ enabled: wanted })
+      }).then((res) => {
+        if (!res.ok) throw new Error(`test_mode: HTTP ${res.status}`);
+        window.location.reload();
+      }).catch(() => { testToggle.checked = !wanted; });
+    });
+  }
+
+  // test_probe — состояние ручного тумблера (probe-кука httponly, JS её
+  // не видит). test_mode — полный режим диалога (#227): auto-test по
+  // происхождению/ENV-кран тумблером не отражается, для него индикатор.
+  function applyTestToggleState () {
+    if (!testToggle || !conversation) return;
+    testToggle.checked = conversation.test_probe === true;
+    if (testAutoEl) testAutoEl.classList.toggle('hidden', !(conversation.test_mode === true && conversation.test_probe !== true));
+  }
 
   let conversation = null;
   let consumer = null;
@@ -188,6 +237,7 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       conversation = await res.json();
       renderHistory();
+      applyTestToggleState();
       subscribe();
     } catch (e) {
       showError('Не удалось загрузить чат: ' + e.message);

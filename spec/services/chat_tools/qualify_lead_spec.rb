@@ -38,6 +38,24 @@ RSpec.describe ChatTools::QualifyLead do
       expect { described_class.call(intent: 'buy') }.not_to change(Inquiry, :count)
     end
 
+    # Issue #227: ENV-кран SITE_CHATBOT_FORCE_TEST=1 — боевой прогон qualify_lead
+    # (без thread-флага) создаёт тестовый Inquiry: без CRM-синка, в тестовый чат.
+    it 'ENV-кран: Inquiry создаётся с metadata["test"]=true без thread-флага' do
+      old = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
+      ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+
+      result = described_class.call(
+        intent: 'buy', name: 'Пробный Прогон', phone: '+79155500033',
+        budget_rub: 8_000_000, district: 'Центр', timeline: 'сейчас'
+      )
+
+      inquiry = Inquiry.find(result[:inquiry_id])
+      expect(inquiry.metadata['test']).to be(true)
+      expect(inquiry).to be_test
+    ensure
+      old.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old
+    end
+
     # Находка ревью PR #221: дедуп по телефону смешивал режимы — тест-прогон
     # возвращал боевой Inquiry (тест без карточки) или наоборот (боевой лид с
     # тестовой карточкой и запретом CRM-синка).

@@ -58,6 +58,25 @@ module Lead
 
       ref, metadata = result
 
+      # Issue #227 — кран SITE_CHATBOT_FORCE_TEST=1: лиды ЧАТ-БОТА (rev #230:
+      # только записи с Inquiry source='site_chatbot' — обычные боевые формы
+      # сайта кран не задевает) идут в тестовый чат, ДИСПЕТЧЕРСКАЯ не трогается
+      # вовсе. Ставится на период тестирования.
+      if Chat::TestMode.force_test? && Chat::TestMode.site_source?(@source) &&
+         Chat::TestMode.force_test_inquiry?(ref)
+        metadata = (metadata || {}).merge('test' => true)
+      end
+
+      # Issue #227 — маршрутизация по staff_test: lead_ref (Inquiry и др.)
+      # авто-помечен StaffSubmissionDetector по своим контактам сотрудника —
+      # без явного флага в payload. Карточка уходит в тестовый чат, получает
+      # тот же изоляционный класс, что probe-прогон (#214): tg_chat_id,
+      # anchor без топика, 🧪-бейдж. hard_isolation? отсекает слабое правило
+      # name_staff_first (rev #230): клиент «Надежда» не теряет боевую карточку.
+      if metadata.is_a?(Hash) && metadata['test'] != true && StaffSubmissionDetector.hard_isolation?(ref)
+        metadata = metadata.merge('test' => true)
+      end
+
       # BOTTLENECK — вернувшийся клиент дописывается в существующую карточку,
       # а не плодит вторую. TgDmSource при cross-channel match уже дописал
       # сообщение в metadata['client_history'] существующего LeadEvent; до этого

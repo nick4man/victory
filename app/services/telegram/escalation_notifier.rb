@@ -30,25 +30,35 @@ module Telegram
 
     private
 
-    # Тест-режим чат-бота (issue #214): probe-диалог эскалирует в тестовый
+    # Тест-режим диалога (issue #214/#227, rev #230): probe-токен, auto-test
+    # по происхождению или ENV-кран — эскалация уходит в тестовый чат,
+    # рабочая группа не трогается. lead_test_mode? есть на Conversation (#227);
+    # guard для совместимости с объектами, где только test_probe?.
+    def test_mode?
+      return @conv.lead_test_mode? if @conv.respond_to?(:lead_test_mode?)
+
+      @conv.respond_to?(:test_probe?) && @conv.test_probe?
+    end
+
+    # Тест-режим чат-бота (issue #214): тестовый диалог эскалирует в тестовый
     # чат, а не в рабочий staff-chat. Без TELEGRAM_TEST_CHAT_ID — пропуск с
     # warning: рабочая группа не трогается.
     def target_chat_id
-      unless @conv.respond_to?(:test_probe?) && @conv.test_probe?
+      unless test_mode?
         chat_id = ENV['TELEGRAM_STAFF_CHAT_ID']
         raise Telegram::Client::Error, 'TELEGRAM_STAFF_CHAT_ID not set' if chat_id.blank?
         return chat_id
       end
 
       test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
-      Rails.logger.warn("[EscalationNotifier] conversation=#{@conv.id} test probe, TELEGRAM_TEST_CHAT_ID не задан — пропуск") if test_chat.blank?
+      Rails.logger.warn("[EscalationNotifier] conversation=#{@conv.id} test-режим, TELEGRAM_TEST_CHAT_ID не задан — пропуск") if test_chat.blank?
       test_chat&.to_i
     end
 
     def format_message
       lines = []
       title = "🆕 <b>Новая заявка #{@conv.id}</b>"
-      title = "🧪 ТЕСТ · #{title}" if @conv.respond_to?(:test_probe?) && @conv.test_probe?
+      title = "🧪 ТЕСТ · #{title}" if test_mode?
       lines << title
       lines << ''
       lines << "👤 #{escape(@conv.display_name)}#{phone_line}#{email_line}"

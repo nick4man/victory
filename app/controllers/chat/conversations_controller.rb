@@ -15,6 +15,7 @@ module Chat
     # (a single visitor can navigate between pages while the conversation is open).
     def show
       @conversation = current_or_create_conversation
+      stamp_auto_test(@conversation)
       page_ctx = extract_page_params
       stamp_page(@conversation, page_ctx) if page_ctx
       seed_welcome(@conversation, page_ctx) if @conversation.chat_messages.empty?
@@ -30,6 +31,23 @@ module Chat
       @conversation = current_or_create_conversation
       attrs = params.permit(:name, :phone, :email).to_h.compact_blank
       @conversation.update(attrs)
+      render json: serialize(@conversation)
+    end
+
+    # POST /chat/conversation/test_mode { enabled: true|false }
+    # Тумблер «🧪 Тест-прогон» виджета (issue #227). В отличие от
+    # show/update/create, CSRF-защита НЕ выключена: токен мятит сам сервер
+    # (никакого принятия токена из URL/JSON — rev #230, round 4: публичная
+    # выдача probe_token любому анониму позволяла переключить чужую сессию
+    # в тест-контур на 90 дней и разделить с жертвой один Conversation).
+    # Включение: свежий HMAC probe-токен сервера → новый тестовый диалог.
+    # Выключение: свежий случайный токен → новый пустой боевой диалог.
+    def test_mode
+      enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
+      set_visitor_token(enabled ? VisitorIdentity.probe_token : SecureRandom.hex(16))
+
+      @conversation = current_or_create_conversation
+      stamp_auto_test(@conversation)
       render json: serialize(@conversation)
     end
 
@@ -59,12 +77,23 @@ module Chat
 
     def serialize(conv)
       {
-        id:       conv.id,
-        status:   conv.status,
-        name:     conv.name,
-        phone:    conv.phone,
-        email:    conv.email,
-        messages: conv.chat_messages.recent.map { |m| serialize_message(m) }
+        id:         conv.id,
+        status:     conv.status,
+        name:       conv.name,
+        phone:      conv.phone,
+        email:      conv.email,
+        # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг, чтобы
+        # показать состояние сессии (probe-куку виджет прочитать не может —
+        # она httponly). test_mode (#227, rev #230) — полный режим диалога
+        # (probe ИЛИ auto-test по происхождению ИЛИ ENV-кран): тумблер его
+        # не отражает, для него в виджете отдельный индикатор.
+        # probe_token здесь НЕ выдаём (rev #230, round 4): публичная выдача
+        # HMAC-токена любому анониму позволила бы переключить чужую сессию
+        # в тест-контур. Тумблер идёт через POST /chat/conversation/test_mode
+        # (same-origin + CSRF, токен мятит сервер).
+        test_probe: conv.test_probe?,
+        test_mode:  conv.lead_test_mode?,
+        messages:   conv.chat_messages.recent.map { |m| serialize_message(m) }
       }
     end
 

@@ -11,7 +11,8 @@
 #
 # Triggered from InvestmentAuditJob after the PropertyValuation is marked
 # completed. Chat target precedence:
-#   0. probe-прогон чат-бота (valuation.metadata['test'], issue #214) →
+#   0. Тест-запись (valuation.metadata['test'], issue #214, ИЛИ staff_test
+#      по сильному правилу детектора, issue #227/rev #230) →
 #      TELEGRAM_TEST_CHAT_ID; ENV не задан — пропуск с warning, рабочие
 #      чаты не трогаем
 #   1. TELEGRAM_AUDITS_CHAT_ID (dedicated channel if set)
@@ -42,11 +43,13 @@ class AuditReportNotifier
 
   private
 
-  # Тест-режим чат-бота (issue #214): аудит из probe-прогона уходит в
-  # TELEGRAM_TEST_CHAT_ID, а не в рабочие audits/staff-чаты. Без
-  # TELEGRAM_TEST_CHAT_ID — пропуск с warning: рабочие каналы не трогаются.
+  # Тест-режим чат-бота (issue #214/#227): аудит из probe-прогона или с
+  # staff_test по сильному правилу детектора (rev #230: слабое name_staff_first
+  # боевой маршрут не меняет) уходит в TELEGRAM_TEST_CHAT_ID, а не в рабочие
+  # audits/staff-чаты. Без TELEGRAM_TEST_CHAT_ID — пропуск с warning: рабочие
+  # каналы не трогаются.
   def target_chat_id
-    if @v.respond_to?(:test?) && @v.test?
+    if test_isolated?
       test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
       if test_chat.blank?
         Rails.logger.warn("[AuditReportNotifier] valuation=#{@v.id} test audit, TELEGRAM_TEST_CHAT_ID не задан — пропуск")
@@ -57,11 +60,19 @@ class AuditReportNotifier
     ENV['TELEGRAM_AUDITS_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
   end
 
-  # Маркер для probe-записей (issue #214): даже в тестовом чате карточка
+  # Тест = metadata['test'] (Intake/probe) ИЛИ staff_test по сильному правилу
+  # детектора (PropertyValuation авто-помечается по контактам сотрудника).
+  def test_isolated?
+    return true if @v.respond_to?(:test?) && @v.test?
+
+    StaffSubmissionDetector.hard_isolation?(@v)
+  end
+
+  # Маркер для тест-записей (issue #214/#227): даже в тестовом чате карточка
   # должна визуально отличаться от боевых. Без ведущего пробела — разделитель
   # добавляет caller (review round 5: « 🧪 ТЕСТPDF-отчёт» — склейка слов).
   def test_marker
-    @v.respond_to?(:test?) && @v.test? ? '🧪 ТЕСТ' : ''
+    test_isolated? ? '🧪 ТЕСТ' : ''
   end
 
   def send_pdf(client, chat_id)

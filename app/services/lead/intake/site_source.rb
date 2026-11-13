@@ -23,11 +23,14 @@ module Lead
         # Если submitter — known client (вернувшийся), отметим в meta и
         # повысим priority (warm baseline) — agent видит что не cold contact.
         #
-        # Issue #214: явный тест-флаг (probe-прогон чат-бота) ПЕРЕОПРЕДЕЛЯЕТ
-        # staff-skip — сотрудник, гоняющий бота со своим телефоном, должен
-        # получить тестовую карточку в тестовом чате, а не тишину. Боевой
-        # маршрут без флага — прежний (skip для staff).
-        test_mode = payload[:test] == true
+        # Issue #214/#227: явный тест-флаг (probe-прогон/тумблер) или ENV-кран
+        # SITE_CHATBOT_FORCE_TEST=1 ПЕРЕОПРЕДЕЛЯЮТ staff-skip — сотрудник,
+        # гоняющий бота со своим телефоном, должен получить тестовую карточку
+        # в тестовом чате, а не тишину. Кран действует только на записи
+        # чат-бота (Inquiry source='site_chatbot' — rev #230), обычные боевые
+        # формы сайта под кран не попадают. Боевой маршрут без флага — прежний
+        # (skip для staff).
+        test_mode = payload[:test] == true || force_test?(payload)
         known_user = find_known_user(payload)
         if !test_mode && (known_user&.role_agent? || known_user&.role_admin?)
           Rails.logger.info(
@@ -127,12 +130,20 @@ module Lead
           client_phone_e164: Lead::Intake::ClientResolver.normalize_phone(payload[:phone]),
           client_email_norm: Lead::Intake::ClientResolver.normalize_email(payload[:email]),
           attribution_source: @source,
-          # Issue #214: fallback-лид тест-прогона тоже помечаем — иначе он
-          # ушёл бы в CRM-синк/назначение агенту как боевой.
-          metadata:     payload[:test] == true ? { 'test' => true } : {}
+          # Issue #214/#227: fallback-лид тест-прогона (флаг или ENV-кран над
+          # записями чат-бота) помечаем — иначе он ушёл бы в CRM-синк/назначение
+          # агенту как боевой.
+          metadata:     payload[:test] == true || force_test?(payload) ? { 'test' => true } : {}
         )
       ensure
         Thread.current[:skip_workbot_push] = false
+      end
+
+      # ENV-кран (rev #230) — только чат-бот: без inquiry_id или с inquiry не
+      # чат-бота (обычная контактная форма) кран не срабатывает.
+      def force_test?(payload)
+        Chat::TestMode.force_test? &&
+          Chat::TestMode.force_test_inquiry?(Inquiry.find_by(id: payload[:inquiry_id]))
       end
 
       def digits(phone)

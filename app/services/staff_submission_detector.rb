@@ -20,6 +20,16 @@
 # Если хочется добавить новое правило — добавить ветку в #detect, добавить
 # tag в STAFF_TEST_REASONS и обновить spec.
 class StaffSubmissionDetector
+  def self.hard_isolation?(record)
+    return false unless record.respond_to?(:staff_test?) && record.staff_test? == true
+
+    # Issue #227 (rev #230): слабое правило name_staff_first (совпадение
+    # только по имени) не основание для жёсткой изоляции — реальный клиент
+    # «Надежда» иначе остался бы без боевой карточки. Изолируем только по
+    # сильным правилам и явному admin-override (matched_by пуст).
+    record.staff_test_matched_by != 'name_staff_first'
+  end
+
   STAFF_TEST_REASONS = %w[
     test_marker_email
     test_marker_name

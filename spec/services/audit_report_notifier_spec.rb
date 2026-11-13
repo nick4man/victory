@@ -45,6 +45,57 @@ RSpec.describe AuditReportNotifier do
     end
   end
 
+  # Issue #227 (rev #230, round 3): staff_test по сильному правилу детектора —
+  # та же изоляция, что у metadata['test']; слабое name_staff_first боевой
+  # маршрут не меняет (иначе реальный клиент «Надежда» остался бы без отчёта).
+  describe 'staff_test-изоляция (issue #227)' do
+    let(:valuation) do
+      Thread.current[:skip_workbot_push] = true
+      PropertyValuation.create!(staff_test: true, staff_test_matched_by: 'email_staff_match',
+                                property_type: 'apartment', deal_type: 'sale', status: 'completed',
+                                address: 'г. Рязань, тестовый адрес 1', total_area: 44.0,
+                                latitude: 54.6292, longitude: 39.7417,
+                                estimated_price: 4_000_000)
+    ensure
+      Thread.current[:skip_workbot_push] = nil
+    end
+
+    around do |example|
+      old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old
+    end
+
+    it 'сильное правило → аудит в тестовый чат, маркер «🧪 ТЕСТ»' do
+      expect(client).to receive(:send_message) do |text, kwargs|
+        expect(kwargs[:chat_id]).to eq('-100999888')
+        expect(text).to include('🧪 ТЕСТ')
+        { 'message_id' => 1 }
+      end
+      expect(client).to receive(:send_document) do |_doc, kwargs|
+        expect(kwargs[:chat_id]).to eq('-100999888')
+        expect(kwargs[:caption]).to include('ТЕСТ')
+        { 'message_id' => 2 }
+      end
+
+      expect(described_class.notify(valuation)).to be(true)
+    end
+
+    it 'слабое правило name_staff_first → боевой маршрут (рабочая группа)' do
+      valuation.update_columns(staff_test_matched_by: 'name_staff_first')
+      allow(ENV).to receive(:[]).with('TELEGRAM_AUDITS_CHAT_ID').and_return('-100500')
+
+      expect(client).to receive(:send_message) do |_text, kwargs|
+        expect(kwargs[:chat_id]).to eq('-100500')
+        { 'message_id' => 1 }
+      end
+      expect(client).to receive(:send_document).and_return({ 'message_id' => 2 })
+
+      expect(described_class.notify(valuation)).to be(true)
+    end
+  end
+
   describe 'боевой режим (регрессия)' do
     it 'идёт в TELEGRAM_AUDITS_CHAT_ID по-прежнему' do
       allow(ENV).to receive(:[]).with('TELEGRAM_AUDITS_CHAT_ID').and_return('-100500')

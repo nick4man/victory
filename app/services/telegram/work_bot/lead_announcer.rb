@@ -5,10 +5,12 @@ module Telegram
     # Публикует якорную карточку нового лида в Telegram-чате АН.
     #
     # Маршрут публикации:
-    #   0. Тест-прогон чат-бота (lead.metadata['test'], issue #214) →
-    #      TELEGRAM_TEST_CHAT_ID без топика; ENV не задан — пропуск карточки
-    #      с warning, ДИСПЕТЧЕРСКАЯ не трогается. Route-кнопок и
-    #      anchor_thread_id у такой карточки нет.
+    #   0. Тест-прогон чат-бота: lead.metadata['test'] (issue #214) ИЛИ
+    #      staff_test по сильному правилу детектора (issue #227, rev #230:
+    #      слабое name_staff_first боевой маршрут не меняет — клиент «Надежда»
+    #      не должен потерять карточку) → TELEGRAM_TEST_CHAT_ID без топика;
+    #      ENV не задан — пропуск карточки с warning, ДИСПЕТЧЕРСКАЯ не трогается.
+    #      Route-кнопок и anchor_thread_id у такой карточки нет.
     #   1. Если у источника есть auto_route (lookup в config/telegram_topics.yml
     #      по auto_route_from) — публикуем сразу в специализированный топик,
     #      минуя ДИСПЕТЧЕРСКУЮ. Пример: заявка с формы оценки → #ОЦЕНКА.
@@ -116,7 +118,13 @@ module Telegram
       private
 
       def test_lead?
-        (@lead.metadata || {})['test'] == true
+        return true if (@lead.metadata || {})['test'] == true
+
+        # Issue #227 (rev #230): lead_ref авто-помечен staff_test — изоляция
+        # та же, что у metadata['test'], даже если флаг в payload не пришёл.
+        # hard_isolation? отсекает слабое правило name_staff_first: клиент
+        # «Надежда» (совпадение только по имени) не теряет боевую карточку.
+        StaffSubmissionDetector.hard_isolation?(@lead.lead_ref)
       end
 
       def send_card(topic_key)
@@ -174,9 +182,10 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
-        # Тест-прогон чат-бота (issue #214) — карточка ушла в тестовый чат,
-        # бейдж отличает её от боевых лидов при просмотре логов/скриншотов.
-        test_badge = '🧪 <b>ТЕСТ</b>' if meta['test'] == true
+        # Тест-прогон чат-бота (issue #214) и staff_test-лиды (issue #227) —
+        # карточка ушла в тестовый чат, бейдж отличает её от боевых лидов
+        # при просмотре логов/скриншотов.
+        test_badge = '🧪 <b>ТЕСТ</b>' if test_lead?
         # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
         # после express-валуации (см. ChatTools::QualifyLead). Помогает
         # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,

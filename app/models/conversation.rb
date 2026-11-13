@@ -20,6 +20,27 @@ class Conversation < ApplicationRecord
     visitor_token.to_s.start_with?('probe-')
   end
 
+  # Issue #227: сессия с не-прод хоста / офисного IP помечена контроллером
+  # флагом metadata['auto_test'] — лиды идут в тестовый чат без тумблера.
+  def auto_test?
+    metadata.is_a?(Hash) && metadata['auto_test'] == true
+  end
+
+  # Issue #227 (rev #230): сессия принята под ENV-краном SITE_CHATBOT_FORCE_TEST
+  # — флаг фиксируется контроллером и не снимается, даже если кран выключили
+  # до выполнения фоновых задач.
+  def force_test_stamped?
+    metadata.is_a?(Hash) && metadata['force_test'] == true
+  end
+
+  # Полный тест-режим сессии (issue #227): probe-тумблер, auto-test по
+  # происхождению, sticky-флаг крана (принятый под краном остаётся тестовым)
+  # или текущий ENV-кран. Читается LlmReplyJob — Thread.current[:lead_test_mode]
+  # → ChatTools помечают лиды/оценки; EscalationNotifier маршрутизирует эскалации.
+  def lead_test_mode?
+    test_probe? || auto_test? || force_test_stamped? || Chat::TestMode.force_test?
+  end
+
   # Renders messages in OpenAI-compatible chat format for LLM API calls.
   # Skips system rows (system prompt is rebuilt per request).
   # Hard cap: 30 messages × 1000 chars each — protects against context-flooding

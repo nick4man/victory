@@ -248,4 +248,126 @@ RSpec.describe Lead::Intake do
     end
   end
 
+  # Issue #227 — ENV-кран SITE_CHATBOT_FORCE_TEST=1 (rev #230: строго про
+  # лиды чат-бота — записи с Inquiry source='site_chatbot'; обычные боевые
+  # формы сайта кран не задевают).
+  describe 'ENV-кран SITE_CHATBOT_FORCE_TEST (issue #227)' do
+    around do |example|
+      old_flag = ENV.fetch('SITE_CHATBOT_FORCE_TEST', nil)
+      old_chat = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['SITE_CHATBOT_FORCE_TEST'] = '1'
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old_flag.nil? ? ENV.delete('SITE_CHATBOT_FORCE_TEST') : ENV['SITE_CHATBOT_FORCE_TEST'] = old_flag
+      old_chat.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old_chat
+    end
+
+    it 'прогон чат-бота (Inquiry source=site_chatbot) → metadata test=true, tg_chat_id тестового чата' do
+      inquiry = create(:inquiry, source: 'site_chatbot')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'интересует двушка', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+      expect(result).to be_success
+      expect(result.lead_event.metadata['test']).to be(true)
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+    end
+
+    it 'кран: прогон чат-бота помечается staff_test и не ставится embedding' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      inquiry = create(:inquiry, source: 'site_chatbot')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'интересует двушка', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.staff_test).to be(true)
+      expect(result.lead_event.staff_test_matched_by).to eq(StaffSubmissionDetector::TEST_MODE_MATCHED_BY)
+      expect(EmbedLeadEventJob).not_to have_been_enqueued
+    end
+
+    it 'узкий кран: обычная контактная форма (Inquiry source=site_form) боевым маршрутом не тронута' do
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      inquiry = create(:inquiry, source: 'site_form')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'хочу квартиру', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.metadata['test']).to be(false)
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+    end
+
+    # Кран про чат-бот сайта: tg_dm-лиды боевым маршрутом не тронуты.
+    it 'tg_dm краном не помечается' do
+      result = described_class.call(
+        source: 'tg_dm',
+        payload: { text: 'вопрос по ипотеке из крана', tg_user_id: 777_001, first_name: 'Мария' },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.metadata).not_to have_key('test')
+    end
+  end
+
+  # Issue #227 — маршрутизация по staff_test: Inquiry авто-детектed по email
+  # сотрудника (StaffSubmissionDetector), флага в payload нет.
+  describe 'маршрутизация по staff_test (issue #227)' do
+    around do |example|
+      old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old
+    end
+
+    it 'lead_ref staff_test=true → metadata test=true, тестовый tg_chat_id' do
+      inquiry = create(:inquiry, source: 'site_form', staff_test: true, staff_test_matched_by: 'email_staff_match')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'прогон сотрудника', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+
+      expect(result).to be_success
+      expect(result.lead_event.metadata['test']).to be(true)
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+      expect(result.lead_event.lead_ref).to eq(inquiry)
+    end
+
+    it 'боевой lead_ref (staff_test=false) краном staff_test не помечается' do
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      inquiry = create(:inquiry, source: 'site_form')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'хочу квартиру', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+
+      expect(result.lead_event.metadata['test']).to be(false)
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+    end
+
+    # Rev #230: слабое правило name_staff_first (совпадение только по имени)
+    # не основание для жёсткой изоляции — реальный клиент «Надежда» должен
+    # остаться на боевом маршруте.
+    it 'lead_ref staff_test только по name_staff_first → боевой маршрут без metadata test' do
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      inquiry = create(:inquiry, source: 'site_form', staff_test: true, staff_test_matched_by: 'name_staff_first')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: inquiry.name, phone: inquiry.phone, message: 'хочу квартиру', inquiry_id: inquiry.id },
+        announcer: fake_announcer_class
+      )
+
+      expect(result.lead_event.metadata['test']).to be(false)
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+    end
+  end
+
 end
