@@ -19,6 +19,9 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmObjectCardFlow do
 
   it 'квартира по агентскому договору: спрашивает площадь, комнаты и номер договора, участок — нет' do
     tap_callback('wiz:s:crm_object', user: agent)
+    expect(last_text).to include('Вставь данные объекта')
+
+    press('Заполню по шагам', user: agent)
     expect(last_text).to include('Собственник?')
 
     say('Иванов Пётр', user: agent)

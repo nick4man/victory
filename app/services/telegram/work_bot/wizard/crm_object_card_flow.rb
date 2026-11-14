@@ -16,7 +16,7 @@ module Telegram
         flow 'crm_object', 'Новый объект в CRM'
 
         def steps
-          ::CrmCards::Schema.for('object').map { |field| field_step(field) } +
+          [paste_step('object')] + ::CrmCards::Schema.for('object').map { |field| field_step(field) } +
             [Flow::Step.new(id: 'confirm', kind: :confirm,
                             prompt: 'Сохранить карточку объекта? Дальше — машинная проверка.',
                             confirm_label: '💾 Сохранить и проверить')]
@@ -24,7 +24,11 @@ module Telegram
 
         def skip?(step)
           field = ::CrmCards::Schema.field('object', step.id)
-          return false if field.nil? || field.required
+          return false if field.nil?
+
+          _, error = ::CrmCards::FieldValue.normalize(field, pasted_values[field.key])
+          return true if error.nil? && pasted_values[field.key].present?
+          return false if field.required
 
           !::CrmCards::Checker.conditionally_required(answers).include?(field.key)
         end
@@ -37,6 +41,8 @@ module Telegram
         end
 
         def accept(step, value, manual: false)
+          return accept_paste('object', value) if step.id == 'paste'
+
           field = ::CrmCards::Schema.field('object', step.id)
           field ? accept_field(field, value) : [value, nil]
         end
@@ -48,7 +54,7 @@ module Telegram
         private
 
         def answers
-          ::CrmCards::Schema.for('object').to_h { |f| [f.key, ctx[f.key]] }.compact
+          pasted_values.merge(::CrmCards::Schema.for('object').to_h { |f| [f.key, ctx[f.key]] }.compact)
         end
       end
     end

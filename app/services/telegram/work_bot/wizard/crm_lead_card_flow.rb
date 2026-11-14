@@ -19,13 +19,17 @@ module Telegram
         CANDIDATES_LIMIT = 8
 
         def steps
-          [lead_step] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
+          [lead_step, paste_step('lead')] + ::CrmCards::Schema.for('lead').map { |field| field_step(field) } +
             [Flow::Step.new(id: 'confirm', kind: :confirm,
                             prompt: 'Сохранить карточку заявки? Дальше — машинная проверка.',
                             confirm_label: '💾 Сохранить и проверить')]
         end
 
         def skip?(step)
+          # Вставлять нечего, если всё обязательное уже известно: лид, заведённый
+          # вставкой текста, приносит и имя с телефоном, и итог разговора.
+          return nothing_to_ask? if step.id == 'paste'
+
           field = ::CrmCards::Schema.field('lead', step.id)
           return false unless field
           return true unless field.required
@@ -45,6 +49,7 @@ module Telegram
 
         def accept(step, value, manual: false)
           return accept_lead(value) if step.id == 'lead'
+          return accept_paste('lead', value) if step.id == 'paste'
 
           field = ::CrmCards::Schema.field('lead', step.id)
           field ? accept_field(field, value) : [value, nil]
@@ -131,9 +136,20 @@ module Telegram
           @existing = lead && ::CrmCard.kind_lead.find_by(lead_event_id: lead.id)
         end
 
+        def nothing_to_ask?
+          ::CrmCards::Schema.for('lead').none? do |field|
+            next false unless field.required
+
+            _, error = ::CrmCards::FieldValue.normalize(field, known_values[field.key])
+            error.present?
+          end
+        end
+
         # Известное заранее: черновик поверх данных, пришедших с лидом.
+        # Вставленный текст свежее данных лида (сотрудник только что говорил с
+        # клиентом), но черновик, который он уже правил руками, не перебивает.
         def known_values
-          @known_values ||= prefill.merge(existing&.payload.to_h)
+          @known_values ||= prefill.merge(pasted_values).merge(existing&.payload.to_h)
         end
 
         def prefill
@@ -143,9 +159,29 @@ module Telegram
           values['name'] = name if name.present? && name != 'Без имени'
           phone, error = ::CrmCards::FieldValue.phone(meta['phone'].to_s)
           values['phone'] = phone unless error
+          values.merge!(from_summary(meta['summary']))
           external_id = lead&.property&.external_id.to_s
           values['realty_id'] = external_id.to_i if external_id.match?(/\A\d+\z/)
           values
+        end
+
+        # Текст, с которым пришёл лид, разбираем правилами (без модели — платить
+        # за него второй раз не за что), но берём оттуда только тип сделки и
+        # объекта.
+        #
+        # Имя и телефон не берём: они пришли вместе с лидом и надёжнее выловленных
+        # из свободного текста — иначе «перезвонить на 8 920…, это телефон мужа»
+        # заменило бы номер клиента, и мастер об этом даже не спросил бы.
+        #
+        # «Итог разговора» — тем более: это подтверждение, что сотрудник с клиентом
+        # говорил. Текст, который клиент написал о себе сам, подтверждением быть не
+        # может, а заполненное поле сняло бы сам вопрос.
+        SUMMARY_KEYS = %w[action object_type].freeze
+
+        def from_summary(summary)
+          return {} if summary.blank?
+
+          ::CrmCards::TextIntake.call(kind: 'lead', text: summary, llm: false).values.slice(*SUMMARY_KEYS)
         end
       end
     end
