@@ -54,11 +54,11 @@ RSpec.describe Webhooks::AvitoController, type: :request do
     context 'когда секрет не настроен' do
       let(:webhook_secret) { '' }
 
-      it 'принимает запросы (migration grace)' do
+      it 'отказывает с 501 Not Implemented и не ставит задачу в очередь' do
         post webhooks_avito_path, params: payload.to_json, headers: json_headers
 
-        expect(response).to have_http_status(:ok)
-        expect(Avito::InboundProcessorJob).to have_received(:perform_async).with(a_kind_of(Hash))
+        expect(response).to have_http_status(:not_implemented)
+        expect(Avito::InboundProcessorJob).not_to have_received(:perform_async)
       end
     end
   end

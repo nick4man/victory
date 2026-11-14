@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 # Idempotency record per Avito Messenger message id.
-# Created before processing; duplicates raise RecordNotUnique and are skipped.
+# Created only after successful routing/delivery; duplicates raise RecordNotUnique
+# and are skipped.
 class AvitoWebhookAck < ApplicationRecord
   validates :message_id,    presence: true, uniqueness: true
   validates :processed_at,  presence: true
