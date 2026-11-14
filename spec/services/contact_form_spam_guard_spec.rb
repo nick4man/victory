@@ -64,8 +64,9 @@ RSpec.describe ContactFormSpamGuard do
 
   describe 'подписанный timestamp рендера' do
     it 'генерирует и верифицирует токен' do
-      token = described_class.rendered_at_token(Time.current)
-      expect(described_class.verify_rendered_at_token(token)).to be_within(0.001).of(Time.current.to_f)
+      now = Time.current
+      token = described_class.rendered_at_token(now)
+      expect(described_class.verify_rendered_at_token(token)).to be_within(0.001).of(now.to_f)
     end
 
     it 'возвращает nil для невалидного или пустого токена' do

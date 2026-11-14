@@ -67,9 +67,10 @@ class ContactFormSpamGuard
     end
 
     def increment_counter(reason)
-      key = counter_key(reason)
-      Rails.cache.write(key, 0, expires_in: 1.hour, unless_exist: true)
-      Rails.cache.increment(key, 1) || 0
+      # Redis: INCRBY на несуществующем ключе создаёт его;
+      # expires_in задаёт TTL атомарно (не через предварительный write,
+      # который сериализует значение и ломает INCRBY).
+      Rails.cache.increment(counter_key(reason), 1, expires_in: 1.hour) || 0
     end
 
     def log_alert(reason, count)

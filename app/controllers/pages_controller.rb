@@ -169,7 +169,7 @@ class PagesController < ApplicationController
       flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
     else
-      flash[:alert] = "Ошибка: #{inquiry.errors.full_messages.join(', ')}"
+      flash[:alert] = 'Ошибка при отправке сообщения. Попробуйте позже.'
       redirect_to contacts_path
     end
   end

@@ -111,5 +111,27 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
       expect { post send_contact_form_path, params: valid_params.merge(rendered_at_token: rendered_at_token_from_page) }
         .to change(Inquiry, :count).by(1)
     end
+
+    context 'с включённой CSRF-защитой' do
+      around do |example|
+        old_forgery = ActionController::Base.allow_forgery_protection
+        ActionController::Base.allow_forgery_protection = true
+        example.run
+        ActionController::Base.allow_forgery_protection = old_forgery
+      end
+
+      it 'принимает форму при обычной сессии (подписанный токен не зависит от session rendered_at)' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        csrf = response.parsed_body.at_css('input[name="authenticity_token"]')&.[]('value')
+        travel 5.seconds
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token, authenticity_token: csrf)
+        end.to change(Inquiry, :count).by(1)
+        expect(response).to redirect_to(contacts_path)
+      end
+    end
   end
 end
