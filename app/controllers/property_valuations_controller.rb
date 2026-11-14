@@ -44,6 +44,9 @@ class PropertyValuationsController < ApplicationController
     @valuation.ip_address  = request.remote_ip
     @valuation.user_agent  = request.user_agent
     @valuation.status      = 'pending'
+    # Владение результатом для чат-контекста (Llm::PageContext): факты
+    # оценки боту отдаются только при совпадении visitor_token.
+    @valuation.visitor_token = current_visitor_token
 
     if @valuation.save
       PropertyValuationJob.perform_later(@valuation.id)

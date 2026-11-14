@@ -192,8 +192,23 @@
     <% end %>
 
     <% if @total_count.present? %>
+      <%# Активные фильтры — человекочитаемая сводка для чат-контекста
+          (data-chat-state="filters"). Только ransack q[] + premium; url query
+          целиком виджет и так шлёт в page.query, но это сырые параметры. %>
+      <% q_params = params[:q] ? params[:q].to_unsafe_h : {} %>
+      <% filter_bits = [] %>
+      <% filter_bits << (q_params['deal_type_eq'] == 'rent' ? 'Аренда' : 'Покупка') if q_params['deal_type_eq'].present? %>
+      <% if q_params['rooms_eq'].present? %>
+        <% filter_bits << (q_params['rooms_eq'].to_s == '0' ? 'Студия' : "#{q_params['rooms_eq']}-комн.") %>
+      <% end %>
+      <% filter_bits << "цена от #{q_params['price_gteq']} ₽" if q_params['price_gteq'].present? %>
+      <% filter_bits << "цена до #{q_params['price_lteq']} ₽" if q_params['price_lteq'].present? %>
+      <% filter_bits << 'премиум' if defined?(premium_on) && premium_on %>
       <p class="text-sm tracking-wider text-muted-foreground mb-8">
-        Найдено: <span class="text-foreground"><%= @total_count %></span> объектов
+        Найдено: <span class="text-foreground" data-chat-state="found_count"><%= @total_count %></span> объектов
+        <% if filter_bits.any? %>
+          · <span data-chat-state="filters"><%= filter_bits.join(' · ') %></span>
+        <% end %>
         <% if @avg_price.present? %>
           · средняя цена: <span class="text-foreground"><%= number_with_delimiter(@avg_price.to_i) %> ₽</span>
         <% end %>
