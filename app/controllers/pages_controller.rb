@@ -103,6 +103,8 @@ class PagesController < ApplicationController
     # #239: timestamp рендера подписываем в скрытом поле формы вместо сессии —
     # убираем гонку вкладок и зависимость от cookie/Safari ITP/bfcache.
     @rendered_at_token = ContactFormSpamGuard.rendered_at_token
+    # #239: stateless CSRF-токен для той же формы, чтобы работало без session cookie.
+    @contact_form_csrf_token = ContactFormSpamGuard.form_csrf_token
 
     track_event('contacts_page_viewed')
   end
@@ -308,6 +310,17 @@ class PagesController < ApplicationController
            content_type: 'text/html'
   end
   
+  # #239: для публичной формы /contacts используем
+  # stateless CSRF-токен (подписанное скрытое поле), чтобы
+  # пользователи без session cookie могли отправить заявку.
+  # Проверка по подписи ставится выше стандартной session-based.
+  def valid_authenticity_token?(session, encoded_masked_token)
+    return true if action_name == 'send_contact_form' &&
+                   ContactFormSpamGuard.verify_form_csrf_token(encoded_masked_token)
+
+    super
+  end
+
   private
   
   # ============================================

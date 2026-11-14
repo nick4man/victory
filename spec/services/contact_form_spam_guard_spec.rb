@@ -74,6 +74,30 @@ RSpec.describe ContactFormSpamGuard do
       expect(described_class.verify_rendered_at_token('')).to be_nil
       expect(described_class.verify_rendered_at_token('tampered-token')).to be_nil
     end
+
+    it 'возвращает nil при нестроковом параметре (hash/array)' do
+      expect(described_class.verify_rendered_at_token({ 'x' => 'y' })).to be_nil
+      expect(described_class.verify_rendered_at_token(['x'])).to be_nil
+    end
+  end
+
+  describe 'stateless CSRF-токен формы' do
+    it 'генерирует и верифицирует токен' do
+      token = described_class.form_csrf_token
+      expect(described_class.verify_form_csrf_token(token)).to be true
+    end
+
+    it 'отклоняет пустой, нестроковый или подделанный токен' do
+      expect(described_class.verify_form_csrf_token(nil)).to be false
+      expect(described_class.verify_form_csrf_token('')).to be false
+      expect(described_class.verify_form_csrf_token('tampered')).to be false
+      expect(described_class.verify_form_csrf_token({ 'x' => 'y' })).to be false
+    end
+
+    it 'отклоняет просроченный токен' do
+      token = travel_to(20.minutes.ago) { described_class.form_csrf_token }
+      expect(described_class.verify_form_csrf_token(token)).to be false
+    end
   end
 
   describe 'счётчики и алерты' do
@@ -81,6 +105,13 @@ RSpec.describe ContactFormSpamGuard do
       key = described_class.counter_key('honeypot')
       expect { described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot/1.0') }
         .to change { Rails.cache.read(key).to_i }.by(1)
+    end
+
+    it 'задаёт TTL счётчику в один час' do
+      key = described_class.counter_key('honeypot')
+      described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot')
+      travel 2.hours
+      expect(Rails.cache.read(key)).to be_nil
     end
 
     it 'логирует alert при превышении порога только один раз за окно' do
@@ -92,6 +123,16 @@ RSpec.describe ContactFormSpamGuard do
 
       described_class.record(reason: 'too_fast', ip: '1.2.3.4', ua: 'Bot')
       expect(Rails.logger).to have_received(:warn).once
+    end
+
+    it 'не логирует alert повторно, даже если маркер уже стоит' do
+      described_class.send(:mark_alert_fired, 'honeypot')
+      allow(Rails.logger).to receive(:warn)
+
+      described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot')
+      described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot')
+
+      expect(Rails.logger).not_to have_received(:warn)
     end
 
     it 'санитизирует \r\n в user-agent перед логированием' do

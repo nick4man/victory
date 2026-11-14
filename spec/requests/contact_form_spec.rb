@@ -33,6 +33,10 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
     response.parsed_body.at_css('input[name="rendered_at_token"]')&.[]('value')
   end
 
+  def csrf_token_from_page
+    response.parsed_body.at_css('input[name="authenticity_token"]')&.[]('value')
+  end
+
   describe 'POST /contacts (send_contact_form)' do
     it 'создаёт Inquiry при нормальном прохождении' do
       get contacts_path
@@ -123,7 +127,7 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
       it 'принимает форму при обычной сессии (подписанный токен не зависит от session rendered_at)' do
         get contacts_path
         token = rendered_at_token_from_page
-        csrf = response.parsed_body.at_css('input[name="authenticity_token"]')&.[]('value')
+        csrf = csrf_token_from_page
         travel 5.seconds
 
         expect do
@@ -131,6 +135,38 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
                params: valid_params.merge(rendered_at_token: token, authenticity_token: csrf)
         end.to change(Inquiry, :count).by(1)
         expect(response).to redirect_to(contacts_path)
+      end
+
+      it 'работает после очистки session cookie между GET и POST' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        csrf = csrf_token_from_page
+        travel 5.seconds
+
+        # Имитируем GDPR-расширение / Safari ITP: session cookie удален.
+        cookies.delete('_viktory_realty_session')
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token, authenticity_token: csrf)
+        end.to change(Inquiry, :count).by(1)
+        expect(response).to redirect_to(contacts_path)
+      end
+
+      it 'отвергает POST без или с невалидным stateless CSRF-токеном' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        travel 5.seconds
+
+        expect { post send_contact_form_path, params: valid_params.merge(rendered_at_token: token) }
+          .not_to change(Inquiry, :count)
+        expect(response).to have_http_status(:unprocessable_content)
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token, authenticity_token: 'tampered')
+        end.not_to change(Inquiry, :count)
+        expect(response).to have_http_status(:unprocessable_content)
       end
     end
   end

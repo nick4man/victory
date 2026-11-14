@@ -18,6 +18,8 @@ class ContactFormSpamGuard
   HONEYPOT_PARAM = :contact_code
   # Сколько срабатываний одного reason в час вызывают alert в логе.
   ALERT_THRESHOLD = 10
+  # Время жизни stateless CSRF-токена формы.
+  CSRF_TOKEN_TTL = 15.minutes
 
   REASONS = %w[honeypot no_render_timestamp too_fast].freeze
 
@@ -29,11 +31,27 @@ class ContactFormSpamGuard
     end
 
     def verify_rendered_at_token(token)
-      return nil if token.blank?
+      return nil unless token.is_a?(String) && token.present?
 
       verifier.verify(token)
     rescue ActiveSupport::MessageVerifier::InvalidSignature
       nil
+    end
+
+    # Подписанный stateless CSRF-токен для формы /contacts.
+    # Работает без session cookie — убирает ещё один источник потери заявок
+    # при блокировке/очистке cookie (GDPR-расширения, Safari ITP, bfcache).
+    def form_csrf_token
+      verifier(:contact_form_csrf).generate([SecureRandom.hex(16), Time.current.to_f])
+    end
+
+    def verify_form_csrf_token(token)
+      return false unless token.is_a?(String) && token.present?
+
+      _nonce, issued_at = verifier(:contact_form_csrf).verify(token)
+      Time.current.to_f - issued_at.to_f <= CSRF_TOKEN_TTL
+    rescue ActiveSupport::MessageVerifier::InvalidSignature
+      false
     end
 
     def record(reason:, ip:, ua:)
@@ -62,8 +80,8 @@ class ContactFormSpamGuard
 
     private
 
-    def verifier
-      Rails.application.message_verifier('contact_form_rendered_at')
+    def verifier(purpose = 'contact_form_rendered_at')
+      Rails.application.message_verifier(purpose)
     end
 
     def increment_counter(reason)
@@ -74,20 +92,17 @@ class ContactFormSpamGuard
     end
 
     def log_alert(reason, count)
-      return if alert_fired_this_window?(reason)
+      # Атомарно ставим маркер: если ключ уже есть, другой
+      # процесс уже залогировал alert в этом окне.
+      return unless mark_alert_fired(reason)
 
       Rails.logger.warn(
         "[contact_form] ALERT reason=#{reason} threshold=#{ALERT_THRESHOLD} count=#{count}"
       )
-      mark_alert_fired(reason)
-    end
-
-    def alert_fired_this_window?(reason)
-      Rails.cache.exist?(alert_key(reason))
     end
 
     def mark_alert_fired(reason)
-      Rails.cache.write(alert_key(reason), true, expires_in: 1.hour)
+      Rails.cache.write(alert_key(reason), true, expires_in: 1.hour, unless_exist: true)
     end
   end
 
