@@ -16,11 +16,12 @@ class CreateAvitoMessages < ActiveRecord::Migration[7.1]
 
       t.string :direction, null: false, default: 'incoming'
       t.datetime :routed_at
+      t.datetime :deleted_at
 
       t.timestamps
     end
 
-    add_index :avito_messages, :message_id, unique: true
+    add_index :avito_messages, :message_id, unique: true, where: 'deleted_at IS NULL'
     add_index :avito_messages, %i[chat_id created_at]
     add_index :avito_messages, %i[property_id created_at]
   end

@@ -382,6 +382,7 @@ CREATE TABLE public.avito_messages (
     payload jsonb DEFAULT '{}'::jsonb NOT NULL,
     direction character varying DEFAULT 'incoming'::character varying NOT NULL,
     routed_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -414,6 +415,7 @@ CREATE TABLE public.avito_webhook_acks (
     id bigint NOT NULL,
     message_id character varying NOT NULL,
     processed_at timestamp(6) without time zone NOT NULL,
+    deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL
 );
@@ -4843,7 +4845,7 @@ CREATE INDEX index_avito_messages_on_chat_id_and_created_at ON public.avito_mess
 -- Name: index_avito_messages_on_message_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_avito_messages_on_message_id ON public.avito_messages USING btree (message_id);
+CREATE UNIQUE INDEX index_avito_messages_on_message_id ON public.avito_messages USING btree (message_id) WHERE (deleted_at IS NULL);
 
 
 --
@@ -4864,7 +4866,7 @@ CREATE INDEX index_avito_messages_on_property_id_and_created_at ON public.avito_
 -- Name: index_avito_webhook_acks_on_message_id; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX index_avito_webhook_acks_on_message_id ON public.avito_webhook_acks USING btree (message_id);
+CREATE UNIQUE INDEX index_avito_webhook_acks_on_message_id ON public.avito_webhook_acks USING btree (message_id) WHERE (deleted_at IS NULL);
 
 
 --

@@ -93,15 +93,19 @@ Property.find_by(external_source: 'avito', external_id: item_id.to_s)
 
 - Контроллер отвечает `200 OK` сразу после постановки задачи в очередь.
 - `Avito::InboundProcessorJob` настроен на 3 retry в Sidekiq.
-- Дедупликация по `message_id` через `AvitoWebhookAck` предотвращает
-  повторную обработку при ретраях Avito.
+- Дедупликация по `message_id` через уникальный индекс на `AvitoMessage`.
+  Если сообщение уже сохранено, но `routed_at` пустой (упала маршрутизация),
+  при retry оно будет до-маршрутизировано.
+- `AvitoWebhookAck` создаётся только после успешной доставки в канал.
 - Ошибки Telegram (`Telegram::Client::Error`) логируются и пробрасываются,
   чтобы Sidekiq повторил попытку.
 
 ## Модели
 
-- `AvitoWebhookAck` — idempotency record по `message_id`.
 - `AvitoMessage` — сохранённое сообщение со ссылкой на `Property` и raw payload.
+  Мягкое удаление через `deleted_at` + `default_scope { not_deleted }`.
+- `AvitoWebhookAck` — audit-запись об успешно обработанном `message_id`.
+  Также поддерживает мягкое удаление.
 
 ## Переменные окружения
 

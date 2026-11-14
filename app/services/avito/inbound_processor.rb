@@ -19,9 +19,9 @@ module Avito
       message_id = value['id'].to_s
       return :ignored if message_id.blank?
 
-      return :duplicate if duplicate?(message_id)
+      message = persist_or_find_message(message_id, value)
+      return :duplicate if message.blank?
 
-      message = persist_message(value)
       return :ignored unless message_incoming?(message)
 
       route_message(message)
@@ -45,34 +45,40 @@ module Avito
       @payload.dig('payload', 'value')
     end
 
-    def duplicate?(message_id)
-      AvitoWebhookAck.create!(message_id: message_id, processed_at: Time.current)
-      false
+    def persist_or_find_message(message_id, value)
+      AvitoMessage.create!(message_attributes(message_id, value))
     rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
-      if e.is_a?(ActiveRecord::RecordInvalid) && !e.record.errors.of_kind?(:message_id, :taken)
-        raise
-      end
+      raise unless duplicate_error?(e)
 
-      Rails.logger.info("[Avito::InboundProcessor] duplicate message_id=#{message_id} skipped")
-      true
+      existing = AvitoMessage.find_by(message_id: message_id)
+      return nil if existing.nil? || existing.routed_at.present?
+
+      existing
     end
 
-    def persist_message(value)
+    def message_attributes(message_id, value)
       item_id = value['item_id']
-      property = resolve_property(item_id)
 
-      AvitoMessage.create!(
-        message_id:   value['id'].to_s,
+      {
+        message_id:   message_id,
         chat_id:      value['chat_id'].to_s,
         author_id:    value['author_id'].to_i,
         user_id:      value['user_id'].to_i,
         item_id:      item_id,
-        property:     property,
+        property:     resolve_property(item_id),
         content_type: value['type'].to_s,
         content_text: extract_text(value),
         payload:      value,
         direction:    direction_from(value)
-      )
+      }
+    end
+
+    def duplicate_error?(error)
+      if error.is_a?(ActiveRecord::RecordInvalid)
+        error.record.errors.of_kind?(:message_id, :taken)
+      else
+        true
+      end
     end
 
     def resolve_property(item_id)
@@ -97,6 +103,15 @@ module Avito
 
     def route_message(message)
       ChannelRouter.new(message).call
+      record_ack(message.message_id)
+    end
+
+    def record_ack(message_id)
+      AvitoWebhookAck.create!(message_id: message_id, processed_at: Time.current)
+    rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+      raise unless e.is_a?(ActiveRecord::RecordInvalid) && !e.record.errors.of_kind?(:message_id, :taken)
+
+      Rails.logger.info("[Avito::InboundProcessor] ack already exists for message_id=#{message_id}")
     end
   end
 end

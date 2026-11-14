@@ -16,5 +16,8 @@ class AvitoMessage < ApplicationRecord
   validates :payload,      presence: true
   validates :direction,    presence: true, inclusion: { in: %w[incoming outgoing] }
 
+  scope :not_deleted, -> { where(deleted_at: nil) }
   scope :recent, -> { order(created_at: :desc) }
+
+  default_scope { not_deleted }
 end

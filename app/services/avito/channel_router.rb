@@ -69,7 +69,7 @@ module Avito
     def caption_text
       lines = ["📨 Avito #{object_line_plain}"]
       lines << "👤 #{I18n.t('avito.channel.buyer', id: @message.author_id)}"
-      lines << "💬 #{@message.content_text.to_s}" if @message.content_text.present?
+      lines << "💬 #{escape(@message.content_text.to_s)}" if @message.content_text.present?
       lines.join("\n")
     end
 
@@ -83,7 +83,7 @@ module Avito
 
     def object_line_plain
       if @message.property
-        "#{@message.property.title} (#{property_url})"
+        "#{escape(@message.property.title.to_s)} (#{property_url})"
       else
         "item_id: #{@message.item_id}"
       end

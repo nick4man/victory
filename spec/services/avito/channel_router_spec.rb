@@ -25,6 +25,17 @@ RSpec.describe Avito::ChannelRouter, type: :service do
       .with(body: /Можно посмотреть\?/)
   end
 
+  it 'экранирует HTML-символы в динамическом тексте' do
+    message.update!(content_text: '5 < 10 && 20 > 15')
+    property.update!(title: 'Квартира <b>люкс</b> & co')
+
+    described_class.new(message).call
+
+    expect(WebMock).to have_requested(:post, %r{api\.telegram\.org/.+/sendMessage})
+      .with(body: /5 &lt; 10 &amp;&amp; 20 &gt; 15/)
+      .with(body: /Квартира &lt;b&gt;люкс&lt;\/b&gt; &amp; co/)
+  end
+
   it 'использует AVITO_TELEGRAM_CHAT_ID если задан' do
     allow(ENV).to receive(:[]).and_call_original
     allow(ENV).to receive(:[]).with('AVITO_TELEGRAM_CHAT_ID').and_return('-999')
@@ -62,6 +73,17 @@ RSpec.describe Avito::ChannelRouter, type: :service do
       described_class.new(message).call
 
       expect(WebMock).to have_requested(:post, %r{api\.telegram\.org/.+/sendPhoto}).once
+    end
+
+    it 'экранирует HTML-символы в caption' do
+      message.update!(content_text: '5 < 10 && 20 > 15')
+      property.update!(title: 'Квартира <b>люкс</b> & co')
+
+      described_class.new(message).call
+
+      expect(WebMock).to have_requested(:post, %r{api\.telegram\.org/.+/sendPhoto})
+        .with(body: /5 &lt; 10 &amp;&amp; 20 &gt; 15/)
+        .with(body: /Квартира &lt;b&gt;люкс&lt;\/b&gt; &amp; co/)
     end
   end
 

@@ -16,4 +16,12 @@ RSpec.describe AvitoMessage, type: :model do
   it { is_expected.to validate_presence_of(:direction) }
 
   it { is_expected.to define_enum_for(:direction).with_values(incoming: 'incoming', outgoing: 'outgoing').backed_by_column_of_type(:string).with_prefix }
+
+  it 'поддерживает мягкое удаление через default_scope' do
+    message = create(:avito_message)
+    message.update!(deleted_at: Time.current)
+
+    expect(AvitoMessage.find_by(id: message.id)).to be_nil
+    expect(AvitoMessage.unscoped.find(message.id)).to eq(message)
+  end
 end

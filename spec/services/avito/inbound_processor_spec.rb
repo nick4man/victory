@@ -63,6 +63,28 @@ RSpec.describe Avito::InboundProcessor, type: :service do
     end
   end
 
+  context 'когда маршрутизация падает' do
+    it 'сохраняет сообщение и до-маршрутизирует при retry' do
+      calls = 0
+      allow(Avito::ChannelRouter).to receive(:new).and_wrap_original do |original, message|
+        calls += 1
+        raise(StandardError, 'telegram down') if calls == 1
+
+        original.call(message)
+      end
+
+      expect { described_class.new(payload).call }.to raise_error(StandardError, 'telegram down')
+      expect(AvitoMessage.count).to eq(1)
+      expect(AvitoWebhookAck.count).to eq(0)
+      expect(AvitoMessage.first.routed_at).to be_nil
+
+      expect { described_class.new(payload).call }.not_to raise_error
+      expect(AvitoMessage.count).to eq(1)
+      expect(AvitoWebhookAck.count).to eq(1)
+      expect(AvitoMessage.first.routed_at).to be_present
+    end
+  end
+
   context 'когда сообщение исходящее (author_id == user_id)' do
     let(:author_id) { user_id }
 
