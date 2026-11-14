@@ -604,9 +604,11 @@ app/
           close_flow.rb
           crm_card_approve_flow.rb
           crm_card_edit_flow.rb
+          crm_card_manual_export_flow.rb
           crm_card_rework_flow.rb
           crm_card_support.rb
           crm_lead_card_flow.rb
+          crm_object_card_flow.rb
           engine.rb
           flow.rb
           lead_picking.rb
@@ -10145,19 +10147,6 @@ def escape_html(text)
 def manager?
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/menu.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module Menu
-module_function
-⋮----
-def text(_tg_user)
-⋮----
-def keyboard(tg_user)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/reopen_flow.rb">
 module Telegram
 module WorkBot
@@ -13415,103 +13404,6 @@ def inquiry_lines(digits)
 def card_lines(digits, card)
 </file>
 
-<file path="app/services/crm_cards/schema.rb">
-module CrmCards
-⋮----
-module Schema
-⋮----
-Field = Struct.new(:key, :label, :type, :required, :options, :hint, :min, :max, keyword_init: true)
-⋮----
-ACTIONS = [['Продажа / покупка', 'sale'], ['Аренда', 'rent']].freeze
-REALTY_TYPES = [
-⋮----
-PHONE_HINT = 'Мобильный клиента: +7 910 123-45-67 или 89101234567. Городской — вторым номером.'
-⋮----
-LEAD = [
-⋮----
-KINDS = { 'lead' => LEAD }.freeze
-⋮----
-module_function
-⋮----
-def for(kind)
-⋮----
-def field(kind, key)
-⋮----
-def option_label(field, value)
-</file>
-
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
-⋮----
-class Workflow
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def export!(card)
-⋮----
-def export_with_lock(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def attach_export_number!(card, crm_id:, actor:)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
-⋮----
-private
-⋮----
-def save_values(card, values, actor:, perms:)
-⋮----
-def taking_over?(card, actor)
-⋮----
-def refresh_check(card)
-⋮----
-def transition!(card, to:, actor:, comment: nil)
-⋮----
-def sync_lead_ref!(card)
-⋮----
-def moderator?(actor)
-⋮----
-def moderator_denial(actor, action)
-⋮----
-def not_pending(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil, retryable: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
-</file>
-
 <file path="app/services/kpi/agency_digest.rb">
 module Kpi
 ⋮----
@@ -13929,6 +13821,29 @@ def field_button(field)
 def confirm_prompt
 </file>
 
+<file path="app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardManualExportFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_manual', 'Объект внесён в CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def number_taken_by(digits)
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb">
 module Telegram
 module WorkBot
@@ -13949,6 +13864,44 @@ def gate
 def accept(step, value, manual: false)
 ⋮----
 def finish
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_object_card_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmObjectCardFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_object', 'Новый объект в CRM'
+⋮----
+def steps
+⋮----
+def skip?(step)
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def answers
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/menu.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module Menu
+module_function
+⋮----
+def text(_tg_user)
+⋮----
+def keyboard(tg_user)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/task_flow.rb">
@@ -14879,23 +14832,105 @@ def call(name, args, asked_by: nil)
 def deep_symbolize(obj)
 </file>
 
-<file path="app/services/crm_cards/checker.rb">
+<file path="app/services/crm_cards/schema.rb">
 module CrmCards
 ⋮----
-class Checker
-def self.call(card)
+module Schema
 ⋮----
-def initialize(card)
+Field = Struct.new(:key, :label, :type, :required, :options, :hint, :min, :max, keyword_init: true)
 ⋮----
-def call
+ACTIONS = [['Продажа / покупка', 'sale'], ['Аренда', 'rent']].freeze
+REALTY_TYPES = [
+⋮----
+PHONE_HINT = 'Мобильный клиента: +7 910 123-45-67 или 89101234567. Городской — вторым номером.'
+⋮----
+LEAD = [
+⋮----
+CONTRACT_TYPES = [
+⋮----
+OBJECT = [
+⋮----
+KINDS = { 'lead' => LEAD, 'object' => OBJECT }.freeze
+⋮----
+module_function
+⋮----
+def for(kind)
+⋮----
+def field(kind, key)
+⋮----
+def option_label(field, value)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
 ⋮----
 private
 ⋮----
-def field_errors
+def save_values(card, values, actor:, perms:)
 ⋮----
-def lead_rules
+def taking_over?(card, actor)
 ⋮----
-def blank_value?(raw)
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/embedding/property_valuation_text_template.rb">
@@ -15725,6 +15760,35 @@ def self.compact_response(pv, result)
 def self.run_failure(pv, error_message)
 </file>
 
+<file path="app/services/crm_cards/checker.rb">
+module CrmCards
+⋮----
+class Checker
+CONDITIONAL_MESSAGES = {
+⋮----
+def self.call(card)
+⋮----
+def self.conditionally_required(values)
+⋮----
+def initialize(card)
+⋮----
+def call
+⋮----
+private
+⋮----
+def field_errors
+⋮----
+def lead_rules
+⋮----
+def object_rules
+⋮----
+def area_cents(value)
+⋮----
+def area(value)
+⋮----
+def blank_value?(raw)
+</file>
+
 <file path="app/services/external_listings/yrl_parser.rb">
 require 'nokogiri'
 require 'open-uri'
@@ -15877,82 +15941,6 @@ def condition_factor
 def amenities_factor
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/engine.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class Engine
-STATE_TYPE = 'wizard'
-TTL = 30.minutes
-⋮----
-FLOWS = {
-⋮----
-SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
-⋮----
-def self.flow_class(key)
-⋮----
-attr_reader :tg_user, :client
-⋮----
-def initialize(tg_user:, client: Telegram::Client.new)
-⋮----
-def self.active?(tg_user)
-⋮----
-def start(flow_key, seed: {})
-⋮----
-def pick(flow_key, step_id, index)
-⋮----
-def ask_manual(flow_key, step_id)
-⋮----
-def text(raw)
-⋮----
-def back(flow_key)
-⋮----
-def cancel
-⋮----
-def menu
-⋮----
-private
-⋮----
-def apply_answer(flow, state, step, value, manual:)
-⋮----
-def render_next(flow, state)
-⋮----
-def finish(flow, state)
-⋮----
-def claim_state!(state)
-⋮----
-def option_values(step)
-⋮----
-def prompt_text(step)
-⋮----
-def step_keyboard(flow, step, state)
-⋮----
-def button(label, flow, step, index)
-⋮----
-def nav_row(state)
-⋮----
-def menu_row
-⋮----
-def current_state(flow_key, step_id)
-⋮----
-def build_flow(state)
-⋮----
-def find_step(flow, step_id)
-⋮----
-def save(state, sent)
-⋮----
-def strip_previous_prompt
-⋮----
-def strip_prompt(state)
-⋮----
-def send_dm(text, keyboard: nil)
-⋮----
-def dm_chat_id
-⋮----
-def escape_html(text)
-</file>
-
 <file path="app/services/valuations/sitemap_comp_finder.rb">
 require 'net/http'
 require 'uri'
@@ -16071,6 +16059,82 @@ def persist(parsed_list)
 def resolve_city(record, card_city)
 ⋮----
 def sane?(p)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/engine.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Engine
+STATE_TYPE = 'wizard'
+TTL = 30.minutes
+⋮----
+FLOWS = {
+⋮----
+SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
+⋮----
+def self.flow_class(key)
+⋮----
+attr_reader :tg_user, :client
+⋮----
+def initialize(tg_user:, client: Telegram::Client.new)
+⋮----
+def self.active?(tg_user)
+⋮----
+def start(flow_key, seed: {})
+⋮----
+def pick(flow_key, step_id, index)
+⋮----
+def ask_manual(flow_key, step_id)
+⋮----
+def text(raw)
+⋮----
+def back(flow_key)
+⋮----
+def cancel
+⋮----
+def menu
+⋮----
+private
+⋮----
+def apply_answer(flow, state, step, value, manual:)
+⋮----
+def render_next(flow, state)
+⋮----
+def finish(flow, state)
+⋮----
+def claim_state!(state)
+⋮----
+def option_values(step)
+⋮----
+def prompt_text(step)
+⋮----
+def step_keyboard(flow, step, state)
+⋮----
+def button(label, flow, step, index)
+⋮----
+def nav_row(state)
+⋮----
+def menu_row
+⋮----
+def current_state(flow_key, step_id)
+⋮----
+def build_flow(state)
+⋮----
+def find_step(flow, step_id)
+⋮----
+def save(state, sent)
+⋮----
+def strip_previous_prompt
+⋮----
+def strip_prompt(state)
+⋮----
+def send_dm(text, keyboard: nil)
+⋮----
+def dm_chat_id
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">
