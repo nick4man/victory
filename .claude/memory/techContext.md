@@ -55,8 +55,8 @@
 | `SESSION_TIMEOUT` | `1800` | session expiry (sec) |
 | `ADMIN_TOKEN` | — | query-param admin guard (Admin::Reviews, Admin::Articles) |
 | `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта (`@anvictorybot`) |
-| `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214): диалоги виджета с `?visitor_token=probe-<name>` → лиды `metadata['test']=true` публикуются сюда, а не в ДИСПЕТЧЕРСКУЮ, и не синкаются в CRM. Пусто — тест-лиды создаются без публикации в TG |
-| `TELEGRAM_TEST_BOT_TOKEN` | — (только GitHub Secrets) | токен ТЕСТОВОГО бота для CI-интеграционного spec'а `spec/services/telegram/test_chat_delivery_spec.rb`; продовый код не читает |
+| `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214): диалоги виджета с подписанным `?visitor_token=<token>` → лиды `metadata['test']=true` публикуются сюда, а не в ДИСПЕТЧЕРСКУЮ, и не синкаются в CRM. Пусто — тест-лиды создаются без публикации в TG. Самодельный `probe-<name>` отклоняется (review round 7, PR #228): ссылку выпускает `VisitorIdentity.probe_token` (HMAC-SHA256 от secret_key_base) |
+| `TELEGRAM_TEST_BOT_TOKEN` | — (только GitHub Secrets) | токен ТЕСТОВОГО бота для живого интеграционного spec'а `spec/services/telegram/test_chat_delivery_spec.rb`; продовый код не читает. Используется в ручном workflow `test-chat-live.yml`; в PR-CI (lint.yml) секретов нет — spec skip'ается |
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
 | `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |

@@ -85,6 +85,14 @@ RSpec.describe 'staff_test-изоляция: все команды с резол
     expect_refusal
   end
 
+  it '/doc reply на карточку тест-лида — отказ, DocumentChecklist не вызывается (round 7)' do
+    expect(DocumentChecklist::Builder).not_to receive(:new)
+    run_command(Telegram::WorkBot::Commands::Doc, 'init',
+                'chat' => { 'id' => -100_1, 'type' => 'supergroup' },
+                'reply_to_message' => { 'message_id' => 900 })
+    expect_refusal
+  end
+
   it 'боевой лид по-прежнему проходит (гейт не задевает обычную работу)' do
     real = LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
                              anchor_topic_key: 'dispatcher', tg_chat_id: -100_1, anchor_message_id: 901)

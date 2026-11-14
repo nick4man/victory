@@ -760,7 +760,9 @@ CREATE TABLE public.crm_cards (
     export_error text,
     deleted_at timestamp(6) without time zone,
     created_at timestamp(6) without time zone NOT NULL,
-    updated_at timestamp(6) without time zone NOT NULL
+    updated_at timestamp(6) without time zone NOT NULL,
+    export_attempt_token character varying,
+    export_retryable boolean DEFAULT true NOT NULL
 );
 
 
@@ -8135,9 +8137,11 @@ SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261114120000'),
+('20261113100000'),
 ('20261112120000'),
 ('20261112090100'),
 ('20261112090000'),
+('20261112034116'),
 ('20261108210000'),
 ('20261108120000'),
 ('20261107233000'),

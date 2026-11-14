@@ -1,0 +1,95 @@
+name: Test-chat live (manual)
+
+# Живой интеграционный прогон spec/services/telegram/test_chat_delivery_spec.rb
+# (issue #214): реальная отправка сообщения тестовым TG-ботом в тестовый чат.
+#
+# Review round 7 (PR #228): секреты TELEGRAM_TEST_* убраны из lint.yml —
+# тот workflow запускается на pull_request, и для веток этого же репозитория
+# изменённый в PR spec мог бы эксфильтровать токен. Здесь запуск только
+# вручную (workflow_dispatch) с main — это gate по правам на запись в репо.
+# В обычном PR-CI spec skip'ается (секретов нет).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Живой прогон test_chat_delivery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Схема требует postgis + vector + pg_trgm + unaccent (db/structure.sql) —
+      # тот же подход, что в lint.yml: свой образ, trust внутри job'а.
+      - name: Build PostGIS + pgvector image
+        run: docker build -f Dockerfile.postgres -t victory-ci-postgres .
+
+      - name: Start Postgres
+        run: |
+          docker run -d --name ci-postgres \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            -e POSTGRES_DB=viktory_realty_test \
+            -p 5432:5432 \
+            victory-ci-postgres \
+            postgres -c fsync=off -c synchronous_commit=off -c full_page_writes=off
+          for i in $(seq 1 60); do
+            docker exec ci-postgres pg_isready -U postgres && exit 0
+            sleep 2
+          done
+          echo 'Postgres не поднялся' >&2
+          docker logs ci-postgres
+          exit 1
+
+      - name: Start Redis
+        run: docker run -d --name ci-redis -p 6379:6379 redis:8.10.3
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+
+      - name: Install postgresql-client
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed; retrying in 30s" >&2
+            sleep 30
+          done
+          echo 'apt-get failed after 3 attempts' >&2
+          exit 1
+
+      - name: Prepare test database
+        env:
+          RAILS_ENV: test
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USERNAME: postgres
+          DATABASE_NAME: viktory_realty_test
+          REDIS_URL: redis://localhost:6379/0
+          DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+          TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          OMNIROUTE_BASE_URL: http://llm.invalid/v1
+          OMNIROUTE_API_KEY: not-a-key-webmock-blocks-network
+        run: bin/rails db:test:prepare
+
+      - name: Run live spec (реальная отправка в тестовый чат)
+        env:
+          RAILS_ENV: test
+          DATABASE_HOST: localhost
+          DATABASE_PORT: 5432
+          DATABASE_USERNAME: postgres
+          DATABASE_NAME: viktory_realty_test
+          REDIS_URL: redis://localhost:6379/0
+          DATABASE_CLEANER_ALLOW_REMOTE_DATABASE_URL: 'true'
+          TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          OMNIROUTE_BASE_URL: http://llm.invalid/v1
+          OMNIROUTE_API_KEY: not-a-key-webmock-blocks-network
+          TELEGRAM_TEST_BOT_TOKEN: ${{ secrets.TELEGRAM_TEST_BOT_TOKEN }}
+          TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+        run: bundle exec rspec spec/services/telegram/test_chat_delivery_spec.rb

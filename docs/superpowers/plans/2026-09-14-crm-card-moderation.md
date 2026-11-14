@@ -70,7 +70,7 @@
 | `app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb` | модератор возвращает на доработку |
 | `app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb` | модератор одобряет |
 | `app/services/telegram/work_bot/wizard/engine.rb` | регистрация мастеров в `FLOWS` / `SEED_STEP` |
-| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry` |
+| `app/services/telegram/work_bot/callbacks/crm_card_callback.rb` | `crm_card:<id>:view|submit|retry` (recovery из неоднозначного исхода — мастер `crm_attach` → `Workflow#attach_export_number!`, см. Task 14) |
 | `app/services/telegram/work_bot/callbacks_router.rb` | префикс `crm_card` |
 | `app/services/telegram/work_bot/lead_announcer.rb` | ряд «📋 Карточка CRM» / статус под карточкой лида |
 | `app/services/telegram/work_bot/lead_assignment.rb` | кнопка карточки в личку назначенному |
@@ -1963,7 +1963,7 @@ git commit -m "feat(crm_cards): уведомления участникам мо
   - `#create_object_card!(actor:, values:)` — новая карточка объекта;
   - `#update_fields!(card, values, actor:)` — `values` Hash ключ → нормализованное значение; `nil` удаляет поле;
   - `#submit!(card, actor:)`, `#return_for_rework!(card, actor:, comment:)`, `#approve!(card, actor:)`;
-  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:)`.
+  - `#export!(card)` — только для джоба; `#record_export!(card, crm_id:, mode:, actor: nil, warning: nil)` — `mode` `'api'`|`'manual'`; `#retry_export!(card, actor:)` — только из детерминированного отказа; `#attach_export_number!(card, crm_id:, actor:)` — единственный recovery из неоднозначного исхода: привязка номера, найденного в CRM после сверки, новый importClient не вызывается (ревью PR #210, round 7).
 - Produces: `#can_edit?(card, actor, perms = Permissions.for(actor)) → Boolean`, `#edit_denial(card, perms) → String`.
 - Produces: `CrmCards::ExportJob.perform_later(card_id)`.
 
@@ -3342,8 +3342,8 @@ git commit -m "feat(work_bot): мастер правки поля карточк
 - Test: `spec/services/telegram/work_bot/crm_card_moderation_spec.rb`
 
 **Interfaces:**
-- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#retry_export!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
-- Produces: `crm_card:<card_id>:view|submit|retry`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`).
+- Consumes: `Workflow#submit!`, `#return_for_rework!`, `#approve!`, `#retry_export!`, `#attach_export_number!` (Task 8); `CardView.render` (Task 6); `CrmCardSupport#moderator_gate`, `#workflow` (Task 9).
+- Produces: `crm_card:<card_id>:view|submit|retry`; мастера `crm_rework` и `crm_approve` (шаг-сид `card`); мастер-шаг `crm_attach` (сид `card`) → `Workflow#attach_export_number!` — единственный recovery из неоднозначного исхода: модератор сверил заявку с CRM глазами и вводит найденный номер, новый importClient не вызывается (ревью PR #210, round 7).
 
 - [ ] **Step 1: Спека (красная)**
 
