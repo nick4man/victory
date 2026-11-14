@@ -1,6 +1,6 @@
 # repo-index.md — карта классов (auto-generated)
 
-> Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
+> Сжатый индекс: путь → классы/модули в файле. Регенерация: rake repo:map.
 
 ## app/models
 
@@ -489,9 +489,11 @@ app/services/telegram/work_bot/weekly_summary_job.rb — module Telegram, module
 app/services/telegram/work_bot/wizard/close_flow.rb — module Telegram, module WorkBot, module Wizard, class CloseFlow
 app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardApproveFlow
 app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardEditFlow
+app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardManualExportFlow
 app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReworkFlow
 app/services/telegram/work_bot/wizard/crm_card_support.rb — module Telegram, module WorkBot, module Wizard, module CrmCardSupport
 app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmLeadCardFlow
+app/services/telegram/work_bot/wizard/crm_object_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmObjectCardFlow
 app/services/telegram/work_bot/wizard/engine.rb — module Telegram, module WorkBot, module Wizard, class Engine
 app/services/telegram/work_bot/wizard/flow.rb — module Telegram, module WorkBot, module Wizard, class Flow
 app/services/telegram/work_bot/wizard/lead_picking.rb — module Telegram, module WorkBot, module Wizard, module LeadPicking
