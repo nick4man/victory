@@ -12,7 +12,7 @@ module Telegram
       # получает отказ с объяснением, а не второе действие.
       class CrmCardCallback < Base
         def handle
-          card = ::CrmCard.find_by(id: @args[0].to_s[/\A\d+\z/])
+          card = ::CrmCard.in_current_bot.find_by(id: @args[0].to_s[/\A\d+\z/])
           return ack('⚠️ Карточка не найдена', alert: true) unless card
 
           case @args[1]

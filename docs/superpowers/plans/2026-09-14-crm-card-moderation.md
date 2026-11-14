@@ -6143,9 +6143,9 @@ git commit -m "feat(work_bot): карточка заявки из лички п�
 
 Кода нет; каждый шаг — действие человека или команда на прод-хосте. Порядок обязателен.
 
-- [ ] **Step 1: Утвердить таблицу должностей**
+- [x] **Step 1: Утвердить таблицу должностей**
 
-Руководитель смотрит `config/crm_permissions.yml` (spec §10): Ген. директор — всё; Агент — заявки и объекты; Стажёр — только заявки; Конструктор, Аудитор, Юрист — ничего. Правки — отдельным PR до выкатки.
+**Утверждено руководителем 15.09.26** без правок. Руководитель смотрит `config/crm_permissions.yml` (spec §10): Ген. директор — всё; Агент — заявки и объекты; Стажёр — только заявки; Конструктор, Аудитор, Юрист — ничего. Правки — отдельным PR до выкатки.
 
 - [x] **Step 2: Починить привязки — можно до выкатки**
 
@@ -6166,18 +6166,32 @@ git commit -m "feat(work_bot): карточка заявки из лички п�
 
 - [ ] **Step 3: Выкатить стеки A–E**
 
-Процедура — `.claude/memory/techContext.md`, раздел про деплой. Миграций три (`crm_cards`, `telegram_webhook_acks.bot`, `crm_cards.sandbox`): после обновления кода — `/usr/bin/docker compose exec -T web bin/rails db:migrate`, затем `git checkout -- db/structure.sql` (прод-база переписывает файл, см. auto-memory «Прод-БД: 5 расширений против 7»). Перезапуск `web` и `sidekiq`.
+Процедура — `.claude/memory/techContext.md`, раздел про деплой. Миграций три (`crm_cards`, `telegram_webhook_acks.bot`, `crm_cards.sandbox`).
+
+🚨 **Миграция — той же командой, что и обновление кода.** Прод работает в `RAILS_ENV=development` с `migration_error = :page_load` (`config/environments/development.rb`): между `git pull` и `db:migrate` каждый запрос — сайт и оба вебхука — падает с `PendingMigrationError`. Telegram апдейты повторит, сайт лежит.
+
+```bash
+cd ~/victory && git pull --ff-only \
+  && /usr/bin/docker compose exec -T web bin/rails db:migrate \
+  && git checkout -- db/structure.sql
+```
+
+`git checkout -- db/structure.sql` — прод-база переписывает файл (auto-memory «Прод-БД: 5 расширений против 7»). Затем перезапуск **`sidekiq` и `web`**. Sidekiq — обязательно до первого одобрения карточки (новый `CrmCards::ExportJob`) и до `setup_test` в Step 4 (у `InboundProcessorJob` теперь второй аргумент — старый воркер на нём падает).
+
+Ожидаемо после выкатки: кнопка «📋 Карточка CRM» появляется под старыми лидами только при следующей перерисовке якоря (смена этапа, назначение); в новых DM о назначении — сразу.
 
 - [ ] **Step 4: Поднять тестового бота**
 
 1. В прод-`.env` (кроме уже заданного `TELEGRAM_TEST_BOT_TOKEN`):
    - `TELEGRAM_TEST_WEBHOOK_SECRET` — случайная строка (`openssl rand -hex 32`);
    - `TELEGRAM_TEST_WEBHOOK_URL=https://<воркер relay>.workers.dev/test`;
-   - `TELEGRAM_TEST_CAPABILITIES={"<tg_user_id nick4man>":["create_lead","create_object","moderate"]}`.
-   Перезапуск `web` и `sidekiq`.
-2. Relay: из `tg-webhook-relay/` — `wrangler secret put TELEGRAM_TEST_WEBHOOK_SECRET` (то же значение) и `wrangler deploy`. Проверить, что основной бот жив: `bin/rails telegram:webhook:info` → `pending_update_count` не растёт.
-3. `/usr/bin/docker compose exec -T web bin/rails telegram:webhook:setup_test` → `setWebhook (test) result: true`.
-4. Каждый проверяющий открывает тестового бота и жмёт «Start» — без этого бот не может написать первым.
+   - `TELEGRAM_TEST_CAPABILITIES={"<tg_user_id nick4man>":["create_lead","create_object","moderate"]}` — ключ **числовой** `telegram_users.tg_user_id`, не @username; значение — JSON-объект.
+   Перезапуск `web` и `sidekiq`. Проверить, как compose разобрал кавычки — должен напечататься непустой хэш (на кривом JSON только предупреждение в логе и молча никаких прав):
+   `/usr/bin/docker compose exec -T web bin/rails runner 'Telegram::BotContext.within("test") { p CrmCards::Permissions.sandbox_capabilities }'`
+2. Relay: из `tg-webhook-relay/` **смерженного `main`** — `wrangler secret put TELEGRAM_TEST_WEBHOOK_SECRET` (то же значение) и `wrangler deploy`. Деплой перевыкатывает и relay основного бота — проверка обязательна: `bin/rails telegram:webhook:info` → `pending_update_count` не растёт, бот в группе отвечает.
+3. `/usr/bin/docker compose exec -T web bin/rails telegram:webhook:setup_test` → `setWebhook (test) result: true`. Задача откажет без вызова API, если токены ботов пусты или совпадают или путь URL не ровно `/test`.
+4. Каждый проверяющий открывает тестового бота и жмёт «Start» — без этого бот не может написать первым. **Включая @oks07victory**: по должности в CRM она модератор и в песочнице, ей уходит каждая отправка на модерацию; без «Start» эти сообщения теряются, а автор видит «ни одному модератору не удалось написать».
+5. Проверка секрета: relay превращает ответ Rails 403 в 200 для Telegram, поэтому неверный секрет в `getWebhookInfo` **не виден**. Отправить тестовому боту `/cards`; нет ответа — `/usr/bin/docker compose logs web | grep telegram_test` и искать 403.
 
 - [ ] **Step 5: Проверить права**
 
@@ -6196,6 +6210,8 @@ Expected: `Модераторы: @oks07victory` (CRM: Генеральный д�
    Expected: «🟢 В CRM <номер>»; в Topnlab ничего не создано (в песочнице объект вносить не нужно).
 4. Проверка изоляции: в рабочем боте `/cards` у агента — ни одной тестовой карточки; в тестовом боте реальный лид в списке «📋 Карточка заявки» не появляется.
 
+Тестовых лидов — немного, их id записать в журнал выкатки: закрытые `closed_lost` всё равно попадают в дайджесты, не фильтрующие `LeadEvent.real` (личный KPI-снимок фильтрует, дайджесты директора — пока нет).
+
 После прогона закрыть тестовые лиды:
 `/usr/bin/docker compose exec -T web bin/rails runner 'LeadEvent.open.where(staff_test: true).find_each { |l| l.update_columns(current_stage: "closed_lost", closed_at: Time.current) if l.metadata.to_h["sandbox"] == true }'`
 
@@ -6209,3 +6225,22 @@ Expected: `Модераторы: @oks07victory` (CRM: Генеральный д�
 - [ ] **Step 8: Документация**
 
 Обновить `.claude/memory/progress.md` (что в проде) и `.claude/memory/activeContext.md` (фокус) одним PR: конвейер карточек CRM включён, тестовый бот и его ENV, модераторы, таблица должностей утверждена <дата dd.MM.yy>.
+
+### Застрявшая карточка: `export_failed` с номером CRM
+
+Ошибка «Заявка уже создана в CRM под номером N…» — заявка в Topnlab есть, не записался статус. Кнопки повтора у такой карточки нет (повтор завёл бы вторую заявку). Сначала убедиться в Topnlab, что заявка N существует, затем:
+
+```bash
+/usr/bin/docker compose exec -T web bin/rails runner 'c = CrmCard.find(ID); c.transitions.create!(from_status: c.status, to_status: "exported", comment: "ручная правка: заявка найдена в CRM"); c.update_columns(status: "exported", exported_at: Time.current)'
+```
+
+Проверить `crm_id` у `Inquiry` лида; якорь под лидом обновится при следующей перерисовке.
+
+Та же рекомендация при ошибке «Topnlab importClient: сетевой сбой после отправки…»: номера нет, но запрос мог дойти — сначала искать заявку в Topnlab по телефону, и только если её нет — «🔁 Повторить выгрузку».
+
+### Откат
+
+1. Тестовый бот: `deleteWebhook` его токеном, убрать `TELEGRAM_TEST_*` из прод-`.env`.
+2. До `db:rollback STEP=3` — `TelegramWebhookAck.where(bot: "test").delete_all`, иначе возврат уникального индекса по `update_id` может упасть на совпавших id двух ботов.
+3. `crm_cards` при откате теряются — если есть настоящие карточки, сначала выгрузить их (`CrmCard.find_each` в JSON).
+4. Код — на предыдущий коммит `main`, relay — `wrangler deploy` из него же; перезапуск `web` и `sidekiq`.

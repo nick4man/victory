@@ -37,7 +37,7 @@ module Telegram
         def sections(perms)
           list = [['📝 Мои карточки в работе', own_cards]]
           if perms.can?(:moderate)
-            list << ['⏳ На модерации', ::CrmCard.status_pending_review.order(:submitted_at).to_a]
+            list << ['⏳ На модерации', ::CrmCard.in_current_bot.status_pending_review.order(:submitted_at).to_a]
             list << ['⚠️ Сбои выгрузки', export_problems]
           end
           list
@@ -47,7 +47,7 @@ module Telegram
         # текущий ответственный по лиду. Все карточки, ещё не ушедшие в CRM:
         # мастер карточки по лиду отсылает сюда, если карточка уже отправлена.
         def own_cards
-          ::CrmCard.includes(:lead_event).where.not(status: 'exported')
+          ::CrmCard.in_current_bot.includes(lead_event: :assigned_to).where.not(status: 'exported')
                    .order(updated_at: :desc).to_a
                    .select { |c| c.responsible&.id == tg_user.id }
         end
@@ -55,7 +55,7 @@ module Telegram
         # Застрявшее одобрение (джоб не встал в очередь) — тоже сбой: иначе
         # такую заявку не найти ни в одном списке.
         def export_problems
-          ::CrmCard.where(status: %w[export_failed exporting approved]).order(:updated_at).to_a
+          ::CrmCard.in_current_bot.where(status: %w[export_failed exporting approved]).order(:updated_at).to_a
                    .select { |c| c.status_export_failed? || c.export_stale? }
         end
 

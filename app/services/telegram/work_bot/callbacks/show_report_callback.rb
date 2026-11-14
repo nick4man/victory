@@ -11,6 +11,7 @@ module Telegram
         def handle
           report = ShowReport.find_by(id: @args[0])
           return ack('⚠️ Отчёт не найден', alert: true) if report.nil?
+          return refuse_staff_test(report) if report.lead_event.staff_test?
           return ack('🚫 Это не твой отчёт', alert: true) unless authorized?(report)
 
           case @args[1].to_s
@@ -25,6 +26,19 @@ module Telegram
 
         private
 
+        # Issue #214 / review round 8 (PR #228) — ShowReport грузится напрямую
+        # по id, минуя центральный гейт Base#lead_event, поэтому staff_test-изоляция
+        # дублируется здесь: approve/cancel/owner_* на probe-отчёте обрываются до
+        # боевых side effects (Task, стадия, DM-черновик, TG-пост в топик).
+        def refuse_staff_test(report)
+          lead = report.lead_event
+          Rails.logger.warn(
+            "[ShowReportCallback] staff_test refuse report=#{report.id} lead=#{lead.id} " \
+            "action=#{@args[1]} actor=#{actor_mention}"
+          )
+          ack("🧪 Лид ##{lead.id} — тестовый (probe). Действие недоступно.", alert: true)
+        end
+
         def authorized?(report)
           return false if tg_user.nil?
 
@@ -33,6 +47,9 @@ module Telegram
 
         def approve(report)
           status = ShowReports::Finalizer.new(report: report, actor: tg_user, client: client).call
+          if status == :staff_test_refused
+            return ack("🧪 Лид ##{report.lead_event_id} — тестовый (probe). Действие недоступно.", alert: true)
+          end
           return ack("ℹ️ Уже #{report.reload.status}", alert: true) if status == :already_done
 
           edit_preview(report, "\n\n✅ <b>Сохранено.</b> Задача собственнику ##{report.reload.feedback_task_id}.")

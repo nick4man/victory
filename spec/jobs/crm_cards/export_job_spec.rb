@@ -4,7 +4,7 @@ require 'rails_helper'
 
 RSpec.describe CrmCards::ExportJob do
   it 'передаёт карточку конвейеру' do
-    card = instance_double(CrmCard)
+    card = instance_double(CrmCard, sandbox?: false)
     workflow = instance_double(CrmCards::Workflow, export!: nil)
     allow(CrmCard).to receive(:find_by).with(id: 42).and_return(card)
     allow(CrmCards::Workflow).to receive(:new).and_return(workflow)
