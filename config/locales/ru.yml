@@ -481,3 +481,8 @@ ru:
       tg_cta: "Канал свежих лотов:"
     page_footer: "стр. %{page}  ·  Дозсье %{report}"
 
+  avito:
+    channel:
+      buyer: "Покупатель #%{id}"
+      reply_hint: "Ответьте в Avito — сообщение дойдёт до покупателя."
+

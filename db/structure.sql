@@ -366,6 +366,79 @@ ALTER SEQUENCE public.articles_id_seq OWNED BY public.articles.id;
 
 
 --
+-- Name: avito_messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.avito_messages (
+    id bigint NOT NULL,
+    message_id character varying NOT NULL,
+    chat_id character varying NOT NULL,
+    author_id bigint NOT NULL,
+    user_id bigint NOT NULL,
+    item_id bigint,
+    property_id bigint,
+    content_type character varying NOT NULL,
+    content_text text,
+    payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    direction character varying DEFAULT 'incoming'::character varying NOT NULL,
+    routed_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: avito_messages_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.avito_messages_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: avito_messages_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.avito_messages_id_seq OWNED BY public.avito_messages.id;
+
+
+--
+-- Name: avito_webhook_acks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.avito_webhook_acks (
+    id bigint NOT NULL,
+    message_id character varying NOT NULL,
+    processed_at timestamp(6) without time zone NOT NULL,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: avito_webhook_acks_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.avito_webhook_acks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: avito_webhook_acks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.avito_webhook_acks_id_seq OWNED BY public.avito_webhook_acks.id;
+
+
+--
 -- Name: bank_rate_snapshots; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3335,6 +3408,20 @@ ALTER TABLE ONLY public.articles ALTER COLUMN id SET DEFAULT nextval('public.art
 
 
 --
+-- Name: avito_messages id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.avito_messages ALTER COLUMN id SET DEFAULT nextval('public.avito_messages_id_seq'::regclass);
+
+
+--
+-- Name: avito_webhook_acks id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.avito_webhook_acks ALTER COLUMN id SET DEFAULT nextval('public.avito_webhook_acks_id_seq'::regclass);
+
+
+--
 -- Name: bank_rate_snapshots id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3836,6 +3923,22 @@ ALTER TABLE ONLY public.article_embeddings
 
 ALTER TABLE ONLY public.articles
     ADD CONSTRAINT articles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: avito_messages avito_messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.avito_messages
+    ADD CONSTRAINT avito_messages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: avito_webhook_acks avito_webhook_acks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.avito_webhook_acks
+    ADD CONSTRAINT avito_webhook_acks_pkey PRIMARY KEY (id);
 
 
 --
@@ -4727,6 +4830,41 @@ CREATE INDEX index_articles_on_region_and_published_at ON public.articles USING 
 --
 
 CREATE UNIQUE INDEX index_articles_on_slug ON public.articles USING btree (slug);
+
+
+--
+-- Name: index_avito_messages_on_chat_id_and_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_avito_messages_on_chat_id_and_created_at ON public.avito_messages USING btree (chat_id, created_at);
+
+
+--
+-- Name: index_avito_messages_on_message_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_avito_messages_on_message_id ON public.avito_messages USING btree (message_id);
+
+
+--
+-- Name: index_avito_messages_on_property_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_avito_messages_on_property_id ON public.avito_messages USING btree (property_id);
+
+
+--
+-- Name: index_avito_messages_on_property_id_and_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_avito_messages_on_property_id_and_created_at ON public.avito_messages USING btree (property_id, created_at);
+
+
+--
+-- Name: index_avito_webhook_acks_on_message_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_avito_webhook_acks_on_message_id ON public.avito_webhook_acks USING btree (message_id);
 
 
 --
@@ -7479,6 +7617,14 @@ ALTER TABLE ONLY public.properties
 
 
 --
+-- Name: avito_messages fk_rails_38ad68fbf8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.avito_messages
+    ADD CONSTRAINT fk_rails_38ad68fbf8 FOREIGN KEY (property_id) REFERENCES public.properties(id);
+
+
+--
 -- Name: property_views fk_rails_3e8c6e5e1e; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8002,9 +8148,11 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public;
+SET search_path TO "$user", public, tiger, topology;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261114190100'),
+('20261114190000'),
 ('20261114100000'),
 ('20261113100000'),
 ('20261112120000'),
