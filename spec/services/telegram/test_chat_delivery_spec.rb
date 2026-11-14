@@ -23,6 +23,14 @@ RSpec.describe 'Telegram test chat delivery (integration)' do
     skip 'TELEGRAM_TEST_BOT_TOKEN/TELEGRAM_TEST_CHAT_ID не заданы — см. заголовок spec' unless bot_token && chat_id
 
     WebMock.disable!
+
+    # Токен может быть прописан в окружении, но отозван/недействителен —
+    # в таком случае живой прогон невозможен, и спека skip'ается, а не падает.
+    begin
+      Telegram::Client.new(token: bot_token).get_me
+    rescue Telegram::Client::Error => e
+      skip "TELEGRAM_TEST_BOT_TOKEN недействителен (#{e.message}) — см. заголовок spec"
+    end
   end
 
   after do

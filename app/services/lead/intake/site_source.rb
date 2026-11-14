@@ -8,8 +8,9 @@ module Lead
     #   * site_valuation — PropertyValuationsController (форма экспресс-оценки)
     #   * site_mortgage  — заявка на ипотеку (mortgage_application_notifier)
     #
-    # Не создаёт CRM-карточку немедленно — это делает Topnlab::Importer на синке,
-    # либо синхронно через Topnlab::Client#import_client (отдельная задача в Phase 2).
+    # CRM-карточку немедленно не создаёт: заявка уходит в CRM позже через
+    # модерацию CrmCards → CrmCards::LeadExporter → Topnlab::Client#import_client
+    # (единственный путь записи, см. spec/services/crm_cards/single_write_path_spec.rb).
     # Возвращает (lead_ref, metadata).
     class SiteSource
       def initialize(source)
