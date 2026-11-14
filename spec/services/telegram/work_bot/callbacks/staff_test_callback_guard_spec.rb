@@ -2,11 +2,13 @@
 
 require 'rails_helper'
 
-# Review round 7 (PR #228) — центральный гейт Callbacks::Base#lead_event:
+# Review round 7 + 8 (PR #228) — центральный гейт Callbacks::Base#lead_event:
 # staff_test-лиды (probe-прогоны) недоступны НИ ОДНОМУ callback'у. Раньше
 # guard был только в stage/assign_to — show_assign создавал боевой Task с DM,
-# spam сносил сообщения и закрывал лид, segment менял лид. Старые кнопки
-# на карточке и поддельный callback_data теперь закрыты инвариантом.
+# spam сносил сообщения и закрывал лид, segment менял лид. Round 8 закрыл
+# последний обход: ShowReportCallback грузит отчёт напрямую по id, минуя
+# Base#lead_event, — approve на probe-отчёте создавал боевую Task и двигал
+# стадию. Старые кнопки на карточке и поддельный callback_data закрыты.
 RSpec.describe 'staff_test-изоляция: центральный гейт callback-ов' do
   let(:acks) { [] }
   let(:deleted) { [] }
@@ -60,6 +62,27 @@ RSpec.describe 'staff_test-изоляция: центральный гейт cal
   it 'segment на test-лиде — ack-отказ, сегмент не меняется' do
     run_callback(Telegram::WorkBot::Callbacks::SegmentCallback, "segment:#{test_lead.id}:cash")
     expect(test_lead.reload.segment).not_to eq('cash')
+    expect(acks.last[:text]).to include('тестовый')
+  end
+
+  # Review round 8 (PR #228) — ShowReportCallback грузит ShowReport напрямую,
+  # минуя Base#lead_event: approve probe-отчёта раньше создавал боевую Task,
+  # подтверждал отчёт и двигал стадию (LeadStageTransition). Теперь — отказ.
+  it 'show_report approve на test-лиде — ack-отказ, Task и стадия не тронуты' do
+    probe_lead = LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                                   anchor_topic_key: 'apartments', tg_chat_id: -1_003_779_115_845,
+                                   anchor_thread_id: 17, anchor_message_id: 950,
+                                   staff_test: true, metadata: { 'name' => 'Probe Клиент' })
+    report = ShowReport.create!(lead_event: probe_lead, conducted_by: manager, reported_by: agent,
+                                conducted_at: Time.current, source: 'voice', owner_message: 'probe-черновик',
+                                preview_message_id: 55, preview_chat_id: -1_003_779_115_845)
+
+    expect {
+      run_callback(Telegram::WorkBot::Callbacks::ShowReportCallback, "show_report:#{report.id}:approve")
+    }.not_to change(Task, :count)
+
+    expect(report.reload.status_pending_confirm?).to be(true)
+    expect(probe_lead.reload.current_stage).to eq('new') # LeadStageTransition не вызывался
     expect(acks.last[:text]).to include('тестовый')
   end
 

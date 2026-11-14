@@ -32,6 +32,17 @@ module Telegram
         end
 
         def call
+          # Review round 8 (PR #228) — инвариант из центрального гейта callback'ов,
+          # продублированный на уровне сервиса: Finalizer не должен зависеть от
+          # единственного входа (ShowReportCallback). staff_test-отчёт → никаких
+          # боевых side effects (Task, стадия, DM, CRM).
+          if @lead.staff_test?
+            Rails.logger.warn(
+              "[ShowReports::Finalizer] staff_test refuse report=#{@report.id} lead=#{@lead.id} actor=#{@actor&.id}"
+            )
+            return :staff_test_refused
+          end
+
           confirmed = false
           @report.with_lock do
             @report.reload

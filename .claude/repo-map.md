@@ -9516,6 +9516,8 @@ def handle
 ⋮----
 private
 ⋮----
+def refuse_staff_test(report)
+⋮----
 def authorized?(report)
 ⋮----
 def approve(report)
