@@ -82,21 +82,39 @@ RSpec.describe ContactFormSpamGuard do
   end
 
   describe 'stateless CSRF-токен формы' do
-    it 'генерирует и верифицирует токен' do
-      token = described_class.form_csrf_token
-      expect(described_class.verify_form_csrf_token(token)).to be true
+    let(:binding_same) { ['visitor-123', 'fp-abc'] }
+    let(:binding_other) { ['visitor-999', 'fp-xyz'] }
+
+    it 'генерирует и верифицирует токен при совпадении binding' do
+      token = described_class.form_csrf_token(binding_same)
+      expect(described_class.verify_form_csrf_token(token, binding_same)).to be true
+    end
+
+    it 'принимает токен, если совпадает visitor_token даже при другом fingerprint' do
+      token = described_class.form_csrf_token(['visitor-123', 'fp-old'])
+      expect(described_class.verify_form_csrf_token(token, ['visitor-123', 'fp-new'])).to be true
+    end
+
+    it 'принимает токен, если совпадает fingerprint даже при другом visitor_token' do
+      token = described_class.form_csrf_token(['visitor-old', 'fp-abc'])
+      expect(described_class.verify_form_csrf_token(token, ['visitor-new', 'fp-abc'])).to be true
+    end
+
+    it 'не истекает: старый токен остаётся валидным' do
+      token = travel_to(1.day.ago) { described_class.form_csrf_token(binding_same) }
+      expect(described_class.verify_form_csrf_token(token, binding_same)).to be true
     end
 
     it 'отклоняет пустой, нестроковый или подделанный токен' do
-      expect(described_class.verify_form_csrf_token(nil)).to be false
-      expect(described_class.verify_form_csrf_token('')).to be false
-      expect(described_class.verify_form_csrf_token('tampered')).to be false
-      expect(described_class.verify_form_csrf_token({ 'x' => 'y' })).to be false
+      expect(described_class.verify_form_csrf_token(nil, binding_same)).to be false
+      expect(described_class.verify_form_csrf_token('', binding_same)).to be false
+      expect(described_class.verify_form_csrf_token('tampered', binding_same)).to be false
+      expect(described_class.verify_form_csrf_token({ 'x' => 'y' }, binding_same)).to be false
     end
 
-    it 'отклоняет просроченный токен' do
-      token = travel_to(20.minutes.ago) { described_class.form_csrf_token }
-      expect(described_class.verify_form_csrf_token(token)).to be false
+    it 'отклоняет токен другого клиента' do
+      token = described_class.form_csrf_token(binding_same)
+      expect(described_class.verify_form_csrf_token(token, binding_other)).to be false
     end
   end
 
@@ -112,6 +130,29 @@ RSpec.describe ContactFormSpamGuard do
       described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot')
       travel 2.hours
       expect(Rails.cache.read(key)).to be_nil
+    end
+
+    context 'c RedisCacheStore (production-семантика)' do
+      around do |example|
+        original_cache = Rails.cache
+        redis_cache = ActiveSupport::Cache::RedisCacheStore.new(
+          url: ENV.fetch('REDIS_URL', 'redis://redis:6379/1')
+        )
+        redis_cache.clear
+        Rails.cache = redis_cache
+        example.run
+        Rails.cache = original_cache
+      end
+
+      it 'инкрементирует атомарно и задаёт TTL' do
+        key = described_class.counter_key('honeypot')
+        described_class.record(reason: 'honeypot', ip: '1.2.3.4', ua: 'Bot')
+
+        raw_value = Rails.cache.redis.with { |c| c.get(key) }
+        expect(raw_value).to eq('1')
+        ttl = Rails.cache.redis.with { |c| c.ttl(key) }
+        expect(ttl).to be_positive
+      end
     end
 
     it 'логирует alert при превышении порога только один раз за окно' do

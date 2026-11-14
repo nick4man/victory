@@ -104,7 +104,7 @@ class PagesController < ApplicationController
     # убираем гонку вкладок и зависимость от cookie/Safari ITP/bfcache.
     @rendered_at_token = ContactFormSpamGuard.rendered_at_token
     # #239: stateless CSRF-токен для той же формы, чтобы работало без session cookie.
-    @contact_form_csrf_token = ContactFormSpamGuard.form_csrf_token
+    @contact_form_csrf_token = ContactFormSpamGuard.form_csrf_token(contact_form_binding)
 
     track_event('contacts_page_viewed')
   end
@@ -313,12 +313,26 @@ class PagesController < ApplicationController
   # #239: для публичной формы /contacts используем
   # stateless CSRF-токен (подписанное скрытое поле), чтобы
   # пользователи без session cookie могли отправить заявку.
-  # Проверка по подписи ставится выше стандартной session-based.
+  # Токен привязан к visitor_token или к фингерпринту (IP+UA),
+  # поэтому replay с другого браузера не сработает.
   def valid_authenticity_token?(session, encoded_masked_token)
     return true if action_name == 'send_contact_form' &&
-                   ContactFormSpamGuard.verify_form_csrf_token(encoded_masked_token)
+                   ContactFormSpamGuard.verify_form_csrf_token(encoded_masked_token, contact_form_binding)
 
     super
+  end
+
+  def contact_form_binding
+    [
+      cookies.signed[:visitor_token].to_s.presence,
+      contact_form_client_fingerprint
+    ]
+  end
+
+  def contact_form_client_fingerprint
+    Digest::SHA256.hexdigest(
+      "#{request.remote_ip}||#{ContactFormSpamGuard.sanitize_user_agent(request.user_agent)}"
+    )
   end
 
   private

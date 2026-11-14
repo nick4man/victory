@@ -168,6 +168,36 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
         end.not_to change(Inquiry, :count)
         expect(response).to have_http_status(:unprocessable_content)
       end
+
+      it 'отвергает replay токена с другого клиента' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        csrf = csrf_token_from_page
+        travel 5.seconds
+
+        # Имитируем другой браузер: меняем visitor_token и UA.
+        cookies.delete('visitor_token')
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token, authenticity_token: csrf),
+               headers: { 'HTTP_USER_AGENT' => 'TotallyDifferentBot/1.0' }
+        end.not_to change(Inquiry, :count)
+        expect(response).to have_http_status(:unprocessable_content)
+      end
+
+      it 'принимает форму даже со старым токеном (нет TTL)' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        csrf = csrf_token_from_page
+        travel 1.day
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token, authenticity_token: csrf)
+        end.to change(Inquiry, :count).by(1)
+        expect(response).to redirect_to(contacts_path)
+      end
     end
   end
 end

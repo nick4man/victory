@@ -15312,42 +15312,6 @@ group :development, :test do
 end
 </file>
 
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
-⋮----
-def about
-⋮----
-def team
-⋮----
-def history
-⋮----
-def contacts
-⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-def valid_authenticity_token?(session, encoded_masked_token)
-⋮----
-private
-⋮----
-def validate_contact_form
-⋮----
-def valid_email?(email)
-</file>
-
 <file path="app/jobs/embed_property_valuation_job.rb">
 require 'digest'
 ⋮----
@@ -15988,56 +15952,44 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/services/contact_form_spam_guard.rb">
-class ContactFormSpamGuard
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
 ⋮----
-MIN_FILL_SECONDS = 3
+def about
 ⋮----
-HONEYPOT_PARAM = :contact_code
+def team
 ⋮----
-ALERT_THRESHOLD = 10
+def history
 ⋮----
-CSRF_TOKEN_TTL = 15.minutes
+def contacts
 ⋮----
-REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+def send_contact_form
 ⋮----
-Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+def services
 ⋮----
-def rendered_at_token(now = Time.current)
+def faq
 ⋮----
-def verify_rendered_at_token(token)
+def privacy
 ⋮----
-def form_csrf_token
+def terms
 ⋮----
-def verify_form_csrf_token(token)
+def not_found
 ⋮----
-def record(reason:, ip:, ua:)
+def unprocessable_entity
 ⋮----
-def counter_key(reason)
+def internal_server_error
 ⋮----
-def alert_key(reason)
+def valid_authenticity_token?(session, encoded_masked_token)
 ⋮----
-def sanitize_user_agent(ua)
+def contact_form_binding
 ⋮----
-private
-⋮----
-def verifier(purpose = 'contact_form_rendered_at')
-⋮----
-def increment_counter(reason)
-⋮----
-def log_alert(reason, count)
-⋮----
-def mark_alert_fired(reason)
-⋮----
-def initialize(honeypot:, rendered_at:, now: Time.current)
-⋮----
-def call
+def contact_form_client_fingerprint
 ⋮----
 private
 ⋮----
-def spam(reason)
+def validate_contact_form
 ⋮----
-def suspicious(reason)
+def valid_email?(email)
 </file>
 
 <file path="app/services/crm_cards/checker.rb">
@@ -16152,6 +16104,56 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
+</file>
+
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
+⋮----
+MIN_FILL_SECONDS = 3
+⋮----
+HONEYPOT_PARAM = :contact_code
+⋮----
+ALERT_THRESHOLD = 10
+⋮----
+REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+⋮----
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def form_csrf_token(binding)
+⋮----
+def verify_form_csrf_token(token, binding)
+⋮----
+def record(reason:, ip:, ua:)
+⋮----
+def counter_key(reason)
+⋮----
+def alert_key(reason)
+⋮----
+def sanitize_user_agent(ua)
+⋮----
+private
+⋮----
+def verifier(purpose = 'contact_form_rendered_at')
+⋮----
+def increment_counter(reason)
+⋮----
+def log_alert(reason, count)
+⋮----
+def mark_alert_fired(reason)
+⋮----
+def initialize(honeypot:, rendered_at:, now: Time.current)
+⋮----
+def call
+⋮----
+private
+⋮----
+def spam(reason)
+⋮----
+def suspicious(reason)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">

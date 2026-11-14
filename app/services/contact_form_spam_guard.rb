@@ -18,8 +18,6 @@ class ContactFormSpamGuard
   HONEYPOT_PARAM = :contact_code
   # Сколько срабатываний одного reason в час вызывают alert в логе.
   ALERT_THRESHOLD = 10
-  # Время жизни stateless CSRF-токена формы.
-  CSRF_TOKEN_TTL = 15.minutes
 
   REASONS = %w[honeypot no_render_timestamp too_fast].freeze
 
@@ -41,15 +39,19 @@ class ContactFormSpamGuard
     # Подписанный stateless CSRF-токен для формы /contacts.
     # Работает без session cookie — убирает ещё один источник потери заявок
     # при блокировке/очистке cookie (GDPR-расширения, Safari ITP, bfcache).
-    def form_csrf_token
-      verifier(:contact_form_csrf).generate([SecureRandom.hex(16), Time.current.to_f])
+    #
+    # binding — массив [visitor_token, client_fingerprint]. Токен принимается,
+    # если совпадает хотя бы одна из связок: это позволяет не терять заявку
+    # при удалении session cookie, но не даёт replay токен с другого браузера/IP.
+    def form_csrf_token(binding)
+      verifier(:contact_form_csrf).generate([SecureRandom.hex(16), Time.current.to_f, *binding])
     end
 
-    def verify_form_csrf_token(token)
+    def verify_form_csrf_token(token, binding)
       return false unless token.is_a?(String) && token.present?
 
-      _nonce, issued_at = verifier(:contact_form_csrf).verify(token)
-      Time.current.to_f - issued_at.to_f <= CSRF_TOKEN_TTL
+      _nonce, _issued_at, token_visitor, token_fingerprint = verifier(:contact_form_csrf).verify(token)
+      token_visitor.to_s == binding[0].to_s || token_fingerprint.to_s == binding[1].to_s
     rescue ActiveSupport::MessageVerifier::InvalidSignature
       false
     end
