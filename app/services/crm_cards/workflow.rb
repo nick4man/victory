@@ -197,6 +197,10 @@ module CrmCards
       end
       notifier.exported(card, warning: warning) if result.ok?
       result
+    rescue ActiveRecord::RecordNotUnique => e
+      raise unless e.message.include?('idx_crm_cards_unique_exported_object_crm_id')
+
+      deny("Номер #{digits} уже отмечен у другого объекта — проверь цифры в адресе карточки Topnlab.")
     end
 
     # Автоматический повтор выгрузки — только из детерминированного отказа

@@ -27,6 +27,10 @@ RSpec.describe CrmCards::Checker, 'карточка объекта' do
     )
   end
 
+  it 'равные дробные площади — не ошибка' do
+    expect(check(flat.merge('area_common' => 40.01, 'area_living' => 10.05, 'area_kitchen' => 29.96))).to eq([])
+  end
+
   it 'этаж выше этажности дома' do
     expect(check(flat.merge('floor' => 7))).to contain_exactly(
       a_hash_including('field' => 'floor', 'message' => 'Этаж 7 выше этажности дома (5).')

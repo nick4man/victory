@@ -94,14 +94,24 @@ module CrmCards
       errors = self.class.conditionally_required(@values).filter_map do |key|
         [key, CONDITIONAL_MESSAGES.fetch(key)] if blank_value?(@values[key])
       end
-      common, living, kitchen = @values.values_at('area_common', 'area_living', 'area_kitchen').map(&:to_f)
+      common = area_cents(@values['area_common'])
+      living = area_cents(@values['area_living'])
+      kitchen = area_cents(@values['area_kitchen'])
       if common.positive? && living + kitchen > common
         errors << ['area_common',
-                   "Общая площадь #{area(common)} м² меньше суммы жилой и кухни (#{area(living + kitchen)} м²)."]
+                   "Общая площадь #{area(common / 100.0)} м² меньше суммы жилой и кухни (#{area((living + kitchen) / 100.0)} м²)."]
       end
       floor, total = @values.values_at('floor', 'floors_total').map(&:to_i)
       errors << ['floor', "Этаж #{floor} выше этажности дома (#{total})."] if floor.positive? && total.positive? && floor > total
       errors
+    end
+
+    def area_cents(value)
+      return 0 if value.nil? || value.to_s.strip.empty?
+
+      (BigDecimal(value.to_s) * 100).round.to_i
+    rescue ArgumentError
+      0
     end
 
     def area(value)
