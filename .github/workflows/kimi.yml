@@ -46,9 +46,9 @@ jobs:
 
       # Аутентификация без долгоживущего секрета: OIDC-токен прогона меняется
       # на краткосрочный OPENCODE_API_KEY сервис-аккаунта OpenCode Console.
-      # Сниппет — из Console (Settings → Service accounts); client_id —
-      # публичный идентификатор сервис-аккаунта (не секрет), обмен всё равно
-      # требует OIDC-токен конкретного прогона этого репозитория.
+      # Сниппет — из Console (Settings → Service accounts). client_id хранится
+      # в GitHub Secret (OPENCODE_CLIENT_ID) и подставляется в запрос; обмен
+      # всё равно требует OIDC-токен конкретного прогона этого репозитория.
       - name: Sign in to OpenCode
         env:
           AUDIENCE: https://opencode.ai/console
@@ -59,7 +59,7 @@ jobs:
           token=$(curl -sSf https://opencode.ai/console/auth/oauth/token \
             -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
             -d subject_token_type=urn:ietf:params:oauth:token-type:jwt \
-            -d client_id=sk_eb657298-922a-4cf9-a85f-28f27d8ba16a \
+            -d client_id="${{ secrets.OPENCODE_CLIENT_ID }}" \
             -d subject_token="$oidc" | jq -r .access_token)
           echo "::add-mask::$token"
           echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
