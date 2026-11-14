@@ -264,7 +264,17 @@ module Telegram
         link = @lead.anchor_url
         text += "\n\n<a href=\"#{link}\">Открыть карточку</a>" if link.present?
 
-        @client.send_message(text, chat_id: chat_id, parse_mode: 'HTML')
+        opts = { chat_id: chat_id, parse_mode: 'HTML' }
+        # Лид с сайта в CRM сам не попадёт: после разговора с клиентом
+        # ответственный заполняет карточку, её проверяет модератор. Номер CRM
+        # есть не у всякого lead_ref — отправленную карточку проверяем отдельно.
+        card = ::CrmCard.kind_lead.find_by(lead_event_id: @lead.id)
+        if @lead.lead_ref.try(:crm_id).blank? && (card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status))
+          text += "\n\nПосле разговора с клиентом заполни карточку CRM — без модерации заявка в CRM не попадёт."
+          opts[:reply_markup] = { inline_keyboard: [[{ text: '📋 Карточка CRM', callback_data: "wiz:s:crm_lead:#{@lead.id}" }]] }
+        end
+
+        @client.send_message(text, **opts)
       rescue Telegram::Client::Error => e
         Rails.logger.warn("[LeadAssignment] DM to #{@assignee.mention} failed: #{e.message}")
       end
