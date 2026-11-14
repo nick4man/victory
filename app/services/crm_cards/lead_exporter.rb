@@ -1,0 +1,75 @@
+# frozen_string_literal: true
+
+module CrmCards
+  # Одобренная заявка → CRM через публичный API. Единственный вызов
+  # import_client в приложении (single_write_path_spec).
+  #
+  # Ответственный в CRM — тот, кто отвечает за карточку сейчас
+  # (CrmCard#responsible): лид могли переназначить между отправкой на
+  # модерацию и одобрением, и заявка обязана уйти к новому ответственному.
+  class LeadExporter
+    Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
+
+    def initialize(topnlab: nil)
+      @topnlab = topnlab
+    end
+
+    # @return [Outcome]
+    # @raise [Topnlab::Client::Error] заявка не создана
+    def call(card)
+      values = card.payload
+      response = topnlab.import_client(
+        phone: values['phone'], name: values['name'], source: card.lead_event&.source.to_s,
+        realty_id: values['realty_id'], comment: comment_with_extra_phone(values),
+        action: values['action'] == 'rent' ? 0 : 1, object_type: values['object_type']
+      )
+      crm_id = response['insertedId'].to_s
+      # ok без insertedId (или с невалидным номером) не доказывает, что заявка
+      # не создана, — CRM могла принять запрос и ответить битым телом. Неоднозначный
+      # исход: восстановление только через сверку/привязку номера из CRM
+      # (ревью PR #210, round 6/7). Сырое значение в исключение не включаем —
+      # оно попало бы в export_error и Telegram (ревью PR #210, round 8);
+      # валидация до Outcome: нечисловой номер не должен попасть в БД и лог.
+      unless crm_id.match?(/\A\d{1,12}\z/)
+        raise Topnlab::Client::AmbiguousError, 'importClient ответил ok с невалидным insertedId'
+      end
+
+      Outcome.new(crm_id: crm_id, warning: assign_responsible(crm_id, card.responsible))
+    end
+
+    private
+
+    # У importClient один параметр под телефон. Второй номер клиента дописываем
+    # в комментарий: иначе сотрудник его собрал, а в CRM он не доехал.
+    def comment_with_extra_phone(values)
+      extra = values['phone_extra'].to_s
+      return values['comment'] if extra.blank?
+
+      suffix = "Доп. телефон: +#{extra}"
+      # Topnlab::Client#import_client режет comment до 500 символов. Место под
+      # суффикс (и разделитель) резервируем здесь, обрезая только основной
+      # текст: иначе длинный комментарий съедал бы телефон вместе с концом.
+      [values['comment'].to_s.truncate(499 - suffix.length), suffix].compact_blank.join("\n")
+    end
+
+    # Клиент Topnlab кидает на отсутствии ENV — создаём его только при
+    # выгрузке, а не при построении Workflow в каждом мастере.
+    def topnlab
+      @topnlab ||= Topnlab::Client.new
+    end
+
+    # Заявка уже создана: сбой назначения выгрузку не отменяет, а
+    # возвращается предупреждением — ответственного поставят в CRM руками.
+    # Ловим любую ошибку, не только Topnlab::Client::Error: сырой сетевой сбой
+    # (ECONNREFUSED, SSL) иначе вылетел бы до Outcome, номер заявки потерялся
+    # бы, и повтор выгрузки завёл бы в CRM вторую заявку.
+    def assign_responsible(crm_id, author)
+      return "у #{author.mention} нет email в привязке к CRM — ответственный не назначен" if author.email.blank?
+
+      topnlab.transfer_client(order_id: crm_id.to_i, email: author.email)
+      nil
+    rescue StandardError => e
+      "ответственный не назначен: #{e.class}: #{e.message.truncate(160)}"
+    end
+  end
+end

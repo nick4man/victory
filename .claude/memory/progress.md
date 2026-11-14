@@ -11,7 +11,7 @@
 | **CI/CD: сборка образов в GHCR** | ✅ с 11.10.26 | `build.yml`: push в main → образы `victory-{web,conveyor,publisher,zhk-registry}` (тег `sha-<7>`), zeitwerk:check в production до push; PR — проверка собираемости |
 | **Staging-стенд victory-staging** | ✅ с 11.10.26 | vps1 (`ssh deploy`), WG-only бинд `10.10.0.160:3002`, Traefik `staging.dev.victory62.org` + basic-auth, автовыкатка из CI через `deploy-gate`, smoke+Playwright зелёные, данные — prod-дамп с санитизацией |
 | **Release 1.0 (compose + prod-образы)** | ✅ с 12.10.26 (cutover окно A) | Прод на `victory-web:sha-f613c87` из GHCR, zhk-registry 1.0.0; `bin/{rollout,release,smoke}`; окно B (конвейер новостей с chat) pending |
-| **Kimi Code в GitHub Actions** | ✅ с 11.10.26 | `@kimi` в issue/PR-комментариях и ревью → sticky-ответ, ветки `kimi/*` |
+| **Kimi Code в GitHub Actions** | ✅ с 11.10.26 | `@kimi` и `@claude` (алиас) в issue/PR-комментариях и ревью → sticky-ответ, ветки `kimi/*`; `claude.yml` удалён (OAuth-подписка не продлевалась) |
 | Landing | ✅ active | `landing#index` корневой роут, full app layout с header/footer, news strip над featured properties |
 | Properties (каталог) | ✅ active | TopNLab MLS-синхронизация, поиск/карта/сравнение |
 | Investment Audit | ✅ active | audit-engine sidecar анализатор |

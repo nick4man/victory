@@ -15,8 +15,8 @@ module Telegram
     end
 
     def call
-      chat_id = ENV['TELEGRAM_STAFF_CHAT_ID']
-      raise Telegram::Client::Error, 'TELEGRAM_STAFF_CHAT_ID not set' if chat_id.blank?
+      chat_id = target_chat_id
+      return nil if chat_id.blank?
 
       result = @client.send_message(format_message, chat_id: chat_id, parse_mode: 'HTML')
 
@@ -30,9 +30,26 @@ module Telegram
 
     private
 
+    # Тест-режим чат-бота (issue #214): probe-диалог эскалирует в тестовый
+    # чат, а не в рабочий staff-chat. Без TELEGRAM_TEST_CHAT_ID — пропуск с
+    # warning: рабочая группа не трогается.
+    def target_chat_id
+      unless @conv.respond_to?(:test_probe?) && @conv.test_probe?
+        chat_id = ENV['TELEGRAM_STAFF_CHAT_ID']
+        raise Telegram::Client::Error, 'TELEGRAM_STAFF_CHAT_ID not set' if chat_id.blank?
+        return chat_id
+      end
+
+      test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+      Rails.logger.warn("[EscalationNotifier] conversation=#{@conv.id} test probe, TELEGRAM_TEST_CHAT_ID не задан — пропуск") if test_chat.blank?
+      test_chat&.to_i
+    end
+
     def format_message
       lines = []
-      lines << "🆕 <b>Новая заявка #{@conv.id}</b>"
+      title = "🆕 <b>Новая заявка #{@conv.id}</b>"
+      title = "🧪 ТЕСТ · #{title}" if @conv.respond_to?(:test_probe?) && @conv.test_probe?
+      lines << title
       lines << ''
       lines << "👤 #{escape(@conv.display_name)}#{phone_line}#{email_line}"
       lines << '🌐 Источник: чат на сайте'

@@ -4,6 +4,10 @@ name: Kimi Code
 # 1) review — авторевью каждого PR (code-review diff — обязательный этап
 #    каждого PR по AGENTS.md, здесь он автоматизирован);
 # 2) kimi — бот отвечает на @kimi в issue/PR-комментариях и ревью.
+#    @claude — алиас к тому же job'у: claude.yml удалён (OAuth-подписка
+#    Claude не продлевается), экшен умеет искать ровно одну trigger_phrase,
+#    поэтому фраза подставляется динамически — та, что реально есть
+#    в событии.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -136,11 +140,14 @@ jobs:
 
   kimi:
     name: Kimi Code
+    # Gate пропускает упоминания обоих ботов: @kimi и @claude (алиас).
+    # Экшен внутри себя ищет ровно одну trigger_phrase, поэтому ниже она
+    # подставляется динамически — та, что реально встретилась в событии.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@kimi')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kimi')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kimi')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi')))
+      (github.event_name == 'issue_comment' && (contains(github.event.comment.body, '@kimi') || contains(github.event.comment.body, '@claude'))) ||
+      (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '@kimi') || contains(github.event.comment.body, '@claude'))) ||
+      (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '@kimi') || contains(github.event.review.body, '@claude'))) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi') || contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
 
     # Least privilege: читаем код/PR/issue, пишем комментарии и ветки kimi/*.
@@ -169,6 +176,13 @@ jobs:
         id: kimi
         uses: xuwenhao/kimi-code-action@v0   # для продакшена запиньте на SHA коммита
         with:
+          # Алиас @claude: экшен ищет ровно одну trigger_phrase (gate job'ы
+          # выше пропускает оба упоминания), поэтому подставляем ту, что
+          # реально встретилась в ПОЛЯХ ТЕКУЩЕГО события: на issue_comment
+          # экшен проверяет только comment.body, и учёт issue.body сломал бы
+          # триггер (issue с @kimi в описании + комментарий только с @claude).
+          trigger_phrase: ${{ ((github.event_name == 'issue_comment' && contains(github.event.comment.body, '@kimi')) || (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@kimi')) || (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@kimi')) || (github.event_name == 'issues' && (contains(github.event.issue.body, '@kimi') || contains(github.event.issue.title, '@kimi')))) && '@kimi' || '@claude' }}
+
           # API-ключ: Kimi Code Console (kimi_platform: code; k3/k3.1-pro —
           # план Moderato+, ниже — kimi-for-coding) или Open Platform — тогда
           # kimi_platform: open-cn / open-intl и своя модель.

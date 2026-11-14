@@ -58,6 +58,9 @@ module Telegram
           current_lead = ::LeadEvent.find_by(id: ctx['lead'])
           return { text: '⚠️ Лид не найден — задача не создана.' } unless current_lead
           return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт — задача не создана." } unless current_lead.open?
+          # Issue #224 / review round 5 — повторная проверка на финише: лид мог
+          # стать тестовым после старта мастера (ручной ввод id, гонки).
+          return { text: "🧪 Лид ##{current_lead.id} — тестовый (probe). Задача не создана." } if current_lead.staff_test?
 
           due_date = Formatters::DateFormat.parse(ctx['due'])
           assignee = ctx['assignee'].present? ? ::TelegramUser.find_by(id: ctx['assignee']) : nil

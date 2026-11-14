@@ -103,7 +103,7 @@ cleanup-задачи. Планировщик один — только этот 
 | Язык | Ruby **3.4.10** |
 | БД | PostgreSQL 15 + **PostGIS 3.6** + **pgvector 0.8.6** (образ `Dockerfile.postgres`) |
 | Server | Puma 7.2, порт 3000 в Docker |
-| Фон | Sidekiq 7 + sidekiq-cron, Redis 7 |
+| Фон | Sidekiq 7 + sidekiq-cron, Redis 8.10.3 |
 | Frontend | Importmap + Stimulus + Turbo (Hotwire), Tailwind (`tailwindcss-rails`), ERB; сборщика JS нет |
 | Поиск | Ransack + PgSearch + FriendlyId |
 | LLM/HTTP | Faraday + Stoplight; самописные клиенты: `llm/omni_client.rb`, Tavily, Firecrawl, DaData, Yandex Vision, Google Embedding |
@@ -134,7 +134,7 @@ cleanup-задачи. Планировщик один — только этот 
 ## Установка и запуск (development)
 
 Требования: Ruby 3.4.10, PostgreSQL 15 с PostGIS + pgvector (проще всего — образ
-`Dockerfile.postgres`), Redis 7. Node.js нужен только для dev-инструментов
+`Dockerfile.postgres`), Redis 8.10.3. Node.js нужен только для dev-инструментов
 (Playwright, Figma Code Connect).
 
 ```bash

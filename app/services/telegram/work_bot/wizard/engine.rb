@@ -38,11 +38,21 @@ module Telegram
         FLOWS = {
           'task' => 'Telegram::WorkBot::Wizard::TaskFlow',
           'close' => 'Telegram::WorkBot::Wizard::CloseFlow',
-          'reopen' => 'Telegram::WorkBot::Wizard::ReopenFlow'
+          'reopen' => 'Telegram::WorkBot::Wizard::ReopenFlow',
+          # Карточки CRM через модерацию (docs/superpowers/specs/2026-09-14-crm-card-moderation-design.md).
+          'crm_lead' => 'Telegram::WorkBot::Wizard::CrmLeadCardFlow',
+          'crm_edit' => 'Telegram::WorkBot::Wizard::CrmCardEditFlow',
+          'crm_rework' => 'Telegram::WorkBot::Wizard::CrmCardReworkFlow',
+          'crm_approve' => 'Telegram::WorkBot::Wizard::CrmCardApproveFlow',
+          'crm_object' => 'Telegram::WorkBot::Wizard::CrmObjectCardFlow',
+          'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
+          'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
         }.freeze
 
         # Какой шаг получает id, пришедший с кнопкой на карточке.
-        SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
+        SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
+                      'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
+                      'crm_approve' => 'card', 'crm_manual' => 'card' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize
@@ -55,8 +65,15 @@ module Telegram
           @client = client
         end
 
+        # Мастер активен только в том боте, где начат: состояние одно на
+        # сотрудника, а ботов два (рабочий и тестовый).
         def self.active?(tg_user)
-          tg_user&.pending_action&.dig('type') == STATE_TYPE
+          pa = tg_user&.pending_action
+          pa&.dig('type') == STATE_TYPE && (pa.dig('data', 'bot') || 'main') == current_bot
+        end
+
+        def self.current_bot
+          Telegram::BotContext.bot || 'main'
         end
 
         # @param seed [Hash] ответы, известные заранее (лид с карточки)
@@ -78,8 +95,15 @@ module Telegram
             return :gated
           end
 
+          if (other = foreign_wizard_bot)
+            send_dm("⏸ У тебя незаконченный мастер в #{other == 'test' ? 'тестовом' : 'рабочем'} боте. " \
+                    'Заверши его там или отмени — одновременно идёт только один мастер.',
+                    keyboard: [[{ text: '✖️ Отменить тот мастер', callback_data: 'wiz:x' }]])
+            return :gated
+          end
+
           strip_previous_prompt
-          state = { 'flow' => klass.key, 'ctx' => flow.ctx, 'trail' => [] }
+          state = { 'flow' => klass.key, 'ctx' => flow.ctx, 'trail' => [], 'bot' => self.class.current_bot }
           render_next(flow, state) ? :started : :dm_unavailable
         rescue Telegram::Client::Error => e
           Rails.logger.warn("[Wizard::Engine#start] DM to #{tg_user.mention} failed: #{e.message}")
@@ -125,6 +149,8 @@ module Telegram
           return nil unless state && state['type'] == STATE_TYPE
 
           state = state['data'].to_h.deep_stringify_keys
+          return nil unless (state['bot'] || 'main') == self.class.current_bot
+
           flow = build_flow(state)
           step = flow && find_step(flow, state['step'])
           return nil unless step
@@ -279,6 +305,16 @@ module Telegram
           [{ text: '☰ Что сделать?', callback_data: 'wiz:menu' }]
         end
 
+        # Бот, в котором висит незаконченный мастер, если это не текущий.
+        # Отмена (wiz:x) работает из любого бота — ей бот не важен.
+        def foreign_wizard_bot
+          pa = tg_user.pending_action
+          return nil unless pa && pa['type'] == STATE_TYPE
+
+          bot = pa.dig('data', 'bot') || 'main'
+          bot == self.class.current_bot ? nil : bot
+        end
+
         # Состояние, к которому относится нажатая кнопка. nil — кнопка от
         # другого мастера или от уже пройденного шага.
         def current_state(flow_key, step_id)
@@ -286,6 +322,7 @@ module Telegram
           return nil unless pa && pa['type'] == STATE_TYPE
 
           state = pa['data'].to_h.deep_stringify_keys
+          return nil unless (state['bot'] || 'main') == self.class.current_bot
           return nil unless state['flow'] == flow_key.to_s
           return nil if step_id && state['step'] != step_id.to_s
 

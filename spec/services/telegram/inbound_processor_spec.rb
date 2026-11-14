@@ -73,4 +73,37 @@ RSpec.describe Telegram::InboundProcessor do
       described_class.new(text_update('/help')).call
     end
   end
+
+  # Issue #214 (ревью PR #221, round 4): message_id эскалации уникален только
+  # внутри чата — эскалации уходят и в рабочий, и в тестовый чат. Ответ
+  # маршрутизируется по паре (chat_id, message_id), а не по одному ID.
+  describe 'ответ на сообщение эскалации' do
+    let(:staff_chat) { -1_003_779_115_845 }
+    let(:test_chat)  { -1_002_000_000_000 }
+
+    let!(:battle_conv) do
+      Conversation.create!(visitor_token: 'battle-esc-1', status: :active,
+                           telegram_chat_id: staff_chat, telegram_message_id: 100)
+    end
+    let!(:probe_conv) do
+      Conversation.create!(visitor_token: 'probe-esc-1', status: :active,
+                           telegram_chat_id: test_chat, telegram_message_id: 100)
+    end
+
+    def escalation_reply_update(chat_id)
+      { 'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 55, 'from' => { 'id' => 501 },
+                       'chat' => { 'id' => chat_id, 'type' => 'supergroup' },
+                       'reply_to_message' => { 'message_id' => 100 },
+                       'text' => 'Уточняю детали у клиента' } }
+    end
+
+    it 'одинаковый telegram_message_id в двух чатах маршрутизируется по паре (chat, message)' do
+      expect(described_class.new(escalation_reply_update(staff_chat)).call).to eq(:delivered)
+
+      expect(battle_conv.chat_messages.reload.count).to eq(1)
+      expect(probe_conv.chat_messages.reload.count).to eq(0)
+      expect(battle_conv.chat_messages.first.body).to eq('Уточняю детали у клиента')
+    end
+  end
 end

@@ -28,6 +28,7 @@ module Telegram
           # Phase 15 — resolve_lead! «съест» lead_id из @args если есть.
           typed_id = @args.to_s[/\A\d+/]
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return open_wizard('close', lead, seed_id: typed_id) if @args.blank?
           return reply(lead_not_found_hint('close выиграно')) unless lead
 
