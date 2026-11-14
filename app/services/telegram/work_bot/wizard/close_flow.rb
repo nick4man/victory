@@ -61,6 +61,12 @@ module Telegram
           # поэтому проверяем здесь, до записи причины.
           current_lead = ::LeadEvent.find_by(id: ctx['lead'])
           return { text: '⚠️ Лид не найден — ничего не закрыто.' } unless current_lead
+          # Review round 7 — повторная проверка на финише: лид мог попасть в
+          # мастер до гейтов round 5-6 (старый pending-action), и закрытие
+          # test-лида ушло бы в LeadClosure с CRM-note.
+          if current_lead.staff_test?
+            return { text: "🧪 Лид ##{current_lead.id} — тестовый (probe). Закрытие недоступно — ничего не изменено." }
+          end
           unless current_lead.open?
             return { text: "ℹ️ Лид ##{current_lead.id} уже закрыт (#{current_lead.current_stage}) — " \
                            'пока шёл мастер, его закрыл кто-то другой. Ничего не изменено.' }

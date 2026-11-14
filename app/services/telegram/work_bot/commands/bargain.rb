@@ -24,6 +24,7 @@ module Telegram
                                [resolve_lead!, nil]
                              end
           price_args ||= @args.to_s
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('bargain 5,2 млн')) unless lead
 
           price = Formatters::PriceParse.call(price_args)

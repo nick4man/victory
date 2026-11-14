@@ -2,7 +2,6 @@
 
 > Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
 
-
 ## app/models
 
 ```
@@ -197,6 +196,7 @@ app/controllers/valuations_controller.rb — class ValuationsController
 app/controllers/webhooks/amocrm_controller.rb — module Webhooks, class AmocrmController
 app/controllers/webhooks/news_ingest_controller.rb — module Webhooks, class NewsIngestController
 app/controllers/webhooks/telegram_controller.rb — module Webhooks, class TelegramController
+app/controllers/webhooks/telegram_test_controller.rb — module Webhooks, class TelegramTestController
 app/controllers/webhooks/topnlab_controller.rb — module Webhooks, class TopnlabController
 app/controllers/webhooks/topnlab_reports_controller.rb — module Webhooks, class TopnlabReportsController
 app/controllers/webhooks/yookassa_controller.rb — module Webhooks, class YookassaController
@@ -266,15 +266,23 @@ app/services/chat_tools/submit_review.rb — module ChatTools, module SubmitRevi
 app/services/chat_tools/url.rb — module ChatTools, module Url
 app/services/cian_feed_mapper.rb — class CianFeedMapper
 app/services/cities.rb — module Cities
+app/services/contact_form_spam_guard.rb — class ContactFormSpamGuard
 app/services/crm/contact_parser.rb — module Crm, class ContactParser
 app/services/crm/owner_linker.rb — module Crm, class OwnerLinker
 app/services/crm/telegram_reachability.rb — module Crm, class TelegramReachability
+app/services/crm_cards/card_view.rb — module CrmCards, module CardView
 app/services/crm_cards/checker.rb — module CrmCards, class Checker
+app/services/crm_cards/export_lock.rb — module CrmCards, class ExportLock
 app/services/crm_cards/field_value.rb — module CrmCards, module FieldValue
+app/services/crm_cards/lead_exporter.rb — module CrmCards, class LeadExporter
+app/services/crm_cards/notifier.rb — module CrmCards, class Notifier
 app/services/crm_cards/permissions.rb — module CrmCards, class Permissions
 app/services/crm_cards/permissions_report.rb — module CrmCards, class PermissionsReport
 app/services/crm_cards/phone_matches.rb — module CrmCards, module PhoneMatches
+app/services/crm_cards/sandbox_exporter.rb — module CrmCards, class SandboxExporter
 app/services/crm_cards/schema.rb — module CrmCards, module Schema
+app/services/crm_cards/text_intake.rb — module CrmCards, class TextIntake
+app/services/crm_cards/workflow.rb — module CrmCards, class Workflow
 app/services/crm_reports/base.rb — module CrmReports, class Base
 app/services/crm_reports/inventory_pdf.rb — module CrmReports, class InventoryPdf
 app/services/crm_reports/seller_presentation.rb — module CrmReports, class SellerPresentation
@@ -373,7 +381,8 @@ app/services/staff/resolver.rb — module Staff, class Resolver
 app/services/staff_submission_detector.rb — class StaffSubmissionDetector
 app/services/tavily/client.rb — module Tavily, class Client, class Error
 app/services/telegram/alert_throttle.rb — module Telegram, class AlertThrottle
-app/services/telegram/client.rb — module Telegram, class Client, class Error
+app/services/telegram/bot_context.rb — module Telegram, class BotContext
+app/services/telegram/client.rb — module Telegram, class Client, class Error, class GroupChatForbidden
 app/services/telegram/client_bot/activation_request_processor.rb — module Telegram, module ClientBot, class ActivationRequestProcessor
 app/services/telegram/client_bot/link_processor.rb — module Telegram, module ClientBot, class LinkProcessor
 app/services/telegram/client_bot/photo_intake_processor.rb — module Telegram, module ClientBot, class PhotoIntakeProcessor
@@ -394,6 +403,7 @@ app/services/telegram/work_bot/callbacks/assign_callback.rb — module Telegram,
 app/services/telegram/work_bot/callbacks/assign_cancel_callback.rb — module Telegram, module WorkBot, module Callbacks, class AssignCancelCallback
 app/services/telegram/work_bot/callbacks/assign_to_callback.rb — module Telegram, module WorkBot, module Callbacks, class AssignToCallback
 app/services/telegram/work_bot/callbacks/base.rb — module Telegram, module WorkBot, module Callbacks, class Base
+app/services/telegram/work_bot/callbacks/crm_card_callback.rb — module Telegram, module WorkBot, module Callbacks, class CrmCardCallback
 app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb — module Telegram, module WorkBot, module Callbacks, class DashboardDrillCallback
 app/services/telegram/work_bot/callbacks/link_staff_callback.rb — module Telegram, module WorkBot, module Callbacks, class LinkStaffCallback
 app/services/telegram/work_bot/callbacks/owner_request_callback.rb — module Telegram, module WorkBot, module Callbacks, class OwnerRequestCallback
@@ -415,6 +425,7 @@ app/services/telegram/work_bot/commands/assign.rb — module Telegram, module Wo
 app/services/telegram/work_bot/commands/bargain.rb — module Telegram, module WorkBot, module Commands, class Bargain
 app/services/telegram/work_bot/commands/base.rb — module Telegram, module WorkBot, module Commands, class Base
 app/services/telegram/work_bot/commands/cancel.rb — module Telegram, module WorkBot, module Commands, class Cancel
+app/services/telegram/work_bot/commands/cards.rb — module Telegram, module WorkBot, module Commands, class Cards
 app/services/telegram/work_bot/commands/cheatsheet.rb — module Telegram, module WorkBot, module Commands, class Cheatsheet
 app/services/telegram/work_bot/commands/close.rb — module Telegram, module WorkBot, module Commands, class Close
 app/services/telegram/work_bot/commands/dashboard.rb — module Telegram, module WorkBot, module Commands, class Dashboard
@@ -480,6 +491,14 @@ app/services/telegram/work_bot/voice_intent_branch.rb — module Telegram, modul
 app/services/telegram/work_bot/voice_transcriber.rb — module Telegram, module WorkBot, class VoiceTranscriber, class Error, class MissingKeyError, class DownloadError, class GroqError
 app/services/telegram/work_bot/weekly_summary_job.rb — module Telegram, module WorkBot, class WeeklySummaryJob
 app/services/telegram/work_bot/wizard/close_flow.rb — module Telegram, module WorkBot, module Wizard, class CloseFlow
+app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardApproveFlow
+app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardEditFlow
+app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardManualExportFlow
+app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReworkFlow
+app/services/telegram/work_bot/wizard/crm_card_support.rb — module Telegram, module WorkBot, module Wizard, module CrmCardSupport
+app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmLeadCardFlow
+app/services/telegram/work_bot/wizard/crm_object_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmObjectCardFlow
+app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmTestLeadFlow
 app/services/telegram/work_bot/wizard/engine.rb — module Telegram, module WorkBot, module Wizard, class Engine
 app/services/telegram/work_bot/wizard/flow.rb — module Telegram, module WorkBot, module Wizard, class Flow
 app/services/telegram/work_bot/wizard/lead_picking.rb — module Telegram, module WorkBot, module Wizard, module LeadPicking
@@ -487,7 +506,7 @@ app/services/telegram/work_bot/wizard/menu.rb — module Telegram, module WorkBo
 app/services/telegram/work_bot/wizard/reopen_flow.rb — module Telegram, module WorkBot, module Wizard, class ReopenFlow
 app/services/telegram/work_bot/wizard/task_flow.rb — module Telegram, module WorkBot, module Wizard, class TaskFlow
 app/services/topnlab/activity_log_fetcher.rb — module Topnlab, class ActivityLogFetcher
-app/services/topnlab/client.rb — module Topnlab, class Client, class Error
+app/services/topnlab/client.rb — module Topnlab, class Client, class Error, class AmbiguousError
 app/services/topnlab/importer.rb — module Topnlab, class Importer
 app/services/topnlab/notes_sync_service.rb — module Topnlab, class NotesSyncService
 app/services/topnlab/order_mapper.rb — module Topnlab, class OrderMapper
@@ -526,6 +545,7 @@ app/services/zhk/run_summary.rb — module Zhk, module RunSummary
 ```
 app/jobs/application_job.rb — class ApplicationJob
 app/jobs/bank_rates_refresh_job.rb — class BankRatesRefreshJob
+app/jobs/crm_cards/export_job.rb — module CrmCards, class ExportJob
 app/jobs/digest_cleanup_job.rb — class DigestCleanupJob
 app/jobs/dispatcher_digest_refresh_job.rb — class DispatcherDigestRefreshJob
 app/jobs/document_intake/parser_job.rb — module DocumentIntake, class ParserJob

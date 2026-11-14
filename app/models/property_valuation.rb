@@ -174,6 +174,7 @@ class PropertyValuation < ApplicationRecord
   def enqueue_embedding
     return if audit_mode_investment?
     return if staff_test? # тестовые оценки сотрудников — не в semantic-корпус (issue #201)
+    return if test? # probe-прогон чат-бота — тоже не в semantic-корпус (issue #214)
 
     EmbedPropertyValuationJob.perform_later(id)
   rescue StandardError => e
@@ -186,6 +187,11 @@ class PropertyValuation < ApplicationRecord
   # migration backfills all existing rows and the column is NOT NULL).
   def report_label
     "№#{report_number || id}"
+  end
+
+  # Тестовый прогон чат-бота (issue #214, см. ChatTools::EstimatePropertyValuation).
+  def test?
+    metadata.is_a?(Hash) && metadata['test'] == true
   end
 
   private
@@ -240,6 +246,7 @@ class PropertyValuation < ApplicationRecord
 
   # Публикуем заявку оценки в Telegram-бот АН (auto-route в топик ОЦЕНКА).
   # Не блокирует — ошибки логируем и проглатываем.
+  # Тест-прогон чат-бота (issue #214): metadata['test']=true → тестовый чат.
   def push_to_work_bot
     return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
     return if Thread.current[:skip_workbot_push] == true
@@ -254,6 +261,7 @@ class PropertyValuation < ApplicationRecord
         rooms:   rooms,
         budget:  estimated_price_formatted,
         valuation_id: id,
+        test:    test?,
         summary: "Запрос оценки: #{address}, #{total_area} м²#{", #{rooms}-комн" if rooms.present?}"
       }
     )
@@ -288,6 +296,14 @@ class PropertyValuation < ApplicationRecord
   # Phase 16 — staff/test detection. Auto-tag без UX friction.
   def detect_staff_test_submission
     return if staff_test # уже выставлен (например через factory или admin override)
+
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (вне embeddings и сводок).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
 
     result = StaffSubmissionDetector.detect(
       email: email, phone: phone, name: name, tg_user_id: nil

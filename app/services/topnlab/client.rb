@@ -17,6 +17,15 @@ module Topnlab
   class Client
     class Error < StandardError; end
 
+    JSON_ESCAPES = { 'n' => "\n", 'r' => "\r", 't' => "\t", '"' => '"', '\\' => '\\', '/' => '/' }.freeze
+
+    # Неоднозначный транспортный исход: запрос мог быть принят CRM, а ответ
+    # потерян (ReadTimeout, обрыв после отправки, EOF/WriteTimeout/SSL).
+    # Подкласс Error, чтобы существующие rescue Topnlab::Client::Error
+    # продолжали ловить; неидемпотентные вызовы повторяются только после
+    # ручной сверки с CRM (ревью PR #210).
+    class AmbiguousError < Error; end
+
     SLOW_DELAY = 6.0   # /get-ids, /get-entities
     FAST_DELAY = 1.0   # /mls, /parser, /logs
 
@@ -243,7 +252,8 @@ module Topnlab
     end
 
     # POST /call/main/importClient/ — создать лид в Topnlab CRM.
-    # Используется Lead::Intake::* источниками для проброса заявок с сайта/TG в CRM.
+    # Единственный вызов — CrmCards::LeadExporter: заявка уходит в CRM только
+    # после модерации карточки (single_write_path_spec).
     #
     # @param phone [String] любой формат — нормализуется в 11 цифр (7XXXXXXXXXX)
     # @param name [String] ФИО / имя клиента (обязательно)
@@ -254,7 +264,10 @@ module Topnlab
     # @param object_type [String] flat|room|commerce|house|land|garage
     # @param to_number [String, nil] входящий номер (если лид пришёл по звонку)
     # @return [Hash] {"status" => "ok", "insertedId" => <order_id>}
-    # @raise [Topnlab::Client::Error] на любую неуспешную попытку
+    # @raise [Topnlab::Client::Error] на любую неуспешную попытку. Не идемпотентен
+    #   (повтор завёл бы вторую заявку), поэтому retry_network: false: сбой
+    #   после отправки НЕ ретраится молча (исключение — Net::OpenTimeout,
+    #   когда запрос точно не ушёл, см. Topnlab::Client#perform).
     def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
                       action: nil, object_type: 'flat', to_number: nil)
       body = {
@@ -268,12 +281,34 @@ module Topnlab
       body[:called_for_object_short_id] = realty_id.to_i                        if realty_id
       body[:to_number]                  = to_number if to_number.present?
 
-      res = http_post_json('/call/main/importClient/', body)
-      unless res.is_a?(Hash) && res['status'] == 'ok'
-        raise Error, "importClient failed: #{res.inspect}"
+      res = http_post_json('/call/main/importClient/', body, retry_network: false)
+      if res.is_a?(Hash) && res['status'] == 'ok'
+        return res
       end
 
-      res
+      # В сообщение об ошибке — только allowlist безопасных полей: полное
+      # тело ответа отражает запрос (appkey, телефон, имя, комментарий) и
+      # попало бы в export_error → журнал переходов → Telegram-модераторов
+      # (ревью PR #210, round 8). scrub/literals — последний рубеж на случай
+      # отражения значений запроса внутри message (round 9).
+      if res.is_a?(Hash) && res['insertedId'].present?
+        # insertedId при не-ok status: заявка могла быть создана — повтор дал бы
+        # дубль. Неоднозначный исход, как обрыв ответа: восстановление — сверка
+        # с CRM, а не «Повторить выгрузку» (ревью PR #210, round 9+++++).
+        raise AmbiguousError, 'importClient ответил не-ok, но вернул insertedId — заявка, возможно, создана; сверь с CRM перед повтором'
+      end
+
+      if res.is_a?(Hash) && res.key?('status')
+        # Явный прикладной отказ CRM: запрос обработан и отклонён —
+        # повтор безопасен (export_retryable).
+        raise Error, "importClient failed: #{error_excerpt(res, body)}"
+      end
+
+      # 200 с телом неожиданной формы (нет поля status): запрос мог быть
+      # принят, а ответ обрезан/перекодирован — исход неоднозначен, тело
+      # не показываем (там могут быть PII). Повтор — только привязка номера
+      # из CRM (ревью PR #210).
+      raise AmbiguousError, 'importClient ответил 200 телом без status (тело не показываем: возможен отражённый запрос)'
     end
 
     # POST /call/main/transferClient/ — назначить лид агенту в Topnlab по email.
@@ -289,11 +324,20 @@ module Topnlab
       body[:stage_id] = stage_id.to_i if stage_id
 
       res = http_post_json('/call/main/transferClient/', body)
-      unless res.is_a?(Hash) && res['status'] == 'ok'
-        raise Error, "transferClient failed: #{res.inspect}"
+      return res if res.is_a?(Hash) && res['status'] == 'ok'
+
+      # HTTP 200 с телом неожиданной формы (null, массив, скаляр): обращение
+      # к Hash-методам на таком значении бросало бы NoMethodError/ArgumentError
+      # мимо контракта Topnlab::Client::Error — а потребители (LeadStageTransition)
+      # ловят только Error, и смена стадии прерывалась бы чужим исключением
+      # (ревью PR #210, round 9).
+      unless res.is_a?(Hash) && res.key?('status')
+        raise Error, "transferClient failed: ответ 200 неожиданной формы (#{res.class}) — не JSON-объект со status"
       end
 
-      res
+      # Явный прикладной отказ CRM: тело отражает запрос (email агента) —
+      # только allowlist + скраббинг значений запроса (round 8/9).
+      raise Error, "transferClient failed: #{error_excerpt(res, body)}"
     end
 
     private
@@ -304,11 +348,124 @@ module Topnlab
       data.is_a?(Hash) && data.any? && data.each_value.all?(Hash)
     end
 
-    # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` — то есть в БД и на
-    # админ-страницу. Если Topnlab когда-нибудь отразит запрос в error-теле,
-    # туда уедет TOPNLAB_API_KEY. Вырезаем ключ до того, как строка станет логом.
+    PII_KEYS = %w[phone fullname name comment user_mail email to_number request payload].freeze
+
+    # Тело ответа CRM попадает в `TopnlabSyncRun#error_log` и `CrmCard#export_error`
+    # — то есть в БД, на админ-страницу и в Telegram. Если Topnlab отразит
+    # запрос в error-теле, туда уедут TOPNLAB_API_KEY и PII клиента (телефон,
+    # имя, комментарий, email агента). Вырезаем до того, как строка станет
+    # логом: regex закрывает типовые формы `key=…`, само значение ключа
+    # вычищается из любой вложенности (включая сериализованный JSON внутри
+    # строки), а PII-поля рекурсивно удаляются из структуры (ревью PR #210).
     def scrub(data)
-      data.inspect.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}]+/i, '\1[FILTERED]')
+      text = data.is_a?(String) ? data : data.inspect
+      redacted = text.gsub(/("?key"?\s*[=:>]+\s*"?)[^&"',\s}\\]+/i, '\\1[FILTERED]')
+      # Вложенный сериализованный JSON (экранированные кавычки внутри строки)
+      # обходит regex — вырезаем само значение ключа напрямую, независимо от
+      # формы вложенности (ревью PR #210).
+      @api_key.present? ? redacted.gsub(@api_key, '[FILTERED]') : redacted
+    end
+
+    # Рекурсивно удаляет PII-поля (PII_KEYS) из распарсенного тела.
+    # Строковые значения дополнительно пытаемся разобрать как вложенный
+    # сериализованный JSON: CRM может отразить запрос внутри message/error
+    # строкой — тогда PII-ключи вырезаются рекурсивно, а не проходят целиком
+    # (ревью PR #210, round 9). Не-JSON строки возвращаются как есть — их
+    # добирает скраббинг значений запроса (scrub_request_literals).
+    def filter_pii(value)
+      case value
+      when Hash then value.except(*PII_KEYS).transform_values { |v| filter_pii(v) }
+      when Array then value.map { |v| filter_pii(v) }
+      when String
+        begin
+          filter_pii(JSON.parse(value))
+        rescue JSON::ParserError
+          value
+        end
+      else value
+      end
+    end
+
+    # Фрагмент ошибки для raise: allowlist безопасных полей (status/message/
+    # error), вложенный JSON в строках разобран (filter_pii), строковые
+    # значения вычищены ДО inspect — inspect удваивает бэкслеши, и
+    # escaped-формы литералов (\n, \uXXXX) в отражённом ответе перестали бы
+    # совпадать (ревью PR #210, round 9++). Затем scrub: key= и appkey.
+    def error_excerpt(res, request_body)
+      filtered = filter_pii(res).slice('status', 'message', 'error')
+      scrub(scrub_strings(filtered, request_body).inspect)
+    end
+
+    # Рекурсивно прогоняет строковые листья И ключи хэшей через scrub
+    # литералов запроса — CRM может отразить телефон/имя ключом объекта
+    # ({"7900…":"…"}), а не значением (ревью PR #210, round 9+++).
+    def scrub_strings(value, request_body)
+      case value
+      when Hash then value.to_h { |k, v| [scrub_strings(k, request_body), scrub_strings(v, request_body)] }
+      when Array then value.map { |v| scrub_strings(v, request_body) }
+      when String then scrub_request_literals(scrub(value), request_body)
+      else value
+      end
+    end
+
+    # Вычищает из текста строковые значения тела запроса (appkey/phone/
+    # fullname/comment/user_mail/to_number). Текст предварительно
+    # канонизируется: JSON-escaped формы (\n, \uXXXX, суррогатные пары,
+    # \/) декодируются обратно в сырые символы — иначе каждая форма отражения
+    # CRM требовала бы отдельного литерала (ревью PR #210, round 9+++).
+    # Длинные литералы (≥ 4 символов) режем как подстроку; короткие
+    # (имя «Аня», «Юя») — только по границам слова.
+    def scrub_request_literals(text, request_body)
+      return text unless request_body
+
+      text = unescape_json(text)
+      request_body.each_value do |v|
+        next unless v.is_a?(String) && v.present?
+
+        text = if v.length >= 4
+                 text.gsub(v, '[FILTERED]')
+               else
+                 text.gsub(/\b#{Regexp.escape(v)}\b/u, '[FILTERED]')
+               end
+      end
+      # Переформатированные телефоны (+7 (900) …, 7 (900) …, 8 (900) …)
+      # литералом не покрываются — режем телефоноподобные последовательности целиком.
+      text.gsub(/(?:\+\d|[78])[\d\s()-]{9,}\d/, '[FILTERED]').gsub(/\b\d{11}\b/, '[FILTERED]')
+    end
+
+    # Канонизация escaped-форм: суррогатные пары (\ud83d\ude00 → 😀), затем
+    # одиночные \uXXXX, затем короткие escapes (\n, \", \/, \\). Не является
+    # полноценным JSON-парсером — достаточно приближения для скраббинга;
+    # битые последовательности оставляем как есть.
+    def unescape_json(text)
+      text = text.gsub(/\\u(d[89ab][0-9a-f]{2})\\u(d[c-f][0-9a-f]{2})/i) do
+        surrogate_pair(Regexp.last_match(1), Regexp.last_match(2)) || Regexp.last_match(0)
+      end
+      text = text.gsub(/\\u([0-9a-f]{4})/i) do
+        Regexp.last_match(1).to_i(16).chr(Encoding::UTF_8)
+      rescue RangeError
+        Regexp.last_match(0)
+      end
+      text.gsub(/\\([nrt"\\\/])/) { JSON_ESCAPES.fetch(Regexp.last_match(1)) }
+    end
+
+    def surrogate_pair(hi_hex, lo_hex)
+      hi = hi_hex.to_i(16)
+      lo = lo_hex.to_i(16)
+      ((hi - 0xD800) * 0x400 + (lo - 0xDC00) + 0x10000).chr(Encoding::UTF_8)
+    rescue RangeError
+      nil
+    end
+
+    # Фрагмент тела для сообщений об ошибках: JSON — без PII-полей и с scrub
+    # по значению ключа; не-JSON — scrub + вычитка значений исходного запроса
+    # (CRM может отразить телефон/имя/email в произвольном тексте ошибки —
+    # ревью PR #210, round 9). Сокращает вызывающий код.
+    def safe_body_excerpt(body, request_body: nil)
+      text = scrub_strings(filter_pii(JSON.parse(body)), request_body).inspect
+      scrub(text)
+    rescue JSON::ParserError
+      scrub_request_literals(scrub(body), request_body)
     end
 
     # Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
@@ -351,17 +508,27 @@ module Topnlab
       parse(response, "GET #{path}")
     end
 
-    def http_post_json(path, body)
+    def http_post_json(path, body, retry_network: true)
       throttle!(:fast)
       uri = URI("#{@base_url}#{path}")
       req = Net::HTTP::Post.new(uri)
       req['Content-Type'] = 'application/json'
       req.body = body.to_json
-      response = perform(req)
-      parse(response, "POST #{path}")
+      response = perform(req, retry_network: retry_network)
+      parse(response, "POST #{path}", request_body: body)
     end
 
-    def perform(request)
+    # retry_network: false — только importClient (не идемпотентен, см. import_client).
+    # ReadTimeout/ECONNRESET/EPIPE могут случиться уже ПОСЛЕ того, как Topnlab
+    # принял запрос и создал заявку — транспортный повтор в этом случае завёл
+    # бы вторую заявку молча. OpenTimeout (соединение не установилось, запрос
+    # точно не ушёл) ретраится всегда, независимо от retry_network. Неоднозначные
+    # исходы бросают AmbiguousError (подкласс Error): существующие rescue ловят
+    # их как раньше, а неидемпотентные вызовы повторяются только после сверки
+    # с CRM (ревью PR #210). Все остальные вызовы (GET'ы, transfer_client,
+    # patch_entity) сохраняют прежнее поведение — ретраят все четыре исключения
+    # с тем же backoff'ом.
+    def perform(request, retry_network: true)
       http = Net::HTTP.new(request.uri.host, request.uri.port)
       http.use_ssl = (request.uri.scheme == 'https')
       http.read_timeout = 60
@@ -370,12 +537,29 @@ module Topnlab
       begin
         http.request(request)
       rescue Net::OpenTimeout, Net::ReadTimeout, Errno::ECONNRESET, Errno::EPIPE => e
-        attempts += 1
-        if attempts <= 2
-          sleep(2 * attempts)
-          retry
+        if retry_network || e.is_a?(Net::OpenTimeout)
+          attempts += 1
+          if attempts <= 2
+            sleep(2 * attempts)
+            retry
+          end
+          # OpenTimeout — запрос точно не ушёл, повтор безопасен; остальные —
+          # неоднозначный исход: CRM могла принять запрос.
+          klass = e.is_a?(Net::OpenTimeout) ? Error : AmbiguousError
+          raise klass, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
         end
-        raise Error, "Topnlab network failure after #{attempts} retries: #{e.class}: #{e.message}"
+
+        raise AmbiguousError,
+              'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
+              "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
+      rescue EOFError, Net::WriteTimeout, OpenSSL::SSL::SSLError => e
+        # Обрыв посреди обмена: запрос мог дойти. Для неидемпотентного вызова
+        # это то же, что ReadTimeout; остальные вызовы видят исключение как раньше.
+        raise if retry_network
+
+        raise AmbiguousError,
+              'Topnlab importClient: сетевой сбой после отправки, повтор не выполнялся — ' \
+              "проверь CRM перед повторной выгрузкой: #{e.class}: #{e.message}"
       end
     end
 
@@ -393,7 +577,10 @@ module Topnlab
       URI.encode_www_form(pairs)
     end
 
-    def parse(response, label)
+    # request_body: тело ушедшего запроса — его PII-значения вычищаются из
+    # фрагмента ответа даже вне JSON-структуры (round 9). GET'ы передают
+    # только key-параметр, его закрывает scrub.
+    def parse(response, label, request_body: nil)
       body = response.body.to_s
       case response.code.to_i
       when 200, 201
@@ -403,11 +590,22 @@ module Topnlab
       when 404
         Rails.logger.warn("Topnlab #{label}: 404 not found")
         nil
+      when 400..499
+        raise Error, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body, request_body: request_body).truncate(500)}"
       else
-        raise Error, "#{label}: HTTP #{response.code} — #{body.truncate(500)}"
+        # 5xx и прочие непредвиденные коды: ответ мог прийти от шлюза уже
+        # ПОСЛЕ того, как backend принял запрос — исход неоднозначен, это
+        # не доказательство «заявка не создана» (ревью PR #210).
+        raise AmbiguousError, "#{label}: HTTP #{response.code} — #{safe_body_excerpt(body, request_body: request_body).truncate(500)}"
       end
     rescue JSON::ParserError => e
-      raise Error, "#{label}: invalid JSON (#{e.message}) — body=#{body.truncate(300)}"
+      # 200/201 с битым телом: запрос мог быть принят, а ответ обрезан —
+      # тоже неоднозначный исход (ревью PR #210). Текст parser-исключения
+      # содержит фрагмент сырого тела (напр. unexpected token 'test-key}') —
+      # без скраббинга секрет/PII уехал бы в export_error и Telegram
+      # (ревью PR #210, round 9).
+      detail = scrub_request_literals(scrub(e.message), request_body)
+      raise AmbiguousError, "#{label}: invalid JSON (#{detail}) — body=#{safe_body_excerpt(body, request_body: request_body).truncate(300)}"
     end
 
     def throttle!(kind)

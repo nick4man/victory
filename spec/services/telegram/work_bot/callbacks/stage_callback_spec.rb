@@ -76,4 +76,18 @@ RSpec.describe Telegram::WorkBot::Callbacks::StageCallback do
     run("stage:#{lead.id}:show", user: other)
     expect(lead.reload.current_stage).to eq('first_contact')
   end
+
+  # Issue #224 (ревью PR #221, round 5, блокер 2): stage-callback для
+  # test-лида отклоняется — подделанный stage:<test_lead_id>:show не должен
+  # двигать боевую воронку.
+  it 'test-лид → alert, стадия не меняется' do
+    lead.update!(staff_test: true)
+    expect(Telegram::WorkBot::LeadStageTransition).not_to receive(:new)
+
+    run("stage:#{lead.id}:show")
+
+    expect(lead.reload.current_stage).to eq('first_contact')
+    expect(tg_client).to have_received(:answer_callback_query)
+      .with('cb-1', hash_including(text: a_string_including('тестовый (probe)'), show_alert: true))
+  end
 end

@@ -25,6 +25,7 @@ module Telegram
 
         def handle
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('segment наличные')) unless lead
 
           word = @args.to_s.strip.downcase

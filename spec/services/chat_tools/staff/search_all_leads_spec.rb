@@ -81,5 +81,28 @@ RSpec.describe ChatTools::Staff::SearchAllLeads do
         expect(res[:count]).to eq(2) # agent видит свои leads — оба assigned_to_id = agent
       end
     end
+
+    # Issue #214 (ревью PR #221, round 3): probe-прогон чат-бота с
+    # правдоподобными контактами → staff_test=true через metadata['test'],
+    # в default-поиске лида нет.
+    context 'probe-лиды (issue #214)' do
+      before do
+        LeadEvent.create!(
+          lead_ref: lead_ref, source: 'site_form', current_stage: 'new',
+          anchor_topic_key: 'dispatcher', tg_chat_id: -100_999_888,
+          metadata: { 'name' => 'Мария Соколова', 'summary' => 'интересует двушка', 'test' => true }
+        )
+      end
+
+      it 'probe-лид скрыт из default-поиска' do
+        res = described_class.call({}, asked_by: director)
+        expect(res[:count]).to eq(2) # только два боевых из общего before
+      end
+
+      it 'probe-лид виден с include_staff_test' do
+        res = described_class.call({ include_staff_test: true }, asked_by: director)
+        expect(res[:count]).to eq(3)
+      end
+    end
   end
 end

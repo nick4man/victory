@@ -54,16 +54,21 @@ class CrmCard < ApplicationRecord
   scope :not_deleted, -> { where(deleted_at: nil) }
   default_scope { not_deleted }
 
+  # Карточки бота, который обрабатывает текущий апдейт: песочница видит
+  # только свои, рабочий бот — только рабочие.
+  scope :in_current_bot, -> { where(sandbox: Telegram::BotContext.test?) }
+
   validates :kind, :status, presence: true
 
   def check_passed?
     checked_at.present? && check_errors.blank?
   end
 
-  # Заявка, застрявшая дольше EXPORT_STALE_AFTER: процесс упал между
-  # захватом статуса и ответом CRM (exporting) или джоб не встал в очередь
-  # после одобрения (approved). Модератору нужна кнопка повтора, иначе
-  # такую карточку не сдвинуть ничем.
+  # Заявка, застрявшая дольше EXPORT_STALE_AFTER: джоб не встал в очередь
+  # после одобрения (approved) — самый частый случай, повторяется модератором
+  # без сверки: попытка так и не началась. Для exporting stale — исход
+  # неизвестен (lock не доказательство живости, ревью #210): Workflow требует
+  # ручной сверки с CRM.
   def export_stale?
     kind_lead? && (status_exporting? || status_approved?) && updated_at < EXPORT_STALE_AFTER.ago
   end

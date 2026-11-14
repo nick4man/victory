@@ -50,17 +50,19 @@ module Telegram
       end
 
       def leads_section
-        open_scope = LeadEvent.open
-        new_count = LeadEvent.where(current_stage: 'new').count
-        awaiting_fc = LeadEvent.awaiting_first_contact.count
+        # .real — без staff_test/probe-записей (issue #214): операционные
+        # метрики директора считаются только по боевым лидам.
+        open_scope = LeadEvent.open.real
+        new_count = LeadEvent.real.where(current_stage: 'new').count
+        awaiting_fc = LeadEvent.real.awaiting_first_contact.count
 
         # Закрытые за 7 дней
-        closed_recent = LeadEvent.closed.where(updated_at: 7.days.ago.beginning_of_day..Time.current)
+        closed_recent = LeadEvent.real.closed.where(updated_at: 7.days.ago.beginning_of_day..Time.current)
         won = closed_recent.where(current_stage: 'closed_won').count
         lost = closed_recent.where(current_stage: 'closed_lost').count
 
         # Overdue first contact (assigned_at + 30 min < now, first_contact_at nil)
-        overdue_fc = LeadEvent.awaiting_first_contact
+        overdue_fc = LeadEvent.real.awaiting_first_contact
                               .where('assigned_at < ?', 30.minutes.ago).count
 
         lines = ['🎯 <b>Лиды</b>']
@@ -120,7 +122,8 @@ module Telegram
       end
 
       def compute_kpi(range)
-        leads = LeadEvent.where(updated_at: range)
+        # .real — без staff_test/probe-записей (issue #214).
+        leads = LeadEvent.real.where(updated_at: range)
         leads_closed = leads.closed
         won = leads_closed.where(current_stage: 'closed_won').count
         total_closed = leads_closed.count
@@ -148,7 +151,8 @@ module Telegram
 
       def alerts_section
         # Лиды с manager_pinged (escalation_count > 0) за 24ч
-        alerts = LeadEvent.open
+        # .real — без staff_test/probe-записей (issue #214).
+        alerts = LeadEvent.open.real
                           .where('metadata::text ILIKE ?', '%"manager_pinged"%')
                           .where(updated_at: 24.hours.ago..Time.current)
                           .limit(5)

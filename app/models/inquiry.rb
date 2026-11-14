@@ -319,7 +319,10 @@ class Inquiry < ApplicationRecord
   end
 
   # CRM sync
+  # Тест-лиды (issue #214) в CRM не уходят никогда — пропускаем до любой
+  # логики синка, чтобы будущие реализации sync_to_crm! тоже были под гейтом.
   def sync_to_crm!
+    return if test?
     return if crm_id.present?
     
     # AmoCrmSyncJob.perform_later(id)
@@ -339,6 +342,13 @@ class Inquiry < ApplicationRecord
 
   def get_metadata(key)
     metadata&.dig(key.to_s)
+  end
+
+  # Тестовый прогон чат-бота (issue #214, см. ChatTools::QualifyLead):
+  # metadata['test']=true — лид не синкается в CRM и публикуется в тестовый
+  # TG-чат (ENV['TELEGRAM_TEST_CHAT_ID']), а не в ДИСПЕТЧЕРСКУЮ.
+  def test?
+    get_metadata('test') == true
   end
 
   # Source tracking
@@ -464,6 +474,14 @@ class Inquiry < ApplicationRecord
   def detect_staff_test_submission
     return if staff_test # уже выставлен (admin override / factory)
 
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (KPI/dashboard фильтруют по умолчанию).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
+
     result = StaffSubmissionDetector.detect(
       email: email,
       phone: phone,
@@ -476,13 +494,20 @@ class Inquiry < ApplicationRecord
 
   def assign_to_agent
     return if agent.present?
-    
+    # Тест-прогон чат-бота (issue #214): тестовый лид не назначается боевому
+    # агенту — иначе round-robin «съедает» агента и портит его статистику.
+    return if test?
+
     # Simple round-robin assignment to available agents
     available_agents = User.agents.active.order('RANDOM()').limit(1)
     self.agent = available_agents.first if available_agents.any?
   end
 
   def send_notifications
+    # Тест-прогон чат-бота (issue #214): email менеджерам о тестовом лиде
+    # не шлём — карточка уже ушла в тестовый TG-чат.
+    return if test?
+
     notify_admins!
     InquiryNotificationJob.perform_later(id) if defined?(InquiryNotificationJob)
   end
@@ -510,6 +535,9 @@ class Inquiry < ApplicationRecord
     valuation_token = chat_meta['property_valuation_token'].presence ||
                       chat_meta[:property_valuation_token].presence
     valuation_id = (PropertyValuation.find_by(token: valuation_token)&.id if valuation_token)
+    # Тест-флаг (issue #214) едет в SiteSource → metadata LeadEvent →
+    # LeadAnnouncer уводит карточку в тестовый чат, а не в ДИСПЕТЧЕРСКУЮ.
+    test_flag = chat_meta['test'] == true || chat_meta[:test] == true
 
     Lead::Intake.call(
       source: source,
@@ -521,6 +549,7 @@ class Inquiry < ApplicationRecord
         summary:       message.presence || comment,
         priority:      priority,             # для LeadAnnouncer badge (high/urgent)
         service_type:  service_type,         # для service-badge (express/cma/...)
+        test:          test_flag,            # тест-прогон чат-бота → тестовый чат
         property_id:   property_id,
         inquiry_id:    id,
         valuation_id:  valuation_id,         # → SiteSource привяжет lead_ref к PropertyValuation

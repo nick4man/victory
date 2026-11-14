@@ -9,8 +9,10 @@ module Lead
   # Каждый source имеет свой адаптер (SiteSource, TgDmSource, ManualSource,
   # CrmWebhookSource) — он отвечает за:
   #   1. Создание/поиск CRM-объекта (BuyerOrder | Property)
-  #   2. Опц. вызов Topnlab::Client#import_client (создание order в CRM)
-  #   3. Сборку metadata (phone, name, summary, budget) для карточки
+  #   2. Сборку metadata (phone, name, summary, budget) для карточки
+  #
+  # Запись заявки в CRM (Topnlab::Client#import_client) здесь НЕ происходит:
+  # путь один — карточка CrmCards → модерация → CrmCards::LeadExporter.
   #
   # Сам Intake:
   #   * валидирует входные данные
@@ -89,7 +91,7 @@ module Lead
         lead_ref:         ref,
         property:         Lead::PropertyResolver.for_ref(ref),
         source:           @source,
-        tg_chat_id:       Telegram::TopicRegistry.chat_id,
+        tg_chat_id:       target_chat_id(metadata),
         anchor_topic_key: 'dispatcher',
         current_stage:    'new',
         metadata:         metadata
@@ -104,6 +106,15 @@ module Lead
     end
 
     private
+
+    # Тест-лиды (issue #214) живут в тестовом чате (ENV['TELEGRAM_TEST_CHAT_ID']).
+    # ENV не задан — возвращаем рабочий chat_id, но LeadAnnouncer такую карточку
+    # не опубликует (skip с warning): ДИСПЕТЧЕРСКАЯ не трогается в любом случае.
+    def target_chat_id(metadata)
+      return Telegram::TopicRegistry.chat_id unless metadata.is_a?(Hash) && metadata['test'] == true
+
+      ENV['TELEGRAM_TEST_CHAT_ID'].presence&.to_i || Telegram::TopicRegistry.chat_id
+    end
 
     def valid_source?
       SUPPORTED_SOURCES.include?(@source)
