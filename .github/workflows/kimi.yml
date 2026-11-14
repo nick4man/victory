@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      id-token: write    # OIDC-обмен на краткосрочный OPENCODE_API_KEY (service account Console)
       contents: read
       pull-requests: write
       actions: read
@@ -43,89 +44,132 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Kimi Review
+      # Аутентификация без долгоживущего секрета: OIDC-токен прогона меняется
+      # на краткосрочный OPENCODE_API_KEY сервис-аккаунта OpenCode Console.
+      # Сниппет — из Console (Settings → Service accounts); client_id —
+      # публичный идентификатор сервис-аккаунта (не секрет), обмен всё равно
+      # требует OIDC-токен конкретного прогона этого репозитория.
+      - name: Sign in to OpenCode
+        env:
+          AUDIENCE: https://opencode.ai/console
+        run: |
+          set -euo pipefail
+          oidc=$(curl -sSf --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
+          token=$(curl -sSf https://opencode.ai/console/auth/oauth/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+            -d subject_token_type=urn:ietf:params:oauth:token-type:jwt \
+            -d client_id=sk_eb657298-922a-4cf9-a85f-28f27d8ba16a \
+            -d subject_token="$oidc" | jq -r .access_token)
+          echo "::add-mask::$token"
+          echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
+
+      - name: Install OpenCode
+        run: |
+          set -euo pipefail
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          opencode --version
+
+      # Read-only обзор diff + постинг одного верхнеуровневого комментария
+      # через gh (GITHUB_TOKEN). Модель — opencode-go/glm-5.3 (подписка Go):
+      # расход агента идёт на бюджет сервис-аккаунта Console, а не Kimi-план.
+      # Пишущие инструменты запрещены permission.deny (opencode.json) +
+      # --auto одобряет только то, что не запрещено явно. Транскрипт прогона
+      # (stdout) — источник вердикта для automerge.yml.
+      - name: Run OpenCode Review
         id: review
-        uses: xuwenhao/kimi-code-action@v0 # для продакшена запиньте на SHA коммита
-        with:
-          kimi_api_key: ${{ secrets.KIMI_API_KEY }}
-          kimi_platform: code
-          kimi_model: k3.1-pro
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          cat > opencode.json <<'JSON'
+          {
+            "permission": {
+              "deny": [
+                "Bash(git push:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
+                "Bash(docker:*)",
+                "Bash(gh pr merge:*)", "Bash(gh pr edit:*)", "Bash(gh pr close:*)",
+                "Bash(gh pr review:*)", "Bash(gh issue close:*)", "Bash(gh issue edit:*)",
+                "Bash(gh secret:*)", "Bash(gh variable:*)", "Bash(gh workflow:*)",
+                "Bash(gh release:*)", "Bash(gh repo:*)", "Bash(gh api:*)",
+                "Bash(curl:*)", "Bash(wget:*)"
+              ]
+            }
+          }
+          JSON
+          opencode run --standalone --auto --archived --model opencode-go/glm-5.3 \
+            "REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+          HEAD SHA: $HEAD_SHA
 
-          # Трекинг-прогресс одним sticky-комментарием.
-          track_progress: true
-          use_sticky_comment: true
+          Проведи code review этого PR на русском языке. Сначала прочти
+          AGENTS.md и .claude/memory/systemPatterns.md — это источник правды
+          о проекте (Rails-монолит, доменная логика в app/services/).
 
-          # Наличие prompt переводит action в automation-режим (без @kimi).
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-            HEAD SHA: ${{ github.event.pull_request.head.sha }}
+          Фокус ревью:
+          1. Безопасность: вебхук-контроллеры при пустом ENV-секрете обязаны
+             отказывать (не пропускать); admin-доступ только через
+             ?token=ADMIN_TOKEN; сырые PostGIS-запросы — на SQL-инъекции;
+             секреты и PII в коде/логах.
+          2. Конвенции: soft delete через deleted_at (без paranoia/discard),
+             enums с _prefix: true, даты dd.MM.yy, single quotes,
+             # frozen_string_literal: true, цены через price_formatted.
+          3. Инвариант каталога: Property — проекция Topnlab; правки,
+             ломающие sync-логику (в т.ч. пропуск архивации при неполном
+             обходе), — блокер.
+          4. LLM: free-first цепочки (LLM_CHAIN_*), платные модели — только
+             last-resort; перестановка платной модели вверх — замечание.
+          5. Тесты: изменена доменная логика — жди spec'и в spec/services
+             или соседних; сеть в спеках закрыта WebMock.
+          6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
+             services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
 
-            Проведи code review этого PR на русском языке. Сначала прочти
-            AGENTS.md и .claude/memory/systemPatterns.md — это источник правды
-            о проекте (Rails-монолит, доменная логика в app/services/).
+          Получи diff командами «gh pr view \$PR_NUMBER --json baseRefName»
+          и «gh pr diff \$PR_NUMBER» и ревьюй его.
 
-            Фокус ревью:
-            1. Безопасность: вебхук-контроллеры при пустом ENV-секрете обязаны
-               отказывать (не пропускать); admin-доступ только через
-               ?token=ADMIN_TOKEN; сырые PostGIS-запросы — на SQL-инъекции;
-               секреты и PII в коде/логах.
-            2. Конвенции: soft delete через deleted_at (без paranoia/discard),
-               enums с _prefix: true, даты dd.MM.yy, single quotes,
-               # frozen_string_literal: true, цены через price_formatted.
-            3. Инвариант каталога: Property — проекция Topnlab; правки,
-               ломающие sync-логику (в т.ч. пропуск архивации при неполном
-               обходе), — блокер.
-            4. LLM: free-first цепочки (LLM_CHAIN_*), платные модели — только
-               last-resort; перестановка платной модели вверх — замечание.
-            5. Тесты: изменена доменная логика — жди spec'и в spec/services
-               или соседних; сеть в спеках закрыта WebMock.
-            6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
-               services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
+          Опубликуй итог ОДНИМ верхнеуровневым комментарием PR: текст ревью
+          запиши во временный файл (вне дерева репозитория) и выполни
+          «gh pr comment \$PR_NUMBER --body-file <файл>». Другие write-
+          операции (git, edit кода, иные gh-команды) НЕ выполняй.
 
-            Замечания — inline-комментариями к конкретным строкам diff.
-            Итог — одним верхнеуровневым комментарием: вердикт
-            (можно мерджить / нужны правки), список блокеров, список нит-пиков.
+          Структура текста ревью: вердикт (можно мерджить / нужны правки),
+          список блокеров, список нит-пиков.
 
-            ОБЯЗАТЕЛЬНО: первая строка итогового комментария — `HEAD: <HEAD SHA из шапки>`
-            (полный sha), чтобы automerge.yml мог сопоставить вердикт с коммитом.
-            ОБЯЗАТЕЛЬНО: самая последняя строка итогового комментария — ровно одна
-            из двух машиночитаемых меток, без форматирования и без текста после неё:
-              VERDICT: MERGE     — блокеров нет, PR можно вливать как есть
-              VERDICT: CHANGES   — есть хотя бы один блокер
-            Эту строку читает workflow automerge.yml; нит-пики без блокеров — это MERGE.
-
-          # Read-only обзор diff + постинг комментариев; ветки не пушим.
-          # kimi -p работает в auto-режиме: --allowedTools сами ничего не
-          # запрещают, ограничивают только --disallowedTools (deny идут первыми).
-          kimi_args: |
-            --max-turns 50
-            --disallowedTools "Write,Edit,Bash(git push:*),Bash(git commit:*),Bash(docker:*),Bash(gh api:*),Bash(gh pr merge:*),Bash(gh pr edit:*),Bash(gh pr close:*),Bash(gh secret:*),Bash(gh workflow:*),Bash(gh release:*),Bash(curl:*),Bash(wget:*)"
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(rg:*),Bash(grep:*),Bash(ls:*)"
+          ОБЯЗАТЕЛЬНО: предпоследняя строка финального ответа — ровно
+          'HEAD: $HEAD_SHA' (полный sha), а самая последняя строка — ровно
+          одна из двух машиночитаемых меток, без форматирования и без текста
+          после неё:
+            VERDICT: MERGE     — блокеров нет, PR можно вливать как есть
+            VERDICT: CHANGES   — есть хотя бы один блокер
+          Эти строки читает workflow automerge.yml; нит-пики без блокеров — это MERGE." \
+            > review-transcript.txt 2> review-stderr.txt || true
+          echo "--- stderr (tail) ---"; tail -5 review-stderr.txt || true
+          echo "--- transcript bytes: $(wc -c < review-transcript.txt)"
 
       # Вердикт для automerge.yml — артефактом ЭТОГО прогона. Источник — не
       # комментарии (их пишет любой job под тем же github-actions[bot], в т.ч.
-      # интерактивный @kimi), а транскрипт агента на диске раннера
-      # (execution_file): туда пишет только шаг ревью выше. Берём ПОСЛЕДНИЕ
-      # строки HEAD:/VERDICT: — финальный комментарий агента идёт последним,
-      # а процитированный в diff текст (например, сам automerge.yml) — раньше.
+      # интерактивный бот), а транскрипт агента на диске раннера
+      # (review-transcript.txt): туда пишет только шаг ревью выше. Берём
+      # ПОСЛЕДНИЕ строки HEAD:/VERDICT: — финальный ответ агента идёт
+      # последним, а процитированный в diff текст — раньше.
       - name: Publish verdict artifact
         if: always()
         env:
-          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           VERDICT=CHANGES
-          if [ -n "${EXEC_FILE:-}" ] && [ -s "$EXEC_FILE" ]; then
-            # JSON-escaped текст: \n внутри строк — раскрываем, чтобы grep видел строки.
-            TXT=$(sed 's/\\n/\n/g' "$EXEC_FILE")
-            LAST_HEAD=$(grep -oE 'HEAD: [0-9a-f]{40}' <<<"$TXT" | tail -1 || true)
-            LAST_VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' <<<"$TXT" | tail -1 || true)
+          if [ -s review-transcript.txt ]; then
+            LAST_HEAD=$(grep -oE 'HEAD: [0-9a-f]{40}' review-transcript.txt | tail -1 || true)
+            LAST_VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' review-transcript.txt | tail -1 || true)
             echo "из транскрипта: '$LAST_HEAD' / '$LAST_VERDICT'"
             if [ "$LAST_HEAD" = "HEAD: $SHA" ] && [ "$LAST_VERDICT" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
           else
-            echo "execution_file отсутствует — вердикт CHANGES по умолчанию"
+            echo "транскрипт отсутствует — вердикт CHANGES по умолчанию"
           fi
           mkdir -p verdict
           printf 'HEAD: %s\nRUN: %s\nVERDICT: %s\n' "$SHA" "$GITHUB_RUN_ID" "$VERDICT" > verdict/kimi-verdict.txt
