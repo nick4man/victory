@@ -60,6 +60,20 @@ RSpec.describe Telegram::WorkBot::LeadAnnouncer, 'кнопка карточки 
     expect(crm_buttons).to be_empty
   end
 
+  it 'лид песочницы с карточкой на модерации — виден статус, а не мастер заявки' do
+    lead.update!(metadata: { 'sandbox' => true })
+    card = CrmCard.create!(kind: 'lead', author: agent, lead_event: lead, sandbox: true, status: 'pending_review')
+
+    expect(crm_buttons).to contain_exactly(a_hash_including(text: a_string_including('На модерации'),
+                                                            callback_data: "crm_card:#{card.id}:view"))
+  end
+
+  it 'реальному лиду карточка песочницы не привязывается' do
+    CrmCard.create!(kind: 'lead', author: agent, lead_event: lead, sandbox: true, status: 'pending_review')
+
+    expect(crm_buttons.map { |b| b[:callback_data] }).to eq(["wiz:s:crm_lead:#{lead.id}"])
+  end
+
   it 'в группе — ни одного поля карточки, только статус' do
     CrmCard.create!(kind: 'lead', author: agent, lead_event: lead, status: 'pending_review',
                     payload: { 'phone' => '79101234567' })

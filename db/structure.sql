@@ -762,7 +762,8 @@ CREATE TABLE public.crm_cards (
     created_at timestamp(6) without time zone NOT NULL,
     updated_at timestamp(6) without time zone NOT NULL,
     export_attempt_token character varying,
-    export_retryable boolean DEFAULT true NOT NULL
+    export_retryable boolean DEFAULT true NOT NULL,
+    sandbox boolean DEFAULT false NOT NULL
 );
 
 
@@ -5030,6 +5031,13 @@ CREATE INDEX index_crm_cards_on_reviewer_id ON public.crm_cards USING btree (rev
 
 
 --
+-- Name: index_crm_cards_on_sandbox_and_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_sandbox_and_status ON public.crm_cards USING btree (sandbox, status);
+
+
+--
 -- Name: index_crm_cards_on_status_and_submitted_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -8004,6 +8012,7 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20261108210000'),
 ('20261108120000'),
 ('20261107233000'),
+('20260914120200'),
 ('20260914120100'),
 ('20260914120000'),
 ('20260911100100'),
