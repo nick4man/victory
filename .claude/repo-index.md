@@ -1,6 +1,6 @@
 # repo-index.md — карта классов (auto-generated)
 
-> Сжатый индекс: путь → классы/модули в файле. Регенерация: rake repo:map.
+> Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
 
 ## app/models
 
@@ -196,6 +196,7 @@ app/controllers/valuations_controller.rb — class ValuationsController
 app/controllers/webhooks/amocrm_controller.rb — module Webhooks, class AmocrmController
 app/controllers/webhooks/news_ingest_controller.rb — module Webhooks, class NewsIngestController
 app/controllers/webhooks/telegram_controller.rb — module Webhooks, class TelegramController
+app/controllers/webhooks/telegram_test_controller.rb — module Webhooks, class TelegramTestController
 app/controllers/webhooks/topnlab_controller.rb — module Webhooks, class TopnlabController
 app/controllers/webhooks/topnlab_reports_controller.rb — module Webhooks, class TopnlabReportsController
 app/controllers/webhooks/yookassa_controller.rb — module Webhooks, class YookassaController
@@ -278,7 +279,9 @@ app/services/crm_cards/notifier.rb — module CrmCards, class Notifier
 app/services/crm_cards/permissions.rb — module CrmCards, class Permissions
 app/services/crm_cards/permissions_report.rb — module CrmCards, class PermissionsReport
 app/services/crm_cards/phone_matches.rb — module CrmCards, module PhoneMatches
+app/services/crm_cards/sandbox_exporter.rb — module CrmCards, class SandboxExporter
 app/services/crm_cards/schema.rb — module CrmCards, module Schema
+app/services/crm_cards/text_intake.rb — module CrmCards, class TextIntake
 app/services/crm_cards/workflow.rb — module CrmCards, class Workflow
 app/services/crm_reports/base.rb — module CrmReports, class Base
 app/services/crm_reports/inventory_pdf.rb — module CrmReports, class InventoryPdf
@@ -378,7 +381,8 @@ app/services/staff/resolver.rb — module Staff, class Resolver
 app/services/staff_submission_detector.rb — class StaffSubmissionDetector
 app/services/tavily/client.rb — module Tavily, class Client, class Error
 app/services/telegram/alert_throttle.rb — module Telegram, class AlertThrottle
-app/services/telegram/client.rb — module Telegram, class Client, class Error
+app/services/telegram/bot_context.rb — module Telegram, class BotContext
+app/services/telegram/client.rb — module Telegram, class Client, class Error, class GroupChatForbidden
 app/services/telegram/client_bot/activation_request_processor.rb — module Telegram, module ClientBot, class ActivationRequestProcessor
 app/services/telegram/client_bot/link_processor.rb — module Telegram, module ClientBot, class LinkProcessor
 app/services/telegram/client_bot/photo_intake_processor.rb — module Telegram, module ClientBot, class PhotoIntakeProcessor
@@ -494,6 +498,7 @@ app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb — module Telegra
 app/services/telegram/work_bot/wizard/crm_card_support.rb — module Telegram, module WorkBot, module Wizard, module CrmCardSupport
 app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmLeadCardFlow
 app/services/telegram/work_bot/wizard/crm_object_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmObjectCardFlow
+app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmTestLeadFlow
 app/services/telegram/work_bot/wizard/engine.rb — module Telegram, module WorkBot, module Wizard, class Engine
 app/services/telegram/work_bot/wizard/flow.rb — module Telegram, module WorkBot, module Wizard, class Flow
 app/services/telegram/work_bot/wizard/lead_picking.rb — module Telegram, module WorkBot, module Wizard, module LeadPicking
