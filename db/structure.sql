@@ -4490,6 +4490,13 @@ CREATE UNIQUE INDEX idx_crm_cards_one_per_lead ON public.crm_cards USING btree (
 
 
 --
+-- Name: idx_crm_cards_unique_exported_object_crm_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_crm_cards_unique_exported_object_crm_id ON public.crm_cards USING btree (crm_id) WHERE (((kind)::text = 'object'::text) AND ((status)::text = 'exported'::text) AND (crm_id IS NOT NULL));
+
+
+--
 -- Name: idx_daily_digests_active_per_day_chat; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -8133,10 +8140,11 @@ ALTER TABLE ONLY public.viewing_schedules
 -- PostgreSQL database dump complete
 --
 
-SET search_path TO "$user", public, tiger, topology;
+SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261114120000'),
+('20261114100000'),
 ('20261113100000'),
 ('20261112120000'),
 ('20261112090100'),
