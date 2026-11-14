@@ -100,27 +100,24 @@ class PagesController < ApplicationController
     # Contact form object
     @contact_form = ContactForm.new if defined?(ContactForm)
 
-    # #223: бот шлёт submit мгновенно после рендера — порог ловит это прозрачно.
-    session[ContactFormSpamGuard::SESSION_KEY] = Time.current.to_f
+    # #239: timestamp рендера подписываем в скрытом поле формы вместо сессии —
+    # убираем гонку вкладок и зависимость от cookie/Safari ITP/bfcache.
+    @rendered_at_token = ContactFormSpamGuard.rendered_at_token
 
     track_event('contacts_page_viewed')
   end
 
   # POST /contacts
   def send_contact_form
-    # Timestamp — только тайминг-сигнал, не nonce: cookie_store не даёт
-    # одноразовости (старый cookie остаётся валидным), replay намеренно
-    # не блокируем — следующий шаг из #223 при продолжении потока — капча.
+    rendered_at = ContactFormSpamGuard.verify_rendered_at_token(params[:rendered_at_token])
     guard = ContactFormSpamGuard.new(
       honeypot: params[ContactFormSpamGuard::HONEYPOT_PARAM],
-      rendered_at: session[ContactFormSpamGuard::SESSION_KEY]
+      rendered_at: rendered_at
     ).call
+
     if guard.spam
-      # Молчаливый дроп (#223): бот не должен узнать, что его раскрыли.
-      Rails.logger.info(
-        "[contact_form] spam dropped reason=#{guard.reason} ip=#{request.remote_ip} " \
-        "ua=#{request.user_agent.to_s.truncate(120)}"
-      )
+      # Молчаливый дроп только для honeypot: бот не должен узнать, что его раскрыли.
+      ContactFormSpamGuard.record(reason: guard.reason, ip: request.remote_ip, ua: request.user_agent)
       flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
       return
@@ -131,16 +128,15 @@ class PagesController < ApplicationController
     @phone = params[:phone]
     @message = params[:message]
     @subject = params[:subject] || 'Общий вопрос'
-    
+
     # Validate
     if @name.blank? || @email.blank? || @message.blank?
       flash[:alert] = 'Пожалуйста, заполните все обязательные поля'
       redirect_to contacts_path
       return
     end
-    
-    # Create inquiry
-    inquiry = Inquiry.create(
+
+    inquiry_attrs = {
       inquiry_type: :contact_agent,
       status: :new,
       name: @name,
@@ -149,22 +145,31 @@ class PagesController < ApplicationController
       message: @message,
       source: 'contact_form',
       ip_address: request.remote_ip,
-      user_agent: request.user_agent
-    )
-    
+      user_agent: ContactFormSpamGuard.sanitize_user_agent(request.user_agent)
+    }
+
+    if guard.suspicious
+      # Тайминговый сигнал — не дропаем, но метим заявку для ручной проверки.
+      ContactFormSpamGuard.record(reason: guard.reason, ip: request.remote_ip, ua: request.user_agent)
+      inquiry_attrs[:metadata] = { contact_form_spam_reason: guard.reason, suspicious: true }
+    end
+
+    # Create inquiry
+    inquiry = Inquiry.create(inquiry_attrs)
+
     if inquiry.persisted?
       # Send email
       # ContactMailer.contact_form(@name, @email, @phone, @subject, @message).deliver_later
-      
+
       track_event('contact_form_submitted', {
         subject: @subject,
         inquiry_id: inquiry.id
       })
-      
+
       flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
     else
-      flash[:alert] = 'Ошибка при отправке сообщения. Попробуйте позже.'
+      flash[:alert] = "Ошибка: #{inquiry.errors.full_messages.join(', ')}"
       redirect_to contacts_path
     end
   end
@@ -322,29 +327,5 @@ class PagesController < ApplicationController
   
   def valid_email?(email)
     email.match?(URI::MailTo::EMAIL_REGEXP)
-  end
-  
-  # ============================================
-  # SPAM PROTECTION
-  # ============================================
-  
-  def check_spam
-    # Honeypot field
-    if params[:website].present?
-      Rails.logger.warn "Spam detected from IP: #{request.remote_ip}"
-      return true
-    end
-    
-    # Rate limiting check (simple)
-    cache_key = "contact_form:#{request.remote_ip}"
-    attempts = Rails.cache.read(cache_key) || 0
-    
-    if attempts > 3
-      Rails.logger.warn "Too many contact form submissions from IP: #{request.remote_ip}"
-      return true
-    end
-    
-    Rails.cache.write(cache_key, attempts + 1, expires_in: 1.hour)
-    false
   end
 end
