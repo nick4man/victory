@@ -161,6 +161,7 @@ app/
       amocrm_controller.rb
       news_ingest_controller.rb
       telegram_controller.rb
+      telegram_test_controller.rb
       topnlab_controller.rb
       topnlab_reports_controller.rb
       yookassa_controller.rb
@@ -194,6 +195,8 @@ app/
     sitemap_controller.rb
     valuations_controller.rb
   jobs/
+    crm_cards/
+      export_job.rb
     document_intake/
       parser_job.rb
     external_listings/
@@ -367,9 +370,6 @@ app/
       banki_ru_parser.rb
     cabinet/
       consent_requester.rb
-    chat/
-      SERVICE.md
-      test_mode.rb
     chat_tools/
       staff/
         agent_status.rb
@@ -408,12 +408,19 @@ app/
       owner_linker.rb
       telegram_reachability.rb
     crm_cards/
+      card_view.rb
       checker.rb
+      export_lock.rb
       field_value.rb
+      lead_exporter.rb
+      notifier.rb
       permissions_report.rb
       permissions.rb
       phone_matches.rb
+      sandbox_exporter.rb
       schema.rb
+      text_intake.rb
+      workflow.rb
     crm_reports/
       base.rb
       inventory_pdf.rb
@@ -532,6 +539,7 @@ app/
           assign_cancel_callback.rb
           assign_to_callback.rb
           base.rb
+          crm_card_callback.rb
           dashboard_drill_callback.rb
           link_staff_callback.rb
           owner_request_callback.rb
@@ -552,6 +560,7 @@ app/
           bargain.rb
           base.rb
           cancel.rb
+          cards.rb
           cheatsheet.rb
           close.rb
           dashboard.rb
@@ -588,6 +597,14 @@ app/
           ping_service.rb
         wizard/
           close_flow.rb
+          crm_card_approve_flow.rb
+          crm_card_edit_flow.rb
+          crm_card_manual_export_flow.rb
+          crm_card_rework_flow.rb
+          crm_card_support.rb
+          crm_lead_card_flow.rb
+          crm_object_card_flow.rb
+          crm_test_lead_flow.rb
           engine.rb
           flow.rb
           lead_picking.rb
@@ -634,6 +651,7 @@ app/
         voice_transcriber.rb
         weekly_summary_job.rb
       alert_throttle.rb
+      bot_context.rb
       client.rb
       critical_recipients.rb
       escalation_notifier.rb
@@ -3322,6 +3340,25 @@ retry_on StandardError, wait: :polynomially_longer, attempts: 3
 def perform(property_id)
 </file>
 
+<file path="app/jobs/sandbox/codespace_ready_job.rb">
+module Sandbox
+⋮----
+class CodespaceReadyJob
+include Sidekiq::Job
+sidekiq_options queue: :low_priority, retry: false
+⋮----
+ATTEMPTS = 12
+DELAY = 15
+⋮----
+def perform(chat_id, attempt = 1, thread_id = nil)
+⋮----
+private
+⋮----
+def awake?
+⋮----
+def notify(chat_id, thread_id, text)
+</file>
+
 <file path="app/jobs/seo/generate_property_meta_job.rb">
 module Seo
 class GeneratePropertyMetaJob < ApplicationJob
@@ -3423,17 +3460,6 @@ def acquire_lock
 def release_lock
 ⋮----
 def process_batch(updates)
-</file>
-
-<file path="app/jobs/telegram/inbound_processor_job.rb">
-module Telegram
-⋮----
-class InboundProcessorJob
-include Sidekiq::Job
-⋮----
-sidekiq_options queue: :default, retry: 1
-⋮----
-def perform(payload_json)
 </file>
 
 <file path="app/jobs/telegram/webhook_acks_cleanup_job.rb">
@@ -3670,8 +3696,6 @@ def apply_success!(valuation, result)
 def dispatch_downstream(valuation)
 ⋮----
 def push_to_lead_card(valuation)
-⋮----
-def lead_isolated?(lead)
 ⋮----
 def create_crm_lead(valuation)
 </file>
@@ -6048,14 +6072,6 @@ def pending_action
 def clear_pending_action!
 </file>
 
-<file path="app/models/telegram_webhook_ack.rb">
-class TelegramWebhookAck < ApplicationRecord
-validates :update_id,    presence: true, uniqueness: true
-validates :processed_at, presence: true
-⋮----
-scope :stale, ->(older_than: 7.days.ago) { where(processed_at: ...older_than) }
-</file>
-
 <file path="app/models/tg_link_token.rb">
 class TgLinkToken < ApplicationRecord
 TTL = 30.minutes
@@ -6989,6 +7005,91 @@ def flip_to_pending_consent!
 def send_email!
 </file>
 
+<file path="app/services/chat/SERVICE.md">
+# SERVICE.md — Чат-бот сайта (site chatbot)
+
+- **owner**: victory
+- **ported_from**: —
+- **depends_on**: none (внутренний модуль Rails-приложения; лиды уходят в
+  work_bot через контракт `Lead::Intake`, изоляция — через `Chat::TestMode`)
+- **repatriate_by**: —
+
+## Назначение
+
+Публичный чат-виджет victory62.org (`app/views/shared/_chat_widget.html.erb`,
+`Chat::ConversationsController` / `Chat::MessagesController`, LLM-ответы —
+`Llm::ChatResponder` через `LlmReplyJob`, лиды — tool `ChatTools::QualifyLead`).
+Боевые чаты (ДИСПЕТЧЕРСКАЯ и топики рабочей группы в Telegram) должны быть
+совсем без тестовых сообщений (issue #227).
+
+## Тест-изоляция лидов
+
+Политика — `app/services/chat/test_mode.rb` (`Chat::TestMode`), по убыванию
+надёжности:
+
+1. **ENV-кран `SITE_CHATBOT_FORCE_TEST=1`** — ВСЕ лиды чат-бота (записи с
+   `Inquiry source='site_chatbot'`) публикуются в тестовый чат
+   (`TELEGRAM_TEST_CHAT_ID`), ДИСПЕТЧЕРСКАЯ не трогается вовсе. Ставится на
+   прогоны, снимается перед боевым периодом. Единственная 100%-я гарантия.
+   Дублируется на трёх уровнях: `Lead::Intake` (метадата LeadEvent),
+   `ChatTools::QualifyLead` (метадата Inquiry → без CRM-синка и назначения
+   агенту), `Conversation#lead_test_mode?` (thread-флаг в `LlmReplyJob`).
+   Обычные боевые формы сайта (`ContactFormsController`,
+   `PropertyValuationsController` идут теми же `site_*` источниками) краном
+   не задеваются (rev #230). Без `TELEGRAM_TEST_CHAT_ID` тест-эскалации и
+   PDF тест-лидов пропускаются (fail-closed) — в рабочую группу не идут.
+2. **Маршрутизация по `staff_test`** — `LeadAnnouncer#test_lead?` считает
+   тестовым лид с `metadata['test']==true` ИЛИ `staff_test` по сильному
+   правилу детектора (`StaffSubmissionDetector.hard_isolation?`: слабое
+   `name_staff_first` — совпадение только по имени — боевой маршрут не
+   меняет, иначе реальный клиент «Надежда» потерял бы карточку; rev #230).
+   Карточка уходит в тестовый чат без явного флага в payload. Сотрудник с
+   записью `User` (role agent/admin) и своими контактами без флага/крана
+   по-прежнему получает staff-skip (тишина, #214) — для автоматической
+   тестовой карточки ему нужен тумблер/кран.
+3. **Тумблер «🧪 Тест-прогон» в виджете** — переключатель в UI чата: включён
+   → сессия под probe-`visitor_token` (`?visitor_token=probe-<suffix>` /
+   `=off`), все лиды диалога с `metadata['test']=true`. Суффикс уникален на
+   браузер (localStorage) — общий токен смешивал бы диалоги независимых
+   посетителей (rev #230). В JSON сессии два флага: `test_probe` (ручной
+   тумблер) и `test_mode` (полный режим, включая auto-test/кран).
+4. **Auto-test по происхождению** — сессии с не-прод хоста (staging,
+   localhost; список — `SITE_CHATBOT_PROD_HOSTS`) или с IP из офисного пула
+   (`SITE_CHATBOT_OFFICE_IPS`, comma-separated, точный IP или префикс
+   подсети) автоматически тестовые: контроллеры ставят флаг
+   `metadata['auto_test']` на Conversation, он не снимается обратно.
+
+### Честное ограничение
+
+Против прогона «как реальный клиент» с чужими контактами с прод-домена без
+крана и тумблера защиты нет и не будет — любая эвристика рискует заблокировать
+реального клиента (неприемлемо). Полную гарантию даёт только кран п.1.
+</file>
+<file path="app/services/chat/test_mode.rb">
+module Chat
+⋮----
+module TestMode
+⋮----
+SITE_SOURCES = %w[site_form site_valuation site_mortgage].freeze
+⋮----
+DEFAULT_PROD_HOSTS = 'victory62.org,www.victory62.org'
+⋮----
+def self.force_test?
+⋮----
+def self.site_source?(source)
+⋮----
+def self.force_test_inquiry?(inquiry)
+⋮----
+def self.auto_test_request?(request)
+⋮----
+def self.prod_host?(host)
+⋮----
+def self.prod_hosts
+⋮----
+def self.office_ip?(ip)
+⋮----
+def self.office_ips
+</file>
 <file path="app/services/chat_tools/staff/agent_status.rb">
 module ChatTools
 module Staff
@@ -8268,34 +8369,6 @@ def segment_title(segment)
 def stuck_suffix(ids)
 </file>
 
-<file path="app/services/kpi/staff_snapshot.rb">
-module Kpi
-⋮----
-class StaffSnapshot
-⋮----
-CONVERSION_WINDOW = 90.days
-⋮----
-def self.run!(date: Date.current)
-⋮----
-def initialize(date:)
-⋮----
-def run!
-⋮----
-private
-⋮----
-def compute_for(staff)
-⋮----
-def tasks_stats(staff)
-⋮----
-def leads_stats(staff)
-⋮----
-def questions_count(staff)
-⋮----
-def documents_count(staff)
-⋮----
-def upsert!(staff, metrics)
-</file>
-
 <file path="app/services/kpi/weekly_report.rb">
 module Kpi
 ⋮----
@@ -9082,6 +9155,40 @@ def skip(reason)
 def match_agency(external)
 </file>
 
+<file path="app/services/sandbox/codespace.rb">
+module Sandbox
+⋮----
+class Codespace
+API = 'https://api.github.com'
+DISPLAY_NAME = ENV.fetch('SANDBOX_CODESPACE_NAME', 'crm-sandbox')
+⋮----
+STARTING_STATES = %w[Provisioning Starting Queued Rebuilding Awaiting].freeze
+⋮----
+class Error < StandardError; end
+⋮----
+Status = Struct.new(:name, :state, :branch, :web_url, :last_used_at, keyword_init: true) do
+def awake? = state == 'Available'
+def starting? = STARTING_STATES.include?(state)
+⋮----
+def self.start! = new.start!
+def self.status = new.status
+⋮----
+def status
+⋮----
+def start!
+⋮----
+private
+⋮----
+def token
+⋮----
+def find!
+⋮----
+def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
+def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
+⋮----
+def request(req)
+</file>
+
 <file path="app/services/seo/how_to_extractor.rb">
 module Seo
 ⋮----
@@ -9391,26 +9498,6 @@ class AssignCancelCallback < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/base.rb">
-attr_accessor :_manager_only, :_director_only
-⋮----
-def manager_only(val = true)
-⋮----
-def manager_only?
-⋮----
-def director_only(val = true)
-⋮----
-def director_only?
-⋮----
-attr_reader :callback_query, :tg_user, :args, :client
-⋮----
-def initialize(callback_query:, tg_user:, args:, client: Telegram::Client.new)
-⋮----
-raise NotImplementedError, "#{self.class} must implement #handle"
-⋮----
-def reply_in_topic(text, **opts)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/link_staff_callback.rb">
 module Telegram
 module WorkBot
@@ -9467,74 +9554,6 @@ def notify_directors(text)
 def owner_label(owner)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/photo_disposition_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class PhotoDispositionCallback < Base
-⋮----
-BASE_INBOX_DIR = 'Офис/НЕДВИЖИМОСТЬ/ВХОДЯЩИЕ'
-⋮----
-def handle
-⋮----
-private
-⋮----
-def handle_dispose(action, pa)
-⋮----
-def prompt_choose_cloud_target(pa)
-⋮----
-def prompt_choose_share_staff(pa)
-⋮----
-def prompt_describe_task(pa)
-⋮----
-def handle_share_to(staff_id, pa)
-⋮----
-def cancel_pending(_pa)
-⋮----
-def handle_target_step(target_kind, pa)
-⋮----
-def upload_to_general(pa)
-⋮----
-def prompt_choose_lead(pa)
-⋮----
-def prompt_choose_staff(pa)
-⋮----
-def handle_upload_for_lead(lead_id, pa)
-⋮----
-def handle_upload_for_staff(staff_id, pa)
-⋮----
-def upload_with_share(file_id:, remote_path:)
-⋮----
-def filename_for(file_id)
-⋮----
-def staff_dir_name(target)
-⋮----
-def recent_leads_for_picker
-⋮----
-def lead_button_text(le)
-⋮----
-def active_staff_for_picker
-⋮----
-def staff_button_text(s)
-⋮----
-def append_lead_note(le, result)
-⋮----
-def notify_staff_about_photo(target, result)
-⋮----
-def edit_keyboard_with_text(new_text, markup)
-⋮----
-def ack_and_text(text, alert: false)
-⋮----
-def success_text_general(remote_path, result)
-⋮----
-def success_text_lead(le, remote_path, result)
-⋮----
-def success_text_staff(target, remote_path, result)
-⋮----
-def escape_html(text)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/route_callback.rb">
 module Telegram
 module WorkBot
@@ -9581,6 +9600,8 @@ class ShowReportCallback < Base
 def handle
 ⋮----
 private
+⋮----
+def refuse_staff_test(report)
 ⋮----
 def authorized?(report)
 ⋮----
@@ -9721,18 +9742,6 @@ def answer(outcome)
 def in_private_chat?
 </file>
 
-<file path="app/services/telegram/work_bot/commands/bargain.rb">
-def handle
-⋮----
-def record!(lead, price)
-⋮----
-def notify_directors(lead, price)
-⋮----
-lines << "Цена: <b>#{property&.price_formatted || '—'}</b> · предлагают: <b>#{delimited(price)} ₽</b>"
-⋮----
-def plural(n)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/cancel.rb">
 module Telegram
 module WorkBot
@@ -9755,22 +9764,6 @@ module Commands
 ⋮----
 class Cheatsheet < Base
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/close.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Close < Base
-⋮----
-OUTCOME_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse_args
 </file>
 
 <file path="app/services/telegram/work_bot/commands/dashboard.rb">
@@ -9873,38 +9866,6 @@ class Menu < Base
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/commands/note.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Note < Base
-def handle
-⋮----
-private
-⋮----
-def push_to_crm(lead, text)
-⋮----
-def persist_to_metadata(lead, text)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/objections.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Objections < Base
-def handle
-⋮----
-private
-⋮----
-def summary_for_lead(lead)
-⋮----
-def render(title, property, s)
-⋮----
-def plural(n)
-</file>
-
 <file path="app/services/telegram/work_bot/commands/promote.rb">
 module Telegram
 module WorkBot
@@ -9960,34 +9921,32 @@ REOPEN_WINDOW = 24.hours
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/commands/route.rb">
-module Telegram
+<file path="app/services/telegram/work_bot/commands/start_test.rb">
 module WorkBot
 module Commands
 ⋮----
-class Route < Base
+class StartTest < Base
+⋮----
+SUMMARY_PATH = Rails.root.join('docs/sandbox/current-test.md')
+TEST_BOT = ENV.fetch('SANDBOX_TEST_BOT_USERNAME', '@anvictory_testsbot')
+⋮----
+SUMMARY_LIMIT = 3500
 ⋮----
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/segment.rb">
-module Telegram
-module WorkBot
-module Commands
 ⋮----
-class Segment < Base
-SEGMENT_MAP = {
+def command_key = '/starttest'
 ⋮----
-def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/show.rb">
-module Telegram
-module WorkBot
-module Commands
+private
 ⋮----
-class Show < Base
-def handle
+def chat_id = message.dig('chat', 'id')
+⋮----
+def headline(status)
+⋮----
+def summary
+⋮----
+.gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
+⋮----
+def without_comments(text)
 </file>
 
 <file path="app/services/telegram/work_bot/commands/tutorial.rb">
@@ -10213,115 +10172,6 @@ def escape(text)
 def skip(reason)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/close_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class CloseFlow < Flow
-include LeadPicking
-⋮----
-flow 'close', 'Закрытие лида'
-⋮----
-OUTCOMES = [['✅ Выиграно', 'closed_won'], ['❌ Проиграно', 'closed_lost']].freeze
-OUTCOME_WORDS = { 'closed_won' => 'выиграно', 'closed_lost' => 'проиграно' }.freeze
-REASONS = [
-⋮----
-REASON_MAX = 255
-⋮----
-def steps
-⋮----
-def skip?(step)
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def finish
-⋮----
-private
-⋮----
-def confirm_prompt
-⋮----
-def accept_reason(value, manual)
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/engine.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class Engine
-STATE_TYPE = 'wizard'
-TTL = 30.minutes
-⋮----
-FLOWS = {
-⋮----
-SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
-⋮----
-def self.flow_class(key)
-⋮----
-attr_reader :tg_user, :client
-⋮----
-def initialize(tg_user:, client: Telegram::Client.new)
-⋮----
-def self.active?(tg_user)
-⋮----
-def start(flow_key, seed: {})
-⋮----
-def pick(flow_key, step_id, index)
-⋮----
-def ask_manual(flow_key, step_id)
-⋮----
-def text(raw)
-⋮----
-def back(flow_key)
-⋮----
-def cancel
-⋮----
-def menu
-⋮----
-private
-⋮----
-def apply_answer(flow, state, step, value, manual:)
-⋮----
-def render_next(flow, state)
-⋮----
-def finish(flow, state)
-⋮----
-def claim_state!(state)
-⋮----
-def option_values(step)
-⋮----
-def prompt_text(step)
-⋮----
-def step_keyboard(flow, step, state)
-⋮----
-def button(label, flow, step, index)
-⋮----
-def nav_row(state)
-⋮----
-def menu_row
-⋮----
-def current_state(flow_key, step_id)
-⋮----
-def build_flow(state)
-⋮----
-def find_step(flow, step_id)
-⋮----
-def save(state, sent)
-⋮----
-def strip_previous_prompt
-⋮----
-def strip_prompt(state)
-⋮----
-def send_dm(text, keyboard: nil)
-⋮----
-def dm_chat_id
-⋮----
-def escape_html(text)
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/flow.rb">
 module Telegram
 module WorkBot
@@ -10357,19 +10207,6 @@ protected
 def escape_html(text)
 ⋮----
 def manager?
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/menu.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module Menu
-module_function
-⋮----
-def text(_tg_user)
-⋮----
-def keyboard(tg_user)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/reopen_flow.rb">
@@ -10519,21 +10356,6 @@ def call
 def escape(text)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks_router.rb">
-module Telegram
-module WorkBot
-⋮----
-class CallbacksRouter
-⋮----
-PREFIX_MAP = {
-⋮----
-def initialize(callback_query, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
-</file>
-
 <file path="app/services/telegram/work_bot/cheatsheet_renderer.rb">
 module Telegram
 module WorkBot
@@ -10679,45 +10501,6 @@ def send_ack(text)
 def deliver(text)
 ⋮----
 def reply(text)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_assignment.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadAssignment
-Result = Struct.new(:success, :error_message) do
-def success?
-⋮----
-def initialize(lead_event, assignee:, actor:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def push_to_crm
-⋮----
-def with_retry(op_name, max_attempts: 3)
-⋮----
-def mark_crm_sync_status!(success:)
-⋮----
-def notify_previous_assignee(prev)
-⋮----
-def notify_crm_failure!
-⋮----
-def crm_error_history_block
-⋮----
-# Phase 3 — заполняем fc_* кастомные поля Topnlab при назначении.
-# Эти поля должны быть заранее созданы в Topnlab UI руководителем АН
-# (см. .claude/docs/topnlab/fc_fields_setup.md). Если поля нет — patch_entity
-# просто молча игнорирует unknown ключ, лид этим не страдает.
-def push_fc_fields!(topnlab, crm_id)
-⋮----
-def update_anchor_card!
-⋮----
-def notify_assignee
-⋮----
-def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/lead_closure.rb">
@@ -11495,90 +11278,6 @@ def interpolate(label, data)
 def parse_time(raw)
 ⋮----
 def resolve_user(crm_user_id)
-</file>
-
-<file path="app/services/topnlab/client.rb">
-require 'net/http'
-require 'json'
-require 'uri'
-⋮----
-module Topnlab
-class Client
-class Error < StandardError; end
-⋮----
-SLOW_DELAY = 6.0
-FAST_DELAY = 1.0
-⋮----
-def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
-⋮----
-def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
-⋮----
-def get_entities(ids, type: 'realty', append: nil)
-⋮----
-def get_entities_from_mls(ids)
-⋮----
-def get_entities_from_parser(ids)
-⋮----
-def get_realty_options
-⋮----
-def get_users
-⋮----
-def get_structure
-⋮----
-def get_stages(scope_id)
-⋮----
-# GET /public/get-notes — public notes attached to one entity.
-def get_notes(id:, type:)
-⋮----
-def set_note(id:, type:, note:, user_id:)
-⋮----
-def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
-⋮----
-def get_event_types
-⋮----
-def list_report_menus
-⋮----
-def report_pages
-⋮----
-def create_report_menu(title:, page_id:, order:, callback_url:)
-⋮----
-def update_report_menu(id:, title:, order:)
-⋮----
-def delete_report_menu(id:)
-⋮----
-def get_clients_by_entity(entity_id:, entity_type: 2)
-⋮----
-def patch_entity(id:, type:, fields:)
-⋮----
-def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
-⋮----
-def transfer_client(order_id:, email:, stage_id: nil)
-⋮----
-private
-⋮----
-def entity_map?(data)
-⋮----
-def scrub(data)
-⋮----
-# Topnlab требует ровно 11 цифр без +/пробелов/скобок (формат 7XXXXXXXXXX).
-# Превращает '+7 (900) 123-45-67' → '79001234567', '89001234567' → '79001234567'.
-def normalize_phone_11d(phone)
-⋮----
-def source_to_action(_source)
-⋮----
-def batched_get(path, ids, batch_size:, throttle:)
-⋮----
-def http_get(path, params, throttle:)
-⋮----
-def http_post_json(path, body)
-⋮----
-def perform(request)
-⋮----
-def encode_query(params)
-⋮----
-def parse(response, label)
-⋮----
-def throttle!(kind)
 </file>
 
 <file path="app/services/topnlab/importer.rb">
@@ -12782,14 +12481,6 @@ def deliver
 ⋮----
 private
 ⋮----
-def test_valuation?
-⋮----
-def default_chat_id
-⋮----
-def default_thread_id
-⋮----
-def deliver_to(chat_id, thread_id:)
-⋮----
 def send_pdf(client, chat_id, thread_id)
 ⋮----
 def summary_text
@@ -13153,65 +12844,6 @@ def all_admin_slugs
 def neighbors_of(slug)
 </file>
 
-<file path="config/routes.rb">
-require 'sidekiq/web'
-⋮----
-LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
-</file>
-
-<file path="app/controllers/concerns/visitor_identity.rb">
-module VisitorIdentity
-extend ActiveSupport::Concern
-⋮----
-COOKIE_NAME = :visitor_token
-COOKIE_TTL  = 90.days
-⋮----
-PROBE_TOKEN_PATTERN = /\Aprobe-[a-z0-9][a-z0-9-]{0,31}\z/.freeze
-⋮----
-included do
-before_action :ensure_visitor_token
-⋮----
-def ensure_visitor_token
-⋮----
-def current_visitor_token
-</file>
-
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
-⋮----
-def about
-⋮----
-def team
-⋮----
-def history
-⋮----
-def contacts
-⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-private
-⋮----
-def validate_contact_form
-⋮----
-def valid_email?(email)
-⋮----
-def check_spam
-</file>
-
 <file path="app/jobs/kpi/agency_digest_job.rb">
 module Kpi
 ⋮----
@@ -13227,23 +12859,15 @@ private
 def send_to_directors(text)
 </file>
 
-<file path="app/jobs/sandbox/codespace_ready_job.rb">
-module Sandbox
+<file path="app/jobs/telegram/inbound_processor_job.rb">
+module Telegram
 ⋮----
-class CodespaceReadyJob
+class InboundProcessorJob
 include Sidekiq::Job
-sidekiq_options queue: :low_priority, retry: false
 ⋮----
-ATTEMPTS = 12
-DELAY = 15
+sidekiq_options queue: :default, retry: 1
 ⋮----
-def perform(chat_id, attempt = 1, thread_id = nil)
-⋮----
-private
-⋮----
-def awake?
-⋮----
-def notify(chat_id, thread_id, text)
+def perform(payload_json, bot = 'main')
 </file>
 
 <file path="app/jobs/embed_lead_event_job.rb">
@@ -13257,60 +12881,34 @@ retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts:
 def perform(lead_event_id)
 </file>
 
+<file path="app/models/conversation.rb">
+class Conversation < ApplicationRecord
+belongs_to :user, optional: true
+belongs_to :assigned_user, class_name: 'User', optional: true
+has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
+⋮----
+enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
+⋮----
+scope :for_visitor, ->(token) { where(visitor_token: token) }
+scope :open_state, -> { where(status: %i[active escalated]) }
+⋮----
+def test_probe?
+⋮----
+PER_MSG_CHAR_CAP = 1000
+⋮----
+def history_for_llm(limit: 30)
+⋮----
+def escalate!(reason: nil)
+⋮----
+def display_name
+</file>
+
 <file path="app/models/crm_card_transition.rb">
 class CrmCardTransition < ApplicationRecord
 belongs_to :crm_card, inverse_of: :transitions
 belongs_to :actor, class_name: 'TelegramUser', optional: true
 ⋮----
 validates :from_status, :to_status, presence: true
-</file>
-
-<file path="app/models/crm_card.rb">
-class CrmCard < ApplicationRecord
-belongs_to :lead_event, optional: true
-belongs_to :author,   class_name: 'TelegramUser'
-belongs_to :reviewer, class_name: 'TelegramUser', optional: true
-has_many :transitions, -> { order(:created_at, :id) },
-           class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
-⋮----
-enum :kind, {
-    lead: 'lead',
-    object: 'object'
-  }, prefix: true
-⋮----
-enum :status, {
-    draft: 'draft',
-    needs_rework: 'needs_rework',
-    pending_review: 'pending_review',
-    approved: 'approved',
-    exporting: 'exporting',
-    exported: 'exported',
-    export_failed: 'export_failed'
-  }, prefix: true
-⋮----
-enum :export_mode, {
-    api: 'api',
-    manual: 'manual'
-  }, prefix: true
-⋮----
-STATUS_LABELS = {
-⋮----
-AUTHOR_EDITABLE = %w[draft needs_rework].freeze
-⋮----
-EXPORT_STALE_AFTER = 15.minutes
-⋮----
-scope :not_deleted, -> { where(deleted_at: nil) }
-default_scope { not_deleted }
-⋮----
-validates :kind, :status, presence: true
-⋮----
-def check_passed?
-⋮----
-def export_stale?
-⋮----
-def responsible
-⋮----
-def last_rework_comment
 </file>
 
 <file path="app/models/external_listing.rb">
@@ -13536,91 +13134,13 @@ has_neighbors :embedding
 belongs_to :property_valuation
 </file>
 
-<file path="app/services/chat/SERVICE.md">
-# SERVICE.md — Чат-бот сайта (site chatbot)
-
-- **owner**: victory
-- **ported_from**: —
-- **depends_on**: none (внутренний модуль Rails-приложения; лиды уходят в
-  work_bot через контракт `Lead::Intake`, изоляция — через `Chat::TestMode`)
-- **repatriate_by**: —
-
-## Назначение
-
-Публичный чат-виджет victory62.org (`app/views/shared/_chat_widget.html.erb`,
-`Chat::ConversationsController` / `Chat::MessagesController`, LLM-ответы —
-`Llm::ChatResponder` через `LlmReplyJob`, лиды — tool `ChatTools::QualifyLead`).
-Боевые чаты (ДИСПЕТЧЕРСКАЯ и топики рабочей группы в Telegram) должны быть
-совсем без тестовых сообщений (issue #227).
-
-## Тест-изоляция лидов
-
-Политика — `app/services/chat/test_mode.rb` (`Chat::TestMode`), по убыванию
-надёжности:
-
-1. **ENV-кран `SITE_CHATBOT_FORCE_TEST=1`** — ВСЕ лиды чат-бота (записи с
-   `Inquiry source='site_chatbot'`) публикуются в тестовый чат
-   (`TELEGRAM_TEST_CHAT_ID`), ДИСПЕТЧЕРСКАЯ не трогается вовсе. Ставится на
-   прогоны, снимается перед боевым периодом. Единственная 100%-я гарантия.
-   Дублируется на трёх уровнях: `Lead::Intake` (метадата LeadEvent),
-   `ChatTools::QualifyLead` (метадата Inquiry → без CRM-синка и назначения
-   агенту), `Conversation#lead_test_mode?` (thread-флаг в `LlmReplyJob`).
-   Обычные боевые формы сайта (`ContactFormsController`,
-   `PropertyValuationsController` идут теми же `site_*` источниками) краном
-   не задеваются (rev #230). Без `TELEGRAM_TEST_CHAT_ID` тест-эскалации и
-   PDF тест-лидов пропускаются (fail-closed) — в рабочую группу не идут.
-2. **Маршрутизация по `staff_test`** — `LeadAnnouncer#test_lead?` считает
-   тестовым лид с `metadata['test']==true` ИЛИ `staff_test` по сильному
-   правилу детектора (`StaffSubmissionDetector.hard_isolation?`: слабое
-   `name_staff_first` — совпадение только по имени — боевой маршрут не
-   меняет, иначе реальный клиент «Надежда» потерял бы карточку; rev #230).
-   Карточка уходит в тестовый чат без явного флага в payload. Сотрудник с
-   записью `User` (role agent/admin) и своими контактами без флага/крана
-   по-прежнему получает staff-skip (тишина, #214) — для автоматической
-   тестовой карточки ему нужен тумблер/кран.
-3. **Тумблер «🧪 Тест-прогон» в виджете** — переключатель в UI чата: включён
-   → сессия под probe-`visitor_token` (`?visitor_token=probe-<suffix>` /
-   `=off`), все лиды диалога с `metadata['test']=true`. Суффикс уникален на
-   браузер (localStorage) — общий токен смешивал бы диалоги независимых
-   посетителей (rev #230). В JSON сессии два флага: `test_probe` (ручной
-   тумблер) и `test_mode` (полный режим, включая auto-test/кран).
-4. **Auto-test по происхождению** — сессии с не-прод хоста (staging,
-   localhost; список — `SITE_CHATBOT_PROD_HOSTS`) или с IP из офисного пула
-   (`SITE_CHATBOT_OFFICE_IPS`, comma-separated, точный IP или префикс
-   подсети) автоматически тестовые: контроллеры ставят флаг
-   `metadata['auto_test']` на Conversation, он не снимается обратно.
-
-### Честное ограничение
-
-Против прогона «как реальный клиент» с чужими контактами с прод-домена без
-крана и тумблера защиты нет и не будет — любая эвристика рискует заблокировать
-реального клиента (неприемлемо). Полную гарантию даёт только кран п.1.
-</file>
-
-<file path="app/services/chat/test_mode.rb">
-module Chat
+<file path="app/models/telegram_webhook_ack.rb">
+class TelegramWebhookAck < ApplicationRecord
+validates :update_id,    presence: true, uniqueness: { scope: :bot }
+validates :bot,          inclusion: { in: Telegram::BotContext::BOTS }
+validates :processed_at, presence: true
 ⋮----
-module TestMode
-⋮----
-SITE_SOURCES = %w[site_form site_valuation site_mortgage].freeze
-⋮----
-DEFAULT_PROD_HOSTS = 'victory62.org,www.victory62.org'
-⋮----
-def self.force_test?
-⋮----
-def self.site_source?(source)
-⋮----
-def self.force_test_inquiry?(inquiry)
-⋮----
-def self.auto_test_request?(request)
-⋮----
-def self.prod_host?(host)
-⋮----
-def self.prod_hosts
-⋮----
-def self.office_ip?(ip)
-⋮----
-def self.office_ips
+scope :stale, ->(older_than: 7.days.ago) { where(processed_at: ...older_than) }
 </file>
 
 <file path="app/services/chat_tools/list_mortgage_programs.rb">
@@ -13669,6 +13189,46 @@ private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
 def self.page_url(args)
 </file>
 
+<file path="app/services/chat_tools/qualify_lead.rb">
+PREMIUM_DISTRICTS = [
+⋮----
+URGENCY_HOT  = %w[сейчас срочно немедленно сегодня завтра].freeze
+URGENCY_NEAR = %w[месяц неделя ближайшие квартал].freeze
+URGENCY_FAR  = %w[год позже подумаю когда-нибудь рассматриваю].freeze
+⋮----
+INTENT_TO_INQUIRY_TYPE = {
+⋮----
+ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+⋮----
+PRIORITY_URGENT_THRESHOLD = 6
+PRIORITY_HIGH_THRESHOLD   = 4
+⋮----
+DEDUPE_WINDOW = 5.minutes
+⋮----
+def self.schema
+⋮----
+def self.call(args = {})
+⋮----
+def self.compute_score(args)
+⋮----
+def self.enum_for(score)
+⋮----
+def self.build_reasoning(args, score, priority)
+⋮----
+# Если service_type указывает на оценочный сервис — Inquiry должна быть
+# типа 'evaluation' (даже если intent=invest/buy), чтобы попасть в
+# auto_route_from=site_valuation → топик #ОЦЕНКА.
+⋮----
+# Phone/name дублируются в metadata для LeadAnnouncer card —
+# он читает meta['name'] / meta['phone'].
+⋮----
+priority:                  priority,    # LeadAnnouncer reads meta['priority']
+⋮----
+service_type:              service_type, # LeadAnnouncer renders badge
+⋮----
+base = "Лид квалифицирован: #{priority.upcase} (#{score}/10). #{reasoning}"
+</file>
+
 <file path="app/services/chat_tools/registry.rb">
 module ChatTools
 ⋮----
@@ -13714,23 +13274,61 @@ def self.sanitize_long(value, max)
 def self.notify_moderator(review)
 </file>
 
-<file path="app/services/crm_cards/checker.rb">
+<file path="app/services/crm_cards/card_view.rb">
 module CrmCards
 ⋮----
-class Checker
-def self.call(card)
+module CardView
+KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
+RETRY_HINT = 'Отказ детерминирован: CRM обработала запрос и отклонила заявку — повтор безопасен.'
+VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
 ⋮----
-def initialize(card)
+MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
 ⋮----
-def call
+module_function
 ⋮----
-private
+def render(card, viewer:)
 ⋮----
-def field_errors
+def text(card)
 ⋮----
-def lead_rules
+# Значение без HTML — для кнопок и для экранирования снаружи.
+def plain_value(field, value)
 ⋮----
-def blank_value?(raw)
+def keyboard(card, viewer, perms)
+⋮----
+def approved_rows(card, owner, moderator)
+⋮----
+def author_rows(card)
+⋮----
+def moderator_rows(card)
+⋮----
+def header(card)
+⋮----
+def staff_test_lines(card)
+⋮----
+def check_lines(card)
+⋮----
+def status_lines(card)
+⋮----
+def exported_lines(card)
+⋮----
+def error_label(card, key)
+⋮----
+def format_phone(digits)
+⋮----
+def button(text, callback_data)
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/crm_cards/export_lock.rb">
+module CrmCards
+⋮----
+class ExportLock
+NAMESPACE = 727_401
+⋮----
+def try_acquire(card)
+⋮----
+def release(card)
 </file>
 
 <file path="app/services/crm_cards/field_value.rb">
@@ -13756,6 +13354,56 @@ def integer(raw)
 def decimal(raw)
 </file>
 
+<file path="app/services/crm_cards/lead_exporter.rb">
+module CrmCards
+⋮----
+class LeadExporter
+Outcome = Struct.new(:crm_id, :warning, keyword_init: true)
+⋮----
+def initialize(topnlab: nil)
+⋮----
+def call(card)
+⋮----
+private
+⋮----
+def comment_with_extra_phone(values)
+⋮----
+def topnlab
+⋮----
+def assign_responsible(crm_id, author)
+</file>
+
+<file path="app/services/crm_cards/notifier.rb">
+module CrmCards
+⋮----
+class Notifier
+def initialize(client: nil)
+⋮----
+def submitted(card, moderators:)
+⋮----
+def returned(card, comment:)
+⋮----
+def approved(card)
+⋮----
+def exported(card, warning: nil)
+⋮----
+def export_failed(card)
+⋮----
+private
+⋮----
+def export_failed_hint(card)
+⋮----
+def deliver(user, header, card)
+⋮----
+def dm(user, text, keyboard: nil)
+⋮----
+def refresh_lead_anchor(card)
+⋮----
+def client
+⋮----
+def escape(text)
+</file>
+
 <file path="app/services/crm_cards/permissions_report.rb">
 module CrmCards
 ⋮----
@@ -13771,31 +13419,6 @@ def moderators_line
 # Права выдаются по id должности, поэтому переименование в CRM их не
 # ломает, — но устаревшее название в таблице вводит в заблуждение.
 def position_drift
-</file>
-
-<file path="app/services/crm_cards/permissions.rb">
-module CrmCards
-⋮----
-class Permissions
-CAPABILITIES = %w[create_lead create_object moderate].freeze
-CONFIG_PATH = Rails.root.join('config/crm_permissions.yml').freeze
-⋮----
-Result = Struct.new(:capabilities, :crm_user, :position_title, :denial, keyword_init: true) do
-def can?(capability)
-⋮----
-def self.for(tg_user)
-⋮----
-def self.moderators
-⋮----
-def self.positions
-⋮----
-def initialize(tg_user)
-⋮----
-def call
-⋮----
-private
-⋮----
-def deny(reason, crm_user: nil)
 </file>
 
 <file path="app/services/crm_cards/phone_matches.rb">
@@ -13815,29 +13438,11 @@ def inquiry_lines(digits)
 def card_lines(digits, card)
 </file>
 
-<file path="app/services/crm_cards/schema.rb">
+<file path="app/services/crm_cards/sandbox_exporter.rb">
 module CrmCards
 ⋮----
-module Schema
-⋮----
-Field = Struct.new(:key, :label, :type, :required, :options, :hint, :min, :max, keyword_init: true)
-⋮----
-ACTIONS = [['Продажа / покупка', 'sale'], ['Аренда', 'rent']].freeze
-REALTY_TYPES = [
-⋮----
-PHONE_HINT = 'Мобильный клиента: +7 910 123-45-67 или 89101234567. Городской — вторым номером.'
-⋮----
-LEAD = [
-⋮----
-KINDS = { 'lead' => LEAD }.freeze
-⋮----
-module_function
-⋮----
-def for(kind)
-⋮----
-def field(kind, key)
-⋮----
-def option_label(field, value)
+class SandboxExporter
+def call(card)
 </file>
 
 <file path="app/services/kpi/agency_digest.rb">
@@ -13861,6 +13466,34 @@ def pipeline_block
 # чат-бота (issue #214) не считаются в pipeline-метриках агентства.
 ⋮----
 def highlights(metrics)
+</file>
+
+<file path="app/services/kpi/staff_snapshot.rb">
+module Kpi
+⋮----
+class StaffSnapshot
+⋮----
+CONVERSION_WINDOW = 90.days
+⋮----
+def self.run!(date: Date.current)
+⋮----
+def initialize(date:)
+⋮----
+def run!
+⋮----
+private
+⋮----
+def compute_for(staff)
+⋮----
+def tasks_stats(staff)
+⋮----
+def leads_stats(staff)
+⋮----
+def questions_count(staff)
+⋮----
+def documents_count(staff)
+⋮----
+def upsert!(staff, metrics)
 </file>
 
 <file path="app/services/llm/omni_client.rb">
@@ -13909,56 +13542,34 @@ def redis_connection
 require 'redis' unless defined?(Redis)
 </file>
 
-<file path="app/services/sandbox/codespace.rb">
-module Sandbox
-⋮----
-class Codespace
-API = 'https://api.github.com'
-DISPLAY_NAME = ENV.fetch('SANDBOX_CODESPACE_NAME', 'crm-sandbox')
-⋮----
-STARTING_STATES = %w[Provisioning Starting Queued Rebuilding Awaiting].freeze
-⋮----
-class Error < StandardError; end
-⋮----
-Status = Struct.new(:name, :state, :branch, :web_url, :last_used_at, keyword_init: true) do
-def awake? = state == 'Available'
-def starting? = STARTING_STATES.include?(state)
-⋮----
-def self.start! = new.start!
-def self.status = new.status
-⋮----
-def status
-⋮----
-def start!
-⋮----
-private
-⋮----
-def token
-⋮----
-def find!
-⋮----
-def get(path) = request(Net::HTTP::Get.new(URI("#{API}#{path}")))
-def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
-⋮----
-def request(req)
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
+<file path="app/services/telegram/work_bot/callbacks/base.rb">
 module Telegram
 module WorkBot
 module Callbacks
 ⋮----
-class AssignToCallback < Base
+class Base
 ⋮----
-def handle
+attr_accessor :_manager_only, :_director_only
 ⋮----
-private
+def manager_only(val = true)
 ⋮----
-def log_reassignment_audit(lead, prev_assignee, new_assignee)
+def manager_only?
 ⋮----
-def log_soft_error(result, error_msg)
+def director_only(val = true)
 ⋮----
-def delete_picker(lead)
+def director_only?
+⋮----
+attr_reader :callback_query, :tg_user, :args, :client
+⋮----
+def initialize(callback_query:, tg_user:, args:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+raise NotImplementedError, "#{self.class} must implement #handle"
+⋮----
+def lead_event
+⋮----
+def actor_mention
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
@@ -13994,117 +13605,100 @@ def back_keyboard
 def time_ago(time)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/stage_callback.rb">
+<file path="app/services/telegram/work_bot/callbacks/photo_disposition_callback.rb">
 module Telegram
 module WorkBot
 module Callbacks
 ⋮----
-class StageCallback < Base
-ALLOWED = ['show', 'contract'].freeze
+class PhotoDispositionCallback < Base
+⋮----
+BASE_INBOX_DIR = 'Офис/НЕДВИЖИМОСТЬ/ВХОДЯЩИЕ'
 ⋮----
 def handle
 ⋮----
 private
 ⋮----
-def authorized?(lead)
+def handle_dispose(action, pa)
 ⋮----
-def nudge_segment(lead)
+def prompt_choose_cloud_target(pa)
 ⋮----
-def propose_conductor(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/assign.rb">
-module Telegram
-module WorkBot
-module Commands
+def prompt_choose_share_staff(pa)
 ⋮----
-class Assign < Base
+def prompt_describe_task(pa)
 ⋮----
-PICKER_MAX_USERS = 10
-PICKER_BUTTONS_PER_ROW = 2
+def handle_share_to(staff_id, pa)
 ⋮----
-def handle
+def cancel_pending(_pa)
 ⋮----
-private
+def handle_target_step(target_kind, pa)
 ⋮----
-def render_picker(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/base.rb">
-module Telegram
-module WorkBot
-module Commands
+def upload_to_general(pa)
 ⋮----
-class Base
+def prompt_choose_lead(pa)
 ⋮----
-def manager_only(val = true)
+def prompt_choose_staff(pa)
 ⋮----
-def manager_only?
+def handle_upload_for_lead(lead_id, pa)
 ⋮----
-def director_only(val = true)
+def handle_upload_for_staff(staff_id, pa)
 ⋮----
-def director_only?
+def upload_with_share(file_id:, remote_path:)
 ⋮----
-def public_command(val = true)
+def filename_for(file_id)
 ⋮----
-def self_audited(val = true)
+def staff_dir_name(target)
 ⋮----
-def self_audited?
+def recent_leads_for_picker
 ⋮----
-def public_command?
+def lead_button_text(le)
 ⋮----
-attr_reader :tg_user, :message, :args, :client
+def active_staff_for_picker
 ⋮----
-def initialize(message:, args:, tg_user:, client: Telegram::Client.new)
+def staff_button_text(s)
 ⋮----
-def call
+def append_lead_note(le, result)
 ⋮----
-protected
+def notify_staff_about_photo(target, result)
 ⋮----
-def handle
+def edit_keyboard_with_text(new_text, markup)
 ⋮----
-def reply(text, **opts)
+def ack_and_text(text, alert: false)
 ⋮----
-def assignee_or_manager?(lead)
+def success_text_general(remote_path, result)
+⋮----
+def success_text_lead(le, remote_path, result)
+⋮----
+def success_text_staff(target, remote_path, result)
 ⋮----
 def escape_html(text)
-⋮----
-def dm(text, to: tg_user, **opts)
-⋮----
-def resolve_lead!
-⋮----
-def find_lead_via_reply
-⋮----
-def open_wizard(flow_key, seed_record = nil, seed_id: nil)
-⋮----
-def lead_not_found_hint(cmd)
-⋮----
-def staff_test_guard(lead)
-⋮----
-private
-⋮----
-def dispatch
-⋮----
-def audit!(outcome, args:, error_class: nil, error_message: nil)
-⋮----
-def command_key
 </file>
 
-<file path="app/services/telegram/work_bot/commands/doc.rb">
+<file path="app/services/telegram/work_bot/commands/bargain.rb">
+def handle
+⋮----
+def record!(lead, price)
+⋮----
+def notify_directors(lead, price)
+⋮----
+lines << "Цена: <b>#{property&.price_formatted || '—'}</b> · предлагают: <b>#{delimited(price)} ₽</b>"
+⋮----
+def plural(n)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/close.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Doc < Base
+class Close < Base
+⋮----
+OUTCOME_MAP = {
+⋮----
 def handle
-⋮----
-# /doc без args — формат текущий checklist
-⋮----
-# /doc <tokens> — apply changes
 ⋮----
 private
 ⋮----
-def find_lead_via_reply
+def parse_args
 </file>
 
 <file path="app/services/telegram/work_bot/commands/help.rb">
@@ -14139,92 +13733,171 @@ def group_chat?
 def send_full_via_dm(text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/stage.rb">
+<file path="app/services/telegram/work_bot/commands/note.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Stage < Base
-STAGE_MAP = {
-⋮----
+class Note < Base
 def handle
 ⋮----
 private
 ⋮----
-def propose_conductor(lead)
+def push_to_crm(lead, text)
+⋮----
+def persist_to_metadata(lead, text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/start_test.rb">
-module WorkBot
-module Commands
-⋮----
-class StartTest < Base
-⋮----
-SUMMARY_PATH = Rails.root.join('docs/sandbox/current-test.md')
-TEST_BOT = ENV.fetch('SANDBOX_TEST_BOT_USERNAME', '@anvictory_testsbot')
-⋮----
-SUMMARY_LIMIT = 3500
-⋮----
-def handle
-⋮----
-def command_key = '/starttest'
-⋮----
-private
-⋮----
-def chat_id = message.dig('chat', 'id')
-⋮----
-def headline(status)
-⋮----
-def summary
-⋮----
-.gsub(/`([^`]+)`/) { "<code>#{Regexp.last_match(1)}</code>" }
-⋮----
-def without_comments(text)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/task.rb">
+<file path="app/services/telegram/work_bot/commands/objections.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Task < Base
-def handle
-</file>
-
-<file path="app/services/telegram/work_bot/commands/unstage.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Unstage < Base
+class Objections < Base
 def handle
 ⋮----
 private
 ⋮----
-def find_lead_via_reply
+def summary_for_lead(lead)
+⋮----
+def render(title, property, s)
+⋮----
+def plural(n)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
+<file path="app/services/telegram/work_bot/commands/route.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Route < Base
+⋮----
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/segment.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Segment < Base
+SEGMENT_MAP = {
+⋮----
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/show.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Show < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/close_flow.rb">
 module Telegram
 module WorkBot
 module Wizard
 ⋮----
-module LeadPicking
-RECENT_LIMIT = 5
+class CloseFlow < Flow
+include LeadPicking
 ⋮----
-def lead_step
+flow 'close', 'Закрытие лида'
 ⋮----
-def lead
+OUTCOMES = [['✅ Выиграно', 'closed_won'], ['❌ Проиграно', 'closed_lost']].freeze
+OUTCOME_WORDS = { 'closed_won' => 'выиграно', 'closed_lost' => 'проиграно' }.freeze
+REASONS = [
 ⋮----
-def accept_lead(value)
+REASON_MAX = 255
 ⋮----
-def lead_gate
+def steps
+⋮----
+def skip?(step)
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
 ⋮----
 private
 ⋮----
-def recent_leads
+def confirm_prompt
 ⋮----
-def lead_label(lead)
+def accept_reason(value, manual)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardApproveFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_approve', 'Одобрить карточку CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def finish
+⋮----
+private
+⋮----
+def confirm_prompt
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardEditFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_edit', 'Изменить поле карточки CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def schema
+⋮----
+def chosen
+⋮----
+def field_button(field)
+⋮----
+def confirm_prompt
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardReworkFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_rework', 'Вернуть карточку CRM на доработку'
+⋮----
+COMMENT_MIN = 5
+COMMENT_MAX = 500
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/task_flow.rb">
@@ -14262,6 +13935,45 @@ def accept_title(value)
 def accept_assignee(value)
 ⋮----
 def crm_line(status)
+</file>
+
+<file path="app/services/telegram/work_bot/anchor_migrator.rb">
+module Telegram
+module WorkBot
+⋮----
+class AnchorMigrator
+def initialize(lead_event, target_topic_key, actor:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def test_lead?
+⋮----
+def valid_target?
+⋮----
+def delete_old_anchor
+⋮----
+def merged_metadata
+⋮----
+def push_note_to_crm
+⋮----
+def log_skip(reason)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks_router.rb">
+module Telegram
+module WorkBot
+⋮----
+class CallbacksRouter
+⋮----
+PREFIX_MAP = {
+⋮----
+def initialize(callback_query, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
 </file>
 
 <file path="app/services/telegram/work_bot/daily_digest_job.rb">
@@ -14406,76 +14118,19 @@ def llm_cost_report
 def send_summary(director, markdown)
 </file>
 
-<file path="app/services/telegram/client.rb">
-require 'net/http'
-require 'json'
-require 'securerandom'
-require 'tempfile'
-⋮----
+<file path="app/services/telegram/bot_context.rb">
 module Telegram
 ⋮----
-class Client
-class Error < StandardError; end
+class BotContext < ActiveSupport::CurrentAttributes
+BOTS = %w[main test].freeze
 ⋮----
-BASE = 'https://api.telegram.org'
+attribute :bot
 ⋮----
-NETWORK_ERRORS = [
+def self.test?
 ⋮----
-NETWORK_RETRIES = 2
+def self.token
 ⋮----
-def initialize(token: ENV.fetch('TELEGRAM_BOT_TOKEN', nil))
-⋮----
-def send_message(text, chat_id:, reply_to_message_id: nil, message_thread_id: nil,
-⋮----
-def edit_message_text(text, chat_id:, message_id:, reply_markup: nil,
-⋮----
-def edit_message_reply_markup(chat_id:, message_id:, reply_markup:)
-⋮----
-def delete_message(chat_id:, message_id:)
-⋮----
-def answer_callback_query(callback_query_id, text: nil, show_alert: false)
-⋮----
-def pin_chat_message(chat_id:, message_id:, disable_notification: true)
-⋮----
-def unpin_chat_message(chat_id:, message_id: nil)
-⋮----
-def send_document(file, chat_id:, caption: nil, parse_mode: 'HTML',
-⋮----
-def send_photo(chat_id, photo_url, caption: nil, parse_mode: 'HTML',
-⋮----
-def get_me
-⋮----
-def set_webhook(url, secret_token: nil, allowed_updates: nil, drop_pending_updates: nil)
-⋮----
-def delete_webhook
-⋮----
-def webhook_info
-⋮----
-def set_my_commands(commands:, scope: nil, language_code: nil)
-⋮----
-def delete_my_commands(scope: nil, language_code: nil)
-⋮----
-def get_file(file_id)
-⋮----
-def download_file(file_id, prefix: 'tg-download')
-⋮----
-def download_file_to(file_id, local_path)
-⋮----
-def get_updates(offset: 0, limit: 100, timeout: 0)
-⋮----
-private
-⋮----
-def unpack_file(file)
-⋮----
-def form_field(boundary, name, value)
-⋮----
-def form_file(boundary, name, filename, content_type, content)
-⋮----
-def stream_to_io(remote_path, io)
-⋮----
-def with_network_retry(label)
-⋮----
-def api_call(method, body = {}, retried: false)
+def self.within(name, &)
 </file>
 
 <file path="app/services/telegram/escalation_notifier.rb">
@@ -14490,8 +14145,6 @@ def call
 ⋮----
 private
 ⋮----
-def test_mode?
-⋮----
 def target_chat_id
 ⋮----
 def format_message
@@ -14503,23 +14156,6 @@ def email_line
 def role_icon(role)
 ⋮----
 def escape(text)
-</file>
-
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
-⋮----
-def call
-⋮----
-def serialize(m)
-⋮----
-def log_and_ignore(reason)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/telegram/reaction_handler.rb">
@@ -14545,6 +14181,126 @@ def find_lead_by_message
 def pick_ack_emoji
 ⋮----
 def maybe_advance_to_first_contact(lead, tg_user)
+</file>
+
+<file path="app/services/topnlab/client.rb">
+require 'net/http'
+require 'json'
+require 'uri'
+⋮----
+class Error < StandardError; end
+⋮----
+JSON_ESCAPES = { 'n' => "\n", 'r' => "\r", 't' => "\t", '"' => '"', '\\' => '\\', '/' => '/' }.freeze
+⋮----
+# Неоднозначный транспортный исход: запрос мог быть принят CRM, а ответ
+# потерян (ReadTimeout, обрыв после отправки, EOF/WriteTimeout/SSL).
+# Подкласс Error, чтобы существующие rescue Topnlab::Client::Error
+# продолжали ловить; неидемпотентные вызовы повторяются только после
+# ручной сверки с CRM (ревью PR #210).
+class AmbiguousError < Error; end
+⋮----
+SLOW_DELAY = 6.0   # /get-ids, /get-entities
+FAST_DELAY = 1.0   # /mls, /parser, /logs
+⋮----
+def initialize(api_key: ENV.fetch('TOPNLAB_API_KEY', nil), base_url: ENV.fetch('TOPNLAB_BASE_URL', nil))
+⋮----
+def get_ids(type:, action: nil, realty_type: nil, is_feed: nil, **filters)
+⋮----
+def get_entities(ids, type: 'realty', append: nil)
+⋮----
+def get_entities_from_mls(ids)
+⋮----
+def get_entities_from_parser(ids)
+⋮----
+def get_realty_options
+⋮----
+def get_users
+⋮----
+def get_structure
+⋮----
+def get_stages(scope_id)
+⋮----
+# GET /public/get-notes — public notes attached to one entity.
+def get_notes(id:, type:)
+⋮----
+def set_note(id:, type:, note:, user_id:)
+⋮----
+def get_entities_logs(ids, event_type: nil, created_from: nil, created_till: nil)
+⋮----
+def get_event_types
+⋮----
+def list_report_menus
+⋮----
+def report_pages
+⋮----
+def create_report_menu(title:, page_id:, order:, callback_url:)
+⋮----
+def update_report_menu(id:, title:, order:)
+⋮----
+def delete_report_menu(id:)
+⋮----
+def get_clients_by_entity(entity_id:, entity_type: 2)
+⋮----
+def patch_entity(id:, type:, fields:)
+⋮----
+def import_client(phone:, name:, source:, realty_id: nil, comment: nil,
+⋮----
+def transfer_client(order_id:, email:, stage_id: nil)
+⋮----
+private
+⋮----
+def entity_map?(data)
+⋮----
+PII_KEYS = %w[phone fullname name comment user_mail email to_number request payload].freeze
+⋮----
+def scrub(data)
+⋮----
+# Вложенный сериализованный JSON (экранированные кавычки внутри строки)
+# обходит regex — вырезаем само значение ключа напрямую, независимо от
+# формы вложенности (ревью PR #210).
+⋮----
+# Рекурсивно удаляет PII-поля (PII_KEYS) из распарсенного тела.
+# Строковые значения дополнительно пытаемся разобрать как вложенный
+# сериализованный JSON: CRM может отразить запрос внутри message/error
+# строкой — тогда PII-ключи вырезаются рекурсивно, а не проходят целиком
+# (ревью PR #210, round 9). Не-JSON строки возвращаются как есть — их
+# добирает скраббинг значений запроса (scrub_request_literals).
+def filter_pii(value)
+⋮----
+# Фрагмент ошибки для raise: allowlist безопасных полей (status/message/
+# error), вложенный JSON в строках разобран (filter_pii), строковые
+# значения вычищены ДО inspect — inspect удваивает бэкслеши, и
+# escaped-формы литералов (\n, \uXXXX) в отражённом ответе перестали бы
+# совпадать (ревью PR #210, round 9++). Затем scrub: key= и appkey.
+def error_excerpt(res, request_body)
+⋮----
+def scrub_strings(value, request_body)
+⋮----
+def scrub_request_literals(text, request_body)
+⋮----
+def unescape_json(text)
+⋮----
+def surrogate_pair(hi_hex, lo_hex)
+⋮----
+def safe_body_excerpt(body, request_body: nil)
+⋮----
+def normalize_phone_11d(phone)
+⋮----
+def source_to_action(_source)
+⋮----
+def batched_get(path, ids, batch_size:, throttle:)
+⋮----
+def http_get(path, params, throttle:)
+⋮----
+def http_post_json(path, body, retry_network: true)
+⋮----
+def perform(request, retry_network: true)
+⋮----
+def encode_query(params)
+⋮----
+def parse(response, label, request_body: nil)
+⋮----
+def throttle!(kind)
 </file>
 
 <file path="app/services/valuations/ai_synthetic_comps.rb">
@@ -14678,31 +14434,8 @@ lines << "  · Депозит:   <b>#{fmt2(@audit['ei_deposit'])}</b>"
 def escape(text)
 </file>
 
-<file path="app/services/contact_form_spam_guard.rb">
-class ContactFormSpamGuard
-⋮----
-MIN_FILL_SECONDS = 3
-SESSION_KEY = :contact_form_rendered_at
-⋮----
-HONEYPOT_PARAM = :website
-⋮----
-REASONS = %w[honeypot no_render_timestamp too_fast].freeze
-⋮----
-Result = Struct.new(:spam, :reason, keyword_init: true)
-⋮----
-def initialize(honeypot:, rendered_at:, now: Time.current)
-⋮----
-def call
-⋮----
-private
-⋮----
-def spam(reason)
-</file>
-
 <file path="app/services/staff_submission_detector.rb">
 class StaffSubmissionDetector
-def self.hard_isolation?(record)
-⋮----
 STAFF_TEST_REASONS = %w[
 ⋮----
 TEST_MODE_MATCHED_BY = 'lead_test_mode'
@@ -14737,6 +14470,103 @@ def name_matches_staff_first?
 # Exact match (имя submitter'а = staff first_name полностью)
 </file>
 
+<file path="config/routes.rb">
+require 'sidekiq/web'
+⋮----
+LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
+</file>
+
+<file path="app/controllers/chat/conversations_controller.rb">
+module Chat
+⋮----
+class ConversationsController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
+⋮----
+def show
+⋮----
+def update
+⋮----
+private
+⋮----
+def current_or_create_conversation
+⋮----
+def seed_welcome(conv, page_ctx = nil)
+⋮----
+def serialize(conv)
+⋮----
+def serialize_message(m)
+</file>
+
+<file path="app/controllers/chat/messages_controller.rb">
+module Chat
+⋮----
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+⋮----
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
+⋮----
+private
+⋮----
+def post_static_reply(conv, verdict, original_body)
+⋮----
+def record_security_event(conv, verdict, original_body)
+⋮----
+def rate_limited?
+⋮----
+def serialize(m)
+</file>
+
+<file path="app/controllers/concerns/chat/page_context_params.rb">
+module Chat
+⋮----
+module PageContextParams
+extend ActiveSupport::Concern
+⋮----
+CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
+CTX_VALUE_MAX = 100
+⋮----
+private
+⋮----
+def extract_page_params
+⋮----
+def clean_page_value(value, max)
+⋮----
+def sanitize_page_ctx(raw_ctx)
+⋮----
+def stamp_page(conv, page_ctx)
+</file>
+
+<file path="app/controllers/concerns/visitor_identity.rb">
+module VisitorIdentity
+extend ActiveSupport::Concern
+⋮----
+COOKIE_NAME = :visitor_token
+COOKIE_TTL  = 90.days
+⋮----
+PROBE_TOKEN_PATTERN = /\Aprobe-([a-z0-9][a-z0-9-]{0,15})-([0-9a-f]{16})\z/.freeze
+⋮----
+def self.probe_token(name = nil)
+⋮----
+def self.valid_probe_token?(token)
+⋮----
+def self.probe_signature(base)
+⋮----
+private_class_method :probe_signature
+⋮----
+included do
+before_action :ensure_visitor_token
+⋮----
+def ensure_visitor_token
+⋮----
+def current_visitor_token
+</file>
+
 <file path="app/controllers/webhooks/news_ingest_controller.rb">
 module Webhooks
 ⋮----
@@ -14764,30 +14594,25 @@ def safe_parse_time(value)
 def upsert_article(attrs)
 </file>
 
-<file path="app/models/conversation.rb">
-class Conversation < ApplicationRecord
-belongs_to :user, optional: true
-belongs_to :assigned_user, class_name: 'User', optional: true
-has_many :chat_messages, -> { order(:created_at) }, dependent: :destroy
+<file path="app/controllers/webhooks/telegram_test_controller.rb">
+module Webhooks
 ⋮----
-enum :status, { active: 0, escalated: 1, closed: 2 }, prefix: :status
+class TelegramTestController < ActionController::API
 ⋮----
-scope :for_visitor, ->(token) { where(visitor_token: token) }
-scope :open_state, -> { where(status: %i[active escalated]) }
+def create
 ⋮----
-def test_probe?
+private
 ⋮----
-def auto_test?
+def authorized?
+</file>
+
+<file path="app/jobs/crm_cards/export_job.rb">
+module CrmCards
 ⋮----
-def lead_test_mode?
+class ExportJob < ApplicationJob
+queue_as :default
 ⋮----
-PER_MSG_CHAR_CAP = 1000
-⋮----
-def history_for_llm(limit: 30)
-⋮----
-def escalate!(reason: nil)
-⋮----
-def display_name
+def perform(card_id)
 </file>
 
 <file path="app/services/chat_tools/staff/market_comparables.rb">
@@ -14847,44 +14672,33 @@ def call(name, args, asked_by: nil)
 def deep_symbolize(obj)
 </file>
 
-<file path="app/services/chat_tools/qualify_lead.rb">
-PREMIUM_DISTRICTS = [
+<file path="app/services/crm_cards/schema.rb">
+module CrmCards
 ⋮----
-URGENCY_HOT  = %w[сейчас срочно немедленно сегодня завтра].freeze
-URGENCY_NEAR = %w[месяц неделя ближайшие квартал].freeze
-URGENCY_FAR  = %w[год позже подумаю когда-нибудь рассматриваю].freeze
+module Schema
 ⋮----
-INTENT_TO_INQUIRY_TYPE = {
+Field = Struct.new(:key, :label, :type, :required, :options, :hint, :min, :max, keyword_init: true)
 ⋮----
-ALLOWED_SERVICE_TYPES = %w[express investment cma buyer_scan].freeze
+ACTIONS = [['Продажа / покупка', 'sale'], ['Аренда', 'rent']].freeze
+REALTY_TYPES = [
 ⋮----
-PRIORITY_URGENT_THRESHOLD = 6
-PRIORITY_HIGH_THRESHOLD   = 4
+PHONE_HINT = 'Мобильный клиента: +7 910 123-45-67 или 89101234567. Городской — вторым номером.'
 ⋮----
-DEDUPE_WINDOW = 5.minutes
+LEAD = [
 ⋮----
-def self.schema
+CONTRACT_TYPES = [
 ⋮----
-def self.call(args = {})
+OBJECT = [
 ⋮----
-def self.compute_score(args)
+KINDS = { 'lead' => LEAD, 'object' => OBJECT }.freeze
 ⋮----
-def self.enum_for(score)
+module_function
 ⋮----
-def self.build_reasoning(args, score, priority)
+def for(kind)
 ⋮----
-# Если service_type указывает на оценочный сервис — Inquiry должна быть
-# типа 'evaluation' (даже если intent=invest/buy), чтобы попасть в
-# auto_route_from=site_valuation → топик #ОЦЕНКА.
+def field(kind, key)
 ⋮----
-# Phone/name дублируются в metadata для LeadAnnouncer card —
-# он читает meta['name'] / meta['phone'].
-⋮----
-priority:                  priority,    # LeadAnnouncer reads meta['priority']
-⋮----
-service_type:              service_type, # LeadAnnouncer renders badge
-⋮----
-base = "Лид квалифицирован: #{priority.upcase} (#{score}/10). #{reasoning}"
+def option_label(field, value)
 </file>
 
 <file path="app/services/embedding/property_valuation_text_template.rb">
@@ -14931,8 +14745,6 @@ def find_known_user(payload)
 def lead_ref_for(payload)
 ⋮----
 def fallback_inquiry(payload)
-⋮----
-def force_test?(payload)
 ⋮----
 def digits(phone)
 ⋮----
@@ -15068,82 +14880,359 @@ def enrich_comparables(comps)
 def base_only
 </file>
 
-<file path="app/services/telegram/work_bot/anchor_migrator.rb">
+<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class AssignToCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def log_reassignment_audit(lead, prev_assignee, new_assignee)
+⋮----
+def log_soft_error(result, error_msg)
+⋮----
+def delete_picker(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks/stage_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class StageCallback < Base
+ALLOWED = ['show', 'contract'].freeze
+⋮----
+def handle
+⋮----
+private
+⋮----
+def authorized?(lead)
+⋮----
+def nudge_segment(lead)
+⋮----
+def propose_conductor(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/assign.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Assign < Base
+⋮----
+PICKER_MAX_USERS = 10
+PICKER_BUTTONS_PER_ROW = 2
+⋮----
+def handle
+⋮----
+private
+⋮----
+def render_picker(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/base.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Base
+⋮----
+def manager_only(val = true)
+⋮----
+def manager_only?
+⋮----
+def director_only(val = true)
+⋮----
+def director_only?
+⋮----
+def public_command(val = true)
+⋮----
+def self_audited(val = true)
+⋮----
+def self_audited?
+⋮----
+def public_command?
+⋮----
+attr_reader :tg_user, :message, :args, :client
+⋮----
+def initialize(message:, args:, tg_user:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+protected
+⋮----
+def handle
+⋮----
+def reply(text, **opts)
+⋮----
+def assignee_or_manager?(lead)
+⋮----
+def escape_html(text)
+⋮----
+def dm(text, to: tg_user, **opts)
+⋮----
+def resolve_lead!
+⋮----
+def find_lead_via_reply
+⋮----
+def guard_staff_test!(lead)
+⋮----
+def staff_test_refused?
+⋮----
+def open_wizard(flow_key, seed_record = nil, seed_id: nil)
+⋮----
+def lead_not_found_hint(cmd)
+⋮----
+private
+⋮----
+def dispatch
+⋮----
+def audit!(outcome, args:, error_class: nil, error_message: nil)
+⋮----
+def command_key
+</file>
+
+<file path="app/services/telegram/work_bot/commands/doc.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Doc < Base
+def handle
+⋮----
+# /doc без args — формат текущий checklist
+⋮----
+# /doc <tokens> — apply changes
+</file>
+
+<file path="app/services/telegram/work_bot/commands/stage.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Stage < Base
+STAGE_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def propose_conductor(lead)
+</file>
+
+<file path="app/services/telegram/work_bot/commands/task.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Task < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/unstage.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Unstage < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardManualExportFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_manual', 'Объект внесён в CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def number_taken_by(digits)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_object_card_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmObjectCardFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_object', 'Новый объект в CRM'
+⋮----
+def steps
+⋮----
+def skip?(step)
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def answers
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/menu.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module Menu
+module_function
+⋮----
+def text(_tg_user)
+⋮----
+def keyboard(tg_user)
+</file>
+
+<file path="app/services/telegram/work_bot/lead_assignment.rb">
 module Telegram
 module WorkBot
 ⋮----
-class AnchorMigrator
-def initialize(lead_event, target_topic_key, actor:, client: Telegram::Client.new)
+class LeadAssignment
+Result = Struct.new(:success, :error_message) do
+def success?
+⋮----
+def initialize(lead_event, assignee:, actor:, client: Telegram::Client.new)
 ⋮----
 def call
 ⋮----
 private
 ⋮----
-def test_lead?
+def push_to_crm
 ⋮----
-def valid_target?
+def with_retry(op_name, max_attempts: 3)
 ⋮----
-def delete_old_anchor
+def mark_crm_sync_status!(success:)
 ⋮----
-def merged_metadata
+def notify_previous_assignee(prev)
 ⋮----
-def push_note_to_crm
+def notify_crm_failure!
 ⋮----
-def log_skip(reason)
+def crm_error_history_block
+⋮----
+# Phase 3 — заполняем fc_* кастомные поля Topnlab при назначении.
+# Эти поля должны быть заранее созданы в Topnlab UI руководителем АН
+# (см. .claude/docs/topnlab/fc_fields_setup.md). Если поля нет — patch_entity
+# просто молча игнорирует unknown ключ, лид этим не страдает.
+def push_fc_fields!(topnlab, crm_id)
+⋮----
+def update_anchor_card!
+⋮----
+def notify_assignee
+⋮----
+def escape(text)
 </file>
 
-<file path="app/services/telegram/work_bot/lead_announcer.rb">
-ROUTING_BUTTONS_PER_ROW = 3
+<file path="app/services/telegram/client.rb">
+require 'net/http'
+require 'json'
+require 'securerandom'
+require 'tempfile'
 ⋮----
-def self.refresh!(lead_event, client: Telegram::Client.new)
+module Telegram
 ⋮----
-STAGE_EMOJI = {
+class Client
+class Error < StandardError; end
 ⋮----
-def initialize(lead_event, client: Telegram::Client.new)
+class GroupChatForbidden < Error; end
+⋮----
+BASE = 'https://api.telegram.org'
+⋮----
+NETWORK_ERRORS = [
+⋮----
+NETWORK_RETRIES = 2
+⋮----
+def initialize(token: Telegram::BotContext.token)
+⋮----
+def send_message(text, chat_id:, reply_to_message_id: nil, message_thread_id: nil,
+⋮----
+def edit_message_text(text, chat_id:, message_id:, reply_markup: nil,
+⋮----
+def edit_message_reply_markup(chat_id:, message_id:, reply_markup:)
+⋮----
+def delete_message(chat_id:, message_id:)
+⋮----
+def answer_callback_query(callback_query_id, text: nil, show_alert: false)
+⋮----
+def pin_chat_message(chat_id:, message_id:, disable_notification: true)
+⋮----
+def unpin_chat_message(chat_id:, message_id: nil)
+⋮----
+def send_document(file, chat_id:, caption: nil, parse_mode: 'HTML',
+⋮----
+def send_photo(chat_id, photo_url, caption: nil, parse_mode: 'HTML',
+⋮----
+def get_me
+⋮----
+def set_webhook(url, secret_token: nil, allowed_updates: nil, drop_pending_updates: nil)
+⋮----
+def delete_webhook
+⋮----
+def webhook_info
+⋮----
+def set_my_commands(commands:, scope: nil, language_code: nil)
+⋮----
+def delete_my_commands(scope: nil, language_code: nil)
+⋮----
+def get_file(file_id)
+⋮----
+def download_file(file_id, prefix: 'tg-download')
+⋮----
+def download_file_to(file_id, local_path)
+⋮----
+def get_updates(offset: 0, limit: 100, timeout: 0)
+⋮----
+private
+⋮----
+def unpack_file(file)
+⋮----
+def form_field(boundary, name, value)
+⋮----
+def form_file(boundary, name, filename, content_type, content)
+⋮----
+def stream_to_io(remote_path, io)
+⋮----
+def with_network_retry(label)
+⋮----
+def guard_private_chat!(chat_id)
+⋮----
+def api_call(method, body = {}, retried: false)
+</file>
+
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
 ⋮----
 def call
 ⋮----
-def repost_to(target_topic_key)
+def serialize(m)
 ⋮----
-def format_card_text
+def log_and_ignore(reason)
 ⋮----
-def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+def client_photo_intake?(msg)
 ⋮----
-def test_lead?
+def workbot_photo_text_continuation(msg)
 ⋮----
-def send_card(topic_key)
-⋮----
-def resolve_target_topic
-⋮----
-lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
-⋮----
-# Valuation block — when lead_ref is completed PropertyValuation.
-# Это блок добавляется TG editMessageText'ом после того как
-# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
-# + PropertyValuationJob#push_to_lead_card). До completion блок
-# отсутствует, card будет sparser.
-⋮----
-lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
-⋮----
-def stage_icon
-⋮----
-def source_label
-⋮----
-def phone_suffix(phone)
-⋮----
-def stage_row
-⋮----
-# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
-# поэтому «нет reply на якорь» исчезает как класс ошибки.
-def work_row
-⋮----
-def routing_keyboard_for(topic_key)
-⋮----
-def escape(text)
-⋮----
-def fmt_rub(amount)
-⋮----
-def report_url(valuation)
+def workbot_wizard_text(msg)
 </file>
 
 <file path="Gemfile">
@@ -15310,74 +15399,6 @@ group :development, :test do
 end
 </file>
 
-<file path="app/controllers/chat/conversations_controller.rb">
-module Chat
-⋮----
-class ConversationsController < ApplicationController
-include Chat::PageContextParams
-⋮----
-skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
-⋮----
-def show
-⋮----
-def update
-⋮----
-private
-⋮----
-def current_or_create_conversation
-⋮----
-def seed_welcome(conv, page_ctx = nil)
-⋮----
-def serialize(conv)
-⋮----
-def serialize_message(m)
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
-⋮----
-class MessagesController < ApplicationController
-include Chat::PageContextParams
-⋮----
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
-⋮----
-RATE_LIMIT_PER_MINUTE = 5
-⋮----
-def create
-⋮----
-private
-⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
-</file>
-
-<file path="app/controllers/concerns/chat/page_context_params.rb">
-module Chat
-⋮----
-module PageContextParams
-extend ActiveSupport::Concern
-⋮----
-CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
-CTX_VALUE_MAX = 100
-⋮----
-private
-⋮----
-def extract_page_params
-⋮----
-def clean_page_value(value, max)
-⋮----
-def sanitize_page_ctx(raw_ctx)
-⋮----
-def stamp_page(conv, page_ctx)
-⋮----
-def stamp_auto_test(conv)
-</file>
-
 <file path="app/jobs/embed_property_valuation_job.rb">
 require 'digest'
 ⋮----
@@ -15387,6 +15408,71 @@ queue_as :low_priority
 retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
 def perform(property_valuation_id)
+</file>
+
+<file path="app/jobs/llm_reply_job.rb">
+class LlmReplyJob < ApplicationJob
+queue_as :default
+⋮----
+def perform(conversation_id, message_id = nil)
+⋮----
+private
+⋮----
+def with_lead_test_mode(conv)
+⋮----
+def message_page_snapshot(conv, message_id)
+⋮----
+def message_payload(m)
+</file>
+
+<file path="app/models/crm_card.rb">
+class CrmCard < ApplicationRecord
+belongs_to :lead_event, optional: true
+belongs_to :author,   class_name: 'TelegramUser'
+belongs_to :reviewer, class_name: 'TelegramUser', optional: true
+has_many :transitions, -> { order(:created_at, :id) },
+           class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
+⋮----
+enum :kind, {
+    lead: 'lead',
+    object: 'object'
+  }, prefix: true
+⋮----
+enum :status, {
+    draft: 'draft',
+    needs_rework: 'needs_rework',
+    pending_review: 'pending_review',
+    approved: 'approved',
+    exporting: 'exporting',
+    exported: 'exported',
+    export_failed: 'export_failed'
+  }, prefix: true
+⋮----
+enum :export_mode, {
+    api: 'api',
+    manual: 'manual'
+  }, prefix: true
+⋮----
+STATUS_LABELS = {
+⋮----
+AUTHOR_EDITABLE = %w[draft needs_rework].freeze
+⋮----
+EXPORT_STALE_AFTER = 15.minutes
+⋮----
+scope :not_deleted, -> { where(deleted_at: nil) }
+default_scope { not_deleted }
+⋮----
+scope :in_current_bot, -> { where(sandbox: Telegram::BotContext.test?) }
+⋮----
+validates :kind, :status, presence: true
+⋮----
+def check_passed?
+⋮----
+def export_stale?
+⋮----
+def responsible
+⋮----
+def last_rework_comment
 </file>
 
 <file path="app/models/property_valuation.rb">
@@ -15453,6 +15539,160 @@ def self.compact_response(pv, result)
 # ориентировочность оценки, см. description в .schema.
 ⋮----
 def self.run_failure(pv, error_message)
+</file>
+
+<file path="app/services/crm_cards/permissions.rb">
+module CrmCards
+⋮----
+class Permissions
+CAPABILITIES = %w[create_lead create_object moderate].freeze
+CONFIG_PATH = Rails.root.join('config/crm_permissions.yml').freeze
+⋮----
+Result = Struct.new(:capabilities, :crm_user, :position_title, :denial, keyword_init: true) do
+def can?(capability)
+⋮----
+def self.for(tg_user)
+⋮----
+def self.moderators
+⋮----
+def self.sandbox_capabilities
+⋮----
+def self.positions
+⋮----
+def initialize(tg_user)
+⋮----
+def call
+⋮----
+private
+⋮----
+def deny(reason, crm_user: nil)
+</file>
+
+<file path="app/services/crm_cards/text_intake.rb">
+MIN_TEXT = 12
+MAX_TEXT = 4000
+⋮----
+Result = Struct.new(:values, :model, :error, keyword_init: true) do
+def any? = values.present?
+⋮----
+ACTION_WORDS = {
+⋮----
+REALTY_WORDS = {
+⋮----
+NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)\s*[:\-—]\s*(.+)/i
+⋮----
+NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
+REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:
+⋮----
+def self.call(kind:, text:, client: nil, llm: true, needs: nil)
+⋮----
+def initialize(kind:, text:, client: nil, llm: true, needs: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def too_short? = @text.length < MIN_TEXT
+⋮----
+def schema = Schema.for(@kind)
+⋮----
+def missing_required(values)
+⋮----
+def normalize(raw_values)
+⋮----
+def rules
+⋮----
+def action
+⋮----
+def comment
+⋮----
+KEYS = {
+⋮----
+def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
+⋮----
+def name
+⋮----
+def phone_digits
+⋮----
+def llm_values
+⋮----
+def client = @client ||= Llm::OmniClient.new
+⋮----
+def system_prompt
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def wrong_bot(card)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/external_listings/yrl_parser.rb">
@@ -15607,6 +15847,78 @@ def condition_factor
 def amenities_factor
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/crm_card_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class CrmCardCallback < Base
+def handle
+⋮----
+private
+⋮----
+def workflow
+⋮----
+def show(card)
+⋮----
+def apply(result, success_text)
+⋮----
+def viewer?(card, perms)
+⋮----
+def redraw(view)
+⋮----
+def send_dm(view)
+⋮----
+def private_chat?
+</file>
+
+<file path="app/services/telegram/work_bot/commands/cards.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Cards < Base
+LIMIT = 10
+⋮----
+def handle
+⋮----
+private
+⋮----
+def sections(perms)
+⋮----
+# «Мои» — по CrmCard#responsible, а не по author_id: заявку ведёт
+# текущий ответственный по лиду. Все карточки, ещё не ушедшие в CRM:
+# мастер карточки по лиду отсылает сюда, если карточка уже отправлена.
+def own_cards
+⋮----
+def export_problems
+⋮----
+def line_for(card)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module LeadPicking
+RECENT_LIMIT = 5
+⋮----
+def lead_step
+⋮----
+def lead
+⋮----
+def accept_lead(value)
+⋮----
+def lead_gate
+⋮----
+private
+⋮----
+def recent_leads
+⋮----
+def lead_label(lead)
+</file>
+
 <file path="app/services/valuations/sitemap_comp_finder.rb">
 require 'net/http'
 require 'uri'
@@ -15727,19 +16039,208 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/jobs/llm_reply_job.rb">
-class LlmReplyJob < ApplicationJob
-queue_as :default
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
 ⋮----
-def perform(conversation_id, message_id = nil)
+def about
+⋮----
+def team
+⋮----
+def history
+⋮----
+def contacts
+⋮----
+def send_contact_form
+⋮----
+def services
+⋮----
+def faq
+⋮----
+def privacy
+⋮----
+def terms
+⋮----
+def not_found
+⋮----
+def unprocessable_entity
+⋮----
+def internal_server_error
+⋮----
+def valid_authenticity_token?(session, encoded_masked_token)
+⋮----
+def contact_form_binding
+⋮----
+def contact_form_client_fingerprint
 ⋮----
 private
 ⋮----
-def with_lead_test_mode(conv)
+def validate_contact_form
 ⋮----
-def message_page_snapshot(conv, message_id)
+def valid_email?(email)
+</file>
+
+<file path="app/services/crm_cards/checker.rb">
+module CrmCards
 ⋮----
-def message_payload(m)
+class Checker
+CONDITIONAL_MESSAGES = {
+⋮----
+def self.call(card)
+⋮----
+def self.sandbox_lead?(lead)
+⋮----
+def self.conditionally_required(values)
+⋮----
+def initialize(card)
+⋮----
+def call
+⋮----
+private
+⋮----
+def field_errors
+⋮----
+def lead_rules
+⋮----
+def object_rules
+⋮----
+def area_cents(value)
+⋮----
+def area(value)
+⋮----
+def blank_value?(raw)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmTestLeadFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_test_lead', 'Тестовый лид'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def skip?(step)
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+</file>
+
+<file path="app/services/telegram/work_bot/lead_announcer.rb">
+ROUTING_BUTTONS_PER_ROW = 3
+⋮----
+def self.refresh!(lead_event, client: Telegram::Client.new)
+⋮----
+STAGE_EMOJI = {
+⋮----
+def initialize(lead_event, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def repost_to(target_topic_key)
+⋮----
+def format_card_text
+⋮----
+def keyboard_for_card(topic_key = @lead.anchor_topic_key)
+⋮----
+def test_lead?
+⋮----
+def send_card(topic_key)
+⋮----
+def resolve_target_topic
+⋮----
+lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
+⋮----
+# Valuation block — when lead_ref is completed PropertyValuation.
+# Это блок добавляется TG editMessageText'ом после того как
+# PropertyValuationJob завершил compute (см. LeadAnnouncer.refresh!
+# + PropertyValuationJob#push_to_lead_card). До completion блок
+# отсутствует, card будет sparser.
+⋮----
+lines << "  · Диапазон: #{escape(fmt_rub(valuation.min_price))} – #{escape(fmt_rub(valuation.max_price))}"
+⋮----
+def stage_icon
+⋮----
+def source_label
+⋮----
+def phone_suffix(phone)
+⋮----
+def stage_row
+⋮----
+# Задача и закрытие — мастерами в личке; lead_id едет в callback_data,
+# поэтому «нет reply на якорь» исчезает как класс ошибки.
+def work_row
+⋮----
+# Карточка для CRM. Лид с сайта или из Telegram попадает в CRM только
+# через модерацию (CrmCards::Workflow). В группе — только кнопка и
+# статус: поля с телефоном клиента показываются лишь в личке.
+# Лид, пришедший из CRM (crm_id уже есть), кнопки не получает. На
+# закрытом лиде заполнять нечего — мастер не предлагаем (как «Задачу»
+# и «Закрыть лид»), но статус уже отправленной карточки остаётся виден.
+def crm_row
+⋮----
+def routing_keyboard_for(topic_key)
+⋮----
+def escape(text)
+⋮----
+def fmt_rub(amount)
+⋮----
+def report_url(valuation)
+</file>
+
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
+⋮----
+MIN_FILL_SECONDS = 3
+⋮----
+HONEYPOT_PARAM = :contact_code
+⋮----
+ALERT_THRESHOLD = 10
+⋮----
+REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+⋮----
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def form_csrf_token(binding)
+⋮----
+def verify_form_csrf_token(token, binding)
+⋮----
+def record(reason:, ip:, ua:)
+⋮----
+def counter_key(reason)
+⋮----
+def alert_key(reason)
+⋮----
+def sanitize_user_agent(ua)
+⋮----
+private
+⋮----
+def verifier(purpose = 'contact_form_rendered_at')
+⋮----
+def increment_counter(reason)
+⋮----
+def log_alert(reason, count)
+⋮----
+def mark_alert_fired(reason)
+⋮----
+def initialize(honeypot:, rendered_at:, now: Time.current)
+⋮----
+def call
+⋮----
+private
+⋮----
+def spam(reason)
+⋮----
+def suspicious(reason)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">
@@ -15839,6 +16340,173 @@ def build_recommendations
 def success(payload)
 ⋮----
 def error(message)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module CrmCardSupport
+⋮----
+CLEAR = '__clear__'
+⋮----
+def permissions
+⋮----
+def workflow
+⋮----
+def card
+⋮----
+def field_step(field, id: field.key, prompt: nil, clearable: false)
+⋮----
+PASTE_SKIP = '__steps__'
+⋮----
+def paste_step(kind)
+⋮----
+def accept_paste(kind, value, needs: nil)
+⋮----
+def warn_about_partial_parse(error)
+⋮----
+def pasted_values
+⋮----
+def accept_field(field, value)
+⋮----
+def warn_about_phone(digits)
+⋮----
+def result_view(result)
+⋮----
+def moderator_gate
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/engine.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Engine
+STATE_TYPE = 'wizard'
+TTL = 30.minutes
+⋮----
+FLOWS = {
+⋮----
+SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
+⋮----
+def self.flow_class(key)
+⋮----
+attr_reader :tg_user, :client
+⋮----
+def initialize(tg_user:, client: Telegram::Client.new)
+⋮----
+def self.active?(tg_user)
+⋮----
+def self.current_bot
+⋮----
+def start(flow_key, seed: {})
+⋮----
+def pick(flow_key, step_id, index)
+⋮----
+def ask_manual(flow_key, step_id)
+⋮----
+def text(raw)
+⋮----
+def back(flow_key)
+⋮----
+def cancel
+⋮----
+def menu
+⋮----
+private
+⋮----
+def apply_answer(flow, state, step, value, manual:)
+⋮----
+def render_next(flow, state)
+⋮----
+def finish(flow, state)
+⋮----
+def claim_state!(state)
+⋮----
+def option_values(step)
+⋮----
+def prompt_text(step)
+⋮----
+def step_keyboard(flow, step, state)
+⋮----
+def button(label, flow, step, index)
+⋮----
+def nav_row(state)
+⋮----
+def menu_row
+⋮----
+def foreign_wizard_bot
+⋮----
+def current_state(flow_key, step_id)
+⋮----
+def build_flow(state)
+⋮----
+def find_step(flow, step_id)
+⋮----
+def save(state, sent)
+⋮----
+def strip_previous_prompt
+⋮----
+def strip_prompt(state)
+⋮----
+def send_dm(text, keyboard: nil)
+⋮----
+def dm_chat_id
+⋮----
+def escape_html(text)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmLeadCardFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_lead', 'Карточка заявки для CRM'
+⋮----
+CANDIDATES_LIMIT = 8
+⋮----
+def steps
+⋮----
+def skip?(step)
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def lead_step
+⋮----
+def candidates
+⋮----
+def fetch_candidates
+⋮----
+def accept_lead(value)
+⋮----
+def lead_refusal(target)
+⋮----
+def lead_label(target)
+⋮----
+def lead
+⋮----
+def existing
+⋮----
+def nothing_to_ask?
+⋮----
+def known_values
+⋮----
+def prefill
+⋮----
+SUMMARY_KEYS = %w[action object_type].freeze
+⋮----
+def from_summary(summary)
 </file>
 
 </files>
