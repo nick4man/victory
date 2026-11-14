@@ -2563,6 +2563,81 @@ ALTER SEQUENCE public.show_reports_id_seq OWNED BY public.show_reports.id;
 
 
 --
+-- Name: spam_allowlist_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spam_allowlist_entries (
+    id bigint NOT NULL,
+    domain character varying NOT NULL,
+    manual boolean DEFAULT false NOT NULL,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: spam_allowlist_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.spam_allowlist_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: spam_allowlist_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.spam_allowlist_entries_id_seq OWNED BY public.spam_allowlist_entries.id;
+
+
+--
+-- Name: spam_blocked_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spam_blocked_entries (
+    id bigint NOT NULL,
+    entry_type character varying NOT NULL,
+    value character varying NOT NULL,
+    value_digest character varying NOT NULL,
+    status character varying DEFAULT 'suspect'::character varying NOT NULL,
+    source character varying NOT NULL,
+    hits integer DEFAULT 0 NOT NULL,
+    hit_tokens jsonb DEFAULT '[]'::jsonb NOT NULL,
+    last_hit_at timestamp(6) without time zone,
+    seen_at timestamp(6) without time zone,
+    blocked_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    confirmations jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: spam_blocked_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.spam_blocked_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: spam_blocked_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.spam_blocked_entries_id_seq OWNED BY public.spam_blocked_entries.id;
+
+
+--
 -- Name: staff_metrics; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3662,6 +3737,20 @@ ALTER TABLE ONLY public.show_reports ALTER COLUMN id SET DEFAULT nextval('public
 
 
 --
+-- Name: spam_allowlist_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_allowlist_entries ALTER COLUMN id SET DEFAULT nextval('public.spam_allowlist_entries_id_seq'::regclass);
+
+
+--
+-- Name: spam_blocked_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_blocked_entries ALTER COLUMN id SET DEFAULT nextval('public.spam_blocked_entries_id_seq'::regclass);
+
+
+--
 -- Name: staff_metrics id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -4221,6 +4310,22 @@ ALTER TABLE ONLY public.show_reports
 
 
 --
+-- Name: spam_allowlist_entries spam_allowlist_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_allowlist_entries
+    ADD CONSTRAINT spam_allowlist_entries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: spam_blocked_entries spam_blocked_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_blocked_entries
+    ADD CONSTRAINT spam_blocked_entries_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: staff_metrics staff_metrics_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -4564,6 +4669,20 @@ CREATE UNIQUE INDEX idx_property_valuations_audit_engine_id_unique ON public.pro
 --
 
 CREATE INDEX idx_show_reports_pending_by_reporter ON public.show_reports USING btree (reported_by_id) WHERE ((status)::text = 'pending_confirm'::text);
+
+
+--
+-- Name: idx_spam_allowlist_entries_domain; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_allowlist_entries_domain ON public.spam_allowlist_entries USING btree (domain) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: idx_spam_blocked_entries_type_digest; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_blocked_entries_type_digest ON public.spam_blocked_entries USING btree (entry_type, value_digest);
 
 
 --
@@ -6786,6 +6905,34 @@ CREATE INDEX index_show_reports_on_status_and_conducted_at ON public.show_report
 
 
 --
+-- Name: index_spam_allowlist_entries_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_allowlist_entries_on_deleted_at ON public.spam_allowlist_entries USING btree (deleted_at);
+
+
+--
+-- Name: index_spam_blocked_entries_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_deleted_at ON public.spam_blocked_entries USING btree (deleted_at);
+
+
+--
+-- Name: index_spam_blocked_entries_on_source_and_seen_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_source_and_seen_at ON public.spam_blocked_entries USING btree (source, seen_at) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: index_spam_blocked_entries_on_status_and_entry_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_status_and_entry_type ON public.spam_blocked_entries USING btree (status, entry_type);
+
+
+--
 -- Name: index_staff_metrics_on_date; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7996,9 +8143,12 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261114120000'),
 ('20261114100000'),
 ('20261113100000'),
 ('20261112120000'),
+('20261112090100'),
+('20261112090000'),
 ('20261112034116'),
 ('20261108210000'),
 ('20261108120000'),
