@@ -19,7 +19,7 @@ Visitor message → ChatResponder
   → PageContext (what page is visitor on?)
   → OmniClient (LLM call with available tools)
     ↓ if tool_call
-  → ToolRunner (executes one of 12 chat_tools — 16 files incl. helpers)
+  → ToolRunner (executes one of 13 chat_tools — 17 files incl. helpers)
     ↓ result
   → OmniClient (LLM formats user-facing reply)
   → response back to chat widget
@@ -35,7 +35,7 @@ Visitor message → ChatResponder
 - **`page_context.rb`** — extracts visitor's current page context (URL, property, district, …)
 - **`page_greeting.rb`** — initial greeting based on page
 
-### Tools (`app/services/chat_tools/`, 16 files)
+### Tools (`app/services/chat_tools/`, 17 files)
 - `base.rb` — base class with `name`, `description`, `parameters` JSON Schema, `call`
 - `registry.rb` — collects all tools for OmniClient
 - `format.rb`, `url.rb` — helpers
@@ -52,6 +52,7 @@ Visitor message → ChatResponder
   - `get_landing_content.rb` — page content fetch
   - `submit_review.rb` — moderated review submission
   - `qualify_lead.rb` — lead qualification after valuation
+  - `request_specialist_evaluation.rb` — передача запроса на оценку специалисту (Inquiry evaluation → work_bot #ОЦЕНКА, issue #176)
 
 ### Models
 - `Conversation` — chat session per visitor

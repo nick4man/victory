@@ -6911,6 +6911,43 @@ def flip_to_pending_consent!
 def send_email!
 </file>
 
+<file path="app/services/chat_tools/request_specialist_evaluation.rb">
+module ChatTools
+⋮----
+module RequestSpecialistEvaluation
+REQUIRED = %w[name phone].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+DEDUPE_WINDOW = 5.minutes
+⋮----
+MIN_ORIENT_COUNT = 3
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.find_recent_duplicate(phone)
+⋮----
+def self.duplicate_response(inquiry)
+⋮----
+def self.find_valuation(token)
+⋮----
+# Агрегат по похожим оценкам, сохранённый EstimatePropertyValuation в
+# evaluation_data (jsonb → ключи строки после reload).
+def self.extract_similar(pv)
+⋮----
+def self.orientation_line(pv, similar)
+⋮----
+def self.express_line(pv)
+⋮----
+def self.build_summary(args, orientation, pv = nil)
+⋮----
+def self.area_display(args, pv)
+⋮----
+def self.format_area(value, unit)
+</file>
 <file path="app/services/chat_tools/staff/agent_status.rb">
 module ChatTools
 module Staff
@@ -11475,6 +11512,44 @@ def redis
 require 'redis' unless defined?(Redis)
 </file>
 
+<file path="app/services/valuations/price_formatter.rb">
+module Valuations
+⋮----
+module PriceFormatter
+module_function
+⋮----
+def format_rub(amount)
+</file>
+<file path="app/services/valuations/similar_valuations_finder.rb">
+module Valuations
+⋮----
+class SimilarValuationsFinder
+⋮----
+CANDIDATE_LIMIT = 100
+MAX_PAGES       = 5
+MIN_COSINE = 0.75
+MIN_COUNT  = 3
+⋮----
+STAFF_SOURCE = 'work_bot'
+⋮----
+def self.call(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def collect_prices(vector, subject_city)
+⋮----
+def candidate_scope(vector)
+⋮----
+def price_for(row, subject_city)
+⋮----
+def aggregate(prices)
+⋮----
+def zero_result
+</file>
 <file path="app/services/yandex/webmaster_opportunities_service.rb">
 module Yandex
 ⋮----
