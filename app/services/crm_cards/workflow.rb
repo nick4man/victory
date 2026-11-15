@@ -313,7 +313,7 @@ module CrmCards
         unless card.status_export_failed? || card.status_exporting? || card.status_approved?
           next deny("Привязывать нечего (#{label(card)}).")
         end
-        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.status_approved? && card.released_at.blank?
+        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.released_at.blank?
 
         transition!(card, to: 'exported', actor: actor, comment: "привязан номер из CRM после сверки: #{digits}")
         card.update!(crm_id: digits, exported_at: Time.current, export_error: nil,
