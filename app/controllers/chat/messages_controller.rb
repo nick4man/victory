@@ -32,6 +32,7 @@ module Chat
       # посетитель мог уйти на другую страницу после открытия чата.
       page_ctx = extract_page_params
       stamp_page(conv, page_ctx) if page_ctx
+      stamp_auto_test(conv)
 
       msg = ChatMessage.create!(
         conversation: conv,

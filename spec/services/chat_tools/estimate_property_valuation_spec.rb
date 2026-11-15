@@ -46,6 +46,56 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     expect { call_tool }.to have_enqueued_job(EmbedPropertyValuationJob)
   end
 
+  describe 'тест-режим чат-бота (issue #214)' do
+    after { Thread.current[:lead_test_mode] = false }
+
+    it 'probe-прогон: valuation создаётся с metadata["test"]=true' do
+      Thread.current[:lead_test_mode] = true
+      call_tool
+
+      expect(PropertyValuation.order(:id).last.metadata['test']).to be(true)
+    end
+
+    it 'боевой прогон: тест-флага в metadata нет' do
+      call_tool
+
+      expect(PropertyValuation.order(:id).last.metadata).not_to have_key('test')
+    end
+
+    it 'test? true только при metadata["test"]=true' do
+      pv = PropertyValuation.new(metadata: { 'test' => true })
+      expect(pv).to be_test
+      expect(PropertyValuation.new(metadata: {})).not_to be_test
+      expect(PropertyValuation.new(metadata: nil)).not_to be_test
+    end
+
+    it 'push_to_work_bot прокидывает тест-флаг в payload Lead::Intake' do
+      pv = PropertyValuation.new(metadata: { 'test' => true }, token: 'tok-1')
+      allow(pv).to receive_messages(
+        full_name: 'Тест', estimated_price_formatted: '5 400 000 ₽', test?: true
+      )
+
+      expect(Lead::Intake).to receive(:call) do |args|
+        expect(args[:payload][:test]).to be(true)
+        Lead::Intake::Result.new(success: true)
+      end
+      pv.send(:push_to_work_bot)
+    end
+
+    it 'боевой valuation шлёт test: false — маршрут не меняется' do
+      pv = PropertyValuation.new(metadata: {}, token: 'tok-2')
+      allow(pv).to receive_messages(
+        full_name: 'Клиент', estimated_price_formatted: '5 400 000 ₽', test?: false
+      )
+
+      expect(Lead::Intake).to receive(:call) do |args|
+        expect(args[:payload][:test]).to be(false)
+        Lead::Intake::Result.new(success: true)
+      end
+      pv.send(:push_to_work_bot)
+    end
+  end
+
   describe 'участок (land) — нормализация площади и реальный PropertyEvaluationService' do
     before do
       allow(PropertyEvaluationService).to receive(:new).and_call_original

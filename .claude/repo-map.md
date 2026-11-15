@@ -689,6 +689,7 @@ app/
     cabinet_invitation_tg_service.rb
     cian_feed_mapper.rb
     cities.rb
+    contact_form_spam_guard.rb
     currency_rates_service.rb
     express_report_notifier.rb
     listing_stats.rb
@@ -3027,42 +3028,6 @@ def adjacent_article(article, direction)
 def safe_macro
 ⋮----
 def fallback_macro
-</file>
-
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
-⋮----
-def about
-⋮----
-def team
-⋮----
-def history
-⋮----
-def contacts
-⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-private
-⋮----
-def validate_contact_form
-⋮----
-def valid_email?(email)
-⋮----
-def check_spam
 </file>
 
 <file path="app/controllers/premium_controller.rb">
@@ -10161,6 +10126,25 @@ class WipStub < Base
 def handle
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/wizard_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class WizardCallback < Base
+def handle
+⋮----
+private
+⋮----
+def engine
+⋮----
+def start(flow_key, seed_id)
+⋮----
+def answer(outcome)
+⋮----
+def in_private_chat?
+</file>
+
 <file path="app/services/telegram/work_bot/commands/assign.rb">
 module Telegram
 module WorkBot
@@ -10679,6 +10663,66 @@ def escape(text)
 def skip(reason)
 </file>
 
+<file path="app/services/telegram/work_bot/wizard/flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Flow
+Step = Struct.new(:id, :kind, :prompt, :hint, :options, :quick, :manual,
+⋮----
+attr_reader :key, :title
+⋮----
+def flow(key, title)
+⋮----
+def manager_only(val = true)
+⋮----
+def manager_only?
+⋮----
+attr_reader :tg_user, :ctx, :client
+⋮----
+def initialize(tg_user:, ctx: {}, client: Telegram::Client.new)
+⋮----
+def steps
+⋮----
+def skip?(_step)
+⋮----
+def accept(_step, value, manual: false)
+⋮----
+def gate
+⋮----
+def finish
+⋮----
+protected
+⋮----
+def escape_html(text)
+⋮----
+def manager?
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+module LeadPicking
+RECENT_LIMIT = 5
+⋮----
+def lead_step
+⋮----
+def lead
+⋮----
+def accept_lead(value)
+⋮----
+def lead_gate
+⋮----
+private
+⋮----
+def recent_leads
+⋮----
+def lead_label(lead)
+</file>
+
 <file path="app/services/telegram/work_bot/anchor_migrator.rb">
 module Telegram
 module WorkBot
@@ -10814,6 +10858,21 @@ def call
 "• tg_id: <code>#{tu.tg_user_id}</code>\n\n" \
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks_router.rb">
+module Telegram
+module WorkBot
+⋮----
+class CallbacksRouter
+⋮----
+PREFIX_MAP = {
+⋮----
+def initialize(callback_query, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
 </file>
 
 <file path="app/services/telegram/work_bot/cheatsheet_renderer.rb">
@@ -11081,6 +11140,22 @@ def notify_assignee
 def escape(text)
 </file>
 
+<file path="app/services/telegram/work_bot/lead_closure.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadClosure
+OUTCOMES = ['closed_won', 'closed_lost'].freeze
+⋮----
+def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+private
+⋮----
+def push_close_note
+</file>
+
 <file path="app/services/telegram/work_bot/lead_stage_transition.rb">
 module Telegram
 module WorkBot
@@ -11118,6 +11193,24 @@ def compose_message(perspective, label, prev_stage)
 def resolve_client_user
 ⋮----
 def resolve_seller_user
+</file>
+
+<file path="app/services/telegram/work_bot/lead_task_creator.rb">
+module Telegram
+module WorkBot
+⋮----
+class LeadTaskCreator
+Result = Struct.new(:task, :crm, keyword_init: true)
+⋮----
+def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def due_at
+⋮----
+def push_due_to_crm
 </file>
 
 <file path="app/services/telegram/work_bot/owner_intake_processor.rb">
@@ -11416,6 +11509,32 @@ def normalize_username(raw)
 def normalize_enum(value, allowed, default)
 ⋮----
 def parse_due_at(raw)
+</file>
+
+<file path="app/services/telegram/work_bot/task_reopen.rb">
+module Telegram
+module WorkBot
+⋮----
+class TaskReopen
+REOPEN_WINDOW = 24.hours
+⋮----
+Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
+⋮----
+def initialize(task, actor:, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def self.authorized?(task, actor)
+⋮----
+def self.closed_at(task)
+⋮----
+def self.expired?(task)
+⋮----
+private
+⋮----
+def notify_assignee_if_third_party(prev_status)
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/telegram/work_bot/topic_discovery.rb">
@@ -13987,31 +14106,23 @@ def post(path) = request(Net::HTTP::Post.new(URI("#{API}#{path}")))
 def request(req)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/wizard_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class WizardCallback < Base
-def handle
-⋮----
-private
-⋮----
-def engine
-⋮----
-def start(flow_key, seed_id)
-⋮----
-def answer(outcome)
-⋮----
-def in_private_chat?
-</file>
-
 <file path="app/services/telegram/work_bot/commands/menu.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
 class Menu < Base
+def handle
+</file>
+
+<file path="app/services/telegram/work_bot/commands/reopen.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Reopen < Base
+REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
+⋮----
 def handle
 </file>
 
@@ -14043,79 +14154,54 @@ def summary
 def without_comments(text)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/flow.rb">
+<file path="app/services/telegram/work_bot/wizard/menu.rb">
 module Telegram
 module WorkBot
 module Wizard
 ⋮----
-class Flow
-Step = Struct.new(:id, :kind, :prompt, :hint, :options, :quick, :manual,
+module Menu
+module_function
 ⋮----
-attr_reader :key, :title
+def text(_tg_user)
 ⋮----
-def flow(key, title)
+def keyboard(tg_user)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
 ⋮----
-def manager_only(val = true)
+class TaskFlow < Flow
+include LeadPicking
 ⋮----
-def manager_only?
+flow 'task', 'Задача с дедлайном'
 ⋮----
-attr_reader :tg_user, :ctx, :client
-⋮----
-def initialize(tg_user:, ctx: {}, client: Telegram::Client.new)
+TITLE_MAX = 255
 ⋮----
 def steps
 ⋮----
-def skip?(_step)
-⋮----
-def accept(_step, value, manual: false)
+def skip?(step)
 ⋮----
 def gate
 ⋮----
+def accept(step, value, manual: false)
+⋮----
 def finish
-⋮----
-protected
-⋮----
-def escape_html(text)
-⋮----
-def manager?
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module LeadPicking
-RECENT_LIMIT = 5
-⋮----
-def lead_step
-⋮----
-def lead
-⋮----
-def accept_lead(value)
-⋮----
-def lead_gate
 ⋮----
 private
 ⋮----
-def recent_leads
+def quick_dates
 ⋮----
-def lead_label(lead)
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks_router.rb">
-module Telegram
-module WorkBot
+def assignee_options
 ⋮----
-class CallbacksRouter
+def accept_due(value)
 ⋮----
-PREFIX_MAP = {
+def accept_title(value)
 ⋮----
-def initialize(callback_query, client: Telegram::Client.new)
+def accept_assignee(value)
 ⋮----
-def call
-⋮----
-def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
+def crm_line(status)
 </file>
 
 <file path="app/services/telegram/work_bot/lead_announcer.rb">
@@ -14168,66 +14254,6 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
-</file>
-
-<file path="app/services/telegram/work_bot/lead_closure.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadClosure
-OUTCOMES = ['closed_won', 'closed_lost'].freeze
-⋮----
-def initialize(lead, new_stage, actor:, reason: nil, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-private
-⋮----
-def push_close_note
-</file>
-
-<file path="app/services/telegram/work_bot/lead_task_creator.rb">
-module Telegram
-module WorkBot
-⋮----
-class LeadTaskCreator
-Result = Struct.new(:task, :crm, keyword_init: true)
-⋮----
-def initialize(lead, due_date:, title:, actor:, assignee: nil, tg_message_id: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def due_at
-⋮----
-def push_due_to_crm
-</file>
-
-<file path="app/services/telegram/work_bot/task_reopen.rb">
-module Telegram
-module WorkBot
-⋮----
-class TaskReopen
-REOPEN_WINDOW = 24.hours
-⋮----
-Result = Struct.new(:status, :prev_status, :closed_at, keyword_init: true)
-⋮----
-def initialize(task, actor:, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def self.authorized?(task, actor)
-⋮----
-def self.closed_at(task)
-⋮----
-def self.expired?(task)
-⋮----
-private
-⋮----
-def notify_assignee_if_third_party(prev_status)
-⋮----
-def escape_html(text)
 </file>
 
 <file path="app/services/telegram/client.rb">
@@ -14300,6 +14326,23 @@ def stream_to_io(remote_path, io)
 def with_network_retry(label)
 ⋮----
 def api_call(method, body = {}, retried: false)
+</file>
+
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/valuations/ai_synthetic_comps.rb">
@@ -14504,6 +14547,42 @@ def normalize_payload(p)
 def safe_parse_time(value)
 ⋮----
 def upsert_article(attrs)
+</file>
+
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
+⋮----
+def about
+⋮----
+def team
+⋮----
+def history
+⋮----
+def contacts
+⋮----
+def send_contact_form
+⋮----
+def services
+⋮----
+def faq
+⋮----
+def privacy
+⋮----
+def terms
+⋮----
+def not_found
+⋮----
+def unprocessable_entity
+⋮----
+def internal_server_error
+⋮----
+private
+⋮----
+def validate_contact_form
+⋮----
+def valid_email?(email)
+⋮----
+def check_spam
 </file>
 
 <file path="app/jobs/embed_property_valuation_job.rb">
@@ -14837,6 +14916,22 @@ def audit!(outcome, args:, error_class: nil, error_message: nil)
 def command_key
 </file>
 
+<file path="app/services/telegram/work_bot/commands/close.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Close < Base
+⋮----
+OUTCOME_MAP = {
+⋮----
+def handle
+⋮----
+private
+⋮----
+def parse_args
+</file>
+
 <file path="app/services/telegram/work_bot/commands/help.rb">
 module Telegram
 module WorkBot
@@ -14869,28 +14964,13 @@ def group_chat?
 def send_full_via_dm(text)
 </file>
 
-<file path="app/services/telegram/work_bot/commands/reopen.rb">
+<file path="app/services/telegram/work_bot/commands/task.rb">
 module Telegram
 module WorkBot
 module Commands
 ⋮----
-class Reopen < Base
-REOPEN_WINDOW = TaskReopen::REOPEN_WINDOW
-⋮----
+class Task < Base
 def handle
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/menu.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module Menu
-module_function
-⋮----
-def text(_tg_user)
-⋮----
-def keyboard(tg_user)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/reopen_flow.rb">
@@ -14925,43 +15005,6 @@ def accept_task(value)
 def new_task_callback(task)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/task_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class TaskFlow < Flow
-include LeadPicking
-⋮----
-flow 'task', 'Задача с дедлайном'
-⋮----
-TITLE_MAX = 255
-⋮----
-def steps
-⋮----
-def skip?(step)
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def finish
-⋮----
-private
-⋮----
-def quick_dates
-⋮----
-def assignee_options
-⋮----
-def accept_due(value)
-⋮----
-def accept_title(value)
-⋮----
-def accept_assignee(value)
-⋮----
-def crm_line(status)
-</file>
-
 <file path="app/services/telegram/work_bot/router.rb">
 module Telegram
 module WorkBot
@@ -14992,21 +15035,25 @@ def reply(text)
 def escape(text)
 </file>
 
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
+⋮----
+MIN_FILL_SECONDS = 3
+SESSION_KEY = :contact_form_rendered_at
+⋮----
+HONEYPOT_PARAM = :website
+⋮----
+REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+⋮----
+Result = Struct.new(:spam, :reason, keyword_init: true)
+⋮----
+def initialize(honeypot:, rendered_at:, now: Time.current)
 ⋮----
 def call
 ⋮----
-def serialize(m)
+private
 ⋮----
-def log_and_ignore(reason)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_text(msg)
+def spam(reason)
 </file>
 
 <file path="Gemfile">
@@ -15325,31 +15372,6 @@ def condition_factor
 def amenities_factor
 </file>
 
-<file path="app/services/telegram/work_bot/commands/close.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Close < Base
-⋮----
-OUTCOME_MAP = {
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse_args
-</file>
-
-<file path="app/services/telegram/work_bot/commands/task.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Task < Base
-def handle
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/close_flow.rb">
 module Telegram
 module WorkBot
@@ -15381,6 +15403,82 @@ private
 def confirm_prompt
 ⋮----
 def accept_reason(value, manual)
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/engine.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class Engine
+STATE_TYPE = 'wizard'
+TTL = 30.minutes
+⋮----
+FLOWS = {
+⋮----
+SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
+⋮----
+def self.flow_class(key)
+⋮----
+attr_reader :tg_user, :client
+⋮----
+def initialize(tg_user:, client: Telegram::Client.new)
+⋮----
+def self.active?(tg_user)
+⋮----
+def start(flow_key, seed: {})
+⋮----
+def pick(flow_key, step_id, index)
+⋮----
+def ask_manual(flow_key, step_id)
+⋮----
+def text(raw)
+⋮----
+def back(flow_key)
+⋮----
+def cancel
+⋮----
+def menu
+⋮----
+private
+⋮----
+def apply_answer(flow, state, step, value, manual:)
+⋮----
+def render_next(flow, state)
+⋮----
+def finish(flow, state)
+⋮----
+def claim_state!(state)
+⋮----
+def option_values(step)
+⋮----
+def prompt_text(step)
+⋮----
+def step_keyboard(flow, step, state)
+⋮----
+def button(label, flow, step, index)
+⋮----
+def nav_row(state)
+⋮----
+def menu_row
+⋮----
+def current_state(flow_key, step_id)
+⋮----
+def build_flow(state)
+⋮----
+def find_step(flow, step_id)
+⋮----
+def save(state, sent)
+⋮----
+def strip_previous_prompt
+⋮----
+def strip_prompt(state)
+⋮----
+def send_dm(text, keyboard: nil)
+⋮----
+def dm_chat_id
+⋮----
+def escape_html(text)
 </file>
 
 <file path="app/services/valuations/sitemap_comp_finder.rb">
@@ -15501,82 +15599,6 @@ def persist(parsed_list)
 def resolve_city(record, card_city)
 ⋮----
 def sane?(p)
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/engine.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class Engine
-STATE_TYPE = 'wizard'
-TTL = 30.minutes
-⋮----
-FLOWS = {
-⋮----
-SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task' }.freeze
-⋮----
-def self.flow_class(key)
-⋮----
-attr_reader :tg_user, :client
-⋮----
-def initialize(tg_user:, client: Telegram::Client.new)
-⋮----
-def self.active?(tg_user)
-⋮----
-def start(flow_key, seed: {})
-⋮----
-def pick(flow_key, step_id, index)
-⋮----
-def ask_manual(flow_key, step_id)
-⋮----
-def text(raw)
-⋮----
-def back(flow_key)
-⋮----
-def cancel
-⋮----
-def menu
-⋮----
-private
-⋮----
-def apply_answer(flow, state, step, value, manual:)
-⋮----
-def render_next(flow, state)
-⋮----
-def finish(flow, state)
-⋮----
-def claim_state!(state)
-⋮----
-def option_values(step)
-⋮----
-def prompt_text(step)
-⋮----
-def step_keyboard(flow, step, state)
-⋮----
-def button(label, flow, step, index)
-⋮----
-def nav_row(state)
-⋮----
-def menu_row
-⋮----
-def current_state(flow_key, step_id)
-⋮----
-def build_flow(state)
-⋮----
-def find_step(flow, step_id)
-⋮----
-def save(state, sent)
-⋮----
-def strip_previous_prompt
-⋮----
-def strip_prompt(state)
-⋮----
-def send_dm(text, keyboard: nil)
-⋮----
-def dm_chat_id
-⋮----
-def escape_html(text)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">

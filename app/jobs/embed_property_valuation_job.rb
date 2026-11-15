@@ -18,8 +18,9 @@ class EmbedPropertyValuationJob < ApplicationJob
     valuation = PropertyValuation.find_by(id: property_valuation_id)
     return unless valuation&.completed? && !valuation.audit_mode_investment?
     # staff_test — тестовые оценки сотрудников: в semantic-поиск похожих
-    # для клиентов они не должны попадать (issue #201)
-    return if valuation.staff_test?
+    # для клиентов они не должны попадать (issue #201).
+    # test? — probe-прогон чат-бота (issue #214): аналогично вне корпуса.
+    return if valuation.staff_test? || valuation.test?
 
     text = ::Embedding::PropertyValuationTextTemplate.build(valuation)
     return if text.blank?

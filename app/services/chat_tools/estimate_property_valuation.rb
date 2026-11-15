@@ -143,7 +143,11 @@ module ChatTools
         token:              SecureRandom.uuid,
         status:             'pending',
         ip_address:         '0.0.0.0',
-        user_agent:         'chat-bot'
+        user_agent:         'chat-bot',
+        # Тест-режим чат-бота (issue #214): probe-прогон → valuation с
+        # metadata['test']=true, чтобы её карточка ушла в тестовый чат, а не
+        # в рабочий топик #ОЦЕНКА (см. PropertyValuation#push_to_work_bot).
+        metadata:           Thread.current[:lead_test_mode] == true ? { 'test' => true } : {}
       )
     end
 

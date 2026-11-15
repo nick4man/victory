@@ -99,12 +99,33 @@ class PagesController < ApplicationController
     
     # Contact form object
     @contact_form = ContactForm.new if defined?(ContactForm)
-    
+
+    # #223: бот шлёт submit мгновенно после рендера — порог ловит это прозрачно.
+    session[ContactFormSpamGuard::SESSION_KEY] = Time.current.to_f
+
     track_event('contacts_page_viewed')
   end
-  
+
   # POST /contacts
   def send_contact_form
+    # Timestamp — только тайминг-сигнал, не nonce: cookie_store не даёт
+    # одноразовости (старый cookie остаётся валидным), replay намеренно
+    # не блокируем — следующий шаг из #223 при продолжении потока — капча.
+    guard = ContactFormSpamGuard.new(
+      honeypot: params[ContactFormSpamGuard::HONEYPOT_PARAM],
+      rendered_at: session[ContactFormSpamGuard::SESSION_KEY]
+    ).call
+    if guard.spam
+      # Молчаливый дроп (#223): бот не должен узнать, что его раскрыли.
+      Rails.logger.info(
+        "[contact_form] spam dropped reason=#{guard.reason} ip=#{request.remote_ip} " \
+        "ua=#{request.user_agent.to_s.truncate(120)}"
+      )
+      flash[:notice] = I18n.t('messages.contact_form_success')
+      redirect_to contacts_path
+      return
+    end
+
     @name = params[:name]
     @email = params[:email]
     @phone = params[:phone]
@@ -140,7 +161,7 @@ class PagesController < ApplicationController
         inquiry_id: inquiry.id
       })
       
-      flash[:notice] = 'Спасибо за обращение! Мы свяжемся с вами в ближайшее время.'
+      flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path
     else
       flash[:alert] = 'Ошибка при отправке сообщения. Попробуйте позже.'

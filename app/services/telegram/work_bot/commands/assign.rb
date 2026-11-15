@@ -20,6 +20,9 @@ module Telegram
           lead = resolve_lead!
           return reply(lead_not_found_hint('assign')) unless lead
 
+          guard = staff_test_guard(lead)
+          return guard if guard
+
           username = @args.to_s.strip
 
           # Phase 15 polish — если username пустой, показываем inline picker

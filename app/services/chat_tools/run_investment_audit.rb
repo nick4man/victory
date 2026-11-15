@@ -100,6 +100,11 @@ module ChatTools
         property_condition: CONDITION_TO_PV.fetch(prop.condition.to_s, prop.condition.to_s),
         estimated_price: prop.price,
         metro_station: prop.metro_station, metro_distance: prop.metro_distance,
+        # Тест-режим чат-бота (issue #214): probe-прогон → valuation с
+        # metadata['test']=true — карточка и готовый аудит уходят в тестовый
+        # чат, а не в рабочие #ОЦЕНКА/staff (см. PropertyValuation#push_to_work_bot,
+        # AuditReportNotifier#target_chat_id).
+        metadata: Thread.current[:lead_test_mode] == true ? { 'test' => true } : {},
         evaluation_data: {
           'source' => 'chat_bot',
           'source_property_id' => prop.id,

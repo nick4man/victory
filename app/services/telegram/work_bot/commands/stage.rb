@@ -29,6 +29,9 @@ module Telegram
           lead = resolve_lead!
           return reply(lead_not_found_hint('stage показ')) unless lead
 
+          guard = staff_test_guard(lead)
+          return guard if guard
+
           new_stage = STAGE_MAP[@args.downcase.strip]
           unless new_stage
             return reply("Неизвестная стадия. Доступно: <code>#{STAGE_MAP.keys.join(', ')}</code>")

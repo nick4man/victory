@@ -21,6 +21,10 @@ module Telegram
 
       # @return [Boolean] true если миграция произошла, false если skipped
       def call
+        # Тест-лид (issue #214): живёт в тестовом чате без топиков —
+        # миграция в рабочую группу запрещена (кнопок у тест-карточки нет,
+        # но callback может быть подделан).
+        return log_skip('test lead — routing disabled (issue #214)') if test_lead?
         return log_skip('invalid target topic_key') unless valid_target?
         return log_skip('already at target topic')  if @lead.anchor_topic_key == @target_key
 
@@ -46,6 +50,16 @@ module Telegram
       end
 
       private
+
+      def test_lead?
+        return true if (@lead.metadata || {})['test'] == true
+
+        # Issue #227: lead_ref staff_test — изоляция та же, что metadata['test']
+        # (см. LeadAnnouncer#test_lead?): маршрутизация в рабочую группу
+        # запрещена и без явного флага в метадате.
+        lead_ref = @lead.lead_ref
+        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
+      end
 
       def valid_target?
         Telegram::TopicRegistry.valid_key?(@target_key)

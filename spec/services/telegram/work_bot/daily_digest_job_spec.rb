@@ -81,5 +81,27 @@ RSpec.describe Telegram::WorkBot::DailyDigestJob do
         a_string_matching(/Доброе утро/), hash_including(chat_id: 100_001)
       )
     end
+
+    # Issue #214 (ревью PR #221, round 3): probe-прогон чат-бота
+    # (staff_test=true) не должен попадать в утреннюю сводку директора.
+    it 'probe-лиды (staff_test) не считаются в сводке' do
+      lead_ref = User.find_or_create_by!(email: "stub-#{SecureRandom.hex(4)}@victory.ru") do |u|
+        u.password = SecureRandom.urlsafe_base64(20)
+        u.first_name = 'Test'; u.last_name = 'Stub'; u.role = :client; u.active = true
+      end
+      travel_to(Time.zone.local(2026, 5, 22, 10, 0)) do
+        LeadEvent.create!(
+          lead_ref: lead_ref, source: 'site_form', current_stage: 'new',
+          anchor_topic_key: 'dispatcher', tg_chat_id: -100_999_888,
+          metadata: { 'name' => 'Мария Соколова', 'test' => true },
+          created_at: 1.day.ago
+        )
+        described_class.new.perform
+      end
+      expect(tg_client).to have_received(:send_message).with(
+        a_string_matching(/Лиды: <b>0<\/b> новых/),
+        hash_including(chat_id: 100_001)
+      )
+    end
   end
 end

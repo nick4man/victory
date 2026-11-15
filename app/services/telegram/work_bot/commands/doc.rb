@@ -64,7 +64,8 @@ module Telegram
           reply_to = message['reply_to_message']
           return nil unless reply_to
 
-          LeadEvent.find_by(anchor_message_id: reply_to['message_id'])
+          # Пара (chat, message_id): ID уникальны только внутри чата (issue #214).
+          LeadEvent.find_by(tg_chat_id: message.dig('chat', 'id'), anchor_message_id: reply_to['message_id'])
         end
       end
     end
