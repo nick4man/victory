@@ -14578,16 +14578,6 @@ extend ActiveSupport::Concern
 COOKIE_NAME = :visitor_token
 COOKIE_TTL  = 90.days
 ⋮----
-PROBE_TOKEN_PATTERN = /\Aprobe-([a-z0-9][a-z0-9-]{0,15})-([0-9a-f]{16})\z/.freeze
-⋮----
-def self.probe_token(name = nil)
-⋮----
-def self.valid_probe_token?(token)
-⋮----
-def self.probe_signature(base)
-⋮----
-private_class_method :probe_signature
-⋮----
 included do
 before_action :ensure_visitor_token
 ⋮----

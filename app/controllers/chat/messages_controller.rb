@@ -19,7 +19,9 @@ module Chat
         visitor_token:   current_visitor_token,
         user_id:         current_user&.id,
         status:          :active,
-        last_message_at: Time.current
+        last_message_at: Time.current,
+        # probe-прогон (issue #214/#229): маркер в metadata, токен случайный.
+        metadata:        current_visitor_probe? ? { 'test_probe' => true } : {}
       )
 
       return render(json: { error: 'rate_limited' }, status: :too_many_requests) if rate_limited?
