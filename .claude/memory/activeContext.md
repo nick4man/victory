@@ -89,7 +89,7 @@ GHCR через него. `GH_API_TOKEN` (fine-grained, в `~/.zshenv`) — по
 
 ## Стек — коротко
 
-Rails **8.1.3.1**, Ruby **3.4.10** в worktree-сессиях (Ruby 3.3 EOL 31.03.27; прод-контейнеры получают 3.4.10 при пересборке образов).
+Rails **8.1.4.1**, Ruby **3.4.10** в worktree-сессиях и прод-контейнерах (Ruby 3.3 EOL 31.03.27).
 `config.load_defaults` намеренно оставлен на **7.1** — подъём отложен, см.
 `project_rails8_eol_phase2` в auto-memory. Подробности — `techContext.md`.
 
