@@ -120,13 +120,13 @@ bin/rb --web up                                     # долгоживущий d
 bin/rb bundle exec rake repo:map                    # регенерация repo-index/repo-map
 ```
 
-Работает на любой машине (нужен только python3):
+Работает на любой машине (stdlib `python3`, для `zhk-registry` — пакеты из его `requirements.txt` в venv):
 
 ```bash
 python3 bin/services-check                          # правила служб services/ (джоб в CI)
 cd services/urgent-news-collector && python3 -m unittest \
   test_urgent_relevance test_classify_retry test_model_chains -v  # без сети и БД
-cd services/zhk-registry && python3 -m unittest discover -v       # нужны pydantic + requests в venv
+cd services/zhk-registry && python3 -m unittest discover -v       # нужен venv с pip install -r requirements.txt
 ```
 
 Визуальные регрессии (Playwright, снапшоты `tests/visual/*-snapshots/` **коммитятся**):
@@ -226,7 +226,7 @@ Devise — вернуть gem в Gemfile и пройти ревью.
 
 | Служба | Язык | Назначение |
 |---|---|---|
-| `audit-engine/` | Python (FastAPI) | инвестиционный аудит (sidecar через Faraday+Stoplight; профиль `audit`, `bin/audit-stack`); перенос `in-progress` (нет тестов, срок `31.03.27`) |
+| `audit-engine/` | Python (FastAPI) | инвестиционный аудит (sidecar через Faraday+Stoplight; профиль `audit`, `bin/audit-stack`); перенос `in-progress` (pytest в `engine/tests/`, срок `31.03.27`) |
 | `urgent-news-collector/` | Python | конвейер новостей: срочные + дайджест + ставки банков; контейнер `conveyor` (профиль `conveyor`, переехал на victory 13.10.26) |
 | `content-publisher/` | Python | Telegram-публикатор очереди новостей (`publisher`, профиль `conveyor`) |
 | `zhk-registry/` | Python | реестр ЖК; контейнер в боевом compose, единственный вход — вебхук `/webhooks/zhk_ingest` |

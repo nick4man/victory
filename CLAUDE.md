@@ -1,6 +1,6 @@
 # CLAUDE.md — АН «Виктори» Real Estate Platform
 
-Rails 8.1.3.1 / Ruby 3.4.10 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language real estate platform. **PRODUCTION** at https://victory62.org.
+Rails 8.1.4.1 / Ruby 3.4.10 / PostgreSQL 15+ + PostGIS + pgvector. Russian-language real estate platform. **PRODUCTION** at https://victory62.org.
 
 ⚠️ Ruby: рантайм **3.4.10** (`Gemfile`, `.ruby-version`, `mise.toml`, `Dockerfile`). Прод-контейнеры переезжают на 3.4.10 только после пересборки образов и пересоздания volume `victory_bundle` — процедура в `.claude/memory/techContext.md`, секция «Деплой смены Ruby/Rails». `.rubocop.yml` намеренно таргетирует 3.2 как нижнюю границу.
 
