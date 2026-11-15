@@ -58,6 +58,54 @@ module CrmCards
       refresh_lead_anchor(card)
     end
 
+    # Правка опубликованной карточки: заявку видит модератор, решение — автор.
+    def change_requested(request, moderators:)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      field = Schema.field(card.kind, request.field)
+      head = "✏️ <b>Правка опубликованной карточки ##{card.id}</b> от #{escape(request.author.mention)}\n" \
+             "#{escape(label)}: «#{escape(shown(field, request.old_value))}» → " \
+             "«#{escape(shown(field, request.new_value))}»"
+      delivered = moderators.count { |m| deliver(m, head, card) }
+      if moderators.empty?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но модераторов с доступом к CRM " \
+                           'нет — согласовать её некому. Сообщи директору.')
+      elsif delivered.zero?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
+                           'Сообщи ему другим способом.')
+      end
+    end
+
+    # Заметку в CRM записать не удалось: обещать «там уже есть запись» нельзя.
+    def change_note_failed(request)
+      dm(request.reviewer, "⚠️ Правка по карточке ##{request.crm_card_id} принята, но записать заметку в CRM " \
+                           'не вышло. Скажи ответственному о согласовании другим способом.')
+    end
+
+    def change_decided(request, note_ok: true)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      text = if request.status_approved?
+               approved_text = "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n"
+               if note_ok
+                 approved_text + 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+               else
+                 approved_text + 'Поправь это поле в CRM, а заметку о согласовании придётся внести вручную: ' \
+                                'автоматическая запись не удалась.'
+               end
+             else
+               "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
+             end
+      dm(request.author, text)
+    end
+
+    # Значение — как в карточке: «Продажа», а не «sale», телефон с плюсом.
+    def shown(field, value)
+      return '—' if value.nil?
+
+      field ? CardView.plain_value(field, value).to_s : value.to_s
+    end
+
     def exported(card, warning: nil)
       text = "🟢 <b>Карточка ##{card.id} в CRM:</b> #{escape(card.crm_id)}"
       text += "\n⚠️ #{escape(warning)}" if warning.present?
