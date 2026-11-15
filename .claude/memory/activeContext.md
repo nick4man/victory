@@ -78,7 +78,8 @@
 runbook `staging.md` местами говорит «хост victory»; `xuwenhao/kimi-code-action@v0`
 не запинен на SHA.
 
-**Kimi-бот в Actions**: `kimi.yml` (триггеры `@kimi` в issue/PR-комментариях и ревью)
+**Kimi-бот в Actions**: `kimi.yml` (триггеры `@kimi` и `@claude` — алиас, в
+issue/PR-комментариях и ревью; `claude.yml` удалён, OAuth-подписка не продлевалась)
 работает, отвечает sticky-комментарием. Ветки бота — `kimi/*`. Без `PLAYWRIGHT_BASE_URL`
 smoke-спек в `vr:test` пропускается.
 

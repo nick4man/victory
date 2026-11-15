@@ -222,6 +222,9 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3001/        # ожи�
 - conveyor поднят, тики supercronic идут, прогон без единого PAID-вызова.
 - `publisher` НЕ поднят: `CHANNEL_BOT_TOKEN` утёк 05.10 — ждём `/revoke` и новый
   токен от @BotFather, затем `docker compose --profile conveyor up -d publisher`.
+- ✅ Итог (11.11.26): «Токен обновлен» (владелец), publisher поднят 02.11.26
+  23:23 MSK — контейнер `victory-publisher-1` в аптайме, `job_publish_due`
+  тикает каждые 5 мин без ошибок. Угроза утёкшего токена снята.
 
 ### Окно C (audit-engine, выносилось за рамки исходного плана)
 

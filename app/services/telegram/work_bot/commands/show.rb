@@ -9,6 +9,7 @@ module Telegram
       class Show < Base
         def handle
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('show 12 показ прошёл, кухня не понравилась')) unless lead
 
           text = @args.to_s.strip

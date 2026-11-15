@@ -18,7 +18,8 @@ module Telegram
             log_soft_error('assignee_not_found', "lead=#{lead&.id} args=#{@args.inspect}")
             return ack('⚠️ Сотрудник не найден', alert: true)
           end
-
+          # Issue #214 / review round 5 — назначение test-лида ушло бы DM реальному агенту;
+          # с round 7 гейт централизован в Callbacks::Base#lead_event.
           # Phase 11 Iter 29 — capture audit trail (prev assignee) BEFORE call.
           # Iter 22 handles DM to prev; here мы фиксируем структурированный
           # audit-log для observability + future KPI (reassignment frequency).

@@ -750,6 +750,11 @@ Rails.application.routes.draw do
         get :settlements
       end
     end
+
+    # Антиспам-блок-лист чат-бота (issue #219) — ручная модерация:
+    # пометка URL/домена как спама (source = local), выборка, разблокировка.
+    # JSON-only, потребитель — ops-скрипты / будущий админ-UI.
+    resources :spam_blocked_entries, only: %i[index create destroy]
   end
 
   # ============================================
@@ -824,6 +829,8 @@ Rails.application.routes.draw do
 
     # Telegram
     post 'telegram', to: 'telegram#create'
+    # Тестовый бот: песочница карточек CRM, только личка.
+    post 'telegram_test', to: 'telegram_test#create'
 
     # Payment systems
     post 'yookassa', to: 'yookassa#create'

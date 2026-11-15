@@ -16,8 +16,8 @@ module Telegram
     #   { type: 'photo_disposition', step: 'choose_destination', data: { file_id } }
     #
     # Callback handler (PhotoDispositionCallback) дальше двигает по step'ам.
-    # Если TTL истёк — следующее сообщение в DM очистит state (pending_action
-    # самостоятельно return'нёт nil + clear).
+    # Если TTL истёк — pending_action оставляет одноразовый crumb,
+    # чтобы бот мог сказать «мастер истёк».
     class PhotoIntakeProcessor
       # @return [Boolean] true если photo в DM от manager+ (agent — skip,
       #   пусть просто проигнорируется или попадёт в client-photo intake).

@@ -128,6 +128,7 @@ ru:
     no_results: "Ничего не найдено"
     empty_list: "Список пуст"
     loading: "Загрузка данных..."
+    contact_form_success: "Спасибо за обращение! Мы свяжемся с вами в ближайшее время."
     
   # Validation
   errors:

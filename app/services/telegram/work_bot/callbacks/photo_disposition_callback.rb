@@ -241,6 +241,9 @@ module Telegram
 
           le = LeadEvent.find_by(id: lead_id)
           return ack('⚠️ Лид не найден.', alert: true) if le.nil?
+          # Review round 7 — pending-action обходил центральный callback-гейт:
+          # загрузка фото по старой кнопке уходила в Nextcloud и note test-лида.
+          return ack("🧪 Лид ##{le.id} — тестовый (probe). Загрузка недоступна.", alert: true) if le.staff_test?
 
           remote_path = "#{BASE_INBOX_DIR}/ПО ЛИДАМ/#{le.id}/#{filename_for(file_id)}"
           result = upload_with_share(file_id: file_id, remote_path: remote_path)
@@ -320,7 +323,9 @@ module Telegram
         end
 
         def recent_leads_for_picker
-          LeadEvent.open.order(updated_at: :desc).limit(5).to_a
+          # Review round 7 — .real: staff_test-лиды (probe-прогоны) не должны
+          # попадать в пикер загрузки фото (обход центрального callback-гейта).
+          LeadEvent.real.open.order(updated_at: :desc).limit(5).to_a
         end
 
         def lead_button_text(le)

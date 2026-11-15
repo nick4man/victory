@@ -29,6 +29,10 @@ class StaffSubmissionDetector
     name_staff_first
   ].freeze
 
+  # matched_by для probe-прогонов чат-бота (issue #214): флаг приходит не из
+  # эвристик, а явным metadata['test'] — но изоляция та же, что у staff_test.
+  TEST_MODE_MATCHED_BY = 'lead_test_mode'
+
   # Test/example email patterns.
   TEST_EMAIL_RX = /(?:@test\.|@example\.|test@|example@|\+test@|phase\d.*test|stub@)/i.freeze
   # Test name markers — case-insensitive substring.

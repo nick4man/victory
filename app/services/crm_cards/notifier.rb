@@ -1,0 +1,178 @@
+# frozen_string_literal: true
+
+module CrmCards
+  # Уведомления конвейера карточек CRM — только в личку. В группу карточка
+  # не уходит: там телефон клиента увидят все. Под карточкой лида в группе
+  # меняется лишь кнопка со статусом (LeadAnnouncer.refresh!).
+  #
+  # Сбой Telegram конвейер не роняет: карточка уже в новом статусе, и
+  # сотрудник увидит её через /cards.
+  class Notifier
+    def initialize(client: nil)
+      @client = client
+    end
+
+    def submitted(card, moderators:)
+      delivered = moderators.count { |moderator| deliver(moderator, "📥 <b>На модерацию</b> от #{escape(card.responsible.mention)}", card) }
+      if delivered.zero?
+        dm(card.responsible, '⚠️ Карточка на модерации, но ни одному модератору не удалось написать в личку. ' \
+                        'Пусть директор откроет чат с ботом, нажмёт «Start» и наберёт /cards.')
+      end
+      refresh_lead_anchor(card)
+    end
+
+    def returned(card, comment:)
+      deliver(card.responsible, "↩️ <b>Карточка ##{card.id} вернулась на доработку</b>: #{escape(comment)}", card)
+      refresh_lead_anchor(card)
+    end
+
+    # Одобрение больше не отправляет карточку в CRM — это решает руководитель
+    # (право export). Поэтому автору сообщаем, что карточка ждёт его решения,
+    # а самому руководителю карточка уходит с кнопкой выгрузки.
+    def approved(card, exporters: [])
+      deliver(card.responsible,
+              "✅ <b>Карточка ##{card.id} одобрена</b> #{escape(card.reviewer&.mention)} — " \
+              'ждёт решения руководителя о выгрузке в CRM.', card)
+      delivered = exporters.count { |boss| deliver(boss, "📤 <b>Ждёт выгрузки в CRM</b> · карточка ##{card.id}", card) }
+      # Некому и не доставили — разные беды с разным лечением: в первом случае
+      # чинят таблицу должностей, во втором руководителю надо открыть чат с
+      # ботом. Свалить их в одно сообщение — отправить чинить исправное.
+      if exporters.empty?
+        dm(card.reviewer, "⚠️ Карточка ##{card.id} одобрена, но решение о выгрузке принять некому: " \
+                          'права выгрузки нет ни у кого из сотрудников. Проверь должности в CRM.')
+      elsif delivered.zero?
+        dm(card.reviewer, "⚠️ Карточка ##{card.id} одобрена, но написать о ней в личку никому из руководителей " \
+                          'не удалось. Пусть откроет чат с ботом, нажмёт «Start» и наберёт /cards.')
+      end
+      refresh_lead_anchor(card)
+    end
+
+    def released(card)
+      text = if card.kind_lead?
+               "📤 <b>Карточка ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил выгрузку — отправляю в CRM."
+             else
+               "📤 <b>Объект по карточке ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил внесение — " \
+                 'внеси его в CRM и отметь номер.'
+             end
+      deliver(card.responsible, text, card)
+      refresh_lead_anchor(card)
+    end
+
+    # Правка опубликованной карточки: заявку видит модератор, решение — автор.
+    def change_requested(request, moderators:)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      field = Schema.field(card.kind, request.field)
+      head = "✏️ <b>Правка опубликованной карточки ##{card.id}</b> от #{escape(request.author.mention)}\n" \
+             "#{escape(label)}: «#{escape(shown(field, request.old_value))}» → " \
+             "«#{escape(shown(field, request.new_value))}»"
+      delivered = moderators.count { |m| deliver(m, head, card) }
+      if moderators.empty?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но модераторов с доступом к CRM " \
+                           'нет — согласовать её некому. Сообщи директору.')
+      elsif delivered.zero?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
+                           'Сообщи ему другим способом.')
+      end
+    end
+
+    # Заметку в CRM записать не удалось: обещать «там уже есть запись» нельзя.
+    def change_note_failed(request)
+      dm(request.reviewer, "⚠️ Правка по карточке ##{request.crm_card_id} принята, но записать заметку в CRM " \
+                           'не вышло. Скажи ответственному о согласовании другим способом.')
+    end
+
+    def change_decided(request, note_ok: true)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      text = if request.status_approved?
+               approved_text = "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n"
+               if note_ok
+                 approved_text + 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+               else
+                 approved_text + 'Поправь это поле в CRM, а заметку о согласовании придётся внести вручную: ' \
+                                'автоматическая запись не удалась.'
+               end
+             else
+               "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
+             end
+      dm(request.author, text)
+    end
+
+    # Значение — как в карточке: «Продажа», а не «sale», телефон с плюсом.
+    def shown(field, value)
+      return '—' if value.nil?
+
+      field ? CardView.plain_value(field, value).to_s : value.to_s
+    end
+
+    def exported(card, warning: nil)
+      text = "🟢 <b>Карточка ##{card.id} в CRM:</b> #{escape(card.crm_id)}"
+      text += "\n⚠️ #{escape(warning)}" if warning.present?
+      [card.responsible, card.reviewer].compact.uniq(&:id).each { |user| dm(user, text) }
+      refresh_lead_anchor(card)
+    end
+
+    def export_failed(card)
+      Permissions.moderators.each { |moderator| deliver(moderator, "⚠️ <b>Выгрузка карточки ##{card.id} не удалась</b>", card) }
+      dm(card.responsible, export_failed_hint(card))
+      refresh_lead_anchor(card)
+    end
+
+    private
+
+    # Текст ответственному при сбое выгрузки. Номер есть, а статус не
+    # записан — кнопки повтора в CardView нет вовсе, и «у модератора кнопка
+    # повтора» было бы ложью: нужна ручная сверка и привязка номера (ревью
+    # PR #210, round 7). Неоднозначный сбой (ответ CRM потерялся) — новый
+    # importClient запрещён безусловно: модератор сверяет с CRM и привязывает
+    # найденный номер.
+    def export_failed_hint(card)
+      if card.crm_id.present?
+        "⚠️ Заявка создана в CRM под номером #{card.crm_id}, но статус не записан — модератор сверит и поправит вручную."
+      elsif card.export_retryable == false
+        '⚠️ Ответ CRM потерялся — заявка могла создаться. Модератор сверит её с CRM по телефону и привяжет номер (дублирующий importClient не запускается).'
+      else
+        "⚠️ Выгрузка карточки ##{card.id} в CRM не удалась — у модератора кнопка повтора."
+      end
+    end
+
+    # @return [Boolean] доставлено ли
+    def deliver(user, header, card)
+      view = CardView.render(card, viewer: user)
+      dm(user, "#{header}\n\n#{view[:text]}", keyboard: view[:keyboard])
+    end
+
+    def dm(user, text, keyboard: nil)
+      return false unless user&.can_dm?
+
+      opts = { chat_id: user.dm_chat_id, parse_mode: 'HTML' }
+      opts[:reply_markup] = { inline_keyboard: keyboard } if keyboard.present?
+      client.send_message(text, **opts)
+      true
+    rescue Telegram::Client::Error => e
+      Rails.logger.warn("[CrmCards::Notifier] DM to #{user.mention} failed: #{e.message}")
+      false
+    rescue StandardError => e
+      # сетевые ошибки Net::HTTP клиент Telegram не оборачивает
+      Rails.logger.error("[CrmCards::Notifier] DM to #{user.mention} failed unexpectedly: #{e.class}: #{e.message}")
+      false
+    end
+
+    def refresh_lead_anchor(card)
+      return unless card.lead_event
+
+      Telegram::WorkBot::LeadAnnouncer.refresh!(card.lead_event, client: client)
+    rescue StandardError => e
+      Rails.logger.warn("[CrmCards::Notifier] refresh anchor lead=#{card.lead_event_id}: #{e.class}: #{e.message}")
+    end
+
+    def client
+      @client ||= Telegram::Client.new
+    end
+
+    def escape(text)
+      text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
+    end
+  end
+end

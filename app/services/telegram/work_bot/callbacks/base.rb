@@ -51,7 +51,11 @@ module Telegram
             return ack('🚫 Только для директора АН', alert: true)
           end
 
-          handle
+          # Issue #214 / review round 7 — центральный отказ для staff_test-лидов:
+          # lead_event бросает throw :staff_test_refused после ack-отказа, поэтому
+          # ЛЮБОЙ callback (включая старые кнопки на карточке и pending-action
+          # входы) обрывается до side effects — боевой Task, DM, CRM-записи.
+          catch(:staff_test_refused) { handle }
         rescue StandardError => e
           Rails.logger.error("[WorkBot::Callbacks #{self.class.name}] #{e.class}: #{e.message}\n#{e.backtrace.first(5).join("\n")}")
           ack("⚠️ #{e.message.to_s[0, 180]}", alert: true)
@@ -71,8 +75,15 @@ module Telegram
         end
 
         # @return [LeadEvent] первый аргумент callback_data, парсится как lead_event_id.
+        # Issue #214 / review round 7 — центральный гейт: staff_test-лиды
+        # (probe-прогоны) недоступны ни одному callback'у. Отказ — ack-тост,
+        # дальше throw :staff_test_refused (ловится в Base#call): старые кнопки
+        # на карточке и поддельные callback_data (AnchorMigrator) тоже закрыты.
         def lead_event
-          @lead_event ||= LeadEvent.find(@args[0])
+          lead = (@lead_event ||= LeadEvent.find(@args[0]))
+          return lead unless lead.staff_test?
+          ack("🧪 Лид ##{lead.id} — тестовый (probe). Действие недоступно.", alert: true)
+          throw :staff_test_refused
         end
 
         # Прислать текстовое сообщение в тот же топик, где была нажата кнопка.

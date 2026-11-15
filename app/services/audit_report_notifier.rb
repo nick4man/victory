@@ -11,6 +11,9 @@
 #
 # Triggered from InvestmentAuditJob after the PropertyValuation is marked
 # completed. Chat target precedence:
+#   0. probe-прогон чат-бота (valuation.metadata['test'], issue #214) →
+#      TELEGRAM_TEST_CHAT_ID; ENV не задан — пропуск с warning, рабочие
+#      чаты не трогаем
 #   1. TELEGRAM_AUDITS_CHAT_ID (dedicated channel if set)
 #   2. TELEGRAM_STAFF_CHAT_ID  (general staff channel)
 class AuditReportNotifier
@@ -28,7 +31,7 @@ class AuditReportNotifier
   end
 
   def call
-    chat_id = ENV['TELEGRAM_AUDITS_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+    chat_id = target_chat_id
     return false if chat_id.blank? || ENV['TELEGRAM_BOT_TOKEN'].blank?
 
     client = Telegram::Client.new
@@ -39,6 +42,28 @@ class AuditReportNotifier
 
   private
 
+  # Тест-режим чат-бота (issue #214): аудит из probe-прогона уходит в
+  # TELEGRAM_TEST_CHAT_ID, а не в рабочие audits/staff-чаты. Без
+  # TELEGRAM_TEST_CHAT_ID — пропуск с warning: рабочие каналы не трогаются.
+  def target_chat_id
+    if @v.respond_to?(:test?) && @v.test?
+      test_chat = ENV['TELEGRAM_TEST_CHAT_ID'].presence
+      if test_chat.blank?
+        Rails.logger.warn("[AuditReportNotifier] valuation=#{@v.id} test audit, TELEGRAM_TEST_CHAT_ID не задан — пропуск")
+      end
+      return test_chat
+    end
+
+    ENV['TELEGRAM_AUDITS_CHAT_ID'].presence || ENV['TELEGRAM_STAFF_CHAT_ID'].presence
+  end
+
+  # Маркер для probe-записей (issue #214): даже в тестовом чате карточка
+  # должна визуально отличаться от боевых. Без ведущего пробела — разделитель
+  # добавляет caller (review round 5: « 🧪 ТЕСТPDF-отчёт» — склейка слов).
+  def test_marker
+    @v.respond_to?(:test?) && @v.test? ? '🧪 ТЕСТ' : ''
+  end
+
   def send_pdf(client, chat_id)
     pdf_bytes = AuditPdfGenerator.call(@v)
     require 'stringio'
@@ -46,7 +71,7 @@ class AuditReportNotifier
     client.send_document(
       { io: io, filename: "audit-#{@v.report_number || @v.token}.pdf", content_type: 'application/pdf' },
       chat_id: chat_id,
-      caption: "PDF-отчёт #{@v.report_label} · #{verdict_ru}"
+      caption: [test_marker, "PDF-отчёт #{@v.report_label} · #{verdict_ru}"].reject(&:empty?).join(' · ')
     )
   rescue StandardError => e
     # If PDF generation or upload fails, the summary message was already
@@ -56,7 +81,7 @@ class AuditReportNotifier
 
   def summary_message
     lines = []
-    lines << "📊 <b>Новый инвест-аудит #{escape(@v.report_label)} — #{verdict_ru}</b>"
+    lines << "📊 <b>Новый инвест-аудит #{escape(@v.report_label)} — #{verdict_ru}</b>#{test_marker.blank? ? '' : " · #{test_marker}"}"
     lines << ''
     lines << contact_block.presence || '👤 <i>анонимно (контакты не оставлены)</i>'
     lines << ''
