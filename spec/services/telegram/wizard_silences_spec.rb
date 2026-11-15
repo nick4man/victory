@@ -14,7 +14,7 @@ RSpec.describe 'мастер не молчит на неожиданный вв�
   before do
     # Сообщение, не предназначенное мастеру, идёт дальше по конвейеру и доходит
     # до LLM-Q&A — в спеках сеть закрыта, отвечаем заглушкой.
-    stub_request(:post, %r{llm\.invalid}).to_return(
+    stub_request(:post, %r{/v1/chat/completions$}).to_return(
       status: 200, headers: { 'Content-Type' => 'application/json' },
       body: { 'choices' => [{ 'message' => { 'content' =>
         '{"kind":"information","confidence":0.4,"reasoning":"тест"}' } }] }.to_json
