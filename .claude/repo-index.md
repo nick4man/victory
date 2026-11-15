@@ -278,6 +278,7 @@ app/services/crm_cards/checker.rb — module CrmCards, class Checker
 app/services/crm_cards/export_lock.rb — module CrmCards, class ExportLock
 app/services/crm_cards/field_value.rb — module CrmCards, module FieldValue
 app/services/crm_cards/lead_exporter.rb — module CrmCards, class LeadExporter
+app/services/crm_cards/notes.rb — module CrmCards, class Notes
 app/services/crm_cards/notifier.rb — module CrmCards, class Notifier
 app/services/crm_cards/permissions.rb — module CrmCards, class Permissions
 app/services/crm_cards/permissions_report.rb — module CrmCards, class PermissionsReport
@@ -501,6 +502,8 @@ app/services/telegram/work_bot/wizard/close_flow.rb — module Telegram, module 
 app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardApproveFlow
 app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardEditFlow
 app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardManualExportFlow
+app/services/telegram/work_bot/wizard/crm_card_note_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardNoteFlow
+app/services/telegram/work_bot/wizard/crm_card_release_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReleaseFlow
 app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReworkFlow
 app/services/telegram/work_bot/wizard/crm_card_support.rb — module Telegram, module WorkBot, module Wizard, module CrmCardSupport
 app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmLeadCardFlow

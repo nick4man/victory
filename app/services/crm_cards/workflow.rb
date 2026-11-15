@@ -286,6 +286,8 @@ module CrmCards
           end
         end
 
+        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.status_approved? && card.released_at.blank?
+
         transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
         # Токен чистим: живая старая попытка проснётся, увидит nil/чужой
         # токен и ничего не перезапишет (гонка с retry_export!, PR #210).
@@ -311,6 +313,7 @@ module CrmCards
         unless card.status_export_failed? || card.status_exporting? || card.status_approved?
           next deny("Привязывать нечего (#{label(card)}).")
         end
+        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.status_approved? && card.released_at.blank?
 
         transition!(card, to: 'exported', actor: actor, comment: "привязан номер из CRM после сверки: #{digits}")
         card.update!(crm_id: digits, exported_at: Time.current, export_error: nil,
@@ -318,7 +321,12 @@ module CrmCards
         sync_lead_ref!(card)
         ok(card)
       end
-      notifier.exported(card) if result.ok?
+      if result.ok?
+        # Заметки, написанные до привязки номера, отправляем теперь: до этой
+        # минуты их некуда было прикрепить.
+        Notes.flush_pending!(card)
+        notifier.exported(card)
+      end
       result
     end
 

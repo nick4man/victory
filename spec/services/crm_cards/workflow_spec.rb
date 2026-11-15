@@ -529,6 +529,39 @@ RSpec.describe CrmCards::Workflow do
       expect(notifier).to have_received(:exported).with(card).once
     end
 
+    it 'attach_export_number! не привязывает номер к одобренной, но не разрешённой карточке' do
+      approved_unreleased = filled_card.tap { |c| workflow.submit!(c, actor: agent) }
+      workflow.approve!(approved_unreleased, actor: director)
+
+      result = workflow.attach_export_number!(approved_unreleased.reload, crm_id: '7788', actor: director)
+
+      expect(result.error).to include('не разрешил руководитель')
+      expect(approved_unreleased.reload).to be_status_approved
+    end
+
+    it 'retry_export! не повторяет выгрузку одобренной, но не разрешённой карточки' do
+      approved_unreleased = filled_card.tap { |c| workflow.submit!(c, actor: agent) }
+      workflow.approve!(approved_unreleased, actor: director)
+
+      result = nil
+      expect { result = workflow.retry_export!(approved_unreleased.reload, actor: director) }
+        .not_to have_enqueued_job(CrmCards::ExportJob)
+      expect(result.error).to include('не разрешил руководитель')
+      expect(approved_unreleased.reload).to be_status_approved
+    end
+
+    it 'при привязке номера досылаются заметки, написанные до CRM' do
+      released_card = filled_card.tap { |c| workflow.submit!(c, actor: agent) }
+      workflow.approve!(released_card, actor: director)
+      workflow.release_for_export!(released_card.reload, actor: director)
+      released_card.reload.update_columns(status: 'export_failed', export_error: 'timeout', export_retryable: false)
+      CrmCards::Notes.add!(released_card.reload, actor: director, text: 'Сверили с CRM вручную')
+
+      expect { workflow.attach_export_number!(released_card.reload, crm_id: '7788', actor: director) }
+        .to have_enqueued_job(TopnlabNotePushJob).once
+      expect(released_card.reload).to have_attributes(status: 'exported', crm_id: '7788')
+    end
+
     it 'attach_export_number!: только модератор, только цифры, только заявка' do
       card.update!(status: 'export_failed', export_error: 'boom', export_retryable: false)
 
