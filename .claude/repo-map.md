@@ -16540,92 +16540,6 @@ def button(text, callback_data)
 def escape(text)
 </file>
 
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
-⋮----
-class Workflow
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def release_for_export!(card, actor:, expected: nil)
-⋮----
-def export!(card)
-⋮----
-def export_with_lock(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def attach_export_number!(card, crm_id:, actor:)
-⋮----
-def exporters = Permissions.exporters
-⋮----
-def changed_since_confirm
-⋮----
-def already_released(card)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
-⋮----
-private
-⋮----
-def save_values(card, values, actor:, perms:)
-⋮----
-def wrong_bot(card)
-⋮----
-def taking_over?(card, actor)
-⋮----
-def refresh_check(card)
-⋮----
-def transition!(card, to:, actor:, comment: nil)
-⋮----
-def sync_lead_ref!(card)
-⋮----
-def moderator?(actor)
-⋮----
-def moderator_denial(actor, action)
-⋮----
-def not_pending(card)
-⋮----
-def returnable?(card)
-⋮----
-def not_returnable(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil, retryable: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb">
 module Telegram
 module WorkBot
@@ -16755,6 +16669,92 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def release_for_export!(card, actor:, expected: nil)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def exporters = Permissions.exporters
+⋮----
+def changed_since_confirm
+⋮----
+def already_released(card)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def wrong_bot(card)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def returnable?(card)
+⋮----
+def not_returnable(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 </files>
