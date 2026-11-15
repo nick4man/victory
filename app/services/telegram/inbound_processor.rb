@@ -234,7 +234,9 @@ module Telegram
     SANDBOX_COMMANDS = %w[/start /help /menu /cards].freeze
     # Non-text payload в «свободном» сообщении — voice/photo/etc ушли бы в
     # VoiceIntakeProcessor/PhotoIntakeProcessor на боевых данных (платная
-    # транскрибация, чужой pipeline). Песочница принимает только текст.
+    # транскрибация, чужой pipeline). Песочница принимает только текст,
+    # но если у сотрудника активен или только что истёк CRM-мастер — это
+    # текст/вложение к нему, а не боевой вопрос/фото pipeline.
     SANDBOX_MEDIA_KEYS = %w[voice audio video video_note photo document contact location sticker].freeze
 
     def sandbox_update?
@@ -251,13 +253,38 @@ module Telegram
 
       text = source['text'].to_s.strip
       return SANDBOX_COMMANDS.include?(text.split(/[\s@]/).first.to_s.downcase) if text.start_with?('/')
-      return false if text.blank? || SANDBOX_MEDIA_KEYS.any? { |key| source[key].present? }
+
+      # CRM-мастер в тестовом боте: любое сообщение (текст или вложение),
+      # относящееся к активному или только что истёкшему мастеру карточки,
+      # пропускаем дальше — там workbot_wizard_non_text / workbot_wizard_text
+      # объяснят человеку, что ждут, не открывая боевые pipeline.
+      return true if crm_wizard_in_bot?(staff)
+
+      has_media = SANDBOX_MEDIA_KEYS.any? { |key| source[key].present? }
+      return false if text.blank? || has_media
 
       # Свободный текст — только ответ на шаг мастера карточки, начатого в
       # ЭТОМ боте: Engine.active? сверяет и тип состояния, и bot из data
       # (см. Wizard::Engine.current_bot) — состояние из рабочего бота не в счёт.
       Telegram::WorkBot::Wizard::Engine.active?(staff) &&
         staff.pending_action.dig('data', 'flow').to_s.start_with?('crm_')
+    end
+
+    def crm_wizard_in_bot?(staff)
+      return true if wizard_crm_in_bot?(staff.pending_action)
+
+      # pending_action мог только что превратить истёкший state в crumb,
+      # но атрибут в памяти остался stale — перечитываем из БД.
+      staff.reload
+      wizard_crm_in_bot?(staff.expired_action)
+    end
+
+    def wizard_crm_in_bot?(state)
+      return false unless state.is_a?(Hash)
+
+      flow = state.dig('data', 'flow') || state['flow']
+      bot = state.dig('data', 'bot') || state['bot'] || 'main'
+      state['type'] == 'wizard' && flow.to_s.start_with?('crm_') && bot == Telegram::BotContext.bot
     end
 
     # Без ответа на callback_query у пользователя висит спиннер на кнопке —
@@ -407,9 +434,12 @@ module Telegram
 
       tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
       # Вложение после истечения мастера — тоже не тишина, но и не наш случай:
-      # сказали и пропустили дальше, там его ждут фото-режимы.
+      # сказали и пропустили дальше, там его ждут фото-режимы. В тестовом боте
+      # фото/голосовые pipeline недоступны — CRM-мастер съедает вложение после
+      # уведомления, чтобы не ушло в боевую обработку.
       unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
         notify_wizard_expired(tg_user)
+        return :handled if Telegram::BotContext.test?
         return nil
       end
 
@@ -460,9 +490,13 @@ module Telegram
       tg_user = ::TelegramUser.find_by(tg_user_id: msg.dig('from', 'id'))
       # Ответ пришёл, когда мастер уже истёк: молчать нельзя — человек ждёт.
       # Сообщение при этом НЕ съедаем: если это был не ответ мастеру, а обычный
-      # вопрос, он должен дойти до того, кто на него ответит.
+      # вопрос, он должен дойти до того, кто на него ответит. В тестовом боте
+      # обычные вопросы не обрабатываются — съедаем, чтобы не ушли в пустоту.
       notify_wizard_expired(tg_user)
-      return nil unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+      unless Telegram::WorkBot::Wizard::Engine.active?(tg_user)
+        return :handled if Telegram::BotContext.test?
+        return nil
+      end
 
       Telegram::WorkBot::Wizard::Engine.new(tg_user: tg_user).text(text)
     rescue StandardError => e

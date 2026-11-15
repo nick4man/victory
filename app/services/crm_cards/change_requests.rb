@@ -80,8 +80,8 @@ module CrmCards
 
       # Заметка — после коммита: иначе джоб отправки в CRM успевает стартовать
       # раньше, не находит записи и молча бросает её без повтора.
-      note_change(request, actor: actor) if to == 'approved'
-      notifier&.change_decided(request)
+      note_ok = to == 'approved' ? note_change(request, actor: actor) : true
+      notifier&.change_decided(request, note_ok: note_ok)
       Result.new(ok: true, request: request)
     end
 
@@ -108,12 +108,14 @@ module CrmCards
 
     # Заметка — единственный след правки в CRM, пока поле там меняют руками.
     # Не смогли записать — честно говорим автору, а не обещаем несуществующее.
+    # @return [Boolean] успешно ли записалась заметка.
     def note_change(request, actor:)
       result = Notes.add!(request.crm_card, actor: actor, text: change_note(request))
-      return if result.ok?
+      return true if result.ok?
 
       Rails.logger.warn("[CrmCards::ChangeRequests] заметка по правке ##{request.id} не сохранена: #{result.error}")
       notifier&.change_note_failed(request)
+      false
     end
 
     def participant?(card, actor, perms)

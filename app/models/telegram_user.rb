@@ -193,9 +193,9 @@ class TelegramUser < ApplicationRecord
   #     "step" => "choose_destination|choose_cloud_target|describe_task",
   #     "data" => { "file_id" => ..., "target_kind" => ..., ... } }
   #
-  # TTL default 10 мин. Expired state читается → автоматически clear'ится →
-  # caller получает nil (как будто state'а не было). Это защищает от stuck-flow
-  # «забыл нажать кнопку».
+  # TTL default 10 мин. Expired state читается → оставляется одноразовый след (crumb) →
+  # caller получает nil. След нужен, чтобы бот сказал «мастер истёк»,
+  # а не молчал на ответ, пришедший через час.
 
   # @param type [String, Symbol] категория состояния (например :photo_disposition)
   # @param data [Hash] произвольные key-value для callback handler'а
@@ -212,7 +212,7 @@ class TelegramUser < ApplicationRecord
   end
 
   # @return [Hash, nil] active pending_action или nil (если empty / expired).
-  #   Expired state side-effect'ом очищается (set to {}).
+  #   Expired state side-effect'ом превращается в одноразовый crumb.
   def pending_action
     pa = dm_pending_action
     return nil if pa.blank?
@@ -249,6 +249,7 @@ class TelegramUser < ApplicationRecord
   def expire_pending_action!(previous)
     crumb = { 'expired' => { 'type' => previous['type'].to_s, 'step' => previous['step'].to_s,
                              'bot' => previous.dig('data', 'bot').presence || 'main',
+                             'flow' => previous.dig('data', 'flow').to_s,
                              'at' => Time.current.iso8601 } }
     update_column(:dm_pending_action, crumb) # rubocop:disable Rails/SkipsModelValidations
     nil

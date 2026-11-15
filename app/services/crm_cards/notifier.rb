@@ -82,12 +82,17 @@ module CrmCards
                            'не вышло. Скажи ответственному о согласовании другим способом.')
     end
 
-    def change_decided(request)
+    def change_decided(request, note_ok: true)
       card = request.crm_card
       label = Schema.field(card.kind, request.field)&.label || request.field
       text = if request.status_approved?
-               "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n" \
-                 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+               approved_text = "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n"
+               if note_ok
+                 approved_text + 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+               else
+                 approved_text + 'Поправь это поле в CRM, а заметку о согласовании придётся внести вручную: ' \
+                                'автоматическая запись не удалась.'
+               end
              else
                "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
              end

@@ -1,6 +1,6 @@
-# repo-index.md — карта классов (auto-generated)
+# repo-index.md \u2014 \u043a\u0430\u0440\u0442\u0430 \u043a\u043b\u0430\u0441\u0441\u043e\u0432 (auto-generated)
 
-> Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
+> \u0421\u0436\u0430\u0442\u044b\u0439 \u0438\u043d\u0434\u0435\u043a\u0441: \u043f\u0443\u0442\u044c \u2192 \u043a\u043b\u0430\u0441\u0441\u044b/\u043c\u043e\u0434\u0443\u043b\u0438 \u0432 \u0444\u0430\u0439\u043b\u0435. \u0420\u0435\u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f: rake repo:map.
 
 ## app/models
 
@@ -21,6 +21,7 @@ app/models/concerns/agent_profile.rb — module AgentProfile
 app/models/concerns/renders_landing_blocks.rb — module RendersLandingBlocks
 app/models/conversation.rb — class Conversation
 app/models/crm_card.rb — class CrmCard
+app/models/crm_card_change_request.rb — class CrmCardChangeRequest
 app/models/crm_card_transition.rb — class CrmCardTransition
 app/models/crm_report.rb — class CrmReport
 app/models/daily_digest.rb — class DailyDigest
@@ -274,6 +275,7 @@ app/services/crm/contact_parser.rb — module Crm, class ContactParser
 app/services/crm/owner_linker.rb — module Crm, class OwnerLinker
 app/services/crm/telegram_reachability.rb — module Crm, class TelegramReachability
 app/services/crm_cards/card_view.rb — module CrmCards, module CardView
+app/services/crm_cards/change_requests.rb — module CrmCards, class ChangeRequests
 app/services/crm_cards/checker.rb — module CrmCards, class Checker
 app/services/crm_cards/export_lock.rb — module CrmCards, class ExportLock
 app/services/crm_cards/field_value.rb — module CrmCards, module FieldValue
@@ -506,6 +508,7 @@ app/services/telegram/work_bot/wizard/crm_card_note_flow.rb — module Telegram,
 app/services/telegram/work_bot/wizard/crm_card_release_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReleaseFlow
 app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardReworkFlow
 app/services/telegram/work_bot/wizard/crm_card_support.rb — module Telegram, module WorkBot, module Wizard, module CrmCardSupport
+app/services/telegram/work_bot/wizard/crm_change_decide_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmChangeDecideFlow
 app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmLeadCardFlow
 app/services/telegram/work_bot/wizard/crm_object_card_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmObjectCardFlow
 app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmTestLeadFlow

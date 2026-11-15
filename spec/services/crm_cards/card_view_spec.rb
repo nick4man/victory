@@ -73,7 +73,7 @@ RSpec.describe CrmCards::CardView do
     card.update!(status: 'export_failed', export_error: '403 Forbidden')
 
     expect(described_class.render(card, viewer: director)[:text])
-      .to include('403 Forbidden', 'найди клиента в CRM по телефону')
+      .to include('403 Forbidden', 'CRM обработала запрос и отклонила заявку')
     expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
     # Решений автору не дают, но заметку по работе с клиентом он допишет.
     expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
@@ -88,21 +88,21 @@ RSpec.describe CrmCards::CardView do
     expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
-  it 'зависшая выгрузка: предупреждение и кнопка повтора' do
+  it 'зависшая выгрузка: предупреждение и кнопка привязки номера из CRM' do
     card.update!(status: 'exporting')
     card.update_columns(updated_at: 20.minutes.ago)
 
     expect(described_class.render(card, viewer: director)[:text])
-      .to include('висит дольше 15 минут', 'найди клиента в CRM по телефону')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
+      .to include('висит дольше 15 минут', 'Найди клиента в CRM по телефону')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}", "wiz:s:crm_note:#{card.id}"])
   end
 
-  it 'сбой выгрузки по таймауту — тоже кнопка повтора и подсказка про сверку в CRM' do
-    card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout')
+  it 'сбой выгрузки по таймауту — кнопка привязки номера из CRM и подсказка про сверку' do
+    card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
 
     expect(described_class.render(card, viewer: director)[:text])
-      .to include('Net::ReadTimeout', 'найди клиента в CRM по телефону')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
+      .to include('Net::ReadTimeout', 'Найди клиента в CRM по телефону')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}", "wiz:s:crm_note:#{card.id}"])
   end
 
   it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do

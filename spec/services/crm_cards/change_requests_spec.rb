@@ -3,7 +3,7 @@
 require 'rails_helper'
 
 RSpec.describe CrmCards::ChangeRequests do
-  let(:notifier) { instance_double(CrmCards::Notifier, change_requested: nil, change_decided: nil) }
+  let(:notifier) { instance_double(CrmCards::Notifier, change_requested: nil, change_decided: nil, change_note_failed: nil) }
   let(:service) { described_class.new(notifier: notifier) }
 
   let!(:agent) { crm_staff(tg_user_id: 98_801, username: 'irina') }
@@ -105,5 +105,14 @@ RSpec.describe CrmCards::ChangeRequests do
 
     expect(service.approve!(request, actor: director).error).to include('песочниц')
     expect(card.reload.payload['phone']).to eq('79101112233')
+  end
+
+  it 'если заметку в CRM не удалось записать, автору не обещают несуществующую запись' do
+    request = service.open!(card, actor: agent, field: 'phone', value: '79209998877').request
+    allow(CrmCards::Notes).to receive(:add!).and_return(CrmCards::Notes::Result.new(ok: false, error: 'слишком длинно'))
+
+    expect(service.approve!(request, actor: director)).to be_ok
+    expect(notifier).to have_received(:change_note_failed).with(request)
+    expect(notifier).to have_received(:change_decided).with(request, note_ok: false)
   end
 end

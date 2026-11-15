@@ -67,22 +67,28 @@ RSpec.describe Telegram::InboundProcessor, 'тестовый бот' do
     expect(seen).to eq('test')
   end
 
-  it 'voice при активном crm_ мастере в тестовом боте — не платим за транскрибацию боевого pipeline' do
+  it 'voice при активном crm_ мастере в тестовом боте — мастер отвечает, боевой pipeline не трогаем' do
     staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_edit', 'bot' => 'test' }, step: 'value')
     expect(Telegram::WorkBot::VoiceIntakeProcessor).not_to receive(:applies?)
 
     update = message_update(510, extra: { 'voice' => { 'file_id' => 'v1' } })
 
-    expect(process(update, 'test')).to eq(:ignored)
+    expect(process(update, 'test')).to eq(:handled)
+    expect(a_request(:post, %r{\Ahttps://api\.telegram\.org/bottest-token/sendMessage})
+      .with(body: hash_including('chat_id' => staff.dm_chat_id, 'text' => /голосовые в мастере/)))
+      .to have_been_made.once
   end
 
-  it 'фото при активном crm_ мастере в тестовом боте — не платим за боевой pipeline' do
+  it 'фото при активном crm_ мастере в тестовом боте — мастер отвечает, боевой pipeline не трогаем' do
     staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_edit', 'bot' => 'test' }, step: 'value')
     expect(Telegram::WorkBot::PhotoIntakeProcessor).not_to receive(:applies?)
 
     update = message_update(511, extra: { 'photo' => [{ 'file_id' => 'p1' }] })
 
-    expect(process(update, 'test')).to eq(:ignored)
+    expect(process(update, 'test')).to eq(:handled)
+    expect(a_request(:post, %r{\Ahttps://api\.telegram\.org/bottest-token/sendMessage})
+      .with(body: hash_including('chat_id' => staff.dm_chat_id, 'text' => /фото к карточке/)))
+      .to have_been_made.once
   end
 
   it 'свободный текст игнорируется, если crm_ мастер висит в рабочем боте, а не в тестовом' do
@@ -93,6 +99,32 @@ RSpec.describe Telegram::InboundProcessor, 'тестовый бот' do
     update = message_update(512, text: 'завтра')
 
     expect(process(update, 'test')).to eq(:ignored)
+  end
+
+  it 'voice при истёкшем crm_ мастере в тестовом боте — сообщает об истечении и съедает' do
+    staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_edit', 'bot' => 'test' }, step: 'value')
+    travel_to(31.minutes.from_now) do
+      expect(Telegram::WorkBot::VoiceIntakeProcessor).not_to receive(:applies?)
+
+      update = message_update(514, extra: { 'voice' => { 'file_id' => 'v1' } })
+
+      expect(process(update, 'test')).to eq(:handled)
+    end
+    expect(a_request(:post, %r{\Ahttps://api\.telegram\.org/bottest-token/sendMessage})
+      .with(body: hash_including('text' => /Мастер истёк/)))
+      .to have_been_made.once
+  end
+
+  it 'текст при истёкшем crm_ мастере в тестовом боте — сообщает об истечении и съедает' do
+    staff.set_pending_action!(type: 'wizard', data: { 'flow' => 'crm_edit', 'bot' => 'test' }, step: 'value')
+    travel_to(31.minutes.from_now) do
+      update = message_update(515, text: 'завтра')
+
+      expect(process(update, 'test')).to eq(:handled)
+    end
+    expect(a_request(:post, %r{\Ahttps://api\.telegram\.org/bottest-token/sendMessage})
+      .with(body: hash_including('text' => /Мастер истёк/)))
+      .to have_been_made.once
   end
 
   it 'отклонённый callback_query от известного сотрудника получает answerCallbackQuery — иначе спиннер висит' do

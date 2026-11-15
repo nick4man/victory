@@ -293,6 +293,7 @@ app/
     city_median_price.rb
     client_document.rb
     conversation.rb
+    crm_card_change_request.rb
     crm_card_transition.rb
     crm_card.rb
     crm_report.rb
@@ -412,6 +413,7 @@ app/
       telegram_reachability.rb
     crm_cards/
       card_view.rb
+      change_requests.rb
       checker.rb
       export_lock.rb
       field_value.rb
@@ -613,6 +615,7 @@ app/
           crm_card_release_flow.rb
           crm_card_rework_flow.rb
           crm_card_support.rb
+          crm_change_decide_flow.rb
           crm_lead_card_flow.rb
           crm_object_card_flow.rb
           crm_test_lead_flow.rb
@@ -5973,67 +5976,6 @@ def sender_label
 def body_excerpt(max_chars: 200)
 ⋮----
 def self.fts(query)
-</file>
-
-<file path="app/models/telegram_user.rb">
-class TelegramUser < ApplicationRecord
-STATUSES = ['active', 'inactive', 'blocked'].freeze
-⋮----
-enum :role, {
-    agent: 'agent',
-    manager: 'manager',
-    director: 'director',
-    admin: 'admin'
-  }, prefix: true
-⋮----
-has_many :assigned_lead_events,
-           class_name: 'LeadEvent',
-           foreign_key: :assigned_to_id,
-           dependent: :nullify,
-           inverse_of: :assigned_to
-⋮----
-has_one :user, inverse_of: :telegram_user
-⋮----
-def can_dm?
-⋮----
-validates :tg_user_id, presence: true, uniqueness: true
-validates :status, inclusion: { in: STATUSES }
-⋮----
-scope :active,     -> { where(status: 'active') }
-scope :managers,   -> { where(is_manager: true) }
-scope :directors,  -> { where(role: 'director') }
-⋮----
-scope :assignable, -> { active.where(assignable: true) }
-⋮----
-def self.find_by_username(tg_username)
-⋮----
-# Phase 14 Iter 57 — резолвер identifier'а из voice-intake / LLM payload.
-⋮----
-ID_TOKEN_RE = /\Aid:(\d+)\z/i
-⋮----
-def self.resolve_identifier(token)
-⋮----
-def self.find_by_topnlab_email(email)
-⋮----
-def display_name
-⋮----
-def mention
-⋮----
-def linked_to_crm?
-⋮----
-def can_voice_distribute?
-⋮----
-def manager_or_director?
-⋮----
-def touch_seen!
-⋮----
-def touch_from_message!(msg)
-⋮----
-def set_pending_action!(type:, data: {}, step: nil, ttl: 10.minutes)
-⋮----
-def pending_action
-⋮----
-def clear_pending_action!
 </file>
 
 <file path="app/models/tg_link_token.rb">
@@ -12748,6 +12690,23 @@ retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts:
 def perform(lead_event_id)
 </file>
 
+<file path="app/models/crm_card_change_request.rb">
+class CrmCardChangeRequest < ApplicationRecord
+belongs_to :crm_card
+belongs_to :author, class_name: 'TelegramUser'
+belongs_to :reviewer, class_name: 'TelegramUser', optional: true
+⋮----
+enum :status, {
+    pending: 'pending',
+    approved: 'approved',
+    rejected: 'rejected'
+  }, prefix: true
+⋮----
+validates :field, presence: true
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+</file>
+
 <file path="app/models/crm_card_transition.rb">
 class CrmCardTransition < ApplicationRecord
 belongs_to :crm_card, inverse_of: :transitions
@@ -13236,6 +13195,37 @@ def comment_with_extra_phone(values)
 def topnlab
 ⋮----
 def assign_responsible(crm_id, author)
+</file>
+
+<file path="app/services/crm_cards/notes.rb">
+module CrmCards
+⋮----
+class Notes
+MIN = 3
+MAX = 2000
+⋮----
+CRM_TYPES = { 'lead' => 'order', 'object' => 'realty' }.freeze
+⋮----
+Result = Struct.new(:ok, :note, :error, keyword_init: true) do
+def ok? = ok == true
+⋮----
+def self.add!(card, actor:, text:) = new(card, actor: actor, text: text).add!
+⋮----
+def self.flush_pending!(card)
+⋮----
+def initialize(card, actor:, text:)
+⋮----
+def add!
+⋮----
+private
+⋮----
+def deny(error) = Result.new(ok: false, error: error)
+⋮----
+def denial
+⋮----
+def participant?(perms)
+⋮----
+def crm_user
 </file>
 
 <file path="app/services/crm_cards/permissions_report.rb">
@@ -13849,35 +13839,6 @@ def confirm_prompt
 def accept_reason(value, manual)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class CrmCardEditFlow < Flow
-include CrmCardSupport
-⋮----
-flow 'crm_edit', 'Изменить поле карточки CRM'
-⋮----
-def steps
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def finish
-⋮----
-private
-⋮----
-def schema
-⋮----
-def chosen
-⋮----
-def field_button(field)
-⋮----
-def confirm_prompt
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/crm_card_note_flow.rb">
 module Telegram
 module WorkBot
@@ -13895,6 +13856,31 @@ def gate
 def accept(step, value, manual: false)
 ⋮----
 def finish
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_card_release_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardReleaseFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_release', 'Разрешить выгрузку карточки в CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def finish
+⋮----
+private
+⋮----
+def confirm_prompt
+⋮----
+# Что изменилось у лида, пока карточка ждала решения. Не запрет, а то,
+# чего руководитель может не знать: решение всё равно за ним.
+def warnings
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/task_flow.rb">
@@ -14645,6 +14631,81 @@ def escalate!(reason: nil)
 def display_name
 </file>
 
+<file path="app/models/telegram_user.rb">
+class TelegramUser < ApplicationRecord
+STATUSES = ['active', 'inactive', 'blocked'].freeze
+⋮----
+enum :role, {
+    agent: 'agent',
+    manager: 'manager',
+    director: 'director',
+    admin: 'admin'
+  }, prefix: true
+⋮----
+has_many :assigned_lead_events,
+           class_name: 'LeadEvent',
+           foreign_key: :assigned_to_id,
+           dependent: :nullify,
+           inverse_of: :assigned_to
+⋮----
+has_one :user, inverse_of: :telegram_user
+⋮----
+def can_dm?
+⋮----
+validates :tg_user_id, presence: true, uniqueness: true
+validates :status, inclusion: { in: STATUSES }
+⋮----
+scope :active,     -> { where(status: 'active') }
+scope :managers,   -> { where(is_manager: true) }
+scope :directors,  -> { where(role: 'director') }
+⋮----
+scope :assignable, -> { active.where(assignable: true) }
+⋮----
+def self.find_by_username(tg_username)
+⋮----
+# Phase 14 Iter 57 — резолвер identifier'а из voice-intake / LLM payload.
+⋮----
+ID_TOKEN_RE = /\Aid:(\d+)\z/i
+⋮----
+def self.resolve_identifier(token)
+⋮----
+def self.find_by_topnlab_email(email)
+⋮----
+def display_name
+⋮----
+def mention
+⋮----
+def linked_to_crm?
+⋮----
+def can_voice_distribute?
+⋮----
+def manager_or_director?
+⋮----
+def touch_seen!
+⋮----
+def touch_from_message!(msg)
+⋮----
+def set_pending_action!(type:, data: {}, step: nil, ttl: 10.minutes)
+⋮----
+def pending_action
+⋮----
+CRUMB_TTL = 1.hour
+⋮----
+def expire_pending_action!(previous)
+⋮----
+def expired_action
+⋮----
+def take_expired_action!(crumb)
+⋮----
+def clear_pending_action!
+⋮----
+private
+⋮----
+def crumb_stale?(crumb)
+⋮----
+def drop_stale_crumb!(crumb)
+</file>
+
 <file path="app/services/chat_tools/staff/market_comparables.rb">
 module ChatTools
 module Staff
@@ -14702,35 +14763,44 @@ def call(name, args, asked_by: nil)
 def deep_symbolize(obj)
 </file>
 
-<file path="app/services/crm_cards/notes.rb">
+<file path="app/services/crm_cards/change_requests.rb">
 module CrmCards
 ⋮----
-class Notes
-MIN = 3
-MAX = 2000
-⋮----
-CRM_TYPES = { 'lead' => 'order', 'object' => 'realty' }.freeze
-⋮----
-Result = Struct.new(:ok, :note, :error, keyword_init: true) do
+class ChangeRequests
+Result = Struct.new(:ok, :request, :error, keyword_init: true) do
 def ok? = ok == true
 ⋮----
-def self.add!(card, actor:, text:) = new(card, actor: actor, text: text).add!
+def initialize(notifier: nil)
 ⋮----
-def self.flush_pending!(card)
+def open!(card, actor:, field:, value:)
 ⋮----
-def initialize(card, actor:, text:)
+def approve!(request, actor:)
 ⋮----
-def add!
+def reject!(request, actor:, comment:)
 ⋮----
 private
 ⋮----
+attr_reader :notifier
+⋮----
 def deny(error) = Result.new(ok: false, error: error)
 ⋮----
-def denial
+def decide!(request, actor:, to:, comment: nil)
 ⋮----
-def participant?(perms)
+def wrong_bot
 ⋮----
-def crm_user
+def apply_to_card!(request, actor:)
+⋮----
+def note_change(request, actor:)
+⋮----
+def participant?(card, actor, perms)
+⋮----
+def label_for(request)
+⋮----
+VALUE_IN_NOTE = 200
+⋮----
+def change_note(request)
+⋮----
+def shown(field, value)
 </file>
 
 <file path="app/services/crm_cards/schema.rb">
@@ -15124,29 +15194,57 @@ private
 def confirm_prompt
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/crm_card_release_flow.rb">
+<file path="app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb">
 module Telegram
 module WorkBot
 module Wizard
 ⋮----
-class CrmCardReleaseFlow < Flow
+class CrmCardReworkFlow < Flow
 include CrmCardSupport
 ⋮----
-flow 'crm_release', 'Разрешить выгрузку карточки в CRM'
+flow 'crm_rework', 'Вернуть карточку CRM на доработку'
+⋮----
+COMMENT_MIN = 5
+COMMENT_MAX = 500
 ⋮----
 def steps
 ⋮----
 def gate
 ⋮----
+def accept(step, value, manual: false)
+⋮----
+def confirm_prompt
+⋮----
+def finish
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/crm_change_decide_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmChangeDecideFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_change', 'Решение по правке карточки'
+⋮----
+COMMENT_MIN = 5
+COMMENT_MAX = 500
+VERDICTS = { 'approved' => 'принята', 'rejected' => 'отклонена' }.freeze
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
 def finish
 ⋮----
 private
 ⋮----
-def confirm_prompt
+def request
 ⋮----
-# Что изменилось у лида, пока карточка ждала решения. Не запрет, а то,
-# чего руководитель может не знать: решение всё равно за ним.
-def warnings
+def verdict_prompt
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_object_card_flow.rb">
@@ -15302,23 +15400,6 @@ def guard_private_chat!(chat_id)
 def api_call(method, body = {}, retried: false)
 </file>
 
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
-⋮----
-def call
-⋮----
-def serialize(m)
-⋮----
-def log_and_ignore(reason)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_text(msg)
-</file>
-
 <file path="app/services/contact_form_spam_guard.rb">
 class ContactFormSpamGuard
 ⋮----
@@ -15373,170 +15454,6 @@ def suspicious(reason)
 require 'sidekiq/web'
 ⋮----
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
-</file>
-
-<file path="Gemfile">
-# frozen_string_literal: true
-
-source 'https://rubygems.org'
-git_source(:github) { |repo| "https://github.com/#{repo}.git" }
-
-ruby '3.4.10'
-
-# Core Rails — EOL Phase 2: 7.2.3.2 → 8.1 (7.2.x EOL 2026-08-09). Ruby 3.4.10 совместим
-# (YJIT доступен, не включён). 8.1.3.1 нативно закрывает CVE-2026-66066 (Active Storage).
-gem 'rails', '~> 8.0', '>= 8.1.4.1' # CVE sweep 04.11.26: GHSA-v924-7rp8-4mxh и др.
-
-# Database
-gem 'pg', '~> 1.5'
-
-# Server — CVE sweep 25.06.26: puma 6.4 имеет advisory, fix в 7.2.1+. Major
-# bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
-gem 'puma', '~> 7.2', '>= 7.2.1'
-
-# Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
-# / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
-# host allowlist bypass CVE-2026-34827/34829; rack-session: secretless session
-# forgery CVE-2026-39324). Явные floor-пины, пока transitive deps не догонят.
-gem 'rack', '>= 3.2.8' # + sweep 04.11.26: multipart DoS, Host bypass, Static dot-segments
-gem 'rack-session', '>= 2.1.2'
-gem 'nokogiri', '>= 1.19.5' # XSLT/xmlC14N + new advisory (sweep 25.06.26, 04.11.26)
-gem 'net-imap', '>= 0.6.4.1' # command injection CVE-2026-42258 + CVE-2026-47240
-gem 'concurrent-ruby', '>= 1.3.7' # CVE-2026-54904/54905/54906 (sweep 25.06.26)
-# CVE sweep 08.08.26 — новые advisory против transitive deps (advisory-db догнала
-# спустя ~6 недель после 25.06). Явные floor-пины до апстрим-догона.
-gem 'websocket-driver', '>= 0.8.2' # High: DoS via malformed Host header + 3 more (GHSA)
-gem 'loofah', '>= 2.25.3' # SVG href bypass (GHSA-9wjq-cp2p-hrgf), mXSS + CSS url() (04.11.26)
-gem 'rails-html-sanitizer', '>= 1.7.2' # XSS (GHSA-cj75-f6xr-r4g7), ReDoS + shared scrubber (04.11.26)
-gem 'crass', '>= 1.0.8' # DoS advisories (транзитивно через loofah)
-gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
-gem 'msgpack', '>= 1.8.2' # CVE-2026-54522 use-after-free (DFVULN-839)
-gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/capybara)
-
-# Assets
-gem 'sprockets-rails'
-gem 'importmap-rails'
-gem 'stimulus-rails'
-gem 'turbo-rails'
-gem 'jbuilder'
-
-# CSS
-gem 'tailwindcss-rails'
-
-# Minimal auth
-gem 'bcrypt', '~> 3.1', '>= 3.1.22'
-gem 'jwt', '~> 2.10', '>= 2.10.3' # empty-key HMAC bypass CVE-2026-45363
-
-# Authorization
-gem 'pundit', '~> 2.3'
-
-# Authentication (Devise)
-gem 'devise', '~> 4.9'
-
-# State machine (used by Inquiry)
-gem 'aasm', '~> 5.5'
-
-# PDF generation (used by PdfGeneratorService and CrmReports::* templates)
-gem 'prawn', '~> 2.5'
-gem 'prawn-table', '~> 0.2'
-
-# Background jobs
-gem 'sidekiq', '~> 7.2'
-gem 'sidekiq-cron', '~> 2.4' # 2.4+ закрывает XSS CVE-2025-67202
-
-# Redis (Action Cable + Sidekiq + cache)
-gem 'redis', '~> 5.0'
-
-# Pagination
-gem 'kaminari', '~> 1.2'
-
-# Search
-gem 'ransack', '~> 4.4', '>= 4.4.4' # DoS + XSS advisories (04.11.26)
-gem 'pg_search', '~> 2.3'
-
-# URL slugs
-gem 'friendly_id', '~> 5.5'
-
-# Active Storage image variants (webp/jpeg, resize) — required by libvips. Uses
-# the ruby-vips FFI bindings to libvips42 installed in the container.
-gem 'image_processing', '~> 1.13'
-
-# Markdown rendering for Article body (blog + market reports).
-gem 'redcarpet', '~> 3.6'
-
-# Geocoding
-gem 'geocoder', '~> 1.8'
-
-# Vector search (pgvector ActiveRecord helpers — used by PropertyEmbedding for
-# semantic property search via cosine distance on Google gemini-embedding-001 vectors).
-# PostGIS is enabled at the DB level only; we use raw SQL for ST_DWithin to avoid
-# swapping the AR adapter from `postgresql` to `postgis`.
-gem 'neighbor', '~> 0.6'
-
-# API
-gem 'rack-cors', '~> 2.0'
-
-# SEO meta tags (used by PagesController#set_meta_tags)
-gem 'meta-tags', '~> 2.21'
-
-# Performance
-gem 'bootsnap', require: false
-
-# QR codes for PDF reports (Telegram channel + site URL on report covers).
-# Pure Ruby; renders to PNG via mini_magick or to SVG natively (we use SVG
-# for Prawn embedding — small + crisp at any DPI).
-gem 'rqrcode', '~> 2.2'
-
-# HTTP client for audit-engine sidecar (Investment Audit) and Brave Search
-# (Express hybrid comparable fallback). Faraday-retry handles transient
-# 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
-# down sidecar degrades gracefully instead of stalling Puma threads.
-gem 'faraday', '~> 2.9', '>= 2.14.3' # CVE-2026-33637 + CVE-2026-54297 (High, sweep 25.06.26)
-gem 'faraday-retry', '~> 2.2'
-gem 'stoplight', '~> 4.1'
-
-# === Observability ===
-# Sentry — error tracking + (optionally) performance monitoring. Gated на
-# SENTRY_DSN env: если не задан → Sentry.init вообще не вызывается
-# (sentry-ruby молчит, не ходит в Sentry servers). PII strip через
-# before_send hook в config/initializers/sentry.rb.
-gem 'sentry-ruby',     '~> 5.20', require: false
-gem 'sentry-rails',    '~> 5.20', require: false
-gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
-
-# === Development tooling ===
-# ruby-lsp нужен Serena MCP / IDE для navigation-by-symbol (find_definition,
-# find_referencing_symbols, rename, etc) в Ruby-файлах проекта. `ruby-lsp-rails`
-# — addon, добавляющий понимание Rails-конвенций (моделей, миграций, роутов,
-# AR-связей). require: false — гем грузится только когда LSP-сервер
-# поднимается, не нужен в runtime приложения.
-group :development do
-  gem 'ruby-lsp',       '~> 0.26', require: false
-  gem 'ruby-lsp-rails', require: false
-
-  # Linters & security scanners — run locally via `bundle exec` and in CI
-  # (.github/workflows/lint.yml). All three are require: false so they
-  # don't load into the app process.
-  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
-  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
-  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
-  gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
-  gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
-end
-
-# === Test framework ===
-# RSpec + supporting gems. Required by spec/rails_helper.rb для запуска
-# unit / request / model specs локально и в CI. Группа :development добавлена
-# чтобы `bin/rails generate model …` рендерил RSpec stubs вместо minitest.
-group :development, :test do
-  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
-  gem 'factory_bot_rails',   '~> 6.4'    # fixtures replacement
-  gem 'faker',               '~> 3.4'    # realistic test data (Ru locale в rails_helper)
-  gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
-  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
-  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
-  gem 'webmock',             '~> 3.24'   # HTTP stubbing (stub_request в yandex_vision и др.)
-end
 </file>
 
 <file path="app/controllers/chat/messages_controller.rb">
@@ -15652,39 +15569,6 @@ def self.compact_response(pv, result)
 # ориентировочность оценки, см. description в .schema.
 ⋮----
 def self.run_failure(pv, error_message)
-</file>
-
-<file path="app/services/crm_cards/notifier.rb">
-module CrmCards
-⋮----
-class Notifier
-def initialize(client: nil)
-⋮----
-def submitted(card, moderators:)
-⋮----
-def returned(card, comment:)
-⋮----
-def approved(card, exporters: [])
-⋮----
-def released(card)
-⋮----
-def exported(card, warning: nil)
-⋮----
-def export_failed(card)
-⋮----
-private
-⋮----
-def export_failed_hint(card)
-⋮----
-def deliver(user, header, card)
-⋮----
-def dm(user, text, keyboard: nil)
-⋮----
-def refresh_lead_anchor(card)
-⋮----
-def client
-⋮----
-def escape(text)
 </file>
 
 <file path="app/services/crm_cards/text_intake.rb">
@@ -15892,6 +15776,41 @@ def condition_factor
 def amenities_factor
 </file>
 
+<file path="app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardEditFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_edit', 'Изменить поле карточки CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def published? = card.status_exported?
+⋮----
+def participant? = card.responsible&.id == tg_user.id || permissions.can?(:moderate)
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+def request_change(value)
+⋮----
+private
+⋮----
+def schema
+⋮----
+def chosen
+⋮----
+def field_button(field)
+⋮----
+def confirm_prompt
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb">
 module Telegram
 module WorkBot
@@ -15913,30 +15832,6 @@ def finish
 private
 ⋮----
 def number_taken_by(digits)
-</file>
-
-<file path="app/services/telegram/work_bot/wizard/crm_card_rework_flow.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-class CrmCardReworkFlow < Flow
-include CrmCardSupport
-⋮----
-flow 'crm_rework', 'Вернуть карточку CRM на доработку'
-⋮----
-COMMENT_MIN = 5
-COMMENT_MAX = 500
-⋮----
-def steps
-⋮----
-def gate
-⋮----
-def accept(step, value, manual: false)
-⋮----
-def confirm_prompt
-⋮----
-def finish
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/lead_picking.rb">
@@ -16082,6 +15977,83 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
+<file path="app/services/crm_cards/card_view.rb">
+module CrmCards
+⋮----
+module CardView
+KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
+RETRY_HINT = 'Отказ детерминирован: CRM обработала запрос и отклонила заявку — повтор безопасен.'
+VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
+⋮----
+MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
+⋮----
+module_function
+⋮----
+def render(card, viewer:)
+⋮----
+TEXT_LIMIT = 3600
+⋮----
+def text(card)
+⋮----
+# Страховка от лимита Telegram: карточка, которая не влезла, не открывается
+# вовсе, а отказ приходит уже на отправке и выглядит как «не удалось
+# написать в личку». Лучше обрезанная карточка, чем никакой.
+⋮----
+# Значение без HTML — для кнопок и для экранирования снаружи.
+def plain_value(field, value)
+⋮----
+def keyboard(card, viewer, perms)
+⋮----
+def change_request_rows(card)
+⋮----
+def approved_rows(card, owner, moderator, perms)
+⋮----
+def release_label(card)
+⋮----
+def author_rows(card)
+⋮----
+def moderator_rows(card)
+⋮----
+def header(card)
+⋮----
+def change_request_lines(card)
+⋮----
+def request_value(field, value)
+⋮----
+# Последние записи — свежие сверху. Полная история у лида и в CRM: в
+# карточку кладём три и режем длину каждой, иначе сообщение перестанет
+# влезать в лимит Telegram и карточка не откроется вовсе — ни у автора,
+# ни у модератора, которому её отправили.
+NOTES_SHOWN = 3
+NOTE_PREVIEW = 300
+⋮----
+def note_lines(card)
+⋮----
+def note_line(note, card)
+⋮----
+# Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
+# сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
+# по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
+# явно (metadata['sandbox']) и предупреждения не получают.
+def staff_test_lines(card)
+⋮----
+def check_lines(card)
+⋮----
+AWAITING_RELEASE_HINT = '⏳ Одобрена. Ждёт решения руководителя о выгрузке в CRM — вносить ничего не нужно.'
+⋮----
+def status_lines(card)
+⋮----
+def exported_lines(card)
+⋮----
+def error_label(card, key)
+⋮----
+def format_phone(digits)
+⋮----
+def button(text, callback_data)
+⋮----
+def escape(text)
+</file>
+
 <file path="app/services/crm_cards/checker.rb">
 module CrmCards
 ⋮----
@@ -16113,6 +16085,47 @@ def area(value)
 def blank_value?(raw)
 </file>
 
+<file path="app/services/crm_cards/notifier.rb">
+module CrmCards
+⋮----
+class Notifier
+def initialize(client: nil)
+⋮----
+def submitted(card, moderators:)
+⋮----
+def returned(card, comment:)
+⋮----
+def approved(card, exporters: [])
+⋮----
+def released(card)
+⋮----
+def change_requested(request, moderators:)
+⋮----
+def change_note_failed(request)
+⋮----
+def change_decided(request, note_ok: true)
+⋮----
+def shown(field, value)
+⋮----
+def exported(card, warning: nil)
+⋮----
+def export_failed(card)
+⋮----
+private
+⋮----
+def export_failed_hint(card)
+⋮----
+def deliver(user, header, card)
+⋮----
+def dm(user, text, keyboard: nil)
+⋮----
+def refresh_lead_anchor(card)
+⋮----
+def client
+⋮----
+def escape(text)
+</file>
+
 <file path="app/services/crm_cards/permissions.rb">
 module CrmCards
 ⋮----
@@ -16142,6 +16155,92 @@ def call
 private
 ⋮----
 def deny(reason, crm_user: nil)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def release_for_export!(card, actor:, expected: nil)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def exporters = Permissions.exporters
+⋮----
+def changed_since_confirm
+⋮----
+def already_released(card)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def wrong_bot(card)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def returnable?(card)
+⋮----
+def not_returnable(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/crm_card_callback.rb">
@@ -16282,6 +16381,31 @@ def fmt_rub(amount)
 def report_url(valuation)
 </file>
 
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_non_text(msg)
+⋮----
+def notify_wizard_expired(tg_user)
+⋮----
+WIZARD_EXPECTS = {
+⋮----
+def attachment_kind(msg)
+⋮----
+def workbot_wizard_text(msg)
+</file>
+
 <file path="app/services/property_evaluation_service.rb">
 class PropertyEvaluationService
 ⋮----
@@ -16381,40 +16505,168 @@ def success(payload)
 def error(message)
 </file>
 
-<file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
-module Telegram
-module WorkBot
-module Wizard
-⋮----
-module CrmCardSupport
-⋮----
-CLEAR = '__clear__'
-⋮----
-def permissions
-⋮----
-def workflow
-⋮----
-def card
-⋮----
-def field_step(field, id: field.key, prompt: nil, clearable: false)
-⋮----
-PASTE_SKIP = '__steps__'
-⋮----
-def paste_step(kind)
-⋮----
-def accept_paste(kind, value, needs: nil)
-⋮----
-def warn_about_partial_parse(error)
-⋮----
-def pasted_values
-⋮----
-def accept_field(field, value)
-⋮----
-def warn_about_phone(digits)
-⋮----
-def result_view(result)
-⋮----
-def moderator_gate(statuses: %w[pending_review])
+<file path="Gemfile">
+# frozen_string_literal: true
+
+source 'https://rubygems.org'
+git_source(:github) { |repo| "https://github.com/#{repo}.git" }
+
+ruby '3.4.10'
+
+# Core Rails — EOL Phase 2: 7.2.3.2 → 8.1 (7.2.x EOL 2026-08-09). Ruby 3.4.10 совместим
+# (YJIT доступен, не включён). 8.1.3.1 нативно закрывает CVE-2026-66066 (Active Storage).
+gem 'rails', '~> 8.0', '>= 8.1.4.1' # CVE sweep 04.11.26: GHSA-v924-7rp8-4mxh и др.
+
+# Database
+gem 'pg', '~> 1.5'
+
+# Server — CVE sweep 15.11.26: puma 7.2.1 имеет advisory, fix в 7.2.2+. Major
+# bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
+gem 'puma', '~> 7.2', '>= 7.2.2'
+
+# Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
+# / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
+# host allowlist bypass CVE-2026-34827/34829; rack-session: secretless session
+# forgery CVE-2026-39324). Явные floor-пины, пока transitive deps не догонят.
+gem 'rack', '>= 3.2.8' # + sweep 04.11.26: multipart DoS, Host bypass, Static dot-segments
+gem 'rack-session', '>= 2.1.2'
+gem 'nokogiri', '>= 1.19.5' # XSLT/xmlC14N + new advisory (sweep 25.06.26, 04.11.26)
+gem 'net-imap', '>= 0.6.4.1' # command injection CVE-2026-42258 + CVE-2026-47240
+gem 'concurrent-ruby', '>= 1.3.7' # CVE-2026-54904/54905/54906 (sweep 25.06.26)
+# CVE sweep 08.08.26 — новые advisory против transitive deps (advisory-db догнала
+# спустя ~6 недель после 25.06). Явные floor-пины до апстрим-догона.
+gem 'websocket-driver', '>= 0.8.2' # High: DoS via malformed Host header + 3 more (GHSA)
+gem 'loofah', '>= 2.25.3' # SVG href bypass (GHSA-9wjq-cp2p-hrgf), mXSS + CSS url() (04.11.26)
+gem 'rails-html-sanitizer', '>= 1.7.2' # XSS (GHSA-cj75-f6xr-r4g7), ReDoS + shared scrubber (04.11.26)
+gem 'crass', '>= 1.0.8' # DoS advisories (транзитивно через loofah)
+gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
+gem 'msgpack', '>= 1.8.7' # CVE-2026-126366 OOM in JRuby decoder + CVE-2026-54522 use-after-free (DFVULN-839)
+gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/capybara)
+
+# Assets
+gem 'sprockets-rails'
+gem 'importmap-rails'
+gem 'stimulus-rails'
+gem 'turbo-rails'
+gem 'jbuilder'
+
+# CSS
+gem 'tailwindcss-rails'
+
+# Minimal auth
+gem 'bcrypt', '~> 3.1', '>= 3.1.22'
+gem 'jwt', '~> 2.10', '>= 2.10.3' # empty-key HMAC bypass CVE-2026-45363
+
+# Authorization
+gem 'pundit', '~> 2.3'
+
+# Authentication (Devise)
+gem 'devise', '~> 4.9'
+
+# State machine (used by Inquiry)
+gem 'aasm', '~> 5.5'
+
+# PDF generation (used by PdfGeneratorService and CrmReports::* templates)
+gem 'prawn', '~> 2.5'
+gem 'prawn-table', '~> 0.2'
+
+# Background jobs
+gem 'sidekiq', '~> 7.2'
+gem 'sidekiq-cron', '~> 2.4' # 2.4+ закрывает XSS CVE-2025-67202
+
+# Redis (Action Cable + Sidekiq + cache)
+gem 'redis', '~> 5.0'
+
+# Pagination
+gem 'kaminari', '~> 1.2'
+
+# Search
+gem 'ransack', '~> 4.4', '>= 4.4.4' # DoS + XSS advisories (04.11.26)
+gem 'pg_search', '~> 2.3'
+
+# URL slugs
+gem 'friendly_id', '~> 5.5'
+
+# Active Storage image variants (webp/jpeg, resize) — required by libvips. Uses
+# the ruby-vips FFI bindings to libvips42 installed in the container.
+gem 'image_processing', '~> 1.13'
+
+# Markdown rendering for Article body (blog + market reports).
+gem 'redcarpet', '~> 3.6'
+
+# Geocoding
+gem 'geocoder', '~> 1.8'
+
+# Vector search (pgvector ActiveRecord helpers — used by PropertyEmbedding for
+# semantic property search via cosine distance on Google gemini-embedding-001 vectors).
+# PostGIS is enabled at the DB level only; we use raw SQL for ST_DWithin to avoid
+# swapping the AR adapter from `postgresql` to `postgis`.
+gem 'neighbor', '~> 0.6'
+
+# API
+gem 'rack-cors', '~> 2.0'
+
+# SEO meta tags (used by PagesController#set_meta_tags)
+gem 'meta-tags', '~> 2.21'
+
+# Performance
+gem 'bootsnap', require: false
+
+# QR codes for PDF reports (Telegram channel + site URL on report covers).
+# Pure Ruby; renders to PNG via mini_magick or to SVG natively (we use SVG
+# for Prawn embedding — small + crisp at any DPI).
+gem 'rqrcode', '~> 2.2'
+
+# HTTP client for audit-engine sidecar (Investment Audit) and Brave Search
+# (Express hybrid comparable fallback). Faraday-retry handles transient
+# 429/503 from the engine; Stoplight wraps calls in a circuit breaker so a
+# down sidecar degrades gracefully instead of stalling Puma threads.
+gem 'faraday', '~> 2.9', '>= 2.14.3' # CVE-2026-33637 + CVE-2026-54297 (High, sweep 25.06.26)
+gem 'faraday-retry', '~> 2.2'
+gem 'stoplight', '~> 4.1'
+
+# === Observability ===
+# Sentry — error tracking + (optionally) performance monitoring. Gated на
+# SENTRY_DSN env: если не задан → Sentry.init вообще не вызывается
+# (sentry-ruby молчит, не ходит в Sentry servers). PII strip через
+# before_send hook в config/initializers/sentry.rb.
+gem 'sentry-ruby',     '~> 5.20', require: false
+gem 'sentry-rails',    '~> 5.20', require: false
+gem 'sentry-sidekiq',  '~> 5.20', require: false  # Capture Sidekiq job failures
+
+# === Development tooling ===
+# ruby-lsp нужен Serena MCP / IDE для navigation-by-symbol (find_definition,
+# find_referencing_symbols, rename, etc) в Ruby-файлах проекта. `ruby-lsp-rails`
+# — addon, добавляющий понимание Rails-конвенций (моделей, миграций, роутов,
+# AR-связей). require: false — гем грузится только когда LSP-сервер
+# поднимается, не нужен в runtime приложения.
+group :development do
+  gem 'ruby-lsp',       '~> 0.26', require: false
+  gem 'ruby-lsp-rails', require: false
+
+  # Linters & security scanners — run locally via `bundle exec` and in CI
+  # (.github/workflows/lint.yml). All three are require: false so they
+  # don't load into the app process.
+  gem 'rubocop-rails',       '~> 2.25', require: false  # Rails-aware lint
+  gem 'rubocop-rspec',       '~> 3.0',  require: false  # RSpec idioms
+  gem 'rubocop-performance', '~> 1.21', require: false  # perf cops
+  gem 'brakeman',            '~> 6.2',  require: false  # static security analysis
+  gem 'bundler-audit',       '~> 0.9',  require: false  # CVE check against Gemfile.lock
+end
+
+# === Test framework ===
+# RSpec + supporting gems. Required by spec/rails_helper.rb для запуска
+# unit / request / model specs локально и в CI. Группа :development добавлена
+# чтобы `bin/rails generate model …` рендерил RSpec stubs вместо minitest.
+group :development, :test do
+  gem 'rspec-rails',         '~> 7.0'    # RSpec + Rails integration
+  gem 'factory_bot_rails',   '~> 6.4'    # fixtures replacement
+  gem 'faker',               '~> 3.4'    # realistic test data (Ru locale в rails_helper)
+  gem 'shoulda-matchers',    '~> 6.0'    # one-liner matchers (validate_presence_of, etc.)
+  gem 'database_cleaner-active_record', '~> 2.2'  # DatabaseCleaner для request specs
+  gem 'capybara',            '~> 3.40'   # browser-driver abstraction (system tests)
+  gem 'webmock',             '~> 3.24'   # HTTP stubbing (stub_request в yandex_vision и др.)
+end
 </file>
 
 <file path="app/models/crm_card.rb">
@@ -16428,6 +16680,8 @@ has_many :transitions, -> { order(:created_at, :id) },
            class_name: 'CrmCardTransition', dependent: :destroy, inverse_of: :crm_card
 ⋮----
 has_many :notes, as: :notable, dependent: :destroy, inverse_of: :notable
+⋮----
+has_many :change_requests, class_name: 'CrmCardChangeRequest', dependent: :destroy, inverse_of: :crm_card
 ⋮----
 enum :kind, {
     lead: 'lead',
@@ -16473,71 +16727,40 @@ def responsible
 def last_rework_comment
 </file>
 
-<file path="app/services/crm_cards/card_view.rb">
-module CrmCards
+<file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
+module Telegram
+module WorkBot
+module Wizard
 ⋮----
-module CardView
-KIND_TITLES = { 'lead' => 'Заявка в CRM', 'object' => 'Объект в CRM' }.freeze
-RETRY_HINT = 'Отказ детерминирован: CRM обработала запрос и отклонила заявку — повтор безопасен.'
-VERIFY_HINT = 'Найди клиента в CRM по телефону: заявка могла создаться. Если дубля нет — ' \
+module CrmCardSupport
 ⋮----
-MANUAL_EXPORT_HINT = '📥 <b>Внеси объект в CRM вручную</b>: «Создать объект Продавца», поля — выше. ' \
+CLEAR = '__clear__'
 ⋮----
-module_function
+def permissions
 ⋮----
-def render(card, viewer:)
+def workflow
 ⋮----
-TEXT_LIMIT = 3600
+def card
 ⋮----
-def text(card)
+def field_step(field, id: field.key, prompt: nil, clearable: false)
 ⋮----
-# Страховка от лимита Telegram: карточка, которая не влезла, не открывается
-# вовсе, а отказ приходит уже на отправке и выглядит как «не удалось
-# написать в личку». Лучше обрезанная карточка, чем никакой.
+PASTE_SKIP = '__steps__'
 ⋮----
-# Значение без HTML — для кнопок и для экранирования снаружи.
-def plain_value(field, value)
+def paste_step(kind)
 ⋮----
-def keyboard(card, viewer, perms)
+def accept_paste(kind, value, needs: nil)
 ⋮----
-def approved_rows(card, owner, moderator, perms)
+def warn_about_partial_parse(error)
 ⋮----
-def release_label(card)
+def pasted_values
 ⋮----
-def author_rows(card)
+def accept_field(field, value)
 ⋮----
-def moderator_rows(card)
+def warn_about_phone(digits)
 ⋮----
-def header(card)
+def result_view(result)
 ⋮----
-NOTES_SHOWN = 3
-NOTE_PREVIEW = 300
-⋮----
-def note_lines(card)
-⋮----
-def note_line(note, card)
-⋮----
-# Эвристика StaffSubmissionDetector помечает лид «возможно, заявка
-# сотрудника» — и клиента, чьё имя совпало с именем сотрудника. Запрещать
-# по ней нельзя, но модератор должен это видеть. Лиды песочницы помечены
-# явно (metadata['sandbox']) и предупреждения не получают.
-def staff_test_lines(card)
-⋮----
-def check_lines(card)
-⋮----
-AWAITING_RELEASE_HINT = '⏳ Одобрена. Ждёт решения руководителя о выгрузке в CRM — вносить ничего не нужно.'
-⋮----
-def status_lines(card)
-⋮----
-def exported_lines(card)
-⋮----
-def error_label(card, key)
-⋮----
-def format_phone(digits)
-⋮----
-def button(text, callback_data)
-⋮----
-def escape(text)
+def moderator_gate(statuses: %w[pending_review])
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_lead_card_flow.rb">
@@ -16612,6 +16835,8 @@ def initialize(tg_user:, client: Telegram::Client.new)
 ⋮----
 def self.active?(tg_user)
 ⋮----
+def self.expired_notice(tg_user)
+⋮----
 def self.current_bot
 ⋮----
 def start(flow_key, seed: {})
@@ -16669,92 +16894,6 @@ def send_dm(text, keyboard: nil)
 def dm_chat_id
 ⋮----
 def escape_html(text)
-</file>
-
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
-⋮----
-class Workflow
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def release_for_export!(card, actor:, expected: nil)
-⋮----
-def export!(card)
-⋮----
-def export_with_lock(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def attach_export_number!(card, crm_id:, actor:)
-⋮----
-def exporters = Permissions.exporters
-⋮----
-def changed_since_confirm
-⋮----
-def already_released(card)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
-⋮----
-private
-⋮----
-def save_values(card, values, actor:, perms:)
-⋮----
-def wrong_bot(card)
-⋮----
-def taking_over?(card, actor)
-⋮----
-def refresh_check(card)
-⋮----
-def transition!(card, to:, actor:, comment: nil)
-⋮----
-def sync_lead_ref!(card)
-⋮----
-def moderator?(actor)
-⋮----
-def moderator_denial(actor, action)
-⋮----
-def not_pending(card)
-⋮----
-def returnable?(card)
-⋮----
-def not_returnable(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil, retryable: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
 </file>
 
 </files>
