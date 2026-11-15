@@ -2,57 +2,70 @@
 
 require 'rails_helper'
 
-# Тест-режим чат-бота (issue #214): вход через ?visitor_token=<probe-токен>,
-# выход — ?visitor_token=off. Произвольный токен из URL игнорируется.
-#
-# Review round 6 (PR #228): probe-токен принимается только с валидной
-# HMAC-подписью (VisitorIdentity.probe_token) — иначе любой мог бы ссылкой
-# перевести реального посетителя в тестовый контур на 90 дней куки.
+# Тест-режим чат-бота (issue #214, защита #229): вход через
+# ?visitor_token=probe-<имя>&probe_key=<секрет>. Без секрета предсказуемый
+# URL ничего не меняет — иначе любая присланная ссылка молча переводит
+# посетителя в тестовый контур (блокер ревью PR #228). Имя прогона — метка
+# для человека; в cookie и Conversation уходит случайный токен, маркер
+# прогона живёт в metadata разговора. Выход — ?visitor_token=off.
 RSpec.describe 'VisitorIdentity', type: :request do
+  let(:probe_secret) { 'test-probe-secret-123' }
+
+  before do
+    allow(ENV).to receive(:[]).and_call_original
+    allow(ENV).to receive(:[]).with('CHAT_PROBE_SECRET').and_return(probe_secret)
+    allow(ENV).to receive(:[]).with('ADMIN_TOKEN').and_return(nil)
+  end
+
   def open_chat(params = {})
     get chat_conversation_path(format: :json), params: params
     expect(response).to have_http_status(:ok)
+    Conversation.order(:id).last
   end
 
-  def probe(name) = VisitorIdentity.probe_token(name)
+  it 'probe URL без секрета не переводит посетителя в тестовый контур' do
+    conv = open_chat(visitor_token: 'probe-maria-1211')
 
-  it 'подписанный probe-токен из URL закрепляется за посетителем и Conversation' do
-    open_chat(visitor_token: probe('maria-1211'))
-
-    expect(Conversation.order(:id).last.visitor_token).to eq(probe('maria-1211'))
+    expect(conv.test_probe?).to be(false)
+    expect(conv.visitor_token).not_to eq('probe-maria-1211')
+    expect(conv.visitor_token).to match(/\A[0-9a-f]{32}\z/)
   end
 
-  it 'самодельный probe-токен без подписи игнорируется (round 6)' do
-    open_chat(visitor_token: 'probe-maria-1211')
+  it 'probe URL с неверным секретом не активирует режим' do
+    conv = open_chat(visitor_token: 'probe-maria-1211', probe_key: 'wrong-secret')
 
-    expect(Conversation.order(:id).last.visitor_token).not_to start_with('probe-')
+    expect(conv.test_probe?).to be(false)
+    expect(conv.visitor_token).to match(/\A[0-9a-f]{32}\z/)
   end
 
-  it 'probe-токен с чужой подписью игнорируется (round 6)' do
-    forged = probe('maria-1211').sub(/[0-9a-f]{16}\z/, '0' * 16)
-    open_chat(visitor_token: forged)
+  it 'probe URL с верным секретом активирует тестовый контур' do
+    conv = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
 
-    expect(Conversation.order(:id).last.visitor_token).not_to start_with('probe-')
+    expect(conv.test_probe?).to be(true)
+    expect(conv.visitor_token).not_to start_with('probe-')
   end
 
-  it 'имя probe-токена по умолчанию уникально — у прогонов нет общего Conversation' do
-    expect(VisitorIdentity.probe_token).not_to eq(VisitorIdentity.probe_token)
+  it 'два прогона с одинаковым именем дают разные токены и Conversation' do
+    first = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
+    open_chat(visitor_token: 'off')
+    second = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
+
+    expect(first.test_probe?).to be(true)
+    expect(second.test_probe?).to be(true)
+    expect(second.visitor_token).not_to eq(first.visitor_token)
   end
 
-  it 'probe-диалог помечается test_probe?, обычный — нет' do
-    open_chat
-    open_chat(visitor_token: probe('maria-1211'))
+  it 'повторная активация с тем же именем перевыпускает токен прогона' do
+    first = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
+    second = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
 
-    probe_conv = Conversation.find_by!(visitor_token: probe('maria-1211'))
-    normal = Conversation.where.not(visitor_token: probe('maria-1211')).order(:id).last
-    expect(probe_conv).to be_test_probe
-    expect(normal).not_to be_test_probe
+    expect(second.visitor_token).not_to eq(first.visitor_token)
   end
 
   # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг из JSON сессии
   # (probe-кука httponly — из JS не прочитать).
   it 'serialize отдаёт test_probe — виджет показывает состояние тумблера' do
-    open_chat(visitor_token: probe('widget'))
+    open_chat(visitor_token: 'probe-widget', probe_key: probe_secret)
     expect(response.parsed_body['test_probe']).to be(true)
 
     open_chat(visitor_token: 'off')
@@ -61,50 +74,64 @@ RSpec.describe 'VisitorIdentity', type: :request do
   end
 
   it 'произвольный visitor_token из URL не принимается' do
-    open_chat(visitor_token: 'hacked-token')
+    conv = open_chat(visitor_token: 'hacked-token')
 
-    expect(Conversation.order(:id).last.visitor_token).not_to eq('hacked-token')
+    expect(conv.visitor_token).not_to eq('hacked-token')
   end
 
-  it 'слишком длинный probe-токен игнорируется (защита от CookieOverflow)' do
-    open_chat(visitor_token: "probe-#{'a' * 100}")
+  it 'слишком длинный probe-токен игнорируется даже с верным секретом (защита от CookieOverflow)' do
+    conv = open_chat(visitor_token: "probe-#{'a' * 100}", probe_key: probe_secret)
 
-    expect(Conversation.order(:id).last.visitor_token).not_to start_with('probe-')
+    expect(conv.test_probe?).to be(false)
+    expect(conv.visitor_token).not_to start_with('probe-')
   end
 
-  it 'probe-токен с длинным именем отклоняется паттерном' do
-    open_chat(visitor_token: VisitorIdentity.probe_token('a' * 40))
+  it 'probe-режим недоступен, если секрет не настроен на сервере' do
+    allow(ENV).to receive(:[]).with('CHAT_PROBE_SECRET').and_return(nil)
 
-    expect(Conversation.order(:id).last.visitor_token).not_to start_with('probe-')
+    conv = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
+
+    expect(conv.test_probe?).to be(false)
   end
 
-  it '?visitor_token=off выводит из тест-режима: следующий визит — обычный токен' do
-    open_chat(visitor_token: probe('maria-1211'))
-    expect(Conversation.order(:id).last.visitor_token).to eq(probe('maria-1211'))
+  it '?visitor_token=off выводит из тест-режима: следующий визит — боевой токен' do
+    probe = open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
+    expect(probe.test_probe?).to be(true)
 
-    open_chat(visitor_token: 'off')
+    off = open_chat(visitor_token: 'off')
+    expect(off.visitor_token).not_to eq(probe.visitor_token)
 
-    token = Conversation.order(:id).last.visitor_token
-    expect(token).not_to eq(probe('maria-1211'))
-    expect(token).not_to start_with('probe-')
+    normal = open_chat
+    expect(normal.test_probe?).to be(false)
+    expect(normal.visitor_token).to match(/\A[0-9a-f]{32}\z/)
   end
 
-  # Rev #230: у каждого браузера/прогона свой серверный probe-токен — общий
-  # токен смешивал бы сообщения независимых посетителей в один Conversation.
+  it 'боевой визитор без параметров получает обычный SecureRandom-токен' do
+    conv = open_chat
+
+    expect(conv.test_probe?).to be(false)
+    expect(conv.visitor_token).to match(/\A[0-9a-f]{32}\z/)
+  end
+
+  # Rev #230 (механизм #229): у каждого браузера/прогона свой случайный
+  # серверный токен — общий токен смешивал бы сообщения независимых
+  # посетителей в один Conversation.
   it 'два независимых браузера с разными probe-сессиями не смешиваются' do
     session_a = ActionDispatch::Integration::Session.new(Rails.application)
     session_b = ActionDispatch::Integration::Session.new(Rails.application)
 
-    session_a.get chat_conversation_path(format: :json), params: { visitor_token: probe('alice-0001') }
-    session_b.get chat_conversation_path(format: :json), params: { visitor_token: probe('bob-0002') }
+    session_a.get chat_conversation_path(format: :json),
+                  params: { visitor_token: 'probe-alice-0001', probe_key: probe_secret }
+    session_b.get chat_conversation_path(format: :json),
+                  params: { visitor_token: 'probe-bob-0002', probe_key: probe_secret }
 
     expect(session_a.response).to have_http_status(:ok)
     expect(session_b.response).to have_http_status(:ok)
-    conv_a = Conversation.find_by!(visitor_token: probe('alice-0001'))
-    conv_b = Conversation.find_by!(visitor_token: probe('bob-0002'))
+    conv_a, conv_b = Conversation.order(:id).last(2)
     expect(conv_a.id).not_to eq(conv_b.id)
     expect(conv_a).to be_test_probe
     expect(conv_b).to be_test_probe
+    expect(conv_a.visitor_token).not_to eq(conv_b.visitor_token)
 
     # Повторный визит браузера A — свой Conversation переиспользуется,
     # новых диалогов не создаётся (последним остаётся bob).
@@ -112,7 +139,7 @@ RSpec.describe 'VisitorIdentity', type: :request do
     session_a.get chat_conversation_path(format: :json)
     expect(session_a.response).to have_http_status(:ok)
     expect(Conversation.count).to eq(count)
-    expect(Conversation.order(:id).last.visitor_token).to eq(probe('bob-0002'))
+    expect(Conversation.order(:id).last.id).to eq(conv_b.id)
   end
 
   # Issue #227 (rev #230, round 4): JSON сессии НЕ выдаёт probe_token —
@@ -137,7 +164,7 @@ RSpec.describe 'VisitorIdentity', type: :request do
     end
 
     it 'probe-сессия: оба флага true' do
-      open_chat(visitor_token: probe('maria-1211'))
+      open_chat(visitor_token: 'probe-maria-1211', probe_key: probe_secret)
 
       expect(response.parsed_body['test_mode']).to be(true)
       expect(response.parsed_body['test_probe']).to be(true)

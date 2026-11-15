@@ -19,7 +19,9 @@ module Chat
         visitor_token:   current_visitor_token,
         user_id:         current_user&.id,
         status:          :active,
-        last_message_at: Time.current
+        last_message_at: Time.current,
+        # probe-прогон (issue #214/#229): маркер в metadata, токен случайный.
+        metadata:        current_visitor_probe? ? { 'test_probe' => true } : {}
       )
 
       return render(json: { error: 'rate_limited' }, status: :too_many_requests) if rate_limited?
@@ -46,6 +48,21 @@ module Chat
         type:    'message',
         message: serialize(msg)
       )
+
+      spam = Llm::SpamFilter.classify(body, ip: request.remote_ip, visitor_token: current_visitor_token)
+      if spam.action == :drop
+        # тихий дроп: ни ответа, ни LLM, ни лида — спамер не должен узнать,
+        # что канал жив. Событие остаётся в metadata конверсации для разбора,
+        # само сообщение исключается из history_for_llm (иначе следующий
+        # вопрос посетителя тащил спам в контекст LLM — токены и джейлбрейк-
+        # поверхность). Эхо посетителю уже ушло, роль менять поздно.
+        msg.update_columns(metadata: (msg.metadata || {}).merge('excluded_from_llm' => true))
+        record_security_event(conv, spam.reason, body)
+        # в лог — только причина и ссылки на записи: excerpt мог содержать
+        # телефон/PII, а стабильный visitor-token + IP — идентификаторы людей
+        Rails.logger.warn("[SpamFilter] дроп: reason=#{spam.reason} conversation_id=#{conv.id} message_id=#{msg.id}")
+        return render(json: { ok: true, message_id: msg.id }, status: :created)
+      end
 
       verdict = Llm::ScopeGuard.classify(body)
       if verdict == :allowed

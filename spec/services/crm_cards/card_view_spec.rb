@@ -41,22 +41,23 @@ RSpec.describe CrmCards::CardView do
 
   it 'черновик с пройденной проверкой: автору — править и отправить' do
     expect(callbacks(described_class.render(card, viewer: agent)))
-      .to eq(["wiz:s:crm_edit:#{card.id}", "crm_card:#{card.id}:submit"])
+      .to eq(["wiz:s:crm_edit:#{card.id}", "crm_card:#{card.id}:submit", "wiz:s:crm_note:#{card.id}"])
   end
 
   it 'непройденная проверка — кнопки «На модерацию» нет' do
     card.update!(check_errors: [{ 'field' => 'phone', 'message' => 'не заполнено' }])
 
-    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_edit:#{card.id}"])
+    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_edit:#{card.id}", "wiz:s:crm_note:#{card.id}"])
   end
 
   it 'на модерации: модератору — править, вернуть, одобрить; автору — ничего' do
     card.update!(status: 'pending_review')
 
     expect(callbacks(described_class.render(card, viewer: director))).to eq(
-      ["wiz:s:crm_edit:#{card.id}", "wiz:s:crm_rework:#{card.id}", "wiz:s:crm_approve:#{card.id}"]
+      ["wiz:s:crm_edit:#{card.id}", "wiz:s:crm_rework:#{card.id}", "wiz:s:crm_approve:#{card.id}", "wiz:s:crm_note:#{card.id}"]
     )
-    expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
+    # Автору решений не дают, но дописать ход работы он может на любой стадии.
+    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
   it 'возврат на доработку показывает, кто и что просил' do
@@ -68,12 +69,14 @@ RSpec.describe CrmCards::CardView do
       .to include('Вернули на доработку', '@oksana', 'Уточни бюджет')
   end
 
-  it 'сбой выгрузки: текст ошибки и пометка детерминированности; повтор — только модератору' do
+  it 'сбой выгрузки: текст ошибки и подсказка; повтор — только модератору' do
     card.update!(status: 'export_failed', export_error: '403 Forbidden')
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('403 Forbidden', 'повтор безопасен')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
-    expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
+    expect(described_class.render(card, viewer: director)[:text])
+      .to include('403 Forbidden', 'CRM обработала запрос и отклонила заявку')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
+    # Решений автору не дают, но заметку по работе с клиентом он допишет.
+    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
   it 'сбой выгрузки, но заявка уже есть в CRM (crm_id проставлен) — кнопки повтора нет, ' \
@@ -82,36 +85,33 @@ RSpec.describe CrmCards::CardView do
                  export_error: 'Заявка уже создана в CRM под номером 4242, но статус не записан. ' \
                                 'Не повторяй выгрузку — поправь статус вручную.')
 
-    expect(callbacks(described_class.render(card, viewer: director))).to eq([])
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
   it 'зависшая выгрузка: предупреждение и кнопка привязки номера из CRM' do
     card.update!(status: 'exporting')
     card.update_columns(updated_at: 20.minutes.ago)
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('висит дольше 15 минут', 'исход неизвестен')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}"])
+    expect(described_class.render(card, viewer: director)[:text])
+      .to include('висит дольше 15 минут', 'Найди клиента в CRM по телефону')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}", "wiz:s:crm_note:#{card.id}"])
   end
 
-  it 'неоднозначный сбой выгрузки — привязка номера из CRM вместо повтора' do
+  it 'сбой выгрузки по таймауту — кнопка привязки номера из CRM и подсказка про сверку' do
     card.update!(status: 'export_failed', export_error: 'Net::ReadTimeout', export_retryable: false)
 
-    expect(described_class.render(card, viewer: director)[:text]).to include('Net::ReadTimeout', 'Номер из CRM')
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}"])
-  end
-
-  it 'детерминированный сбой выгрузки — обычная кнопка повтора' do
-    card.update!(status: 'export_failed', export_error: '403 Forbidden', export_retryable: true)
-
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
+    expect(described_class.render(card, viewer: director)[:text])
+      .to include('Net::ReadTimeout', 'Найди клиента в CRM по телефону')
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}", "wiz:s:crm_note:#{card.id}"])
   end
 
   it 'одобренная заявка, не ушедшая в выгрузку за 15 минут, — повтор модератору' do
-    card.update!(status: 'approved')
+    card.update!(status: 'approved', released_by: director, released_at: Time.current)
     card.update_columns(updated_at: 20.minutes.ago)
 
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry"])
-    expect(described_class.render(card, viewer: agent)[:keyboard]).to eq([])
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["crm_card:#{card.id}:retry", "wiz:s:crm_note:#{card.id}"])
+    # Решений автору не дают, но заметку по работе с клиентом он допишет.
+    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
   it 'лид переназначили — кнопки правки у нового ответственного, у прежнего автора — нет' do

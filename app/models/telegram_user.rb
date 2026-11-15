@@ -193,9 +193,9 @@ class TelegramUser < ApplicationRecord
   #     "step" => "choose_destination|choose_cloud_target|describe_task",
   #     "data" => { "file_id" => ..., "target_kind" => ..., ... } }
   #
-  # TTL default 10 мин. Expired state читается → автоматически clear'ится →
-  # caller получает nil (как будто state'а не было). Это защищает от stuck-flow
-  # «забыл нажать кнопку».
+  # TTL default 10 мин. Expired state читается → оставляется одноразовый след (crumb) →
+  # caller получает nil. След нужен, чтобы бот сказал «мастер истёк»,
+  # а не молчал на ответ, пришедший через час.
 
   # @param type [String, Symbol] категория состояния (например :photo_disposition)
   # @param data [Hash] произвольные key-value для callback handler'а
@@ -212,15 +212,24 @@ class TelegramUser < ApplicationRecord
   end
 
   # @return [Hash, nil] active pending_action или nil (если empty / expired).
-  #   Expired state side-effect'ом очищается (set to {}).
+  #   Expired state side-effect'ом превращается в одноразовый crumb.
   def pending_action
     pa = dm_pending_action
     return nil if pa.blank?
 
+    # Хлебная крошка от протухшего состояния — не действие: отдавать её
+    # вызывающим нельзя, она нужна только чтобы сказать человеку «мастер истёк».
+    # Невостребованная крошка сама убирается через CRUMB_TTL: иначе она лежала
+    # бы вечно и однажды ответила «мастер истёк» на обычный вопрос.
+    if pa['type'].blank?
+      drop_stale_crumb!(pa['expired'])
+      return nil
+    end
+
     expires_at = pa['expires_at'] || pa[:expires_at]
     expired = expires_at.present? && Time.iso8601(expires_at.to_s) < Time.current
     if expired
-      clear_pending_action!
+      expire_pending_action!(pa)
       return nil
     end
 
@@ -231,8 +240,55 @@ class TelegramUser < ApplicationRecord
     nil
   end
 
+  # Протухшее состояние не просто стираем, а оставляем след: иначе на ответ,
+  # пришедший через час, бот молчит, и человек не понимает, умер бот или так
+  # задумано. След одноразовый — его забирает тот, кто о нём расскажет.
+  # Сколько живёт след: столько человек ещё помнит, что заполнял мастер.
+  CRUMB_TTL = 1.hour
+
+  def expire_pending_action!(previous)
+    crumb = { 'expired' => { 'type' => previous['type'].to_s, 'step' => previous['step'].to_s,
+                             'bot' => previous.dig('data', 'bot').presence || 'main',
+                             'flow' => previous.dig('data', 'flow').to_s,
+                             'at' => Time.current.iso8601 } }
+    update_column(:dm_pending_action, crumb) # rubocop:disable Rails/SkipsModelValidations
+    nil
+  end
+
+  # @return [Hash, nil] свежий след протухшего состояния. Не стираем: забрать
+  # его должен тот, кто о нём расскажет, — чужой след (фото-режим) не трогаем.
+  def expired_action
+    crumb = dm_pending_action.is_a?(Hash) ? dm_pending_action['expired'] : nil
+    return nil if crumb.blank? || crumb_stale?(crumb)
+
+    crumb
+  end
+
+  # Забрать след может только тот, кто его прочитал: между чтением и стиранием
+  # человек мог начать новый мастер, и безусловное стирание убило бы его.
+  def take_expired_action!(crumb)
+    self.class.where(id: id)
+        .where("dm_pending_action->'expired'->>'at' = ?", crumb['at'].to_s)
+        .update_all(dm_pending_action: {}) # rubocop:disable Rails/SkipsModelValidations
+  end
+
   def clear_pending_action!
     update_column(:dm_pending_action, {}) # rubocop:disable Rails/SkipsModelValidations
     nil
+  end
+
+  private
+
+  def crumb_stale?(crumb)
+    at = crumb['at'].to_s
+    at.blank? || Time.iso8601(at) < CRUMB_TTL.ago
+  rescue ArgumentError, TypeError
+    true
+  end
+
+  def drop_stale_crumb!(crumb)
+    return if crumb.blank? || !crumb_stale?(crumb)
+
+    clear_pending_action!
   end
 end

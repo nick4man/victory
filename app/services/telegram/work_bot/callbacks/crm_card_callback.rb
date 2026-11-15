@@ -55,9 +55,12 @@ module Telegram
           ack(success_text)
         end
 
-        def viewer?(card, perms)
+        # Держатель права выгрузки видит карточку наравне с модератором: он
+        # решает её судьбу, а решать вслепую нельзя.
+        def viewer?(card, perms = ::CrmCards::Permissions.for(tg_user))
           card.author_id == tg_user.id || card.responsible&.id == tg_user.id ||
-            card.lead_event&.assigned_to_id == tg_user.id || perms.can?(:moderate)
+            card.lead_event&.assigned_to_id == tg_user.id ||
+            perms.can?(:moderate) || perms.can?(:export)
         end
 
         def redraw(view)

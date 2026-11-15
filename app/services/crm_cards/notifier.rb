@@ -26,14 +26,84 @@ module CrmCards
       refresh_lead_anchor(card)
     end
 
-    def approved(card)
-      header = if card.kind_lead?
-                 "✅ <b>Карточка ##{card.id} одобрена</b> #{escape(card.reviewer&.mention)} — выгружаю в CRM."
-               else
-                 "✅ <b>Объект одобрен</b> #{escape(card.reviewer&.mention)} — внеси его в CRM и отметь номер карточки."
-               end
-      deliver(card.responsible, header, card)
+    # Одобрение больше не отправляет карточку в CRM — это решает руководитель
+    # (право export). Поэтому автору сообщаем, что карточка ждёт его решения,
+    # а самому руководителю карточка уходит с кнопкой выгрузки.
+    def approved(card, exporters: [])
+      deliver(card.responsible,
+              "✅ <b>Карточка ##{card.id} одобрена</b> #{escape(card.reviewer&.mention)} — " \
+              'ждёт решения руководителя о выгрузке в CRM.', card)
+      delivered = exporters.count { |boss| deliver(boss, "📤 <b>Ждёт выгрузки в CRM</b> · карточка ##{card.id}", card) }
+      # Некому и не доставили — разные беды с разным лечением: в первом случае
+      # чинят таблицу должностей, во втором руководителю надо открыть чат с
+      # ботом. Свалить их в одно сообщение — отправить чинить исправное.
+      if exporters.empty?
+        dm(card.reviewer, "⚠️ Карточка ##{card.id} одобрена, но решение о выгрузке принять некому: " \
+                          'права выгрузки нет ни у кого из сотрудников. Проверь должности в CRM.')
+      elsif delivered.zero?
+        dm(card.reviewer, "⚠️ Карточка ##{card.id} одобрена, но написать о ней в личку никому из руководителей " \
+                          'не удалось. Пусть откроет чат с ботом, нажмёт «Start» и наберёт /cards.')
+      end
       refresh_lead_anchor(card)
+    end
+
+    def released(card)
+      text = if card.kind_lead?
+               "📤 <b>Карточка ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил выгрузку — отправляю в CRM."
+             else
+               "📤 <b>Объект по карточке ##{card.id}</b>: #{escape(card.released_by&.mention)} разрешил внесение — " \
+                 'внеси его в CRM и отметь номер.'
+             end
+      deliver(card.responsible, text, card)
+      refresh_lead_anchor(card)
+    end
+
+    # Правка опубликованной карточки: заявку видит модератор, решение — автор.
+    def change_requested(request, moderators:)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      field = Schema.field(card.kind, request.field)
+      head = "✏️ <b>Правка опубликованной карточки ##{card.id}</b> от #{escape(request.author.mention)}\n" \
+             "#{escape(label)}: «#{escape(shown(field, request.old_value))}» → " \
+             "«#{escape(shown(field, request.new_value))}»"
+      delivered = moderators.count { |m| deliver(m, head, card) }
+      if moderators.empty?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но модераторов с доступом к CRM " \
+                           'нет — согласовать её некому. Сообщи директору.')
+      elsif delivered.zero?
+        dm(request.author, "⚠️ Заявка на правку карточки ##{card.id} создана, но написать модератору не удалось. " \
+                           'Сообщи ему другим способом.')
+      end
+    end
+
+    # Заметку в CRM записать не удалось: обещать «там уже есть запись» нельзя.
+    def change_note_failed(request)
+      dm(request.reviewer, "⚠️ Правка по карточке ##{request.crm_card_id} принята, но записать заметку в CRM " \
+                           'не вышло. Скажи ответственному о согласовании другим способом.')
+    end
+
+    def change_decided(request, note_ok: true)
+      card = request.crm_card
+      label = Schema.field(card.kind, request.field)&.label || request.field
+      text = if request.status_approved?
+               approved_text = "✅ <b>Правка принята</b> · карточка ##{card.id} · #{escape(label)}\n"
+               if note_ok
+                 approved_text + 'Поправь это поле в CRM — в заявке там уже есть запись о согласовании.'
+               else
+                 approved_text + 'Поправь это поле в CRM, а заметку о согласовании придётся внести вручную: ' \
+                                'автоматическая запись не удалась.'
+               end
+             else
+               "↩️ <b>Правка отклонена</b> · карточка ##{card.id} · #{escape(label)}: #{escape(request.comment)}"
+             end
+      dm(request.author, text)
+    end
+
+    # Значение — как в карточке: «Продажа», а не «sale», телефон с плюсом.
+    def shown(field, value)
+      return '—' if value.nil?
+
+      field ? CardView.plain_value(field, value).to_s : value.to_s
     end
 
     def exported(card, warning: nil)

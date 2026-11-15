@@ -127,11 +127,14 @@ RSpec.describe TelegramUser do
       expect(pa['data']['file_id']).to eq('xyz')
     end
 
-    it 'pending_action возвращает nil и очищает state после TTL' do
-      user.set_pending_action!(type: 'photo_disposition', data: {}, ttl: 1.second)
+    it 'pending_action возвращает nil после TTL и оставляет след о протухшем' do
+      user.set_pending_action!(type: 'photo_disposition', data: {}, step: 'describe_task', ttl: 1.second)
       travel_to(2.seconds.from_now) do
         expect(user.pending_action).to be_nil
-        expect(user.reload.dm_pending_action).to eq({})
+        # След нужен, чтобы сказать человеку «истекло», а не промолчать.
+        expect(user.reload.expired_action).to include('type' => 'photo_disposition', 'step' => 'describe_task')
+        # Сам след действием не притворяется.
+        expect(user.pending_action).to be_nil
       end
     end
 

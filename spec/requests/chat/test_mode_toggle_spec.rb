@@ -2,12 +2,13 @@
 
 require 'rails_helper'
 
-# Issue #227 (rev #230, round 4): тумблер «🧪 Тест-прогон» переключает режим
-# через POST /chat/conversation/test_mode. Блокер ревью: публичная выдача
-# HMAC probe-токена в JSON сессии позволяла любому анониму переключить чужую
+# Issue #227 (rev #230, round 4; механизм #229): тумблер «🧪 Тест-прогон»
+# переключает режим через POST /chat/conversation/test_mode. Блокер ревью:
+# публичная выдача probe-токена в JSON сессии позволяла любому анониму
 # сессию в тест-контур на 90 дней (ссылка ?visitor_token=<token>) и разделить
 # с жертвой один Conversation. Поэтому:
-#   - токен мятит ТОЛЬКО сервер, из URL/JSON токен не принимается;
+#   - случайный токен и подписанный флаг прогона мятит ТОЛЬКО сервер,
+#     из URL/JSON они не принимаются;
 #   - endpoint same-origin с CSRF (в test-окружении защита выключена
 #     глобально — включаем allow_forgery_protection на время этих примеров).
 RSpec.describe 'Chat::Тумблер тест-прогона (POST /chat/conversation/test_mode)', type: :request do
@@ -28,7 +29,7 @@ RSpec.describe 'Chat::Тумблер тест-прогона (POST /chat/convers
   end
 
   describe 'включение тест-режима' do
-    it 'сервер мятит свежий HMAC probe-токен — новый диалог test_probe' do
+    it 'сервер мятит свежий случайный токен и флаг прогона — новый диалог test_probe' do
       open_chat
       token_before = last_conversation.visitor_token
 
@@ -37,10 +38,9 @@ RSpec.describe 'Chat::Тумблер тест-прогона (POST /chat/convers
       expect(response.parsed_body['test_probe']).to be(true)
       expect(response.parsed_body['test_mode']).to be(true)
 
-      # Новый Conversation под свежим probe-токеном — старый диалог не тронут.
+      # Новый Conversation под свежим случайным токеном — старый диалог не тронут.
       expect(last_conversation.visitor_token).not_to eq(token_before)
-      expect(last_conversation.visitor_token).to match(VisitorIdentity::PROBE_TOKEN_PATTERN)
-      expect(VisitorIdentity.valid_probe_token?(last_conversation.visitor_token)).to be(true)
+      expect(last_conversation.visitor_token).to match(/\A[0-9a-f]{32}\z/)
       expect(last_conversation).to be_test_probe
 
       # Повторный show — состояние держится по куке.
@@ -68,7 +68,7 @@ RSpec.describe 'Chat::Тумблер тест-прогона (POST /chat/convers
       expect(response).to have_http_status(:ok)
       expect(response.parsed_body['test_probe']).to be(false)
       expect(response.parsed_body['test_mode']).to be(false)
-      expect(last_conversation.visitor_token).not_to match(VisitorIdentity::PROBE_TOKEN_PATTERN)
+      expect(last_conversation.visitor_token).to match(/\A[0-9a-f]{32}\z/)
 
       open_chat
       expect(response.parsed_body['test_probe']).to be(false)

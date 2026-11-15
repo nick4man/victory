@@ -77,7 +77,7 @@ module CrmCards
       result = card.with_lock do
         next deny(wrong_bot(card)) if wrong_bot(card)
         next deny(moderator_denial(actor, 'Возвращать на доработку')) unless moderator?(actor)
-        next deny(not_pending(card)) unless card.status_pending_review?
+        next deny(not_returnable(card)) unless returnable?(card)
         next deny('Нужен комментарий: что доработать.') if text.empty?
 
         transition!(card, to: 'needs_rework', actor: actor, comment: text)
@@ -107,8 +107,41 @@ module CrmCards
         ok(card)
       end
       if result.ok?
+        notifier.approved(card, exporters: exporters)
+      end
+      result
+    end
+
+    # Третья ступень: одобренная карточка уходит в CRM только по решению
+    # держателя права export. До него заявка не выгружается, а у объекта автор
+    # не видит кнопку «Внесено в CRM» — одобрение и отправка в CRM это разные
+    # решения, и принимают их разные люди.
+    # expected — отпечаток карточки на момент, когда руководителю показали
+    # подтверждение. Решение о выгрузке принимает человек, и машина его не
+    # отменяет: она лишь следит, что выгрузится ровно то состояние, которое он
+    # видел и подтвердил. Изменилось между показом и нажатием — не выгружаем,
+    # а показываем заново.
+    def release_for_export!(card, actor:, expected: nil)
+      result = card.with_lock do
+        next deny(wrong_bot(card)) if wrong_bot(card)
+        perms = Permissions.for(actor)
+        next deny(perms.denial) if perms.denial
+        next deny('Решение о выгрузке в CRM принимает руководитель.') unless perms.can?(:export)
+        next deny("Карточка не одобрена (#{label(card)}).") unless card.status_approved?
+        next deny(already_released(card)) if card.released_at.present?
+        next deny(changed_since_confirm) if expected.present? && expected != card.release_digest
+
+        # Проверку обновляем, чтобы карточка показывала сегодняшнее состояние
+        # лида, но выгрузку она не запрещает: это решение человека.
+        refresh_check(card)
+        card.update!(released_by: actor, released_at: Time.current)
+        card.transitions.create!(from_status: 'approved', to_status: 'approved',
+                                 actor: actor, comment: 'разрешена выгрузка')
+        ok(card)
+      end
+      if result.ok?
         ExportJob.perform_later(card.id) if card.kind_lead?
-        notifier.approved(card)
+        notifier.released(card)
       end
       result
     end
@@ -138,8 +171,12 @@ module CrmCards
     def export_with_lock(card)
       token = SecureRandom.hex(8)
       claimed = CrmCard.where(id: card.id, kind: 'lead', status: 'approved')
+                       .where.not(released_at: nil)
                        .update_all(status: 'exporting', export_attempt_token: token, updated_at: Time.current)
-      return deny('Карточка не ждёт выгрузки: не одобрена или её уже выгружает другой процесс.') unless claimed == 1
+      unless claimed == 1
+        return deny('Карточка не ждёт выгрузки: не одобрена, не разрешена руководителем ' \
+                    'или её уже выгружает другой процесс.')
+      end
 
       card.reload
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
@@ -191,6 +228,7 @@ module CrmCards
           allowed = perms.denial.nil? && (card.responsible&.id == actor.id || perms.can?(:moderate))
           next deny(perms.denial || 'Отметить внесение в CRM может автор карточки или модератор.') unless allowed
           next deny("Карточка не ждёт ручного внесения (#{label(card)}).") unless card.kind_object? && card.status_approved?
+          next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.released_at.blank?
         else
           next deny("Карточка не выгружается (#{label(card)}).") unless card.status_exporting?
           # Чужая (stale) попытка не финализирует чужую выгрузку: токен
@@ -203,7 +241,13 @@ module CrmCards
         sync_lead_ref!(card)
         ok(card)
       end
-      notifier.exported(card, warning: warning) if result.ok?
+      if result.ok?
+        # Заметки, написанные до попадания в CRM, отправляем теперь: до этой
+        # минуты их некуда было прикрепить, а копились они как раз тогда, когда
+        # с клиентом активно разговаривали.
+        Notes.flush_pending!(card)
+        notifier.exported(card, warning: warning)
+      end
       result
     rescue ActiveRecord::RecordNotUnique => e
       raise unless e.message.include?('idx_crm_cards_unique_exported_object_crm_id')
@@ -242,6 +286,8 @@ module CrmCards
           end
         end
 
+        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.status_approved? && card.released_at.blank?
+
         transition!(card, to: 'approved', actor: actor, comment: 'повтор выгрузки')
         # Токен чистим: живая старая попытка проснётся, увидит nil/чужой
         # токен и ничего не перезапишет (гонка с retry_export!, PR #210).
@@ -267,6 +313,7 @@ module CrmCards
         unless card.status_export_failed? || card.status_exporting? || card.status_approved?
           next deny("Привязывать нечего (#{label(card)}).")
         end
+        next deny('Выгрузку в CRM ещё не разрешил руководитель.') if card.released_at.blank?
 
         transition!(card, to: 'exported', actor: actor, comment: "привязан номер из CRM после сверки: #{digits}")
         card.update!(crm_id: digits, exported_at: Time.current, export_error: nil,
@@ -274,8 +321,29 @@ module CrmCards
         sync_lead_ref!(card)
         ok(card)
       end
-      notifier.exported(card) if result.ok?
+      if result.ok?
+        # Заметки, написанные до привязки номера, отправляем теперь: до этой
+        # минуты их некуда было прикрепить.
+        Notes.flush_pending!(card)
+        notifier.exported(card)
+      end
       result
+    end
+
+    def exporters = Permissions.exporters
+
+    # У объекта разрешение ничего не отправляет — оно лишь открывает автору
+    # ручное внесение. Сказать «уже отправлена в CRM» значило бы объявить
+    # сделанным то, чего ещё никто не делал.
+    def changed_since_confirm
+      'Карточка изменилась после того, как ты её открыл: поля, ответственный или состояние лида уже не те. ' \
+        'Открой её заново и реши по актуальному.'
+    end
+
+    def already_released(card)
+      return 'Выгрузка этой заявки уже запущена.' if card.kind_lead?
+
+      "Внесение уже разрешено — объект ждёт номера от #{card.responsible&.mention}."
     end
 
     def can_edit?(card, actor, perms = Permissions.for(actor))
@@ -368,6 +436,17 @@ module CrmCards
 
     def not_pending(card)
       "Карточка не на модерации (#{label(card)})."
+    end
+
+    # Одобренную, но ещё не выгруженную карточку тоже можно вернуть автору.
+    # Иначе она застревает намертво: за время ожидания решения руководителя
+    # лид мог закрыться, и тогда выгрузить её уже нельзя, а вернуть — некому.
+    def returnable?(card)
+      card.status_pending_review? || (card.status_approved? && card.released_at.blank?)
+    end
+
+    def not_returnable(card)
+      "Карточку в статусе «#{label(card)}» вернуть на доработку нельзя."
     end
 
     def label(card)

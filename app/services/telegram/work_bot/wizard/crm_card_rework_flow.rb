@@ -17,13 +17,13 @@ module Telegram
           [
             Flow::Step.new(id: 'comment', kind: :input, prompt: "Что доработать в карточке ##{ctx['card']}?",
                            hint: 'Автор увидит это дословно. Конкретно: «нет бюджета», «телефон не отвечает».'),
-            Flow::Step.new(id: 'confirm', kind: :confirm, prompt: 'Вернуть карточку автору на доработку?',
+            Flow::Step.new(id: 'confirm', kind: :confirm, prompt: confirm_prompt,
                            confirm_label: '↩️ Вернуть')
           ]
         end
 
         def gate
-          moderator_gate
+          moderator_gate(statuses: %w[pending_review approved])
         end
 
         def accept(step, value, manual: false)
@@ -34,6 +34,15 @@ module Telegram
           return [nil, "Слишком длинно: #{text.length} симв., влезает #{COMMENT_MAX}."] if text.length > COMMENT_MAX
 
           [text, nil]
+        end
+
+        # Номер карточки и автор прямо в вопросе: входящее уведомление может
+        # сдвинуть разметку чата под пальцем, и безликое «вернуть карточку
+        # автору» не даёт заметить, что нажалось по чужой карточке.
+        def confirm_prompt
+          return 'Вернуть карточку автору на доработку?' unless card
+
+          "Вернуть карточку ##{card.id} автору #{escape_html(card.responsible&.mention.to_s)} на доработку?"
         end
 
         def finish

@@ -30,6 +30,9 @@ module Telegram
           unless card.kind_object? && card.status_approved?
             return "ℹ️ Карточка ##{card.id} не ждёт ручного внесения — #{::CrmCard::STATUS_LABELS[card.status]}."
           end
+          # Отказ до ввода номера, а не после: иначе сотрудник наберёт номер,
+          # подтвердит — и только тогда узнает, что вносить было рано.
+          return "⏳ Выгрузку карточки ##{card.id} ещё не разрешил руководитель." if card.released_at.blank?
 
           nil
         end

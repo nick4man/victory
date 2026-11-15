@@ -705,6 +705,45 @@ ALTER SEQUENCE public.conversations_id_seq OWNED BY public.conversations.id;
 
 
 --
+-- Name: crm_card_change_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.crm_card_change_requests (
+    id bigint NOT NULL,
+    crm_card_id bigint NOT NULL,
+    author_id bigint NOT NULL,
+    reviewer_id bigint,
+    field character varying NOT NULL,
+    old_value jsonb,
+    new_value jsonb,
+    status character varying DEFAULT 'pending'::character varying NOT NULL,
+    comment text,
+    reviewed_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: crm_card_change_requests_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.crm_card_change_requests_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: crm_card_change_requests_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.crm_card_change_requests_id_seq OWNED BY public.crm_card_change_requests.id;
+
+
+--
 -- Name: crm_card_transitions; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -763,7 +802,9 @@ CREATE TABLE public.crm_cards (
     updated_at timestamp(6) without time zone NOT NULL,
     export_attempt_token character varying,
     export_retryable boolean DEFAULT true NOT NULL,
-    sandbox boolean DEFAULT false NOT NULL
+    sandbox boolean DEFAULT false NOT NULL,
+    released_by_id bigint,
+    released_at timestamp(6) without time zone
 );
 
 
@@ -2564,6 +2605,81 @@ ALTER SEQUENCE public.show_reports_id_seq OWNED BY public.show_reports.id;
 
 
 --
+-- Name: spam_allowlist_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spam_allowlist_entries (
+    id bigint NOT NULL,
+    domain character varying NOT NULL,
+    manual boolean DEFAULT false NOT NULL,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL
+);
+
+
+--
+-- Name: spam_allowlist_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.spam_allowlist_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: spam_allowlist_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.spam_allowlist_entries_id_seq OWNED BY public.spam_allowlist_entries.id;
+
+
+--
+-- Name: spam_blocked_entries; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.spam_blocked_entries (
+    id bigint NOT NULL,
+    entry_type character varying NOT NULL,
+    value character varying NOT NULL,
+    value_digest character varying NOT NULL,
+    status character varying DEFAULT 'suspect'::character varying NOT NULL,
+    source character varying NOT NULL,
+    hits integer DEFAULT 0 NOT NULL,
+    hit_tokens jsonb DEFAULT '[]'::jsonb NOT NULL,
+    last_hit_at timestamp(6) without time zone,
+    seen_at timestamp(6) without time zone,
+    blocked_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone,
+    created_at timestamp(6) without time zone NOT NULL,
+    updated_at timestamp(6) without time zone NOT NULL,
+    confirmations jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+
+--
+-- Name: spam_blocked_entries_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.spam_blocked_entries_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: spam_blocked_entries_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.spam_blocked_entries_id_seq OWNED BY public.spam_blocked_entries.id;
+
+
+--
 -- Name: staff_metrics; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -3391,6 +3507,13 @@ ALTER TABLE ONLY public.conversations ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: crm_card_change_requests id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests ALTER COLUMN id SET DEFAULT nextval('public.crm_card_change_requests_id_seq'::regclass);
+
+
+--
 -- Name: crm_card_transitions id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3664,6 +3787,20 @@ ALTER TABLE ONLY public.show_reports ALTER COLUMN id SET DEFAULT nextval('public
 
 
 --
+-- Name: spam_allowlist_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_allowlist_entries ALTER COLUMN id SET DEFAULT nextval('public.spam_allowlist_entries_id_seq'::regclass);
+
+
+--
+-- Name: spam_blocked_entries id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_blocked_entries ALTER COLUMN id SET DEFAULT nextval('public.spam_blocked_entries_id_seq'::regclass);
+
+
+--
 -- Name: staff_metrics id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -3900,6 +4037,14 @@ ALTER TABLE ONLY public.client_documents
 
 ALTER TABLE ONLY public.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: crm_card_change_requests crm_card_change_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT crm_card_change_requests_pkey PRIMARY KEY (id);
 
 
 --
@@ -4220,6 +4365,22 @@ ALTER TABLE ONLY public.service_types
 
 ALTER TABLE ONLY public.show_reports
     ADD CONSTRAINT show_reports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: spam_allowlist_entries spam_allowlist_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_allowlist_entries
+    ADD CONSTRAINT spam_allowlist_entries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: spam_blocked_entries spam_blocked_entries_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.spam_blocked_entries
+    ADD CONSTRAINT spam_blocked_entries_pkey PRIMARY KEY (id);
 
 
 --
@@ -4566,6 +4727,20 @@ CREATE UNIQUE INDEX idx_property_valuations_audit_engine_id_unique ON public.pro
 --
 
 CREATE INDEX idx_show_reports_pending_by_reporter ON public.show_reports USING btree (reported_by_id) WHERE ((status)::text = 'pending_confirm'::text);
+
+
+--
+-- Name: idx_spam_allowlist_entries_domain; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_allowlist_entries_domain ON public.spam_allowlist_entries USING btree (domain) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: idx_spam_blocked_entries_type_digest; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_spam_blocked_entries_type_digest ON public.spam_blocked_entries USING btree (entry_type, value_digest);
 
 
 --
@@ -4989,6 +5164,34 @@ CREATE INDEX index_conversations_on_visitor_token ON public.conversations USING 
 
 
 --
+-- Name: index_crm_card_change_requests_on_author_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_author_id ON public.crm_card_change_requests USING btree (author_id);
+
+
+--
+-- Name: index_crm_card_change_requests_on_crm_card_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_crm_card_id ON public.crm_card_change_requests USING btree (crm_card_id);
+
+
+--
+-- Name: index_crm_card_change_requests_on_reviewer_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_card_change_requests_on_reviewer_id ON public.crm_card_change_requests USING btree (reviewer_id);
+
+
+--
+-- Name: index_crm_card_change_requests_pending_field; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX index_crm_card_change_requests_pending_field ON public.crm_card_change_requests USING btree (crm_card_id, field) WHERE ((status)::text = 'pending'::text);
+
+
+--
 -- Name: index_crm_card_transitions_on_actor_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -5021,6 +5224,13 @@ CREATE INDEX index_crm_cards_on_deleted_at ON public.crm_cards USING btree (dele
 --
 
 CREATE INDEX index_crm_cards_on_lead_event_id ON public.crm_cards USING btree (lead_event_id);
+
+
+--
+-- Name: index_crm_cards_on_released_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_released_by_id ON public.crm_cards USING btree (released_by_id);
 
 
 --
@@ -6795,6 +7005,34 @@ CREATE INDEX index_show_reports_on_status_and_conducted_at ON public.show_report
 
 
 --
+-- Name: index_spam_allowlist_entries_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_allowlist_entries_on_deleted_at ON public.spam_allowlist_entries USING btree (deleted_at);
+
+
+--
+-- Name: index_spam_blocked_entries_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_deleted_at ON public.spam_blocked_entries USING btree (deleted_at);
+
+
+--
+-- Name: index_spam_blocked_entries_on_source_and_seen_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_source_and_seen_at ON public.spam_blocked_entries USING btree (source, seen_at) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: index_spam_blocked_entries_on_status_and_entry_type; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_spam_blocked_entries_on_status_and_entry_type ON public.spam_blocked_entries USING btree (status, entry_type);
+
+
+--
 -- Name: index_staff_metrics_on_date; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7399,6 +7637,14 @@ ALTER TABLE ONLY public.inquiries
 
 
 --
+-- Name: crm_card_change_requests fk_rails_19956590ab; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_19956590ab FOREIGN KEY (crm_card_id) REFERENCES public.crm_cards(id);
+
+
+--
 -- Name: messages fk_rails_1b38f09558; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7476,6 +7722,14 @@ ALTER TABLE ONLY public.price_histories
 
 ALTER TABLE ONLY public.properties
     ADD CONSTRAINT fk_rails_36e2ff0e8d FOREIGN KEY (moderated_by_id) REFERENCES public.users(id);
+
+
+--
+-- Name: crm_card_change_requests fk_rails_382ebfbe38; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_382ebfbe38 FOREIGN KEY (author_id) REFERENCES public.telegram_users(id);
 
 
 --
@@ -7823,6 +8077,14 @@ ALTER TABLE ONLY public.activation_events
 
 
 --
+-- Name: crm_cards fk_rails_bfb519bbd8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT fk_rails_bfb519bbd8 FOREIGN KEY (released_by_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: properties fk_rails_c049a2d607; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -7919,6 +8181,14 @@ ALTER TABLE ONLY public.listing_consents
 
 
 --
+-- Name: crm_card_change_requests fk_rails_d9d1d2a4eb; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_card_change_requests
+    ADD CONSTRAINT fk_rails_d9d1d2a4eb FOREIGN KEY (reviewer_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: reviews fk_rails_e0f0178b9b; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8005,13 +8275,18 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261114120000'),
 ('20261114100000'),
 ('20261113100000'),
 ('20261112120000'),
+('20261112090100'),
+('20261112090000'),
 ('20261112034116'),
 ('20261108210000'),
 ('20261108120000'),
 ('20261107233000'),
+('20260920140000'),
+('20260920030000'),
 ('20260914120200'),
 ('20260914120100'),
 ('20260914120000'),

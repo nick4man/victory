@@ -36,15 +36,16 @@ module Chat
 
     # POST /chat/conversation/test_mode { enabled: true|false }
     # Тумблер «🧪 Тест-прогон» виджета (issue #227). В отличие от
-    # show/update/create, CSRF-защита НЕ выключена: токен мятит сам сервер
-    # (никакого принятия токена из URL/JSON — rev #230, round 4: публичная
-    # выдача probe_token любому анониму позволяла переключить чужую сессию
+    # show/update/create, CSRF-защита НЕ выключена: переключить режим можно
+    # только same-origin запросом (rev #230, round 4: публичная выдача
+    # probe-токена любому анониму позволяла переключить чужую сессию
     # в тест-контур на 90 дней и разделить с жертвой один Conversation).
-    # Включение: свежий HMAC probe-токен сервера → новый тестовый диалог.
-    # Выключение: свежий случайный токен → новый пустой боевой диалог.
+    # Механизм #229: сервер выдаёт свежий случайный токен; включение ставит
+    # подписанный флаг-куку прогона → новый тестовый диалог (test_probe),
+    # выключение снимает флаг → новый пустой боевой диалог.
     def test_mode
       enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
-      set_visitor_token(enabled ? VisitorIdentity.probe_token : SecureRandom.hex(16))
+      set_visitor_cookies(SecureRandom.hex(16), probe: enabled)
 
       @conversation = current_or_create_conversation
       stamp_auto_test(@conversation)
@@ -59,7 +60,9 @@ module Chat
           visitor_token:   current_visitor_token,
           user_id:         current_user&.id,
           status:          :active,
-          last_message_at: Time.current
+          last_message_at: Time.current,
+          # probe-прогон (issue #214/#229): маркер в metadata, токен случайный.
+          metadata:        current_visitor_probe? ? { 'test_probe' => true } : {}
         )
     end
 
