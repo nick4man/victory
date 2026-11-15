@@ -1155,6 +1155,30 @@ private
 def sanitized_return_path(value)
 </file>
 
+<file path="app/controllers/admin/spam_blocked_entries_controller.rb">
+module Admin
+⋮----
+class SpamBlockedEntriesController < ApplicationController
+include AdminTokenAuth
+⋮----
+skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
+⋮----
+def index
+⋮----
+def create
+⋮----
+def destroy
+⋮----
+private
+⋮----
+def valid_api_token_param?
+⋮----
+def index_limit
+⋮----
+def index_offset
+⋮----
+def serialize(entry)
+</file>
 <file path="app/controllers/admin/topnlab_status_controller.rb">
 module Admin
 ⋮----
@@ -5804,6 +5828,48 @@ def objections_list
 def toggle_conductor!(reporter:, director:)
 </file>
 
+<file path="app/models/spam_allowlist_entry.rb">
+class SpamAllowlistEntry < ApplicationRecord
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :domain, presence: true
+⋮----
+def self.allowlisted?(domain)
+</file>
+<file path="app/models/spam_blocked_entry.rb">
+class SpamBlockedEntry < ApplicationRecord
+⋮----
+QUORUM = 3
+HIT_WINDOW = 24.hours
+HIT_KEYS_CAP = 20
+CIDR_CACHE_KEY = 'spam_blocked_cidrs'
+CIDR_CACHE_TTL = 1.hour
+⋮----
+enum :entry_type, { domain: 'domain', url: 'url', ip: 'ip' }, prefix: true
+enum :status, { suspect: 'suspect', blocked: 'blocked' }, prefix: true
+⋮----
+default_scope { not_deleted }
+scope :not_deleted, -> { where(deleted_at: nil) }
+⋮----
+validates :value, presence: true
+⋮----
+before_validation :assign_value_digest
+⋮----
+def self.digest_for(value)
+⋮----
+def self.ip_blocked?(ip)
+⋮----
+def self.find_block_for(host:, path: nil)
+⋮----
+def self.record_hit!(entry, ip:, visitor_token: nil)
+⋮----
+def self.block_locally!(raw, status: :blocked)
+⋮----
+private
+⋮----
+def assign_value_digest
+</file>
 <file path="app/models/staff_metric.rb">
 class StaffMetric < ApplicationRecord
 belongs_to :staff, class_name: 'TelegramUser'
@@ -8484,6 +8550,127 @@ def classify(text)
 REPLIES = {
 </file>
 
+<file path="app/services/llm/spam_feeds/sync_job.rb">
+module Llm
+module SpamFeeds
+⋮----
+class SyncJob < ApplicationJob
+queue_as :low_priority
+⋮----
+BATCH = 1_000
+⋮----
+MAX_BODY_BYTES = 100.megabytes
+⋮----
+DOMAIN_FEEDS = {
+⋮----
+URLHAUS_FEED = {
+⋮----
+IP_FEEDS = {
+⋮----
+ALLOWLIST_URL = 'https://tranco-list.eu/top-1m.csv.zip'
+ALLOWLIST_TOP = 10_000
+⋮----
+ALLOWLIST_MIN_ROWS = 9_000
+⋮----
+MAX_REDIRECTS = 3
+⋮----
+def perform
+⋮----
+private
+⋮----
+def import_feed(source, cfg, run_at, synced)
+⋮----
+def count_valid_tokens(body, cfg)
+⋮----
+def import_batches(body, source, cfg, status, run_at, synced)
+⋮----
+def flush_batch(batch, source, status, run_at, synced)
+⋮----
+def parse_token(line, format)
+⋮----
+def normalize_entry(default_type, token)
+⋮----
+# Протухание: активная запись не-local источника, чья выгрузка в этом
+# прогоне удалась, но который не видан в нём (seen_at старше прогона) —
+# soft-delete. Источник, чья выгрузка НЕ удалась, не трогаем: сбой
+# источника ≠ пустой список. Запись, которую в прошлом подтвердил
+# blocked-фид, сейчас упавший, тоже не трогаем: сбой ≠ исчезновение
+# ключа (fail-closed, раунд 14 — иначе сбой одного из пересекающихся
+# blocked-фидов стирал бы запись по факту владельца, выпустившего ключ
+# из своего списка). Успешный в прогоне источник защиты не даёт — у
+# него был шанс оставить ключ, и он им не воспользовался.
+# Записи source = local вне этой логики.
+def retire_stale(synced, run_at)
+⋮----
+def downgrade_unconfirmed_blocked(synced, run_at)
+⋮----
+def failed_sources(entry_type, synced_sources)
+⋮----
+def exclude_failed_confirmed(scope, entry_type, synced_sources)
+⋮----
+def prune_confirmations(source, entry_type, run_at)
+⋮----
+def sync_allowlist
+⋮----
+def fetch(url, redirects: MAX_REDIRECTS)
+</file>
+<file path="app/services/llm/spam_feeds/zip.rb">
+module Llm
+module SpamFeeds
+⋮----
+module Zip
+LOCAL_HEADER_SIG = "PK\u0003\u0004".b
+⋮----
+module_function
+⋮----
+def first_file(data)
+</file>
+<file path="app/services/llm/spam_filter.rb">
+module Llm
+⋮----
+module SpamFilter
+STOP_WORDS = [
+⋮----
+Result = Struct.new(:action, :reason, :matches, keyword_init: true)
+⋮----
+module_function
+⋮----
+def classify(text, ip:, visitor_token:)
+⋮----
+def promote_suspects_from(text)
+⋮----
+def heuristic_hit?(text, urls)
+⋮----
+def quarantine(url, ip:, visitor_token: nil)
+⋮----
+def upsert_suspect(entry_type, value, ip:, visitor_token: nil)
+</file>
+<file path="app/services/llm/spam_urls.rb">
+module Llm
+⋮----
+module SpamUrls
+⋮----
+SCHEME_PREFIX = 'h(?:(?:[\t\n\r]?t){2}|x[\t\n\r]?x)[\t\n\r]?p[\t\n\r]?s?[\t\n\r]?:(?:[\t\n\r]?[/\\\\])*'
+SCHEME_URL_RE = %r{
+⋮----
+p = decode_unreserved("/#{path}")
+⋮----
+# Percent-escape'и хоста — единым потоком байт: склеиваем подряд идущие
+⋮----
+def decode_percent_utf8(str)
+⋮----
+def decode_multibyte_escapes(str)
+⋮----
+def utf8_char_length(lead)
+⋮----
+def percent_encode_non_ascii(str)
+⋮----
+def percent_bytes_to_utf8(seq)
+⋮----
+def decode_unreserved(str)
+⋮----
+def remove_dot_segments(input)
+</file>
 <file path="app/services/llm/tool_runner.rb">
 module Llm
 ⋮----
