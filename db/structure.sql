@@ -763,7 +763,9 @@ CREATE TABLE public.crm_cards (
     updated_at timestamp(6) without time zone NOT NULL,
     export_attempt_token character varying,
     export_retryable boolean DEFAULT true NOT NULL,
-    sandbox boolean DEFAULT false NOT NULL
+    sandbox boolean DEFAULT false NOT NULL,
+    released_by_id bigint,
+    released_at timestamp(6) without time zone
 );
 
 
@@ -5143,6 +5145,13 @@ CREATE INDEX index_crm_cards_on_lead_event_id ON public.crm_cards USING btree (l
 
 
 --
+-- Name: index_crm_cards_on_released_by_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_crm_cards_on_released_by_id ON public.crm_cards USING btree (released_by_id);
+
+
+--
 -- Name: index_crm_cards_on_reviewer_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -7970,6 +7979,14 @@ ALTER TABLE ONLY public.activation_events
 
 
 --
+-- Name: crm_cards fk_rails_bfb519bbd8; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.crm_cards
+    ADD CONSTRAINT fk_rails_bfb519bbd8 FOREIGN KEY (released_by_id) REFERENCES public.telegram_users(id);
+
+
+--
 -- Name: properties fk_rails_c049a2d607; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -8162,6 +8179,7 @@ INSERT INTO "schema_migrations" (version) VALUES
 ('20261108210000'),
 ('20261108120000'),
 ('20261107233000'),
+('20260920030000'),
 ('20260914120200'),
 ('20260914120100'),
 ('20260914120000'),

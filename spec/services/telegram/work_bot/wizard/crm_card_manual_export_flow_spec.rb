@@ -63,6 +63,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardManualExportFlow do
   it 'не позволяет занять номер CRM, уже отмеченный у другого объекта' do
     CrmCard.create!(kind: 'object', author: agent, status: 'exported', export_mode: 'manual', crm_id: '998877',
                     payload: { 'owner_name' => 'Другой' })
+    card.update!(released_by: director, released_at: Time.current)
     workflow = CrmCards::Workflow.new
     result = workflow.record_export!(card, crm_id: '998877', mode: 'manual', actor: agent)
 
