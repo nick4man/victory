@@ -12,9 +12,9 @@ gem 'rails', '~> 8.0', '>= 8.1.4.1' # CVE sweep 04.11.26: GHSA-v924-7rp8-4mxh и
 # Database
 gem 'pg', '~> 1.5'
 
-# Server — CVE sweep 25.06.26: puma 6.4 имеет advisory, fix в 7.2.1+. Major
+# Server — CVE sweep 15.11.26: puma 7.2.1 имеет advisory, fix в 7.2.2+. Major
 # bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
-gem 'puma', '~> 7.2', '>= 7.2.1'
+gem 'puma', '~> 7.2', '>= 7.2.2'
 
 # Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
 # / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
