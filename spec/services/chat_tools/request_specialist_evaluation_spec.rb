@@ -59,7 +59,7 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
         .to change(Inquiry, :count).by(1)
 
       inquiry = Inquiry.order(:created_at).last
-      expect(inquiry.metadata['test']).to eq(true)
+      expect(inquiry.metadata['test']).to be(true)
     ensure
       Thread.current[:lead_test_mode] = false
     end
@@ -76,7 +76,7 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
         .to change(Inquiry, :count).by(1)
       probe = Inquiry.order(:created_at).last
       expect(probe.id).not_to eq(combat.id)
-      expect(probe.metadata['test']).to eq(true)
+      expect(probe.metadata['test']).to be(true)
 
       # Повторный вызов в probe-режиме находит probe-дубль, а не боевой.
       expect { call_tool('valuation_token' => valuation.token) }
