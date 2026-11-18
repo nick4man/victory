@@ -75,8 +75,12 @@ module ChatTools
 
       phone = args['phone'].to_s.strip
       name  = args['name'].to_s.strip
+      # Тест-режим (issue #214): LlmReplyJob ставит Thread.current[:lead_test_mode]
+      # для probe-диалогов. Inquiry помечается metadata['test']=true — не уходит
+      # в боевой контур (assign_to_agent, TG-уведомления, CRM).
+      test_mode = Thread.current[:lead_test_mode] == true
 
-      existing = find_recent_duplicate(phone)
+      existing = find_recent_duplicate(phone, test_mode: test_mode)
       return duplicate_response(existing) if existing
 
       pv       = find_valuation(args['valuation_token'])
@@ -98,7 +102,8 @@ module ChatTools
           # 🔵 EXPRESS-бейдж в TG-карточке (см. LeadAnnouncer#format_card)
           service_type: 'express',
           property_valuation_token: pv&.token,
-          similar_valuations:       similar
+          similar_valuations:       similar,
+          test:                     test_mode ? true : nil
         }.compact
       )
 
@@ -122,15 +127,21 @@ module ChatTools
       }
     end
 
-    def self.find_recent_duplicate(phone)
+    def self.find_recent_duplicate(phone, test_mode: false)
       suffix = phone.gsub(/\D/, '').last(10)
       return nil if suffix.length < 10
 
-      Inquiry.where(inquiry_type: :evaluation)
-             .where('phone LIKE ?', "%#{suffix}")
-             .where('created_at > ?', DEDUPE_WINDOW.ago)
-             .order(created_at: :desc)
-             .first
+      scope = Inquiry.where(inquiry_type: :evaluation)
+                     .where('phone LIKE ?', "%#{suffix}")
+                     .where('created_at > ?', DEDUPE_WINDOW.ago)
+      # Дедуп только внутри своего режима (issue #214): тест-прогон не должен
+      # вернуть боевой Inquiry и наоборот.
+      scope = if test_mode
+                scope.where("metadata->>'test' = 'true'")
+              else
+                scope.where("metadata->>'test' IS NULL OR metadata->>'test' <> 'true'")
+              end
+      scope.order(created_at: :desc).first
     end
 
     def self.duplicate_response(inquiry)

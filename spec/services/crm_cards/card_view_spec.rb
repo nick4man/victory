@@ -79,13 +79,14 @@ RSpec.describe CrmCards::CardView do
     expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
-  it 'сбой выгрузки, но заявка уже есть в CRM (crm_id проставлен) — кнопки повтора нет, ' \
-     'Workflow.retry_export! всё равно бы отказал' do
+  it 'сбой выгрузки, но заявка уже есть в CRM (crm_id проставлен) — модератору кнопка подтверждения номера' do
     card.update!(status: 'export_failed', crm_id: '4242',
                  export_error: 'Заявка уже создана в CRM под номером 4242, но статус не записан. ' \
                                 'Не повторяй выгрузку — поправь статус вручную.')
 
-    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_note:#{card.id}"])
+    expect(callbacks(described_class.render(card, viewer: director))).to eq(["wiz:s:crm_attach:#{card.id}", "wiz:s:crm_note:#{card.id}"])
+    # Автору решений не дают, но заметку по работе с клиентом он допишет.
+    expect(callbacks(described_class.render(card, viewer: agent))).to eq(["wiz:s:crm_note:#{card.id}"])
   end
 
   it 'зависшая выгрузка: предупреждение и кнопка привязки номера из CRM' do

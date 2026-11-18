@@ -53,6 +53,38 @@ RSpec.describe ChatTools::RequestSpecialistEvaluation do
       expect(inquiry.metadata['property_valuation_token']).to eq(valuation.token)
     end
 
+    it 'помечает Inquiry test=true в probe-режиме (Thread.current[:lead_test_mode])' do
+      Thread.current[:lead_test_mode] = true
+      expect { call_tool('valuation_token' => valuation.token) }
+        .to change(Inquiry, :count).by(1)
+
+      inquiry = Inquiry.order(:created_at).last
+      expect(inquiry.metadata['test']).to be(true)
+    ensure
+      Thread.current[:lead_test_mode] = false
+    end
+
+    it 'дедупликация probe-заявки не возвращает боевой Inquiry и наоборот' do
+      combat = Inquiry.create!(
+        name: 'Анна', phone: '79001234567', inquiry_type: 'evaluation',
+        source: 'site_chatbot', message: 'боевой',
+        metadata: { name: 'Анна', phone: '79001234567' }
+      )
+
+      Thread.current[:lead_test_mode] = true
+      expect { call_tool('valuation_token' => valuation.token) }
+        .to change(Inquiry, :count).by(1)
+      probe = Inquiry.order(:created_at).last
+      expect(probe.id).not_to eq(combat.id)
+      expect(probe.metadata['test']).to be(true)
+
+      # Повторный вызов в probe-режиме находит probe-дубль, а не боевой.
+      expect { call_tool('valuation_token' => valuation.token) }
+        .not_to change(Inquiry, :count)
+    ensure
+      Thread.current[:lead_test_mode] = false
+    end
+
     it 'LeadAnnouncer публикует карточку в топик #ОЦЕНКА (auto_route site_valuation)' do
       expect { call_tool('valuation_token' => valuation.token) }
         .to change(LeadEvent, :count).by(1) # ровно одна карточка на лид
