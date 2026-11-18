@@ -104,9 +104,9 @@ module CrmCards
 
     def rules
       values = {}
-      phones = phone_digits
-      values[key(:phone)] = phones.first if phones.first
-      values[key(:phone_extra)] = phones[1] if phones[1] && key(:phone_extra)
+      entries = phone_entries
+      values[key(:phone)] = entries[0]&.last
+      values[key(:phone_extra)] = entries[1]&.last if key(:phone_extra)
       values[key(:name)] = name if name
       values['action'] = action
       values[key(:realty)] = REALTY_WORDS.find { |_, re| @text.match?(re) }&.first
@@ -140,7 +140,7 @@ module CrmCards
 
     def without_known_values
       text = @text.dup
-      saved_phone_runs.each { |run| text = text.sub(run, ' ') }
+      phone_entries.first(2).map(&:first).each { |run| text = text.sub(run, ' ') }
       labelled = @text[NAME_LABEL, 1]&.strip
       text = text.sub(labelled, ' ') if labelled.present?
       text.squish
@@ -150,11 +150,14 @@ module CrmCards
     # первый (phone) и дополнительный (phone_extra). Остальные номера остаются
     # в комментарии, чтобы не терять контакты при выгрузке в CRM.
     def saved_phone_runs
-      runs = @text.scan(PHONE_CANDIDATE).filter_map do |run|
+      phone_entries.first(2).map(&:first)
+    end
+
+    def phone_entries
+      @phone_entries ||= @text.scan(PHONE_CANDIDATE).filter_map do |run|
         digits, error = FieldValue.phone(run, mobile: false)
-        [run, digits, error] if error.nil?
-      end
-      runs.sort_by { |_, digits, _| digits[1] == '9' ? 0 : 1 }.first(2).map(&:first)
+        [run, digits] if error.nil?
+      end.uniq { |_, digits| digits }.sort_by { |_, digits| digits[1] == '9' ? 0 : 1 }
     end
 
     # Одно и то же по смыслу поле называется в заявке и в объекте по-разному.
@@ -172,13 +175,9 @@ module CrmCards
       @text.lines.filter_map { |line| line[NAME_LINE, 1]&.squish }.find { |candidate| candidate.length > 2 }
     end
 
-    # Телефоны в порядке появления: первый мобильный — основной, следующий — доп.
-    def phone_digits
-      @text.scan(PHONE_CANDIDATE).filter_map do |candidate|
-        digits, error = FieldValue.phone(candidate, mobile: false)
-        digits if error.nil?
-      end.uniq.sort_by { |d| d[1] == '9' ? 0 : 1 }
-    end
+    # ============================================================
+    # LLM fallback
+    # ============================================================
 
     def llm_values
       response = client.complete(

@@ -85,16 +85,22 @@ RSpec.describe Telegram::InboundProcessor do
                        'chat' => { 'id' => from_id, 'type' => 'private' }, 'text' => '/start' } }
     end
 
-    it 'непривязанный отправитель попадает в WorkBot::Commands::Start, а не в клиентскую активацию' do
-      expect(Telegram::ClientBot::ActivationRequestProcessor).not_to receive(:call)
+    it 'непривязанный отправитель попадает в клиентскую активацию (request_contact)' do
+      expect(Telegram::WorkBot::Router).not_to receive(:new)
 
       expect(described_class.new(start_update(from_id: 999_999)).call).to eq(:handled)
       expect(tg_client).to have_received(:send_message)
-        .with(a_string_including('/whoami'), hash_including(chat_id: 999_999))
+        .with(a_string_including('Подтвердить телефон'),
+              hash_including(chat_id: 999_999,
+                             reply_markup: hash_including(
+                               keyboard: include(include(hash_including(request_contact: true)))
+                             )))
     end
 
-    it 'известный сотрудник тоже обрабатывается WorkBot Router без конфликтов' do
+    it 'известный сотрудник обрабатывается WorkBot::Commands::Start' do
       expect(described_class.new(start_update(from_id: 501)).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('Виктори'), hash_including(chat_id: 501))
     end
   end
 
