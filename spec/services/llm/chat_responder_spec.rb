@@ -6,7 +6,7 @@ RSpec.describe Llm::ChatResponder do
   # Нит-пик ревью #206: маршрутизация после estimate_property_valuation
   # (request_specialist_evaluation vs qualify_lead) закреплена спеком,
   # чтобы промпт и описания тулов не разъезжались молча.
-  let(:conversation) { instance_double(Conversation, metadata: {}) }
+  let(:conversation) { instance_double(Conversation, metadata: {}, visitor_token: 'visitor-token', user_id: nil) }
 
   def prompt
     described_class.new(conversation).full_system_prompt
