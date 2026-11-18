@@ -9,11 +9,11 @@ module Admin
     include AdminTokenAuth
 
     # POST/DELETE без сессии дергаются ops-скриптами по ?token= — CSRF там
-    # не применим (токен сам секрет, как у вебхуков). Снимаем проверку только
-    # для ВАЛИДНОГО токена: с мусорным ?token= запрос идёт по cookie-пути
-    # и обязан пройти стандартную проверку подлинности формы (иначе CSRF-лазейка
-    # в админской сессии — ревью Kimi, раунд 7)
-    skip_before_action :verify_authenticity_token, if: :valid_api_token_param?
+    # не применим (токен сам секрет, как у вебхуков). Проверку подлинности
+    # формы проходят только запросы без валидного токена (cookie-путь) —
+    # см. переопределение verify_authenticity_token ниже. skip_before_action
+    # намеренно НЕ используем: CodeQL трактует его как отключение CSRF
+    # (required check на PR #228, ревью раунд 8).
 
     def index
       # по умолчанию — действующие записи (default_scope); снятые блоки
@@ -47,9 +47,20 @@ module Admin
 
     private
 
-    # CSRF снимаем только для валидного API-токена (см. skip_before_action
-    # выше); мусорный ?token= в контексте cookie-сессии не даёт права
-    # обходить проверку подлинности формы
+    # Семантика «CSRF-проверка выключена только для валидного API-токена»,
+    # но без skip_before_action (CodeQL / PR #228): валидный ?token= —
+    # запрос уже аутентифицирован секретом, cookie-сессии нет, CSRF
+    # неприменим; с мусорным ?token= запрос идёт по cookie-пути и обязан
+    # пройти стандартную :exception-проверку подлинности формы (иначе
+    # CSRF-лазейка в админской сессии — ревью Kimi, раунд 7).
+    def verify_authenticity_token
+      return if valid_api_token_param?
+
+      super
+    end
+
+    # Валидность API-токена — единственный критерий отказа от проверки
+    # подлинности формы (см. verify_authenticity_token выше)
     def valid_api_token_param?
       expected = ENV['ADMIN_TOKEN'].to_s
       return false if expected.blank? || params[:token].blank?
