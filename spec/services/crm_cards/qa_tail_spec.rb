@@ -72,6 +72,18 @@ RSpec.describe 'замечания QA-прогона' do
     expect(result.values['comment']).not_to include('89105550011')
   end
 
+  it 'третий телефон остаётся в комментарии, если в поля влезли только два' do
+    text = 'Пётр +7 910 111-22-33, доп 8 910 444-55-66, ещё 8 910 777-88-99. Хочет однушку.'
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['phone']).to eq('79101112233')
+    expect(result.values['phone_extra']).to eq('79104445566')
+    expect(result.values['comment']).to include('777-88-99')
+    expect(result.values['comment']).not_to include('111-22-33')
+    expect(result.values['comment']).not_to include('444-55-66')
+  end
+
   it 'имя по подписи не заглатывает остаток строки' do
     text = "Звонила по ипотеке\nКонтакт - Анна Смирнова, хочет двушку до 6 млн, ипотека одобрена"
 

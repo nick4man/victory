@@ -74,6 +74,30 @@ RSpec.describe Telegram::InboundProcessor do
     end
   end
 
+  describe 'bare /start в личке' do
+    let(:tg_client) { instance_double(Telegram::Client, send_message: { 'message_id' => 1 }) }
+
+    before { allow(Telegram::Client).to receive(:new).and_return(tg_client) }
+
+    def start_update(from_id:)
+      { 'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 40, 'from' => { 'id' => from_id },
+                       'chat' => { 'id' => from_id, 'type' => 'private' }, 'text' => '/start' } }
+    end
+
+    it 'непривязанный отправитель попадает в WorkBot::Commands::Start, а не в клиентскую активацию' do
+      expect(Telegram::ClientBot::ActivationRequestProcessor).not_to receive(:call)
+
+      expect(described_class.new(start_update(from_id: 999_999)).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('/whoami'), hash_including(chat_id: 999_999))
+    end
+
+    it 'известный сотрудник тоже обрабатывается WorkBot Router без конфликтов' do
+      expect(described_class.new(start_update(from_id: 501)).call).to eq(:handled)
+    end
+  end
+
   # Issue #214 (ревью PR #221, round 4): message_id эскалации уникален только
   # внутри чата — эскалации уходят и в рабочий, и в тестовый чат. Ответ
   # маршрутизируется по паре (chat_id, message_id), а не по одному ID.

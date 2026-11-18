@@ -140,15 +140,21 @@ module CrmCards
 
     def without_known_values
       text = @text.dup
-      accepted_phones.each { |run| text = text.sub(run, ' ') }
+      saved_phone_runs.each { |run| text = text.sub(run, ' ') }
       labelled = @text[NAME_LABEL, 1]&.strip
       text = text.sub(labelled, ' ') if labelled.present?
       text.squish
     end
 
-    # Только те куски, которые прошли проверку телефона: остальное — числа.
-    def accepted_phones
-      @text.scan(PHONE_CANDIDATE).select { |candidate| FieldValue.phone(candidate, mobile: false).last.nil? }
+    # Только фрагменты телефонов, которые реально попали в поля карточки:
+    # первый (phone) и дополнительный (phone_extra). Остальные номера остаются
+    # в комментарии, чтобы не терять контакты при выгрузке в CRM.
+    def saved_phone_runs
+      runs = @text.scan(PHONE_CANDIDATE).filter_map do |run|
+        digits, error = FieldValue.phone(run, mobile: false)
+        [run, digits, error] if error.nil?
+      end
+      runs.sort_by { |_, digits, _| digits[1] == '9' ? 0 : 1 }.first(2).map(&:first)
     end
 
     # Одно и то же по смыслу поле называется в заявке и в объекте по-разному.

@@ -66,7 +66,7 @@ RSpec.describe CrmCards::Checker do
   # Регресс ревью PR #210 (round 9+++++, блокер): probe-прогон бота
   # (lead_test_mode, issue #214) правдоподобен — с назначением и контактом
   # прошёл бы модерацию и ушёл в боевую CRM с тестовыми ФИО/телефоном.
-  # Inquiry#test? глушит sync_to_crm! тем же признаком — здесь гейт зеркальный.
+  # Inquiry#test? глушит push_to_work_bot → Lead::Intake тем же признаком — здесь гейт зеркальный.
   it 'probe-прогон бота (lead_test_mode) блокируется, даже если лид назначен и проконтактирован' do
     lead.update!(staff_test: true, staff_test_matched_by: StaffSubmissionDetector::TEST_MODE_MATCHED_BY)
 
