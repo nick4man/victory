@@ -76,8 +76,12 @@ module CrmCards
                # Неоднозначный сбой (ответ CRM потерялся) — привязка номера из CRM;
                # отказ CRM — обычная кнопка повтора.
                buttons = []
-               if moderator && card.kind_lead? && card.crm_id.blank?
-                 if card.export_retryable == false
+               if moderator && card.kind_lead?
+                 if card.crm_id.present?
+                   # Заявка уже создана в CRM (lost_export_status!): повторный
+                   # importClient завёл бы дубль — только подтверждение номера.
+                   buttons << button('✅ Подтвердить номер из CRM', "wiz:s:crm_attach:#{card.id}")
+                 elsif card.export_retryable == false
                    buttons << button('📎 Номер из CRM', "wiz:s:crm_attach:#{card.id}")
                  else
                    buttons << button('🔁 Повторить выгрузку', "crm_card:#{card.id}:retry")
