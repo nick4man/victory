@@ -266,10 +266,7 @@ module ChatTools
       name  = args[:name].to_s.strip
       return nil if phone.blank? || name.blank?
 
-      # Тест-режим сессии (issue #214/#227): thread-local из LlmReplyJob
-      # (probe-тумблер / auto-test по происхождению / ENV-кран) или явный
-      # ENV-кран SITE_CHATBOT_FORCE_TEST — для вызовов вне виджет-треда.
-      test_mode = Thread.current[:lead_test_mode] == true || Chat::TestMode.force_test?
+      test_mode = Thread.current[:lead_test_mode] == true
 
       # Idempotency: skip если recent identical lead (LLM может call tool
       # multiple раз в одном диалоге). Phone normalization — last 10 digits

@@ -110,20 +110,15 @@ module Telegram
         rows << SegmentKeyboard.row(@lead) if @lead.segment.blank?
         rows << stage_row if @lead.open?
         rows << work_row if @lead.open?
+        crm = crm_row
+        rows << crm if crm
         { inline_keyboard: rows }
       end
 
       private
 
       def test_lead?
-        return true if (@lead.metadata || {})['test'] == true
-
-        # Issue #227: lead_ref авто-помечен staff_test (StaffSubmissionDetector
-        # по контактам сотрудника) — изоляция та же, что у metadata['test'],
-        # даже если флаг в payload не пришёл. Без respond_to? — lead_ref
-        # полиморфный (BuyerOrder/Property staff_test не знают).
-        lead_ref = @lead.lead_ref
-        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
+        (@lead.metadata || {})['test'] == true
       end
 
       def send_card(topic_key)
@@ -181,10 +176,9 @@ module Telegram
                          when 'high'   then '⚡ <b>HIGH PRIORITY</b>'
                          end
         returning_badge = '🔄 <b>ВОЗВРАТНЫЙ КЛИЕНТ</b>' if meta['returning_client']
-        # Тест-прогон чат-бота (issue #214) и staff_test-лиды (issue #227) —
-        # карточка ушла в тестовый чат, бейдж отличает её от боевых лидов
-        # при просмотре логов/скриншотов.
-        test_badge = '🧪 <b>ТЕСТ</b>' if test_lead?
+        # Тест-прогон чат-бота (issue #214) — карточка ушла в тестовый чат,
+        # бейдж отличает её от боевых лидов при просмотре логов/скриншотов.
+        test_badge = '🧪 <b>ТЕСТ</b>' if meta['test'] == true
         # Service-type badge — какой тип оценки/услуги выбрал клиент в чате
         # после express-валуации (см. ChatTools::QualifyLead). Помогает
         # дежурному быстро понять что нужно делать: CMA-выезд, инвест-аудит,
@@ -277,6 +271,25 @@ module Telegram
         ]
       end
 
+      # Карточка для CRM. Лид с сайта или из Telegram попадает в CRM только
+      # через модерацию (CrmCards::Workflow). В группе — только кнопка и
+      # статус: поля с телефоном клиента показываются лишь в личке.
+      # Лид, пришедший из CRM (crm_id уже есть), кнопки не получает. На
+      # закрытом лиде заполнять нечего — мастер не предлагаем (как «Задачу»
+      # и «Закрыть лид»), но статус уже отправленной карточки остаётся виден.
+      def crm_row
+        card = ::CrmCard.kind_lead.where(sandbox: ::CrmCards::Checker.sandbox_lead?(@lead)).find_by(lead_event_id: @lead.id)
+        if card.nil? || ::CrmCard::AUTHOR_EDITABLE.include?(card.status)
+          return nil if @lead.closed? || @lead.lead_ref.try(:crm_id).present?
+
+          label = card&.status_needs_rework? ? '↩️ Карточка CRM: доработать' : '📋 Карточка CRM'
+          return [{ text: label, callback_data: "wiz:s:crm_lead:#{@lead.id}" }]
+        end
+
+        label = card.status_exported? ? "🟢 В CRM ##{card.crm_id}" : "#{::CrmCard::STATUS_LABELS[card.status]} · CRM"
+        [{ text: label, callback_data: "crm_card:#{card.id}:view" }]
+      end
+
       def routing_keyboard_for(topic_key)
         rows = []
         if topic_key == 'dispatcher'
@@ -296,12 +309,10 @@ module Telegram
         text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
       end
 
-      # Mirror of ExpressReportNotifier#fmt_rub — should ideally extract
-      # to shared formatter helper. Keeping duplicate для simplicity пока
-      # не появится третий call-site (DRY ratio < 3).
+      # LeadAnnouncer делегирует к общему Valuations::PriceFormatter,
+      # формат идентичен прежнему fmt_rub.
       def fmt_rub(amount)
-        return '—' if amount.blank?
-        "#{amount.to_i.to_s.reverse.gsub(/(\d{3})/, '\1 ').reverse.strip} ₽"
+        Valuations::PriceFormatter.format_rub(amount)
       end
 
       def report_url(valuation)

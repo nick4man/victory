@@ -15,7 +15,6 @@ module Chat
     # (a single visitor can navigate between pages while the conversation is open).
     def show
       @conversation = current_or_create_conversation
-      stamp_auto_test(@conversation)
       page_ctx = extract_page_params
       stamp_page(@conversation, page_ctx) if page_ctx
       seed_welcome(@conversation, page_ctx) if @conversation.chat_messages.empty?
@@ -42,7 +41,9 @@ module Chat
           visitor_token:   current_visitor_token,
           user_id:         current_user&.id,
           status:          :active,
-          last_message_at: Time.current
+          last_message_at: Time.current,
+          # probe-прогон (issue #214/#229): маркер в metadata, токен случайный.
+          metadata:        current_visitor_probe? ? { 'test_probe' => true } : {}
         )
     end
 
@@ -60,16 +61,12 @@ module Chat
 
     def serialize(conv)
       {
-        id:         conv.id,
-        status:     conv.status,
-        name:       conv.name,
-        phone:      conv.phone,
-        email:      conv.email,
-        # Issue #227: тумблер «🧪 Тест-прогон» виджета читает флаг, чтобы
-        # показать состояние сессии (probe-куку виджет прочитать не может —
-        # она httponly).
-        test_probe: conv.test_probe?,
-        messages:   conv.chat_messages.recent.map { |m| serialize_message(m) }
+        id:       conv.id,
+        status:   conv.status,
+        name:     conv.name,
+        phone:    conv.phone,
+        email:    conv.email,
+        messages: conv.chat_messages.recent.map { |m| serialize_message(m) }
       }
     end
 

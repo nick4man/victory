@@ -15,7 +15,7 @@ module CrmCards
   # Отказ по умолчанию и всегда с причиной — сотрудник должен понять, что
   # чинить, а не гадать, почему кнопка не работает.
   class Permissions
-    CAPABILITIES = %w[create_lead create_object moderate].freeze
+    CAPABILITIES = %w[create_lead create_object moderate export].freeze
     CONFIG_PATH = Rails.root.join('config/crm_permissions.yml').freeze
 
     Result = Struct.new(:capabilities, :crm_user, :position_title, :denial, keyword_init: true) do
@@ -28,9 +28,38 @@ module CrmCards
       new(tg_user).call
     end
 
+    # @return [Array<TelegramUser>] кому карточка уходит на модерацию
+    def self.moderators = holders_of(:moderate)
+
+    # @return [Array<TelegramUser>] кто решает, отправлять ли одобренное в CRM.
+    # Отдельно от модераторов намеренно: одобрить и выгрузить — разные решения.
+    def self.exporters = holders_of(:export)
+
     # @return [Array<TelegramUser>]
-    def self.moderators
-      ::TelegramUser.active.where.not(topnlab_user_id: nil).order(:id).select { |staff| self.for(staff).can?(:moderate) }
+    def self.holders_of(capability)
+      scope = ::TelegramUser.active.where.not(topnlab_user_id: nil)
+      sandbox_ids = sandbox_capabilities.keys.map(&:to_i)
+      scope = scope.or(::TelegramUser.active.where(tg_user_id: sandbox_ids)) if sandbox_ids.any?
+      scope.order(:id).select { |staff| self.for(staff).can?(capability) }
+    end
+
+    # Только тестовый бот: права по списку TELEGRAM_TEST_CAPABILITIES —
+    # JSON { "<tg_user_id>": ["create_lead", ...] } — для тех, кто проверяет
+    # песочницу без учётки в CRM. В рабочем боте список не читается вовсе.
+    # @return [Hash{String => Array<String>}]
+    def self.sandbox_capabilities
+      return {} unless Telegram::BotContext.test?
+
+      parsed = JSON.parse(ENV.fetch('TELEGRAM_TEST_CAPABILITIES', '{}'))
+      unless parsed.is_a?(Hash)
+        Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не объект JSON, список игнорирую')
+        return {}
+      end
+
+      parsed.transform_keys(&:to_s)
+    rescue JSON::ParserError
+      Rails.logger.warn('[CrmCards::Permissions] TELEGRAM_TEST_CAPABILITIES — не JSON, список игнорирую')
+      {}
     end
 
     # @return [Hash{String => Hash}] crm_role_id → { 'title' =>, 'capabilities' => }
@@ -45,6 +74,13 @@ module CrmCards
     def call
       return deny('Сотрудник не найден.') if @tg_user.nil?
       return deny('Аккаунт в боте не активен.') unless @tg_user.status == 'active'
+
+      sandbox = self.class.sandbox_capabilities[@tg_user.tg_user_id.to_s]
+      if sandbox
+        return Result.new(capabilities: Array(sandbox).map(&:to_s) & CAPABILITIES, crm_user: nil,
+                          position_title: 'песочница (TELEGRAM_TEST_CAPABILITIES)', denial: nil)
+      end
+
       return deny('Нет привязки к CRM — выполни /whoami со своим рабочим email.') if @tg_user.topnlab_user_id.blank?
 
       crm_user = ::User.find_by(crm_user_id: @tg_user.topnlab_user_id)

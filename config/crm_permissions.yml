@@ -9,14 +9,21 @@
 # уволили в CRM — после ночной синхронизации права меняются сами.
 #
 # Возможности: create_lead — заводить заявки; create_object — объекты;
-# moderate — модерировать чужие карточки и выгружать в CRM.
+# moderate — проверять и одобрять чужие карточки; export — решать, уходит ли
+# одобренная карточка в CRM.
+#
+# moderate и export намеренно разные права: карточку проверяет один человек,
+# а решение отправить её в CRM принимает руководитель. Сейчас обе возможности
+# у Генерального директора — должности РОПа в справочнике CRM пока нет.
+# Появится — снять у директора export и выдать строкой ниже, больше нигде
+# ничего менять не придётся.
 #
 # Таблица утверждена руководителем 15.09.26
 # (docs/superpowers/specs/2026-09-14-crm-card-moderation-design.md, §10).
 positions:
   '89884':
     title: Генеральный директор
-    capabilities: [create_lead, create_object, moderate]
+    capabilities: [create_lead, create_object, moderate, export]
   '89879':
     title: Агент
     capabilities: [create_lead, create_object]

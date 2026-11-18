@@ -88,6 +88,6 @@ RSpec.describe Telegram::WorkBot::Callbacks::StageCallback do
 
     expect(lead.reload.current_stage).to eq('first_contact')
     expect(tg_client).to have_received(:answer_callback_query)
-      .with('cb-1', hash_including(text: a_string_including('Тестовый лид'), show_alert: true))
+      .with('cb-1', hash_including(text: a_string_including('тестовый (probe)'), show_alert: true))
   end
 end

@@ -52,13 +52,7 @@ module Telegram
       private
 
       def test_lead?
-        return true if (@lead.metadata || {})['test'] == true
-
-        # Issue #227: lead_ref staff_test — изоляция та же, что metadata['test']
-        # (см. LeadAnnouncer#test_lead?): маршрутизация в рабочую группу
-        # запрещена и без явного флага в метадате.
-        lead_ref = @lead.lead_ref
-        lead_ref.respond_to?(:staff_test?) && lead_ref.staff_test? == true
+        (@lead.metadata || {})['test'] == true
       end
 
       def valid_target?

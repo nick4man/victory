@@ -9,8 +9,10 @@ module Lead
   # Каждый source имеет свой адаптер (SiteSource, TgDmSource, ManualSource,
   # CrmWebhookSource) — он отвечает за:
   #   1. Создание/поиск CRM-объекта (BuyerOrder | Property)
-  #   2. Опц. вызов Topnlab::Client#import_client (создание order в CRM)
-  #   3. Сборку metadata (phone, name, summary, budget) для карточки
+  #   2. Сборку metadata (phone, name, summary, budget) для карточки
+  #
+  # Запись заявки в CRM (Topnlab::Client#import_client) здесь НЕ происходит:
+  # путь один — карточка CrmCards → модерация → CrmCards::LeadExporter.
   #
   # Сам Intake:
   #   * валидирует входные данные
@@ -57,22 +59,6 @@ module Lead
       end
 
       ref, metadata = result
-
-      # Issue #227 — кран SITE_CHATBOT_FORCE_TEST=1: ВСЕ site-лиды (в т.ч.
-      # прогон без флага и с правдоподобными контактами) идут в тестовый чат,
-      # ДИСПЕТЧЕРСКАЯ не трогается вовсе. Ставится на период тестирования.
-      if Chat::TestMode.force_test? && Chat::TestMode.site_source?(@source)
-        metadata = (metadata || {}).merge('test' => true)
-      end
-
-      # Issue #227 — маршрутизация по staff_test: lead_ref (Inquiry и др.)
-      # авто-помечен StaffSubmissionDetector по своим контактам сотрудника —
-      # без явного флага в payload. Карточка уходит в тестовый чат, получает
-      # тот же изоляционный класс, что probe-прогон (#214): tg_chat_id,
-      # anchor без топика, 🧪-бейдж. Боевой маршрут без staff_test не тронут.
-      if metadata.is_a?(Hash) && metadata['test'] != true && ref.respond_to?(:staff_test?) && ref.staff_test? == true
-        metadata = metadata.merge('test' => true)
-      end
 
       # BOTTLENECK — вернувшийся клиент дописывается в существующую карточку,
       # а не плодит вторую. TgDmSource при cross-channel match уже дописал

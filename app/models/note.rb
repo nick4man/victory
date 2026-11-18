@@ -17,9 +17,12 @@ class Note < ApplicationRecord
   validates :note, presence: true, length: { maximum: 5000 }
   validates :sync_state, inclusion: { in: SYNC_STATES }
 
+  # find_by(crm_user_id: nil) вернул бы первого попавшегося сотрудника без
+  # учётки в CRM, а short_name у него падает до email — в карточке появлялся
+  # бы чужой адрес вместо автора заметки.
   def author_name
     user&.short_name.presence ||
-      User.find_by(crm_user_id: crm_user_id)&.short_name ||
+      (crm_user_id.present? && User.find_by(crm_user_id: crm_user_id)&.short_name) ||
       'Сотрудник CRM'
   end
 

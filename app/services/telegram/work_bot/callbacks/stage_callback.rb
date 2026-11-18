@@ -17,7 +17,6 @@ module Telegram
 
           lead = lead_event
           return ack('🚫 Стадию меняет assignee или руководитель', alert: true) unless authorized?(lead)
-          return ack('🧪 Тестовый лид — смена стадии недоступна.', alert: true) if lead&.staff_test?
           return ack("ℹ️ Лид уже в стадии #{stage}") if lead.current_stage == stage
 
           result = LeadStageTransition.new(lead, stage, actor: tg_user, client: client).call

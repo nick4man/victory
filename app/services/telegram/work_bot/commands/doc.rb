@@ -17,6 +17,7 @@ module Telegram
       class Doc < Base
         def handle
           lead = find_lead_via_reply
+          return :staff_test_refused if staff_test_refused?
           return reply('⚠️ Команда должна быть reply на якорную карточку лида.') unless lead
 
           unless assignee_or_manager?(lead)
@@ -56,16 +57,6 @@ module Telegram
           else
             reply("⚠️ #{apply_result.message}")
           end
-        end
-
-        private
-
-        def find_lead_via_reply
-          reply_to = message['reply_to_message']
-          return nil unless reply_to
-
-          # Пара (chat, message_id): ID уникальны только внутри чата (issue #214).
-          LeadEvent.find_by(tg_chat_id: message.dig('chat', 'id'), anchor_message_id: reply_to['message_id'])
         end
       end
     end
