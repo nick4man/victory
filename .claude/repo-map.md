@@ -7922,6 +7922,52 @@ def parse_response(content)
 def normalize_intent(raw)
 </file>
 
+<file path="app/services/llm/omni_client.rb">
+require 'net/http'
+require 'json'
+⋮----
+module Llm
+⋮----
+class OmniClient
+class Error < StandardError; end
+⋮----
+DEFAULT_CHAINS = {
+⋮----
+def self.chain_for(key)
+⋮----
+DIRECT_PROVIDERS = {
+⋮----
+USER_AGENT = 'victory62-site/1.0'
+⋮----
+def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
+⋮----
+def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
+⋮----
+private
+⋮----
+def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
+⋮----
+def endpoint_for(model)
+⋮----
+def direct_only_chains?
+⋮----
+def direct_model?(model)
+⋮----
+def parse_tool_calls(raw)
+⋮----
+def safe_parse_json(str)
+⋮----
+TIER_WEIGHTS = {
+⋮----
+def increment_metric(chain, model)
+⋮----
+def tier_weight(model)
+⋮----
+def redis_connection
+⋮----
+require 'redis' unless defined?(Redis)
+</file>
+
 <file path="app/services/llm/question_classifier.rb">
 module Llm
 ⋮----
@@ -12923,52 +12969,6 @@ module_function
 def first_file(data)
 </file>
 
-<file path="app/services/llm/omni_client.rb">
-require 'net/http'
-require 'json'
-⋮----
-module Llm
-⋮----
-class OmniClient
-class Error < StandardError; end
-⋮----
-DEFAULT_CHAINS = {
-⋮----
-def self.chain_for(key)
-⋮----
-DIRECT_PROVIDERS = {
-⋮----
-USER_AGENT = 'victory62-site/1.0'
-⋮----
-def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
-⋮----
-def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
-⋮----
-private
-⋮----
-def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
-⋮----
-def endpoint_for(model)
-⋮----
-def direct_only_chains?
-⋮----
-def direct_model?(model)
-⋮----
-def parse_tool_calls(raw)
-⋮----
-def safe_parse_json(str)
-⋮----
-TIER_WEIGHTS = {
-⋮----
-def increment_metric(chain, model)
-⋮----
-def tier_weight(model)
-⋮----
-def redis_connection
-⋮----
-require 'redis' unless defined?(Redis)
-</file>
-
 <file path="app/services/llm/spam_filter.rb">
 module Llm
 ⋮----
@@ -16836,6 +16836,33 @@ SUMMARY_KEYS = %w[action object_type].freeze
 def from_summary(summary)
 </file>
 
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def bare_start?(msg)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_non_text(msg)
+⋮----
+def notify_wizard_expired(tg_user)
+⋮----
+WIZARD_EXPECTS = {
+⋮----
+def attachment_kind(msg)
+⋮----
+def workbot_wizard_text(msg)
+</file>
+
 <file path="app/services/crm_cards/text_intake.rb">
 MIN_TEXT = 12
 MAX_TEXT = 4000
@@ -16886,6 +16913,8 @@ def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
 ⋮----
 def name
 ⋮----
+def labelled_name
+⋮----
 # ============================================================
 # LLM fallback
 # ============================================================
@@ -16895,33 +16924,6 @@ def llm_values
 def client = @client ||= Llm::OmniClient.new
 ⋮----
 def system_prompt
-</file>
-
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
-⋮----
-def call
-⋮----
-def serialize(m)
-⋮----
-def log_and_ignore(reason)
-⋮----
-def bare_start?(msg)
-⋮----
-def client_photo_intake?(msg)
-⋮----
-def workbot_photo_text_continuation(msg)
-⋮----
-def workbot_wizard_non_text(msg)
-⋮----
-def notify_wizard_expired(tg_user)
-⋮----
-WIZARD_EXPECTS = {
-⋮----
-def attachment_kind(msg)
-⋮----
-def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
