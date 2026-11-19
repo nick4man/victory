@@ -13,8 +13,11 @@ module Telegram
     # активации без SMS.
     #
     # Flow:
-    #   Stage A — `/start` без token payload:
-    #     Bot reply'ит с `request_contact: true` reply_markup кнопкой.
+    #   Stage A — bare `/start` без token payload:
+    #     Теперь маршрутизируется в `Telegram::WorkBot::Commands::Start`, который
+    #     для непривязанного отправителя показывает и вход сотруднику (/whoami),
+    #     и клиентскую кнопку `request_contact`. Нажатие кнопки присылает
+    #     `message.contact` — он обрабатывается здесь, в Stage B.
     #   Stage B — `message.contact` payload (после нажатия кнопки):
     #     Validate user_id == from.id (anti-share fraud)
     #     PhoneStopList check (152-ФЗ)
@@ -22,9 +25,11 @@ module Telegram
     #     Atomic link → user.tg_user_id + invited_at + tg_linked_at
     #     Reply с MagicLinkToken-URL для web cabinet auto-login
     #
-    # Boundary с LinkProcessor:
+    # Boundary с LinkProcessor и WorkBot::Commands::Start:
     #   - `/start <token>` → LinkProcessor (opt-in flow из /cabinet/profile)
-    #   - bare `/start` или `contact` → ActivationRequestProcessor (это)
+    #   - bare `/start` → WorkBot::Commands::Start (общий вход для всех
+    #     непривязанных отправителей в личке)
+    #   - `message.contact` → ActivationRequestProcessor (это)
     #
     # Privacy:
     #   - НЕ логируем phone в plain (только last 4 цифр через mask helper)

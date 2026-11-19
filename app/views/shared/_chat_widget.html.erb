@@ -154,6 +154,22 @@
     return payload;
   }
 
+  // Живое состояние страницы: элементы с data-chat-state="<ключ>" (input.value
+  // или textContent). Сервер пропускает только известные для вида страницы
+  // ключи, значения ≤100 символов, не больше 15 ключей — здесь лишь собираем.
+  function collectPageState () {
+    const state = {};
+    document.querySelectorAll('[data-chat-state]').forEach((el) => {
+      const key = (el.dataset.chatState || '').trim();
+      if (!key || Object.prototype.hasOwnProperty.call(state, key)) return;
+      if (Object.keys(state).length >= 15) return;
+      const raw = ('value' in el) ? el.value : el.textContent;
+      const value = (raw == null ? '' : String(raw)).trim().slice(0, 100);
+      if (value) state[key] = value;
+    });
+    return state;
+  }
+
   function fullPagePayload () {
     const payload = pagePayload();
     const h1 = document.querySelector('h1');
@@ -168,6 +184,8 @@
         }
       } catch (e) { /* битый JSON — шлём без ctx */ }
     }
+    const state = collectPageState();
+    if (Object.keys(state).length) payload.state = state;
     return payload;
   }
 

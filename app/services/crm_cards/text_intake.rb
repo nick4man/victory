@@ -38,7 +38,10 @@ module CrmCards
       'garage' => /гараж|машиноместо/i
     }.freeze
 
-    NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)\s*[:\-—]\s*(.+)/i
+    # Ограничиваем запятой, точкой с запятой и концом строки: «Контакт - Анна
+    # Смирнова, хочет двушку до 6 млн» — имя здесь «Анна Смирнова», а не вся
+    # строка целиком.
+    NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
     # Имя без подписи — минимум два слова с заглавной в начале строки
     # («Анна Смирнова», «Пётр Иванов 8910…»). Одно слово не берём: «Сдаёт»,
     # «Хочет», «Звонил» с заглавной выглядят так же, как имя.
@@ -101,14 +104,14 @@ module CrmCards
 
     def rules
       values = {}
-      phones = phone_digits
-      values[key(:phone)] = phones.first if phones.first
-      values[key(:phone_extra)] = phones[1] if phones[1] && key(:phone_extra)
+      entries = saved_phone_entries
+      values[key(:phone)] = entries[key(:phone)]&.last if key(:phone)
+      values[key(:phone_extra)] = entries[key(:phone_extra)]&.last if key(:phone_extra)
       values[key(:name)] = name if name
       values['action'] = action
       values[key(:realty)] = REALTY_WORDS.find { |_, re| @text.match?(re) }&.first
       values['realty_id'] = @text[REALTY_ID, 1] if @kind == 'lead'
-      values['comment'] = comment if @kind == 'lead'
+      values['comment'] = comment if schema.find { |f| f.key == 'comment' }
       values.compact
     end
 
@@ -122,10 +125,67 @@ module CrmCards
 
     # Вставка длиннее лимита поля иначе не прошла бы проверку и молча пропала,
     # а следом — платный вызов модели за «недостающее» обязательное поле.
+    # Дословную копию всей вставки в «итог разговора» не кладём: ФИО и телефон
+    # уже разложены по своим полям. Убираем ровно то, что разобрали, а не всё
+    # похожее: цена «12 500 000 - 13 000 000» тоже выглядит как телефон, и
+    # слепая чистка вырезала бы бюджет — самое ценное в заметке.
     def comment
-      limit = schema.find { |f| f.key == 'comment' }&.max
-      text = @text.squish
-      limit ? text.truncate(limit) : text
+      field = schema.find { |f| f.key == 'comment' }
+      stripped = without_known_values
+      # Осталось меньше, чем поле принимает, — лучше копия целиком, чем пусто:
+      # пустое обязательное поле потянет за собой платный вызов модели.
+      text = stripped.length >= field&.min.to_i ? stripped : @text.squish
+      field&.max ? text.truncate(field.max) : text
+    end
+
+    def without_known_values
+      text = @text.dup
+      saved_phone_entries.values.each { |run, _| text = text.sub(run, ' ') }
+      labelled = labelled_name
+      text = text.sub(labelled, ' ') if labelled.present?
+      text.squish
+    end
+
+    # @return [Hash<String, [String, String]>] поле карточки → [исходный run, digits]
+    def saved_phone_entries
+      return @saved_phone_entries if defined?(@saved_phone_entries)
+
+      candidates = phone_entries
+      used_digits = Set.new
+      result = {}
+
+      phone_key = key(:phone)
+      if phone_key
+        candidates.each do |run, digits|
+          next if used_digits.include?(digits)
+          next unless FieldValue.phone(digits, mobile: true).last.nil?
+
+          result[phone_key] = [run, digits]
+          used_digits.add(digits)
+          break
+        end
+      end
+
+      extra_key = key(:phone_extra)
+      if extra_key
+        candidates.each do |run, digits|
+          next if used_digits.include?(digits)
+          next unless FieldValue.phone(digits, mobile: false).last.nil?
+
+          result[extra_key] = [run, digits]
+          used_digits.add(digits)
+          break
+        end
+      end
+
+      @saved_phone_entries = result
+    end
+
+    def phone_entries
+      @phone_entries ||= @text.scan(PHONE_CANDIDATE).filter_map do |run|
+        digits, error = FieldValue.phone(run, mobile: false)
+        [run, digits] if error.nil?
+      end.uniq { |_, digits| digits }.sort_by { |_, digits| digits[1] == '9' ? 0 : 1 }
     end
 
     # Одно и то же по смыслу поле называется в заявке и в объекте по-разному.
@@ -137,19 +197,26 @@ module CrmCards
     def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
 
     def name
-      labelled = @text[NAME_LABEL, 1]&.squish
+      labelled = labelled_name
       return labelled if labelled.present?
 
       @text.lines.filter_map { |line| line[NAME_LINE, 1]&.squish }.find { |candidate| candidate.length > 2 }
     end
 
-    # Телефоны в порядке появления: первый мобильный — основной, следующий — доп.
-    def phone_digits
-      @text.scan(PHONE_CANDIDATE).filter_map do |candidate|
-        digits, error = FieldValue.phone(candidate, mobile: false)
-        digits if error.nil?
-      end.uniq.sort_by { |d| d[1] == '9' ? 0 : 1 }
+    # Метка «Клиент: Петр. Хочет однушку…» или «Клиент - Анна - хочет…»
+    # иначе утаскивала всё предложение после разделителя в имя и вырезала
+    # его из комментария. Граница имени — точка/воскл./вопрос с пробелом
+    # или концом строки, либо длинное тире/дефис с пробелами; инициалы без
+    # пробела («Иванов И.И.») остаются на месте.
+    def labelled_name
+      raw = @text[NAME_LABEL, 1]&.squish
+      raw = raw&.sub(/(?:[.!?](?:\s+|\z)|\s+[-—]\s+).*$/m, '')&.squish
+      raw
     end
+
+    # ============================================================
+    # LLM fallback
+    # ============================================================
 
     def llm_values
       response = client.complete(

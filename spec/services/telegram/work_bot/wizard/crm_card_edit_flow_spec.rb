@@ -37,7 +37,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardEditFlow do
     press('Сохранить', user: agent)
 
     expect(card.reload.payload['phone']).to eq('79205554433')
-    expect(last_text).to include('Телефон: +7 920 555-44-33', '✅ пройдена')
+    expect(last_text).to include('Телефон: +7 920 555-44-33', 'всё на месте')
   end
 
   it 'необязательное поле можно очистить кнопкой' do

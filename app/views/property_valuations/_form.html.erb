@@ -151,7 +151,8 @@
               value:       valuation.address,
               required:    true,
               city_field:  'property_valuation[city]',
-              chip_target: 'express-address-chip' %>
+              chip_target: 'express-address-chip',
+              chat_state:  'address' %>
 
         <%# Chip — появляется после выбора подсказки. Подтверждает, что
             адрес распознан корректно (регион + город из ФИАС/КЛАДР). %>
@@ -208,6 +209,7 @@
         <div class="space-y-2" data-show-for="apartment room house commercial garage">
           <label class="text-sm text-muted-foreground">Общая площадь, м² <span class="text-foreground">*</span></label>
           <%= f.number_field :total_area, step: "0.1", placeholder: "85",
+                data: { chat_state: "total_area" },
                 class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
         </div>
 
@@ -221,12 +223,14 @@
         <div class="space-y-2" data-show-for="apartment house commercial">
           <label class="text-sm text-muted-foreground">Количество комнат</label>
           <%= f.number_field :rooms, placeholder: "3",
+                data: { chat_state: "rooms" },
                 class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
         </div>
 
         <div class="space-y-2" data-show-for="apartment room commercial">
           <label class="text-sm text-muted-foreground">Этаж</label>
           <%= f.number_field :floor, placeholder: "5",
+                data: { chat_state: "floor" },
                 class: "w-full h-12 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors" %>
         </div>
 
@@ -280,6 +284,7 @@
                  ["Требует ремонта",         "needs_repair"]],
                 { include_blank: "— выберите состояние —" },
                 required: true,
+                data: { chat_state: "condition" },
                 class: "w-full h-12 px-3 bg-background border border-border text-foreground focus:border-foreground focus:outline-none transition-colors" %>
           <p class="text-xs text-muted-foreground/70">
             Состояние сильно влияет на цену. Дизайн +18%, евроремонт +10%, ремонт +3%, требует ремонта −12% к рыночной средней.

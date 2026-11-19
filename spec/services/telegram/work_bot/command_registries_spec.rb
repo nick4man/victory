@@ -20,13 +20,13 @@ RSpec.describe 'реестры команд WorkBot' do
   # Каждый алиас обязан указывать на тот же класс, что и основная команда.
   WORKBOT_COMMAND_ALIASES = {
     '/panel' => '/dashboard',
-    '/shortcuts' => '/cheatsheet',
-    '/start' => '/help'
+    '/shortcuts' => '/cheatsheet'
   }.freeze
 
-  # /start — особый случай: он и алиас (тот же класс, что /help), и обязан быть
-  # в «/»-меню, потому что это первая кнопка, которую Telegram показывает новому
-  # собеседнику бота. Поэтому в списке «только в Router» его нет.
+  # /start — особый случай: не алиас (у него свой класс — приветствие и меню
+  # «Что сделать?»), но обязан быть в «/»-меню, потому что это первая кнопка,
+  # которую Telegram показывает новому собеседнику бота. Поэтому в списке
+  # «только в Router» его нет.
   WORKBOT_ROUTER_ONLY_ALIASES = %w[/panel /shortcuts].freeze
 
   let(:router_cmds) { Telegram::WorkBot::Router::COMMANDS.keys.map(&:to_s) }

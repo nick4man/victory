@@ -1,6 +1,6 @@
-# repo-index.md \u2014 \u043a\u0430\u0440\u0442\u0430 \u043a\u043b\u0430\u0441\u0441\u043e\u0432 (auto-generated)
+# repo-index.md — карта классов (auto-generated)
 
-> \u0421\u0436\u0430\u0442\u044b\u0439 \u0438\u043d\u0434\u0435\u043a\u0441: \u043f\u0443\u0442\u044c \u2192 \u043a\u043b\u0430\u0441\u0441\u044b/\u043c\u043e\u0434\u0443\u043b\u0438 \u0432 \u0444\u0430\u0439\u043b\u0435. \u0420\u0435\u0433\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f: rake repo:map.
+> Сжатый индекс: путь → классы/модули в файле. Регенерация: `rake repo:map`.
 
 ## app/models
 
@@ -458,6 +458,7 @@ app/services/telegram/work_bot/commands/route.rb — module Telegram, module Wor
 app/services/telegram/work_bot/commands/segment.rb — module Telegram, module WorkBot, module Commands, class Segment
 app/services/telegram/work_bot/commands/show.rb — module Telegram, module WorkBot, module Commands, class Show
 app/services/telegram/work_bot/commands/stage.rb — module Telegram, module WorkBot, module Commands, class Stage
+app/services/telegram/work_bot/commands/start.rb — module Telegram, module WorkBot, module Commands, class Start
 app/services/telegram/work_bot/commands/start_test.rb — module Telegram, module WorkBot, module Commands, class StartTest
 app/services/telegram/work_bot/commands/task.rb — module Telegram, module WorkBot, module Commands, class Task
 app/services/telegram/work_bot/commands/tutorial.rb — module Telegram, module WorkBot, module Commands, class Tutorial

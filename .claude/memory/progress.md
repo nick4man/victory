@@ -148,7 +148,7 @@ Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verifi
 
 После #413f (commits 0e5e685..2495330) phone-only клиенты Topnlab больше
 НЕ получают auto-SMS magic-link. Активация работает через 2 пути:
-1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → ActivationRequestProcessor → contact-share → match по phone → linked
+1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → `WorkBot::Commands::Start` показывает кнопку «Подтвердить телефон» → `ActivationRequestProcessor` по contact-share → match по phone → linked. Тот же `/start` для непривязанного сотрудника показывает `/whoami`.
 2. **Admin-shared link** — агент в `/admin/users/:id` генерирует QR/URL и share через любой канал
 
 **НО оба зависят от того что клиент УЗНАЁТ о боте.** Ops-backlog
