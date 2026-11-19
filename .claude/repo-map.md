@@ -8741,40 +8741,6 @@ def http
 def parse_json(body)
 </file>
 
-<file path="app/services/telegram/client_bot/activation_request_processor.rb">
-module Telegram
-module ClientBot
-⋮----
-class ActivationRequestProcessor
-def self.applies?(msg)
-⋮----
-def self.call(msg)
-⋮----
-def initialize(msg)
-⋮----
-def applies?
-⋮----
-def call
-⋮----
-private
-⋮----
-def handle_start
-⋮----
-def handle_contact
-⋮----
-def link_user_by_phone(last10:, tg_user_id:, tg_username:)
-⋮----
-def generate_login_link(user)
-⋮----
-def private_chat?
-⋮----
-def from_staff?
-⋮----
-def contact_keyboard
-⋮----
-def reply(text, reply_markup: nil)
-</file>
-
 <file path="app/services/telegram/client_bot/link_processor.rb">
 module Telegram
 module ClientBot
@@ -13051,6 +13017,40 @@ def decode_unreserved(str)
 def remove_dot_segments(input)
 </file>
 
+<file path="app/services/telegram/client_bot/activation_request_processor.rb">
+module Telegram
+module ClientBot
+⋮----
+class ActivationRequestProcessor
+def self.applies?(msg)
+⋮----
+def self.call(msg)
+⋮----
+def initialize(msg)
+⋮----
+def applies?
+⋮----
+def call
+⋮----
+private
+⋮----
+def handle_start
+⋮----
+def handle_contact
+⋮----
+def link_user_by_phone(last10:, tg_user_id:, tg_username:)
+⋮----
+def generate_login_link(user)
+⋮----
+def private_chat?
+⋮----
+def from_staff?
+⋮----
+def contact_keyboard
+⋮----
+def reply(text, reply_markup: nil)
+</file>
+
 <file path="app/services/telegram/work_bot/callbacks/base.rb">
 module Telegram
 module WorkBot
@@ -14386,16 +14386,6 @@ def edit(text, markup)
 def back_keyboard
 ⋮----
 def time_ago(time)
-</file>
-
-<file path="app/services/telegram/work_bot/commands/start.rb">
-module Telegram
-module WorkBot
-module Commands
-⋮----
-class Start < Menu
-⋮----
-def handle
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb">
@@ -16198,6 +16188,16 @@ def export_problems
 def line_for(card)
 </file>
 
+<file path="app/services/telegram/work_bot/commands/start.rb">
+module Telegram
+module WorkBot
+module Commands
+⋮----
+class Start < Menu
+⋮----
+def handle
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb">
 module Telegram
 module WorkBot
@@ -16419,37 +16419,6 @@ def self.compact_response(pv, result, similar = nil)
 def self.run_failure(pv, error_message)
 </file>
 
-<file path="app/services/crm_cards/checker.rb">
-module CrmCards
-⋮----
-class Checker
-CONDITIONAL_MESSAGES = {
-⋮----
-def self.call(card)
-⋮----
-def self.sandbox_lead?(lead)
-⋮----
-def self.conditionally_required(values)
-⋮----
-def initialize(card)
-⋮----
-def call
-⋮----
-private
-⋮----
-def field_errors
-⋮----
-def lead_rules
-⋮----
-def object_rules
-⋮----
-def area_cents(value)
-⋮----
-def area(value)
-⋮----
-def blank_value?(raw)
-</file>
-
 <file path="app/services/crm_cards/notifier.rb">
 module CrmCards
 ⋮----
@@ -16610,6 +16579,37 @@ def fallback_message
 def system_prompt
 </file>
 
+<file path="app/services/crm_cards/checker.rb">
+module CrmCards
+⋮----
+class Checker
+CONDITIONAL_MESSAGES = {
+⋮----
+def self.call(card)
+⋮----
+def self.sandbox_lead?(lead)
+⋮----
+def self.conditionally_required(values)
+⋮----
+def initialize(card)
+⋮----
+def call
+⋮----
+private
+⋮----
+def field_errors
+⋮----
+def lead_rules
+⋮----
+def object_rules
+⋮----
+def area_cents(value)
+⋮----
+def area(value)
+⋮----
+def blank_value?(raw)
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
 module Telegram
 module WorkBot
@@ -16706,65 +16706,6 @@ def escape(text)
 def fmt_rub(amount)
 ⋮----
 def report_url(valuation)
-</file>
-
-<file path="app/services/crm_cards/text_intake.rb">
-MIN_TEXT = 12
-MAX_TEXT = 4000
-⋮----
-Result = Struct.new(:values, :model, :error, keyword_init: true) do
-def any? = values.present?
-⋮----
-ACTION_WORDS = {
-⋮----
-REALTY_WORDS = {
-⋮----
-NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
-⋮----
-NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
-REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:
-⋮----
-def self.call(kind:, text:, client: nil, llm: true, needs: nil)
-⋮----
-def initialize(kind:, text:, client: nil, llm: true, needs: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def too_short? = @text.length < MIN_TEXT
-⋮----
-def schema = Schema.for(@kind)
-⋮----
-def missing_required(values)
-⋮----
-def normalize(raw_values)
-⋮----
-def rules
-⋮----
-def action
-⋮----
-def comment
-⋮----
-def without_known_values
-⋮----
-def saved_phone_runs
-⋮----
-def saved_phone_entries
-⋮----
-def phone_entries
-⋮----
-KEYS = {
-⋮----
-def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
-⋮----
-def name
-⋮----
-def llm_values
-⋮----
-def client = @client ||= Llm::OmniClient.new
-⋮----
-def system_prompt
 </file>
 
 <file path="app/services/crm_cards/card_view.rb">
@@ -16893,6 +16834,67 @@ def prefill
 SUMMARY_KEYS = %w[action object_type].freeze
 ⋮----
 def from_summary(summary)
+</file>
+
+<file path="app/services/crm_cards/text_intake.rb">
+MIN_TEXT = 12
+MAX_TEXT = 4000
+⋮----
+Result = Struct.new(:values, :model, :error, keyword_init: true) do
+def any? = values.present?
+⋮----
+ACTION_WORDS = {
+⋮----
+REALTY_WORDS = {
+⋮----
+NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
+⋮----
+NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
+REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:
+⋮----
+def self.call(kind:, text:, client: nil, llm: true, needs: nil)
+⋮----
+def initialize(kind:, text:, client: nil, llm: true, needs: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def too_short? = @text.length < MIN_TEXT
+⋮----
+def schema = Schema.for(@kind)
+⋮----
+def missing_required(values)
+⋮----
+def normalize(raw_values)
+⋮----
+def rules
+⋮----
+def action
+⋮----
+def comment
+⋮----
+def without_known_values
+⋮----
+def saved_phone_entries
+⋮----
+def phone_entries
+⋮----
+KEYS = {
+⋮----
+def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
+⋮----
+def name
+⋮----
+# ============================================================
+# LLM fallback
+# ============================================================
+⋮----
+def llm_values
+⋮----
+def client = @client ||= Llm::OmniClient.new
+⋮----
+def system_prompt
 </file>
 
 <file path="app/services/telegram/inbound_processor.rb">
