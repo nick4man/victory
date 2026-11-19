@@ -80,10 +80,11 @@ module CrmCards
       # сотрудника («Ирина»). Запрет по нему навсегда закрыл бы такому клиенту
       # дорогу в CRM — модератор видит пометку в карточке (CardView) и решает сам.
       # Исключение — probe-прогон бота (issue #214): lead_test_mode ставится
-      # только по metadata['test'] — такой лид запрещён в CRM на уровне Inquiry#test?
-      # (метка 'test' глушит push_to_work_bot → Lead::Intake), и здесь он тоже
-      # обязан быть заблокирован: прогон правдоподобен и с заполненными
-      # assigned_to/first_contact_at прошёл бы модерацию (ревью PR #210, round 9+++++).
+      # только по metadata['test'] — Inquiry#test? передаёт признак test: true
+      # через push_to_work_bot → Lead::Intake, и LeadAnnouncer направляет такую
+      # карточку в тестовый чат вместо боевой CRM. Здесь он тоже обязан быть
+      # заблокирован: прогон правдоподобен и с заполненными assigned_to/
+      # first_contact_at прошёл бы модерацию (ревью PR #210, round 9+++++).
       errors = []
       if lead.staff_test_matched_by == StaffSubmissionDetector::TEST_MODE_MATCHED_BY
         errors << ['lead', 'Тестовый прогон бота — в CRM не выгружается.']

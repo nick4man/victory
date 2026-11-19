@@ -104,14 +104,14 @@ module CrmCards
 
     def rules
       values = {}
-      entries = phone_entries
-      values[key(:phone)] = entries[0]&.last
-      values[key(:phone_extra)] = entries[1]&.last if key(:phone_extra)
+      entries = saved_phone_entries
+      values[key(:phone)] = entries[key(:phone)]&.last if key(:phone)
+      values[key(:phone_extra)] = entries[key(:phone_extra)]&.last if key(:phone_extra)
       values[key(:name)] = name if name
       values['action'] = action
       values[key(:realty)] = REALTY_WORDS.find { |_, re| @text.match?(re) }&.first
       values['realty_id'] = @text[REALTY_ID, 1] if @kind == 'lead'
-      values['comment'] = comment if @kind == 'lead'
+      values['comment'] = comment if schema.find { |f| f.key == 'comment' }
       values.compact
     end
 
@@ -140,17 +140,52 @@ module CrmCards
 
     def without_known_values
       text = @text.dup
-      phone_entries.first(2).map(&:first).each { |run| text = text.sub(run, ' ') }
+      saved_phone_entries.values.each { |run, _| text = text.sub(run, ' ') }
       labelled = @text[NAME_LABEL, 1]&.strip
       text = text.sub(labelled, ' ') if labelled.present?
       text.squish
     end
 
     # Только фрагменты телефонов, которые реально попали в поля карточки:
-    # первый (phone) и дополнительный (phone_extra). Остальные номера остаются
-    # в комментарии, чтобы не терять контакты при выгрузке в CRM.
+    # первый мобильный (phone) и следующий подходящий (phone_extra). Остальные
+    # номера остаются в комментарии, чтобы не терять контакты при выгрузке в CRM.
     def saved_phone_runs
-      phone_entries.first(2).map(&:first)
+      saved_phone_entries.values.map(&:first)
+    end
+
+    # @return [Hash<String, [String, String]>] поле карточки → [исходный run, digits]
+    def saved_phone_entries
+      return @saved_phone_entries if defined?(@saved_phone_entries)
+
+      candidates = phone_entries
+      used_digits = Set.new
+      result = {}
+
+      phone_key = key(:phone)
+      if phone_key
+        candidates.each do |run, digits|
+          next if used_digits.include?(digits)
+          next unless FieldValue.phone(digits, mobile: true).last.nil?
+
+          result[phone_key] = [run, digits]
+          used_digits.add(digits)
+          break
+        end
+      end
+
+      extra_key = key(:phone_extra)
+      if extra_key
+        candidates.each do |run, digits|
+          next if used_digits.include?(digits)
+          next unless FieldValue.phone(digits, mobile: false).last.nil?
+
+          result[extra_key] = [run, digits]
+          used_digits.add(digits)
+          break
+        end
+      end
+
+      @saved_phone_entries = result
     end
 
     def phone_entries

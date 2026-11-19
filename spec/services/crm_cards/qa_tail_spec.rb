@@ -84,6 +84,26 @@ RSpec.describe 'замечания QA-прогона' do
     expect(result.values['comment']).not_to include('444-55-66')
   end
 
+  it 'единственный городской номер уходит в phone_extra, а не пропадает из комментария' do
+    text = 'Пётр +7 4912 12-34-56. Хочет однушку в центре Рязани.'
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['phone_extra']).to eq('74912123456')
+    expect(result.values['phone']).to be_nil
+    expect(result.values['comment']).to include('однушку в центре Рязани')
+    expect(result.values['comment']).not_to include('4912')
+  end
+
+  it 'в карточке объекта городской номер не сохраняется как phone и остаётся в комментарии' do
+    text = 'Собственник Пётр +7 4912 12-34-56. Дом на Красной, цена 12 млн.'
+
+    result = CrmCards::TextIntake.call(kind: 'object', text: text, llm: false)
+
+    expect(result.values['owner_phone']).to be_nil
+    expect(result.values['comment']).to include('4912')
+  end
+
   it 'имя по подписи не заглатывает остаток строки' do
     text = "Звонила по ипотеке\nКонтакт - Анна Смирнова, хочет двушку до 6 млн, ипотека одобрена"
 

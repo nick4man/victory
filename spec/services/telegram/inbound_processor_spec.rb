@@ -85,12 +85,12 @@ RSpec.describe Telegram::InboundProcessor do
                        'chat' => { 'id' => from_id, 'type' => 'private' }, 'text' => '/start' } }
     end
 
-    it 'непривязанный отправитель попадает в клиентскую активацию (request_contact)' do
-      expect(Telegram::WorkBot::Router).not_to receive(:new)
+    it 'непривязанный отправитель попадает в WorkBot::Commands::Start с инструкцией /whoami и кнопкой request_contact' do
+      expect(Telegram::ClientBot::ActivationRequestProcessor).not_to receive(:call)
 
       expect(described_class.new(start_update(from_id: 999_999)).call).to eq(:handled)
       expect(tg_client).to have_received(:send_message)
-        .with(a_string_including('Подтвердить телефон'),
+        .with(a_string_including('/whoami'),
               hash_including(chat_id: 999_999,
                              reply_markup: hash_including(
                                keyboard: include(include(hash_including(request_contact: true)))
@@ -101,6 +101,18 @@ RSpec.describe Telegram::InboundProcessor do
       expect(described_class.new(start_update(from_id: 501)).call).to eq(:handled)
       expect(tg_client).to have_received(:send_message)
         .with(a_string_including('Виктори'), hash_including(chat_id: 501))
+    end
+
+    it 'contact-share от непривязанного отправителя попадает в клиентскую активацию' do
+      update = {
+        'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 41, 'from' => { 'id' => 999_999 },
+                       'chat' => { 'id' => 999_999, 'type' => 'private' },
+                       'contact' => { 'phone_number' => '+79001234567', 'user_id' => 999_999 } }
+      }
+      expect(described_class.new(update).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('Не нашли вас в системе'), hash_including(chat_id: 999_999))
     end
   end
 

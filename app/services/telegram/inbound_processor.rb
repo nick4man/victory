@@ -68,8 +68,15 @@ module Telegram
         return Telegram::ClientBot::LinkProcessor.call(msg)
       end
 
-      # #413f — inbound activation flow (contact-share; bare /start для
-      # непривязанного отправителя маршрутизируется в ActivationRequestProcessor).
+      # #413f — inbound activation flow (contact-share). Bare /start в личке
+      # идёт в WorkBot::Commands::Start, который для непривязанного отправителя
+      # показывает и вход сотруднику (/whoami), и клиентскую кнопку подтверждения
+      # телефона. Contact-share по этой кнопке обрабатывается ниже.
+      if bare_start?(msg)
+        result = Telegram::WorkBot::Router.new(msg).call
+        return result if %i[handled verified code_failed not_linked menu_shown].include?(result)
+      end
+
       if Telegram::ClientBot::ActivationRequestProcessor.applies?(msg)
         return Telegram::ClientBot::ActivationRequestProcessor.call(msg)
       end
@@ -374,6 +381,16 @@ module Telegram
     def log_and_ignore(reason)
       Rails.logger.info("[Telegram::InboundProcessor] ignored: #{reason}")
       :ignored
+    end
+
+    # Bare `/start` в личке — публичная команда WorkBot; сюда попадают и
+    # непривязанные сотрудники, и клиенты. WorkBot::Commands::Start сам решает,
+    # какую клавиатуру показать (/whoami для staff, request_contact для клиента).
+    def bare_start?(msg)
+      return false unless msg.dig('chat', 'type') == 'private'
+
+      text = msg['text'].to_s.strip
+      text == '/start' || text.start_with?('/start ')
     end
 
     # A6 Phase 1: true если сообщение — фото в личном чате (DM).

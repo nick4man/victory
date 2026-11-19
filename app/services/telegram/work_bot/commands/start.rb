@@ -14,8 +14,18 @@ module Telegram
           # Команда публичная, значит сюда доходит и тот, кого бот ещё не знает:
           # Menu на таком падал бы на nil. Ему — как привязаться, а не меню.
           if tg_user.nil?
-            reply('👋 Это рабочий бот АН «Виктори». Привяжи свой рабочий email: ' \
-                  '<code>/whoami email@victory62.org</code> — и появится меню.')
+            reply(
+              '👋 Это рабочий бот АН «Виктори».\n\n' \
+              'Если вы наше сотрудник — привяжите аккаунт командой ' \
+              '<code>/whoami email@victory62.org</code>.\n\n' \
+              'Если вы клиент — нажмите кнопку «Подтвердить телефон», и мы привяжем ' \
+              'ваш личный кабинет к этому Telegram.',
+              reply_markup: {
+                keyboard: [[{ text: 'Подтвердить телефон', request_contact: true }]],
+                resize_keyboard: true,
+                one_time_keyboard: true
+              }
+            )
             return :not_linked
           end
 
