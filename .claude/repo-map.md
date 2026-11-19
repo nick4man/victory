@@ -16610,63 +16610,6 @@ def fallback_message
 def system_prompt
 </file>
 
-<file path="app/services/crm_cards/text_intake.rb">
-MIN_TEXT = 12
-MAX_TEXT = 4000
-⋮----
-Result = Struct.new(:values, :model, :error, keyword_init: true) do
-def any? = values.present?
-⋮----
-ACTION_WORDS = {
-⋮----
-REALTY_WORDS = {
-⋮----
-NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
-⋮----
-NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
-REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:
-⋮----
-def self.call(kind:, text:, client: nil, llm: true, needs: nil)
-⋮----
-def initialize(kind:, text:, client: nil, llm: true, needs: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def too_short? = @text.length < MIN_TEXT
-⋮----
-def schema = Schema.for(@kind)
-⋮----
-def missing_required(values)
-⋮----
-def normalize(raw_values)
-⋮----
-def rules
-⋮----
-def action
-⋮----
-def comment
-⋮----
-def without_known_values
-⋮----
-def saved_phone_runs
-⋮----
-def phone_entries
-⋮----
-KEYS = {
-⋮----
-def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
-⋮----
-def name
-⋮----
-def llm_values
-⋮----
-def client = @client ||= Llm::OmniClient.new
-⋮----
-def system_prompt
-</file>
-
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
 module Telegram
 module WorkBot
@@ -16765,29 +16708,63 @@ def fmt_rub(amount)
 def report_url(valuation)
 </file>
 
-<file path="app/services/telegram/inbound_processor.rb">
-class InboundProcessor
-def initialize(payload)
+<file path="app/services/crm_cards/text_intake.rb">
+MIN_TEXT = 12
+MAX_TEXT = 4000
+⋮----
+Result = Struct.new(:values, :model, :error, keyword_init: true) do
+def any? = values.present?
+⋮----
+ACTION_WORDS = {
+⋮----
+REALTY_WORDS = {
+⋮----
+NAME_LABEL = /(?:фио|имя|клиент|контакт|собственник)[ \t]*[:\-—][ \t]*([^,;\n]{2,60})/i
+⋮----
+NAME_LINE = /\A\s*([[:upper:]][[:alpha:]-]+(?:\s+[[:upper:]][[:alpha:]-]+){1,2})(?=[\s,.;:!?]|\z)/
+REALTY_ID = /(?:объект|объекта|id|ид|лот|№)\s*[:
+⋮----
+def self.call(kind:, text:, client: nil, llm: true, needs: nil)
+⋮----
+def initialize(kind:, text:, client: nil, llm: true, needs: nil)
 ⋮----
 def call
 ⋮----
-def serialize(m)
+private
 ⋮----
-def log_and_ignore(reason)
+def too_short? = @text.length < MIN_TEXT
 ⋮----
-def client_photo_intake?(msg)
+def schema = Schema.for(@kind)
 ⋮----
-def workbot_photo_text_continuation(msg)
+def missing_required(values)
 ⋮----
-def workbot_wizard_non_text(msg)
+def normalize(raw_values)
 ⋮----
-def notify_wizard_expired(tg_user)
+def rules
 ⋮----
-WIZARD_EXPECTS = {
+def action
 ⋮----
-def attachment_kind(msg)
+def comment
 ⋮----
-def workbot_wizard_text(msg)
+def without_known_values
+⋮----
+def saved_phone_runs
+⋮----
+def saved_phone_entries
+⋮----
+def phone_entries
+⋮----
+KEYS = {
+⋮----
+def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
+⋮----
+def name
+⋮----
+def llm_values
+⋮----
+def client = @client ||= Llm::OmniClient.new
+⋮----
+def system_prompt
 </file>
 
 <file path="app/services/crm_cards/card_view.rb">
@@ -16916,6 +16893,33 @@ def prefill
 SUMMARY_KEYS = %w[action object_type].freeze
 ⋮----
 def from_summary(summary)
+</file>
+
+<file path="app/services/telegram/inbound_processor.rb">
+class InboundProcessor
+def initialize(payload)
+⋮----
+def call
+⋮----
+def serialize(m)
+⋮----
+def log_and_ignore(reason)
+⋮----
+def bare_start?(msg)
+⋮----
+def client_photo_intake?(msg)
+⋮----
+def workbot_photo_text_continuation(msg)
+⋮----
+def workbot_wizard_non_text(msg)
+⋮----
+def notify_wizard_expired(tg_user)
+⋮----
+WIZARD_EXPECTS = {
+⋮----
+def attachment_kind(msg)
+⋮----
+def workbot_wizard_text(msg)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/engine.rb">
