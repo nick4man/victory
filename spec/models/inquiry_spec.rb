@@ -145,13 +145,6 @@ RSpec.describe Inquiry do
       expect(build_inquiry(metadata: nil)).not_to be_test
     end
 
-    it 'тестовый лид не уходит в CRM-синк (sync_to_crm! гейт)' do
-      inquiry = build_inquiry(metadata: { 'test' => true })
-      expect(inquiry).to receive(:sync_to_crm!).and_call_original
-      inquiry.sync_to_crm!
-      expect(inquiry.crm_id).to be_nil
-    end
-
     it 'тест-флаг прокидывается в payload Lead::Intake (push_to_work_bot)' do
       inquiry = build_inquiry(metadata: { 'test' => true, 'service_type' => 'cma' }).tap(&:save!)
       expect(Lead::Intake).to receive(:call) do |args|

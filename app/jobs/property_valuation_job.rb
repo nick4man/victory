@@ -3,15 +3,14 @@
 # Async background worker for express valuation (POST /valuations).
 # Mirrors InvestmentAuditJob pattern — moves heavy compute out of the
 # request thread so user sees loader page сразу. Updates valuation status
-# at the end + emits the same downstream notifications (mailer + CRM +
+# at the end + emits the same downstream notifications (mailer +
 # Telegram staff dispatch) only когда status: :completed.
 #
 # Pipeline:
 #   1. PropertyEvaluationService.new(valuation).call — comp finder + hedonic + bootstrap
 #   2. On success → persist estimated_price/min/max/confidence/hedonic_data, status=completed
 #   3. Async mailer (если email указан)
-#   4. CRM lead создание (stub пока, see #create_crm_lead)
-#   5. ExpressReportNotifier — staff TG group с HTML summary + attached PDF
+#   4. ExpressReportNotifier — staff TG group с HTML summary + attached PDF
 #
 # Если PropertyEvaluationService возвращает {success:false} или бросает
 # исключение — status=failed + evaluation_data[:error] для UI / debugging.
@@ -68,9 +67,6 @@ class PropertyValuationJob < ApplicationJob
     # Email пользователю — async через deliver_later (даже job в job ok).
     PropertyValuationMailer.valuation_completed(valuation).deliver_later if valuation.email.present?
 
-    # CRM (пока stub — replaced когда подключим AmoCRM/Bitrix).
-    create_crm_lead(valuation) if valuation.email.present?
-
     # Staff Telegram dispatch — ONE rich notification в группу
     # `-1003779115845` через LeadAnnouncer card refresh + PDF reply.
     # ExpressReportNotifier остаётся как FALLBACK когда LeadEvent отсутствует
@@ -104,14 +100,5 @@ class PropertyValuationJob < ApplicationJob
     )
   rescue StandardError => e
     Rails.logger.warn("[PropertyValuationJob] push_to_lead_card failed for #{valuation.id}: #{e.class} #{e.message.to_s.truncate(160)}")
-  end
-
-  def create_crm_lead(valuation)
-    # Mirrors PropertyValuationsController#create_crm_lead — пока stub,
-    # реальная интеграция AmoCRM/Bitrix добавится отдельно. Логгируем для
-    # отслеживания funnel.
-    Rails.logger.info "[PropertyValuationJob] CRM lead для valuation ##{valuation.id} (#{valuation.email})"
-  rescue StandardError => e
-    Rails.logger.error "[PropertyValuationJob] CRM lead failed: #{e.message}"
   end
 end

@@ -161,8 +161,12 @@ RSpec.describe CrmCards::Workflow do
     it 'разрешение руководителя ставит выгрузку в очередь и записывает, кто решил' do
       workflow.approve!(card, actor: director)
 
-      expect { workflow.release_for_export!(card.reload, actor: director) }
-        .to have_enqueued_job(CrmCards::ExportJob).with(card.id)
+      freeze_time do
+        expect { workflow.release_for_export!(card.reload, actor: director) }
+          .to have_enqueued_job(CrmCards::ExportJob)
+          .with(card.id)
+          .at(be_within(2.seconds).of(Time.current + CrmCards::Workflow::EXPORT_DELAY))
+      end
       expect(card.reload).to have_attributes(released_by_id: director.id)
       expect(card.released_at).to be_present
       expect(notifier).to have_received(:released).with(card)

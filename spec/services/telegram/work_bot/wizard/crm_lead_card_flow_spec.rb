@@ -42,7 +42,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
     expect(card).to have_attributes(author_id: agent.id, lead_event_id: lead.id, status: 'draft')
     expect(card.payload).to include('name' => 'Анна Смирнова', 'phone' => '79101234567',
                                     'action' => 'sale', 'object_type' => 'flat')
-    expect(last_text).to include('✅ пройдена')
+    expect(last_text).to include('всё на месте')
     expect(last_callbacks).to include("crm_card:#{card.id}:submit")
   end
 
@@ -93,7 +93,7 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmLeadCardFlow do
     card = CrmCard.last
     expect(card.payload).to include('action' => 'rent', 'object_type' => 'flat')
     expect(card.payload['comment']).to include('Созвонились')
-    expect(last_text).to include('✅ пройдена')
+    expect(last_text).to include('всё на месте')
     expect(last_callbacks).to include("crm_card:#{card.id}:submit")
   end
 
