@@ -123,6 +123,15 @@ RSpec.describe 'замечания QA-прогона' do
     expect(result.values['comment']).to include('Ипотека одобрена')
   end
 
+  it 'имя по метке не захватывает текст после длинного тире' do
+    text = 'Контакт — Пётр Иванов — хочет однушку в центре Рязани'
+
+    result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
+
+    expect(result.values['name']).to eq('Пётр Иванов')
+    expect(result.values['comment']).to include('однушку в центре Рязани')
+  end
+
   it 'после чистки осталось слишком мало — кладём вставку целиком' do
     text = "Клиент: Анна Смирнова\n+7 910 555-00-11\nищет гараж, торг"
 
