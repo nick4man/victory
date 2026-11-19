@@ -146,13 +146,6 @@ module CrmCards
       text.squish
     end
 
-    # Только фрагменты телефонов, которые реально попали в поля карточки:
-    # первый мобильный (phone) и следующий подходящий (phone_extra). Остальные
-    # номера остаются в комментарии, чтобы не терять контакты при выгрузке в CRM.
-    def saved_phone_runs
-      saved_phone_entries.values.map(&:first)
-    end
-
     # @return [Hash<String, [String, String]>] поле карточки → [исходный run, digits]
     def saved_phone_entries
       return @saved_phone_entries if defined?(@saved_phone_entries)
@@ -205,6 +198,11 @@ module CrmCards
 
     def name
       labelled = @text[NAME_LABEL, 1]&.squish
+      # Метка «Клиент: Петр. Хочет однушку…» иначе утаскивала всё предложение
+      # после точки в имя и вырезала его из комментария. Точка в конце или с
+      # пробелом после — граница имени; инициалы без пробела («Иванов И.И.")
+      # остаются на месте.
+      labelled = labelled&.sub(/[.!?](?:\s+|\z).*$/m, '')&.squish
       return labelled if labelled.present?
 
       @text.lines.filter_map { |line| line[NAME_LINE, 1]&.squish }.find { |candidate| candidate.length > 2 }
