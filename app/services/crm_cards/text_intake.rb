@@ -141,7 +141,7 @@ module CrmCards
     def without_known_values
       text = @text.dup
       saved_phone_entries.values.each { |run, _| text = text.sub(run, ' ') }
-      labelled = @text[NAME_LABEL, 1]&.strip
+      labelled = labelled_name
       text = text.sub(labelled, ' ') if labelled.present?
       text.squish
     end
@@ -197,15 +197,20 @@ module CrmCards
     def key(role) = KEYS.fetch(@kind, KEYS['lead'])[role]
 
     def name
-      labelled = @text[NAME_LABEL, 1]&.squish
-      # Метка «Клиент: Петр. Хочет однушку…» иначе утаскивала всё предложение
-      # после точки в имя и вырезала его из комментария. Точка в конце или с
-      # пробелом после — граница имени; инициалы без пробела («Иванов И.И.")
-      # остаются на месте.
-      labelled = labelled&.sub(/[.!?](?:\s+|\z).*$/m, '')&.squish
+      labelled = labelled_name
       return labelled if labelled.present?
 
       @text.lines.filter_map { |line| line[NAME_LINE, 1]&.squish }.find { |candidate| candidate.length > 2 }
+    end
+
+    # Метка «Клиент: Петр. Хочет однушку…» иначе утаскивала всё предложение
+    # после точки в имя и вырезала его из комментария. Точка в конце или с
+    # пробелом после — граница имени; инициалы без пробела («Иванов И.И.»)
+    # остаются на месте.
+    def labelled_name
+      raw = @text[NAME_LABEL, 1]&.squish
+      raw = raw&.sub(/[.!?](?:\s+|\z).*$/m, '')&.squish
+      raw
     end
 
     # ============================================================

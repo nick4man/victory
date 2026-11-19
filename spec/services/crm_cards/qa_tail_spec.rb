@@ -114,12 +114,13 @@ RSpec.describe 'замечания QA-прогона' do
   end
 
   it 'имя по метке не захватывает текст после точки' do
-    text = 'Клиент: Пётр. Хочет однушку в центре Рязани.'
+    text = "Клиент: Анна Смирнова. Хочет однушку в центре Рязани.\nИпотека одобрена, срок переезда — октябрь."
 
     result = CrmCards::TextIntake.call(kind: 'lead', text: text, llm: false)
 
-    expect(result.values['name']).to eq('Пётр')
-    expect(result.values['comment']).to include('однушку в центре Рязани')
+    expect(result.values['name']).to eq('Анна Смирнова')
+    expect(result.values['comment']).to include('Хочет однушку в центре Рязани')
+    expect(result.values['comment']).to include('Ипотека одобрена')
   end
 
   it 'после чистки осталось слишком мало — кладём вставку целиком' do
