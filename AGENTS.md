@@ -4,9 +4,13 @@
 здесь собран минимум, необходимый, чтобы не сломать что-то с первой правкой.
 Детали по темам — в memory-bank (см. раздел «Где брать контекст»).
 
-⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`, `CURRENT_STATE.md`,
+⚠️ Корневые `*.md` (`STATUS.md`, `SUMMARY.md`, `FINAL_REPORT.md`,
 шесть `DEPLOYMENT*.md`, `ROADMAP.md` и др.) — исторический шум, местами полугодовой
 давности. **Источник правды — `.claude/memory/` и этот файл.**
+
+🚨 **Язык общения — только русский.** Все ответы, пояснения, статусы, вопросы, коммит-сообщения
+и PR-описания — по-русски. Английский остаётся только там, где он и есть часть кода/данных:
+идентификаторы, имена файлов и команд, названия библиотек и API. Пересказ и выводы — по-русски.
 
 ## Обзор проекта
 
@@ -18,9 +22,9 @@ Telegram-бота, AI-функции (чат-бот сайта, оценка о�
 
 | Слой | Технология |
 |---|---|
-| Framework | Rails **8.1.3.1** (`load_defaults` пока 7.1) |
+| Framework | Rails **8.1.4.1** (точный пин — `Gemfile.lock`; `load_defaults` пока 7.1) |
 | Язык | Ruby **3.4.10** (пин в `Gemfile`, `.ruby-version`, `mise.toml`, `Dockerfile`) |
-| БД | PostgreSQL 15 + **PostGIS 3.6** + **pgvector 0.8.6** (образ `Dockerfile.postgres`) |
+| БД | PostgreSQL 15 + **PostGIS 3.6** + **pgvector 0.8.6** (образ `Dockerfile.postgres`, схема в `db/structure.sql`) |
 | Server | Puma 7.2, порт 3000 в Docker |
 | Фон | Sidekiq 7 + sidekiq-cron (`config/sidekiq.yml`, `config/sidekiq_cron.yml`) |
 | Frontend | Importmap + Stimulus + Turbo (Hotwire), Tailwind (`tailwindcss-rails`), ERB. Webpack/esbuild нет |
@@ -100,27 +104,29 @@ Rails-монолит. Четыре входа, и только первый — 
 
 ## Команды
 
-На прод-хосте `victory` всё Ruby — через `bin/rb` (контейнер с целевым Ruby):
+На прод-хосте `victory` всё Ruby — через `bin/rb` (контейнер с целевым Ruby; в main checkout отказывается запускаться без `VICTORY_RB_ALLOW_MAIN=1`, требует `.env` в корне worktree):
 
 ```bash
+bin/rb --seed-bundle                                # быстрый старт: копия гемов из victory_bundle вместо bundle install
 bin/rb bundle install
-bin/rb --db bundle exec rspec                       # полный прогон (~1100 примеров)
+bin/rb --db bundle exec rspec                       # полный прогон (~1100 примеров; --db поднимает postgres+redis)
 bin/rb --db bundle exec rspec spec/models/property_spec.rb       # файл
 bin/rb --db bundle exec rspec spec/models/property_spec.rb:42    # пример
 bin/rb bundle exec rubocop --parallel               # + -a safe / -A unsafe
 bin/rb bundle exec brakeman --exit-on-warn --quiet --format text
 bin/rb bundle exec bundle-audit update && bundle exec bundle-audit check
-bin/rb bin/rails db:migrate                         # db:create / db:seed / db:reset
-bin/rb bundle exec sidekiq -C config/sidekiq.yml
+bin/rb --db bin/rails db:migrate                    # db:create / db:seed / db:reset (требуют --db)
+bin/rb --web up                                     # долгоживущий dev web на 127.0.0.1:${RB_WEB_PORT:-3001} (+logs / console / down)
 bin/rb bundle exec rake repo:map                    # регенерация repo-index/repo-map
 ```
 
-Работает на любой машине (нужен только python3):
+Работает на любой машине (stdlib `python3`, для `zhk-registry` — пакеты из его `requirements.txt` в venv):
 
 ```bash
 python3 bin/services-check                          # правила служб services/ (джоб в CI)
 cd services/urgent-news-collector && python3 -m unittest \
-  test_urgent_relevance test_classify_retry test_model_chains -v  # 46 тестов, без сети и БД
+  test_urgent_relevance test_classify_retry test_model_chains -v  # без сети и БД
+cd services/zhk-registry && python3 -m unittest discover -v       # нужен venv с pip install -r requirements.txt
 ```
 
 Визуальные регрессии (Playwright, снапшоты `tests/visual/*-snapshots/` **коммитятся**):
@@ -174,14 +180,15 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   (`db/structure.sql`) — поэтому CI и `bin/rb` поднимают свой образ `Dockerfile.postgres`.
 - **Playwright visual regression** (`tests/visual/`) — снапшоты коммитятся как
   визуальный контракт; `test-results/` в gitignore.
-- **Python**: юнит-тесты `services/urgent-news-collector` (без сети и БД).
+- **Python**: юнит-тесты `services/urgent-news-collector` и `services/zhk-registry` (без сети и БД).
 
 ### CI и PR-процесс
 
 - **`main` = production. Никаких direct push to main.** Работа — в `dev/<session>` или
   feature-ветках (`claude/<task>`, `test/<smth>`). Путь в прод — только PR → main.
 - **CD (с 11.10.26)**: merge в `main` → `build.yml` собирает и пушит образы
-  `ghcr.io/nick4man/victory-*:sha-<7>` (тег `<VERSION>` — при изменении файла VERSION)
+  `ghcr.io/nick4man/victory-*:sha-<7>` (тег `<VERSION>` — при изменении файла VERSION),
+  подписывает provenance-аттестацию, гоняет Grype-скан web-образа (SARIF → Code scanning)
   и автоматически выкатывает на staging. **Прод не едет сам**: выкатка —
   workflow `Deploy production` (Approve в environment `production`) или
   `bin/rollout <тег>` на прод-хосте (см. «Деплой»).
@@ -219,8 +226,8 @@ Devise — вернуть gem в Gemfile и пройти ревью.
 
 | Служба | Язык | Назначение |
 |---|---|---|
-| `audit-engine/` | Python (FastAPI) | инвестиционный аудит (sidecar через Faraday+Stoplight); перенос не завершён |
-| `urgent-news-collector/` | Python | конвейер новостей: срочные + дайджест + ставки банков; контейнер `conveyor` (профиль `conveyor`), переезд с chat-хоста — cutover B pending |
+| `audit-engine/` | Python (FastAPI) | инвестиционный аудит (sidecar через Faraday+Stoplight; профиль `audit`, `bin/audit-stack`); перенос `in-progress` (pytest в `engine/tests/`, срок `31.03.27`) |
+| `urgent-news-collector/` | Python | конвейер новостей: срочные + дайджест + ставки банков; контейнер `conveyor` (профиль `conveyor`, переехал на victory 13.10.26) |
 | `content-publisher/` | Python | Telegram-публикатор очереди новостей (`publisher`, профиль `conveyor`) |
 | `zhk-registry/` | Python | реестр ЖК; контейнер в боевом compose, единственный вход — вебхук `/webhooks/zhk_ingest` |
 | `chat-host-cron/` | bash | cron-обвязка чат-хоста (скрипт-контракт, монтируется в `conveyor`) |
@@ -251,7 +258,7 @@ Devise — вернуть gem в Gemfile и пройти ревью.
 - В `Gemfile` много явных security floor-пинов (rack, nokogiri, jwt, faraday, json, …)
   против CVE в transitive deps — комментарии рядом объясняют почему; не снижать.
 - Безопасность гоняется в CI: Brakeman (`--exit-on-warn`), bundler-audit, CodeQL,
-  GitGuardian. Локально — те же команды через `bin/rb`.
+  GitGuardian, Grype (CVE образа на push в `main`). Локально — те же команды через `bin/rb`.
 - LLM cost discipline: free-first цепочка провайдеров, платные модели — только
   last-resort.
 

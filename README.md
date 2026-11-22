@@ -99,7 +99,7 @@ cleanup-задачи. Планировщик один — только этот 
 
 | Слой | Технология |
 |---|---|
-| Framework | Rails **8.1.3.1** (`load_defaults` пока 7.1) |
+| Framework | Rails **8.1.4.1** (`load_defaults` пока 7.1) |
 | Язык | Ruby **3.4.10** |
 | БД | PostgreSQL 15 + **PostGIS 3.6** + **pgvector 0.8.6** (образ `Dockerfile.postgres`) |
 | Server | Puma 7.2, порт 3000 в Docker |

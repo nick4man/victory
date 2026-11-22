@@ -327,12 +327,12 @@ app/services/kpi/morning_digest.rb — module Kpi, class MorningDigest
 app/services/kpi/show_funnel.rb — module Kpi, class ShowFunnel
 app/services/kpi/staff_snapshot.rb — module Kpi, class StaffSnapshot
 app/services/kpi/weekly_report.rb — module Kpi, class WeeklyReport
-app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/intake/client_resolver.rb — module Lead, class Intake, class ClientResolver
 app/services/lead/intake/crm_webhook_source.rb — module Lead, class Intake, class CrmWebhookSource
 app/services/lead/intake/manual_source.rb — module Lead, class Intake, class ManualSource
 app/services/lead/intake/site_source.rb — module Lead, class Intake, class SiteSource
 app/services/lead/intake/tg_dm_source.rb — module Lead, class Intake, class TgDmSource
+app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/property_resolver.rb — module Lead, class PropertyResolver
 app/services/listing_stats.rb — class ListingStats
 app/services/llm/chat_responder.rb — module Llm, class ChatResponder
@@ -430,7 +430,6 @@ app/services/telegram/work_bot/callbacks/stage_callback.rb — module Telegram, 
 app/services/telegram/work_bot/callbacks/task_action_callback.rb — module Telegram, module WorkBot, module Callbacks, class TaskActionCallback
 app/services/telegram/work_bot/callbacks/task_batch_confirm_callback.rb — module Telegram, module WorkBot, module Callbacks, class TaskBatchConfirmCallback
 app/services/telegram/work_bot/callbacks/tutorial_callback.rb — module Telegram, module WorkBot, module Callbacks, class TutorialCallback
-app/services/telegram/work_bot/callbacks/wip_stub.rb — module Telegram, module WorkBot, module Callbacks, class WipStub
 app/services/telegram/work_bot/callbacks/wizard_callback.rb — module Telegram, module WorkBot, module Callbacks, class WizardCallback
 app/services/telegram/work_bot/callbacks_router.rb — module Telegram, module WorkBot, class CallbacksRouter
 app/services/telegram/work_bot/cheatsheet_renderer.rb — module Telegram, module WorkBot, class CheatsheetRenderer
@@ -506,6 +505,7 @@ app/services/telegram/work_bot/voice_transcriber.rb — module Telegram, module 
 app/services/telegram/work_bot/weekly_summary_job.rb — module Telegram, module WorkBot, class WeeklySummaryJob
 app/services/telegram/work_bot/wizard/close_flow.rb — module Telegram, module WorkBot, module Wizard, class CloseFlow
 app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardApproveFlow
+app/services/telegram/work_bot/wizard/crm_card_attach_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardAttachFlow
 app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardEditFlow
 app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardManualExportFlow
 app/services/telegram/work_bot/wizard/crm_card_note_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardNoteFlow
