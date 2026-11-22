@@ -109,7 +109,10 @@
 - `spam_blocked_entries` — 2 574 547 строк (блэклисты #219/#225 от 18–19.11.26):
   дропы в чате работают (108 URL-дропов от Robert-бота), контакт-форма —
   см. главный вывод;
-- `conversations.security_events` (jsonb) — пусто;
+- `conversations.metadata['security_events']` (jsonb-ключ, куда
+  `Chat::MessagesController` складывает спам-дропы чата) — во всех 64
+  conversation'ах пусто (`jsonb_array_length = 0`): накопленных записей
+  спам-дропов нет;
 - `Inquiry.status=spam` — 0: ни один спам-лид в нашей БД не помечен спамом
   (AASM `mark_as_spam` доступен из `:new`, но никто не вызывал).
 
