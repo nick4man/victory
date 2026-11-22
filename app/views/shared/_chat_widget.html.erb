@@ -474,8 +474,13 @@
         if (res.ok) {
           probeStatus('Прогон активирован — диалог перезапускается…', true);
           // Токен перевыпущен: старый диалог закрыт сервером, загружаем новый.
+          // Consumer обязательно пересоздаём: идентификатор WS-соединения
+          // читается из cookie ОДИН раз при handshake (ApplicationCable::
+          // Connection), переиспользованный consumer остался бы на старом
+          // visitor_token и новая подписка была бы reject'нута.
           conversation = null;
           if (subscription) { subscription.unsubscribe(); subscription = null; }
+          if (consumer) { consumer.disconnect(); consumer = null; }
           await bootstrap();
         } else if (res.status === 403) {
           probeStatus('Неверный секрет. Секрет выдаёт администратор.', false);

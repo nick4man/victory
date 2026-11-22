@@ -56,8 +56,11 @@ end
 # Mirror'ит filter_parameter_logging.rb categories + adds sentry-specific
 # context locations.
 def scrub_pii!(event)
+  # probe_key — секрет активации тест-прогона чат-виджета (issue #249);
+  # при fallback это ADMIN_TOKEN.
   sensitive_keys = %w[
     password password_confirmation secret token api_key authentication_token
+    probe_key
     passport_number passport_series passport_data inn snils birth_date issued_by
     card_number cvv iban bik
     phone email full_name address message comment identifier

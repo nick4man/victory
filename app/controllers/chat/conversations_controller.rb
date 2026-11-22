@@ -7,7 +7,9 @@ module Chat
     include Chat::PageContextParams
     include Chat::TestModeResolution
 
-    skip_before_action :verify_authenticity_token, only: %i[show update activate_test], raise: false
+    # activate_test НЕ в CSRF-skip: виджет шлёт X-CSRF-Token с этим POST,
+    # а endpoint принимает секрет — лишний слой защиты не помешает.
+    skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
 
     # GET /chat/conversation[?page[path]=&page[title]=&page[query]=&page[referrer]=]
     # Returns or lazily-creates the visitor's active conversation, with full history.
@@ -39,9 +41,12 @@ module Chat
     # POST /chat/conversation/activate_test — тумблер «🧪 Тест-прогон»
     # виджета (issue #249). Выдача probe-токена ТОЛЬКО по секрету probe_key
     # (блокер ревью #230: публичного ENDPOINT'а, раздающего токены анонимам,
-    # нет и быть не может). Токен выпускается в cookie ЭТОГО визита —
-    # пригодный для подмены чужой сессии артефакт наружу не отдаём:
-    # ответ содержит только ok/статус, не сам токен. Дальше виджет
+    # нет и быть не может). Токен — SecureRandom, живёт в signed-cookie
+    # этого визита; в HTTP-ответе наружу не отдаётся (только ok: true).
+    # Cookie подписан, но подпись не делает его непереносимым — реальная
+    # защита от подмены чужой сессии та же, что в #228/#229: токен не
+    # выдаётся без секрета и не принимается из URL (VisitorIdentity
+    # читает его только из собственного signed-cookie). Дальше виджет
     # перезагружает диалог, контроллеры помечают metadata['test_probe'].
     def activate_test
       return render(json: { error: 'invalid_secret' }, status: :forbidden) unless probe_secret_valid?
@@ -76,30 +81,6 @@ module Chat
         body:         Llm::PageGreeting.for(page_ctx),
         metadata:     { seeded: true, kind: 'auto_greeting', page: page_ctx }.compact
       )
-    end
-
-    # POST /chat/conversation/activate_test (issue #249): секрет из body,
-    # проверка тем же digest-сравнением, что и probe-активация из #228
-    # (VisitorIdentity#probe_secret_valid?). Пустой ENV на сервере = отказ,
-    # как у вебхуков.
-    def probe_secret_valid?
-      configured = probe_secret
-      if configured.blank?
-        Rails.logger.warn('[Chat::ConversationsController] тест-прогон отключён: CHAT_PROBE_SECRET/ADMIN_TOKEN не заданы')
-        return false
-      end
-
-      submitted = params[:probe_key].to_s
-      return false if submitted.blank?
-
-      ActiveSupport::SecurityUtils.secure_compare(
-        Digest::SHA256.hexdigest(submitted),
-        Digest::SHA256.hexdigest(configured)
-      )
-    end
-
-    def probe_secret
-      ENV['CHAT_PROBE_SECRET'].presence || ENV['ADMIN_TOKEN'].presence
     end
 
     # extract_page_params / stamp_page — в консерне Chat::PageContextParams

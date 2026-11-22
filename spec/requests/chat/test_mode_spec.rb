@@ -235,9 +235,13 @@ RSpec.describe 'Chat test mode (issue #249)', type: :request do
     end
 
     # КРИТЕРИЙ ПРИЁМКИ: токен, выданный одной сессии, не переводит другую
-    # в тест-режим. Токен живёт в cookie первой сессии; у второй сессии
-    # (новый jar cookies) свой токен и свой диалог — даже зная, что где-то
-    # существует probe-визит, вторая сессия не может им воспользоваться.
+    # в тест-режим. Cookie подписан, но подпись не делает его непереносимым:
+    # переносимый артефакт в принципе существует. Реальная гарантия — от
+    # конструктора #228/#229: токен не выдаётся анониму без секрета и НЕ
+    # принимается из произвольного URL для подмены визита. Здесь проверяем
+    # обе половины: (а) токен из ответа А не извлекается; (б) даже если
+    # сессия Б somehow узнает строку токена А и предъявит её через URL,
+    # её собственный диалог не станет тестовым и не сольётся с диалогом А.
     it 'токен прогона одной сессии не переводит другую сессию в тест-режим' do
       # Сессия А активирует прогон по секрету.
       open_chat # гарантирует cookie у А
@@ -246,14 +250,30 @@ RSpec.describe 'Chat test mode (issue #249)', type: :request do
       conv_a = open_chat
       expect(conv_a.test_probe?).to be(true)
 
-      # Сессия Б — полностью независимый jar (новый анонимный визит):
-      # никакие данные из ответа А не применяются к её диалогу.
-      capybara_session_b = Rack::Test::Session.new(Capybara.app)
-      capybara_session_b.get(chat_conversation_path(format: :json))
-      expect(capybara_session_b.last_response).to have_http_status(:ok)
+      # (а) из ответа сервера токен не извлекается — только ok: true.
+      activate_test(probe_secret)
+      expect(response.parsed_body).to eq('ok' => true)
+      expect(response.body).not_to match(/[0-9a-f]{32}/)
+
+      # (б) сессия Б — независимый cookie-jar (новый анонимный визит).
+      # Злоумышленник знает visitor_token А (украденная строка) и пытается
+      # применить его через URL — как произвольный visitor_token, так и
+      # как probe-имя: VisitorIdentity принимает токены только из
+      # собственного signed-cookie, URL-параметр их не подменяет.
+      session_b = Rack::Test::Session.new(Capybara.app)
+      session_b.get(chat_conversation_path(format: :json), visitor_token: conv_a.visitor_token)
+      expect(session_b.last_response).to have_http_status(:ok)
       conv_b = Conversation.order(:id).last
       expect(conv_b.test_probe?).to be(false)
       expect(conv_b.id).not_to eq(conv_a.id)
+      expect(conv_b.visitor_token).not_to eq(conv_a.visitor_token)
+
+      # probe-имя без секрета тоже не переводит Б в тест (issue #229).
+      session_b.get(chat_conversation_path(format: :json),
+                    visitor_token: 'probe-stolen', probe_key: 'no-such-secret')
+      expect(session_b.last_response).to have_http_status(:ok)
+      conv_b2 = Conversation.order(:id).last
+      expect(conv_b2.test_probe?).to be(false)
     end
 
     it 'активация при уже включённом кране не ломает диалог' do
