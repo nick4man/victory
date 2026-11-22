@@ -159,6 +159,12 @@ jobs:
           # нужно лишь потому, что Telegram::Client отказывается стартовать с
           # пустым, — поэтому явная заглушка вместо чего-то похожего на секрет.
           TELEGRAM_BOT_TOKEN: not-a-token-webmock-blocks-network
+          # Секретов тестового TG-бота здесь НАМЕРЕННО нет (review round 7, PR #228):
+          # lint.yml запускается на pull_request, и для веток этого же репозитория
+          # изменённый в PR spec мог бы прочитать TELEGRAM_TEST_BOT_TOKEN и передать
+          # наружу. Живой интеграционный прогон test_chat_delivery_spec вынесен в
+          # отдельный ручной workflow .github/workflows/test-chat-live.yml
+          # (workflow_dispatch, секреты только там); в PR-CI spec skip'ается.
           # Llm::OmniClient падает в initialize, если любая из двух пуста и в
           # цепочках есть модели через шлюз (direct-only `kimi/…` — исключение),
           # то есть спеки с дефолтными цепочками не могут создать клиент.

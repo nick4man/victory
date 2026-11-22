@@ -18,6 +18,9 @@ class EmbedLeadEventJob < ApplicationJob
   def perform(lead_event_id)
     le = LeadEvent.find_by(id: lead_event_id)
     return unless le
+    # staff_test (включая probe-прогоны чат-бота, issue #214) — вне
+    # semantic-корпуса: тестовые записи не должны жечь лимит Embedding API.
+    return if le.staff_test?
 
     text = ::Embedding::LeadEventTextTemplate.build(le)
     return if text.blank?

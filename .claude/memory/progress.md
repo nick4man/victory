@@ -24,7 +24,7 @@
 | Telegram inbox | ✅ active | приём входящих в site, async photo download |
 | TG ↔ victory62 cross-link | ✅ Phase 8 deployed | bilateral notifications, QR codes на обоих отчётах |
 | Sidekiq + sidekiq-cron | ✅ active | контейнер `victory-sidekiq-1`; расписание в `config/sidekiq_cron.yml` (Topnlab sync каждые 30 мин и др.) |
-| Rails 8.1.3.1 / Ruby 3.4.10 | ✅ код, образы и прод-контейнер | `load_defaults` осознанно оставлен на 7.1; прод-контейнер на 3.4.10 с cutover 12.10.26 |
+| Rails 8.1.4.1 / Ruby 3.4.10 | ✅ код, образы и прод-контейнер | `load_defaults` осознанно оставлен на 7.1; прод-контейнер на 3.4.10 с cutover 12.10.26 |
 | **Прод-выкатка из CI (фаза 3 конвейера)** | ✅ с 12.10.26, связка проверена 13.10.26 | `deploy.yml` (workflow_dispatch + environment `production` с required reviewers) → bastion vps1 (`bastion-ci`, permitopen до victory:22) → SSH `bin/prod-gate` (ключ `prod-ci`, forced command) по WG → `bin/rollout`; внешний post-check + TG-алерт (TD-5 закрыт). Runbook — `docs/runbooks/deploy-pipeline.md` |
 
 ## Отключено / заглушки
@@ -148,7 +148,7 @@ Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verifi
 
 После #413f (commits 0e5e685..2495330) phone-only клиенты Topnlab больше
 НЕ получают auto-SMS magic-link. Активация работает через 2 пути:
-1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → ActivationRequestProcessor → contact-share → match по phone → linked
+1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → `WorkBot::Commands::Start` показывает кнопку «Подтвердить телефон» → `ActivationRequestProcessor` по contact-share → match по phone → linked. Тот же `/start` для непривязанного сотрудника показывает `/whoami`.
 2. **Admin-shared link** — агент в `/admin/users/:id` генерирует QR/URL и share через любой канал
 
 **НО оба зависят от того что клиент УЗНАЁТ о боте.** Ops-backlog

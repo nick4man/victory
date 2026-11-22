@@ -15,9 +15,12 @@ module Chat
 
     private
 
-    # Page payload from widget: { path:, query:, title:, h1:, referrer:, ctx: {} }
+    # Page payload from widget: { path:, query:, title:, h1:, referrer:, ctx: {}, state: {} }
     # Переводы строк вырезаем сразу: иначе сырой value может вставить в
     # системный промпт псевдозаголовок (ScopeGuard проверяет только body).
+    # state — живое состояние элементов с data-chat-state; whitelist —
+    # по виду страницы (тем же sanitize_state из Llm::PageContext, чтобы
+    # сервер и блок работали по одному списку ключей).
     def extract_page_params
       raw = params[:page]
       return nil unless raw.respond_to?(:to_unsafe_h) || raw.is_a?(Hash)
@@ -30,7 +33,9 @@ module Chat
         'referrer' => clean_page_value(raw['referrer'], 500),
         'ctx'      => sanitize_page_ctx(raw['ctx'])
       }.compact
-      ctx.presence
+      kind = Llm::PageContext.detect(ctx['path'], ctx['ctx'])
+      ctx['state'] = Llm::PageContext.sanitize_state(raw['state'], kind)
+      ctx.compact.presence
     end
 
     def clean_page_value(value, max)

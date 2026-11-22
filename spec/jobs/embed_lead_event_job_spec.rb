@@ -60,5 +60,29 @@ RSpec.describe EmbedLeadEventJob do
       # generate'нется. Это OK — будет embed даже для sparse leads.
       expect { described_class.new.perform(bare.id) }.to change { LeadEventEmbedding.count }.by(1)
     end
+
+    # Issue #214 (ревью PR #221, round 3): probe-прогон чат-бота →
+    # staff_test через metadata['test'] — запись вне semantic-корпуса.
+    it 'skip для probe-записи (metadata test): не жжёт Embedding API' do
+      probe = LeadEvent.create!(
+        lead_ref: lead_ref, source: 'site_form', current_stage: 'new',
+        anchor_topic_key: 'dispatcher', tg_chat_id: -100_999_888,
+        metadata: { 'name' => 'Мария Соколова', 'test' => true }
+      )
+      expect(probe.staff_test).to be(true)
+      expect { described_class.new.perform(probe.id) }.not_to change { LeadEventEmbedding.count }
+      expect(fake_client).not_to have_received(:embed)
+    end
+
+    it 'probe-запись не ставит EmbedLeadEventJob при создании' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      expect {
+        LeadEvent.create!(
+          lead_ref: lead_ref, source: 'site_form', current_stage: 'new',
+          anchor_topic_key: 'dispatcher', tg_chat_id: -100_999_888,
+          metadata: { 'name' => 'Мария Соколова', 'test' => true }
+        )
+      }.not_to have_enqueued_job(EmbedLeadEventJob)
+    end
   end
 end

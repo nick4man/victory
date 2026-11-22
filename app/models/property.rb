@@ -486,7 +486,14 @@ class Property < ApplicationRecord
   end
 
   def price_formatted
-    "#{price.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1 ').reverse} ₽"
+    self.class.format_price(price)
+  end
+
+  # Общий формат цены «1 234 500 ₽» — единый источник для моделей
+  # (Property#price_formatted, Llm::PageContext.агрегаты ЖК и т.п.),
+  # чтобы не плодить ручные formatter'ы с расхождающимся форматом.
+  def self.format_price(value)
+    "#{value.to_i.to_s.reverse.gsub(/(\d{3})(?=\d)/, '\\1 ').reverse} ₽"
   end
 
   def price_per_sqm_formatted

@@ -5,7 +5,10 @@ module Chat
   # Anonymous visitors are identified by the signed visitor_token cookie.
   class ConversationsController < ApplicationController
     include Chat::PageContextParams
+    include Chat::TestModeResolution
 
+    # activate_test НЕ в CSRF-skip: виджет шлёт X-CSRF-Token с этим POST,
+    # а endpoint принимает секрет — лишний слой защиты не помешает.
     skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
 
     # GET /chat/conversation[?page[path]=&page[title]=&page[query]=&page[referrer]=]
@@ -17,6 +20,8 @@ module Chat
       @conversation = current_or_create_conversation
       page_ctx = extract_page_params
       stamp_page(@conversation, page_ctx) if page_ctx
+      # Кран/origin/IP включились посреди разговора — дорисовываем маркер.
+      ensure_conversation_test_mode!(@conversation)
       seed_welcome(@conversation, page_ctx) if @conversation.chat_messages.empty?
 
       respond_to do |format|
@@ -33,6 +38,27 @@ module Chat
       render json: serialize(@conversation)
     end
 
+    # POST /chat/conversation/activate_test — тумблер «🧪 Тест-прогон»
+    # виджета (issue #249). Выдача probe-токена ТОЛЬКО по секрету probe_key
+    # (блокер ревью #230: публичного ENDPOINT'а, раздающего токены анонимам,
+    # нет и быть не может). Токен — SecureRandom, живёт в signed-cookie
+    # этого визита; в HTTP-ответе наружу не отдаётся (только ok: true).
+    # Cookie подписан, но подпись не делает его непереносимым — реальная
+    # защита от подмены чужой сессии та же, что в #228/#229: токен не
+    # выдаётся без секрета и не принимается из URL (VisitorIdentity
+    # читает его только из собственного signed-cookie). Дальше виджет
+    # перезагружает диалог, контроллеры помечают metadata['test_probe'].
+    def activate_test
+      return render(json: { error: 'invalid_secret' }, status: :forbidden) unless probe_secret_valid?
+
+      old_token = current_visitor_token
+      set_visitor_cookies(SecureRandom.hex(16), probe: true)
+      # Диалоги старого токена закрываем: bootstrap по новому токену создаст
+      # новый — уже с маркером тест-контура. Новый токен диалогов не имел.
+      Conversation.for_visitor(old_token).open_state.update_all(status: Conversation.statuses[:closed])
+      render json: { ok: true }
+    end
+
     private
 
     def current_or_create_conversation
@@ -41,7 +67,10 @@ module Chat
           visitor_token:   current_visitor_token,
           user_id:         current_user&.id,
           status:          :active,
-          last_message_at: Time.current
+          last_message_at: Time.current,
+          # Тест-контур (issue #214/#229/#249): probe-cookie из #228, кран
+          # ENV и доверенные origin/IP — все сводятся к metadata-маркеру.
+          metadata:        conversation_test_metadata
         )
     end
 

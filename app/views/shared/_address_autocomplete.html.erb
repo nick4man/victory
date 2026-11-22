@@ -14,6 +14,10 @@
     inputs from their forms. Pass `city_field: 'property_valuation[city]'`. %>
 <% city_field  ||= nil %>
 <% chip_target ||= nil %>
+<%# Optional: data-chat-state key for the site chat widget — живое состояние
+    страницы (Llm::PageContext). Только для не-PII полей: телефон/имя/email
+    сознательно НЕ размечаются. %>
+<% chat_state ||= nil %>
 
 <div class="relative" data-addr-autocomplete
      <% if chip_target %>data-addr-chip-target="<%= chip_target %>"<% end %>>
@@ -26,7 +30,8 @@
          <%= 'required' if required %>
          <% if form %>form="<%= form %>"<% end %>
          class="w-full border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:border-foreground"
-         data-addr-input>
+         data-addr-input
+         <% if chat_state %>data-chat-state="<%= chat_state %>"<% end %>>
   <% if city_field %>
     <input type="hidden" name="<%= city_field %>" data-addr-city <% if form %>form="<%= form %>"<% end %>>
   <% end %>

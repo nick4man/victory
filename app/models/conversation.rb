@@ -12,6 +12,17 @@ class Conversation < ApplicationRecord
   scope :for_visitor, ->(token) { where(visitor_token: token) }
   scope :open_state, -> { where(status: %i[active escalated]) }
 
+  # Тестовый прогон чат-виджета (issue #214, защита #229): маркер живёт в
+  # metadata['test_probe'] — его ставит чат-виджет при создании диалога, если
+  # визит активирован с секретом (?visitor_token=probe-<имя>&probe_key=...).
+  # Сам visitor_token — обычный случайный (SecureRandom): префикс probe- у
+  # токена убран, т.к. он делал токен предсказуемым и общим для всех
+  # посетителей с одним именем прогона. Лиды такого диалога помечаются
+  # metadata['test'] и публикуются в тестовый TG-чат, а не в ДИСПЕТЧЕРСКУЮ.
+  def test_probe?
+    metadata.is_a?(Hash) && metadata['test_probe'] == true
+  end
+
   # Renders messages in OpenAI-compatible chat format for LLM API calls.
   # Skips system rows (system prompt is rebuilt per request).
   # Hard cap: 30 messages × 1000 chars each — protects against context-flooding
@@ -21,6 +32,9 @@ class Conversation < ApplicationRecord
   def history_for_llm(limit: 30)
     chat_messages
       .where.not(role: ChatMessage.roles[:system])
+      # тихо сдропленный спам (Llm::SpamFilter) не должен попадать в контекст:
+      # токены + лишняя поверхность для инъекций в следующих вопросах
+      .where.not('chat_messages.metadata @> ?', { excluded_from_llm: true }.to_json)
       .last(limit)
       .map { |m| { role: m.llm_role, content: m.body.to_s[0, PER_MSG_CHAR_CAP] } }
   end

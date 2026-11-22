@@ -16,6 +16,7 @@ module Telegram
         def handle
           # Phase 15 — resolve_lead! сначала «съест» lead_id если он есть в @args.
           lead = resolve_lead!
+          return :staff_test_refused if staff_test_refused?
           return reply(lead_not_found_hint('route apartments')) unless lead
 
           target_key = @args.to_s.strip.downcase

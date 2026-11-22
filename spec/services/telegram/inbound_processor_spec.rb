@@ -73,4 +73,80 @@ RSpec.describe Telegram::InboundProcessor do
       described_class.new(text_update('/help')).call
     end
   end
+
+  describe 'bare /start в личке' do
+    let(:tg_client) { instance_double(Telegram::Client, send_message: { 'message_id' => 1 }) }
+
+    before { allow(Telegram::Client).to receive(:new).and_return(tg_client) }
+
+    def start_update(from_id:)
+      { 'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 40, 'from' => { 'id' => from_id },
+                       'chat' => { 'id' => from_id, 'type' => 'private' }, 'text' => '/start' } }
+    end
+
+    it 'непривязанный отправитель попадает в WorkBot::Commands::Start с инструкцией /whoami и кнопкой request_contact' do
+      expect(Telegram::ClientBot::ActivationRequestProcessor).not_to receive(:call)
+
+      expect(described_class.new(start_update(from_id: 999_999)).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('/whoami'),
+              hash_including(chat_id: 999_999,
+                             reply_markup: hash_including(
+                               keyboard: include(include(hash_including(request_contact: true)))
+                             )))
+    end
+
+    it 'известный сотрудник обрабатывается WorkBot::Commands::Start' do
+      expect(described_class.new(start_update(from_id: 501)).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('Виктори'), hash_including(chat_id: 501))
+    end
+
+    it 'contact-share от непривязанного отправителя попадает в клиентскую активацию' do
+      update = {
+        'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 41, 'from' => { 'id' => 999_999 },
+                       'chat' => { 'id' => 999_999, 'type' => 'private' },
+                       'contact' => { 'phone_number' => '+79001234567', 'user_id' => 999_999 } }
+      }
+      expect(described_class.new(update).call).to eq(:handled)
+      expect(tg_client).to have_received(:send_message)
+        .with(a_string_including('Не нашли вас в системе'), hash_including(chat_id: 999_999))
+    end
+  end
+
+  # Issue #214 (ревью PR #221, round 4): message_id эскалации уникален только
+  # внутри чата — эскалации уходят и в рабочий, и в тестовый чат. Ответ
+  # маршрутизируется по паре (chat_id, message_id), а не по одному ID.
+  describe 'ответ на сообщение эскалации' do
+    let(:staff_chat) { -1_003_779_115_845 }
+    let(:test_chat)  { -1_002_000_000_000 }
+
+    let!(:battle_conv) do
+      Conversation.create!(visitor_token: 'battle-esc-1', status: :active,
+                           telegram_chat_id: staff_chat, telegram_message_id: 100)
+    end
+    let!(:probe_conv) do
+      Conversation.create!(visitor_token: SecureRandom.hex(16), status: :active,
+                           metadata: { 'test_probe' => true },
+                           telegram_chat_id: test_chat, telegram_message_id: 100)
+    end
+
+    def escalation_reply_update(chat_id)
+      { 'update_id' => rand(1..(10**9)),
+        'message' => { 'message_id' => 55, 'from' => { 'id' => 501 },
+                       'chat' => { 'id' => chat_id, 'type' => 'supergroup' },
+                       'reply_to_message' => { 'message_id' => 100 },
+                       'text' => 'Уточняю детали у клиента' } }
+    end
+
+    it 'одинаковый telegram_message_id в двух чатах маршрутизируется по паре (chat, message)' do
+      expect(described_class.new(escalation_reply_update(staff_chat)).call).to eq(:delivered)
+
+      expect(battle_conv.chat_messages.reload.count).to eq(1)
+      expect(probe_conv.chat_messages.reload.count).to eq(0)
+      expect(battle_conv.chat_messages.first.body).to eq('Уточняю детали у клиента')
+    end
+  end
 end

@@ -4,7 +4,7 @@
 
 | Слой | Технология |
 |------|-----------|
-| Web framework | Rails **8.1.3.1** (в проде с 08.08.26; `load_defaults` пока 7.1) |
+| Web framework | Rails **8.1.4.1** (точный пин — `Gemfile.lock`; `load_defaults` пока 7.1) |
 | Language | Ruby **3.4.10** — только в контейнере, через `bin/rb`. На хосте менеджера версий нет (ни chruby, ни rbenv, ни mise), системный ruby 3.3.8 не совпадает с пином Gemfile, поэтому `bundle`/`rspec`/`bin/rails` напрямую в worktree не работают |
 | Database | PostgreSQL 15+ (с PostGIS + pgvector) |
 | Server | Puma 6.x, порт **3000** в Docker (reverse-proxy → 443 в проде) |
@@ -55,6 +55,12 @@
 | `SESSION_TIMEOUT` | `1800` | session expiry (sec) |
 | `ADMIN_TOKEN` | — | query-param admin guard (Admin::Reviews, Admin::Articles) |
 | `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта (`@anvictorybot`) |
+| `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214): диалоги виджета, активированные с секретом `?visitor_token=probe-<имя>&probe_key=<секрет>` (issue #229, PR #232) → лиды `metadata['test']=true` публикуются сюда, а не в ДИСПЕТЧЕРСКУЮ, и не синкаются в CRM. Пусто — тест-лиды создаются без публикации в TG. Секрет — `CHAT_PROBE_SECRET` (fallback `ADMIN_TOKEN`); пустой ENV = probe-режим отключён; токен прогона случайный, переводится в `metadata['test_probe']` Conversation |
+| `CHAT_PROBE_SECRET` | — | секрет активации probe-режима чат-виджета (issue #229); предъявляется в URL как `probe_key`. Не задан и пустой `ADMIN_TOKEN` → probe-ссылки неактивны |
+| `SITE_CHATBOT_FORCE_TEST` | — | кран «весь сайт-чат в тестовый контур» (issue #249): `1/true/yes/on` → каждый диалог помечается `metadata['test_probe']` без секретов. Для стендов/демо, в проде по умолчанию выключен. Читается на каждый запрос (правка .env без пересборки) |
+| `CHAT_TEST_TRUSTED_ORIGINS` | — | доп. доверенные Origin/Referer-хосты авто-теста чата (issue #249), через запятую; встроенные: `*.dev.victory62.org`, `localhost/127.0.0.1/::1` |
+| `CHAT_TEST_TRUSTED_IPS` | — | доп. подсети авто-теста чата (issue #249): CIDR или одиночные IP, через запятую; встроенные: RFC1918 `10/8`, `172.16/12`, `192.168/16` (loopback исключён — спеки/healthcheck). Боевой домен victory62.org и публичные IP в доверенные не попадают |
+| `TELEGRAM_TEST_BOT_TOKEN` | — (только GitHub Secrets) | токен ТЕСТОВОГО бота для живого интеграционного spec'а `spec/services/telegram/test_chat_delivery_spec.rb`; продовый код не читает. Используется в ручном workflow `test-chat-live.yml`; в PR-CI (lint.yml) секретов нет — spec skip'ается |
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
 | `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |
 | `TOPNLAB_BASE_URL` | — | база API (`agencies-p.topnlab.ru`); тоже обязательна |
@@ -231,7 +237,12 @@ bundle exec sidekiq -C config/sidekiq.yml
 Расписаний два, и оба **не** `whenever` — гема в `Gemfile` нет, а
 `config/schedule.rb` удалён 12.09.26 как никогда не исполнявшийся:
 
-- `config/sidekiq_cron.yml` — 22 задачи внутри Sidekiq, едут вместе с кодом;
+- `config/sidekiq_cron.yml` — 23 задачи внутри Sidekiq, едут вместе с кодом;
+  среди них `spam_feeds_sync` (ежедневно 03:20 MSK, `Llm::SpamFeeds::SyncJob`,
+  очередь `low_priority`) — антиспам чат-бота: доменные/IP-фиды (hagezi,
+  Phishing.Database, ipsum, firehol; URLhaus — только с Auth-Key abuse.ch
+  через ENV `URLHAUS_EXPORT_URL`, keyless-экспорты отдают 410) + Tranco
+  Top-10k allowlist, см. `docs/runbooks/chat-antispam.md`;
 - системный crontab хоста — 5 записей + `bin/tunnel-check` каждые 15 мин
   (добавлен операционно после merge PR #137), правится `crontab -e`: 4 через
   `docker compose exec -T web …` (Yandex.Webmaster ×3, `kpi:phase_a`),

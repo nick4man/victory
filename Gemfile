@@ -12,9 +12,9 @@ gem 'rails', '~> 8.0', '>= 8.1.4.1' # CVE sweep 04.11.26: GHSA-v924-7rp8-4mxh и
 # Database
 gem 'pg', '~> 1.5'
 
-# Server — CVE sweep 25.06.26: puma 6.4 имеет advisory, fix в 7.2.1+. Major
+# Server — CVE sweep 15.11.26: puma 7.2.1 имеет advisory, fix в 7.2.2+. Major
 # bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
-gem 'puma', '~> 7.2', '>= 7.2.1'
+gem 'puma', '~> 7.2', '>= 7.2.3'
 
 # Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
 # / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
@@ -32,7 +32,7 @@ gem 'loofah', '>= 2.25.3' # SVG href bypass (GHSA-9wjq-cp2p-hrgf), mXSS + CSS ur
 gem 'rails-html-sanitizer', '>= 1.7.2' # XSS (GHSA-cj75-f6xr-r4g7), ReDoS + shared scrubber (04.11.26)
 gem 'crass', '>= 1.0.8' # DoS advisories (транзитивно через loofah)
 gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
-gem 'msgpack', '>= 1.8.2' # CVE-2026-54522 use-after-free (DFVULN-839)
+gem 'msgpack', '>= 1.8.7' # CVE-2026-126366 OOM in JRuby decoder + CVE-2026-54522 use-after-free (DFVULN-839)
 gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/capybara)
 
 # Assets

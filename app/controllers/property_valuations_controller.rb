@@ -44,6 +44,9 @@ class PropertyValuationsController < ApplicationController
     @valuation.ip_address  = request.remote_ip
     @valuation.user_agent  = request.user_agent
     @valuation.status      = 'pending'
+    # Владение результатом для чат-контекста (Llm::PageContext): факты
+    # оценки боту отдаются только при совпадении visitor_token.
+    @valuation.visitor_token = current_visitor_token
 
     if @valuation.save
       PropertyValuationJob.perform_later(@valuation.id)
@@ -223,26 +226,6 @@ class PropertyValuationsController < ApplicationController
   def comparable_property_type_slug(pt)
     { 'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room' }[pt.to_s]
-  end
-  
-  def create_crm_lead(valuation)
-    # Integration with CRM (AmoCRM, Bitrix24, etc.)
-    # This would be implemented based on your CRM system
-    
-    Rails.logger.info "Creating CRM lead for valuation ##{valuation.id}"
-    
-    # Example structure:
-    # AmoCrmService.create_lead(
-    #   name: "Оценка: #{valuation.address}",
-    #   email: valuation.email,
-    #   phone: valuation.phone,
-    #   custom_fields: {
-    #     property_type: valuation.property_type,
-    #     estimated_price: valuation.estimated_price
-    #   }
-    # )
-  rescue StandardError => e
-    Rails.logger.error "Failed to create CRM lead: #{e.message}"
   end
 
   # Cost cap: 5 valuations per hour per IP. Soft-fail если Redis недоступен
