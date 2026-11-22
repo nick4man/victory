@@ -130,6 +130,7 @@ app/controllers/chatbot/messages_controller.rb — module Chatbot, class Message
 app/controllers/concerns/admin/uploads_block_images.rb — module Admin, module UploadsBlockImages
 app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
 app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
+app/controllers/concerns/chat/test_mode_resolution.rb — module Chat, module TestModeResolution
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
@@ -237,6 +238,7 @@ app/services/cabinet/consent_requester.rb — class Cabinet::ConsentRequester, c
 app/services/cabinet_invitation_dispatcher.rb — class CabinetInvitationDispatcher
 app/services/cabinet_invitation_sms_service.rb — class CabinetInvitationSmsService
 app/services/cabinet_invitation_tg_service.rb — class CabinetInvitationTgService
+app/services/chat/test_mode.rb — module Chat, class TestMode, class Result
 app/services/chat_tools/aggregate_market.rb — module ChatTools, module AggregateMarket
 app/services/chat_tools/base.rb — module ChatTools, module Base
 app/services/chat_tools/calculate_mortgage.rb — module ChatTools, module CalculateMortgage
