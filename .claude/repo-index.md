@@ -130,6 +130,7 @@ app/controllers/chatbot/messages_controller.rb — module Chatbot, class Message
 app/controllers/concerns/admin/uploads_block_images.rb — module Admin, module UploadsBlockImages
 app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
 app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
+app/controllers/concerns/chat/test_mode_resolution.rb — module Chat, module TestModeResolution
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
@@ -237,6 +238,7 @@ app/services/cabinet/consent_requester.rb — class Cabinet::ConsentRequester, c
 app/services/cabinet_invitation_dispatcher.rb — class CabinetInvitationDispatcher
 app/services/cabinet_invitation_sms_service.rb — class CabinetInvitationSmsService
 app/services/cabinet_invitation_tg_service.rb — class CabinetInvitationTgService
+app/services/chat/test_mode.rb — module Chat, class TestMode
 app/services/chat_tools/aggregate_market.rb — module ChatTools, module AggregateMarket
 app/services/chat_tools/base.rb — module ChatTools, module Base
 app/services/chat_tools/calculate_mortgage.rb — module ChatTools, module CalculateMortgage
@@ -325,12 +327,12 @@ app/services/kpi/morning_digest.rb — module Kpi, class MorningDigest
 app/services/kpi/show_funnel.rb — module Kpi, class ShowFunnel
 app/services/kpi/staff_snapshot.rb — module Kpi, class StaffSnapshot
 app/services/kpi/weekly_report.rb — module Kpi, class WeeklyReport
-app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/intake/client_resolver.rb — module Lead, class Intake, class ClientResolver
 app/services/lead/intake/crm_webhook_source.rb — module Lead, class Intake, class CrmWebhookSource
 app/services/lead/intake/manual_source.rb — module Lead, class Intake, class ManualSource
 app/services/lead/intake/site_source.rb — module Lead, class Intake, class SiteSource
 app/services/lead/intake/tg_dm_source.rb — module Lead, class Intake, class TgDmSource
+app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/property_resolver.rb — module Lead, class PropertyResolver
 app/services/listing_stats.rb — class ListingStats
 app/services/llm/chat_responder.rb — module Llm, class ChatResponder
@@ -428,7 +430,6 @@ app/services/telegram/work_bot/callbacks/stage_callback.rb — module Telegram, 
 app/services/telegram/work_bot/callbacks/task_action_callback.rb — module Telegram, module WorkBot, module Callbacks, class TaskActionCallback
 app/services/telegram/work_bot/callbacks/task_batch_confirm_callback.rb — module Telegram, module WorkBot, module Callbacks, class TaskBatchConfirmCallback
 app/services/telegram/work_bot/callbacks/tutorial_callback.rb — module Telegram, module WorkBot, module Callbacks, class TutorialCallback
-app/services/telegram/work_bot/callbacks/wip_stub.rb — module Telegram, module WorkBot, module Callbacks, class WipStub
 app/services/telegram/work_bot/callbacks/wizard_callback.rb — module Telegram, module WorkBot, module Callbacks, class WizardCallback
 app/services/telegram/work_bot/callbacks_router.rb — module Telegram, module WorkBot, class CallbacksRouter
 app/services/telegram/work_bot/cheatsheet_renderer.rb — module Telegram, module WorkBot, class CheatsheetRenderer
@@ -504,6 +505,7 @@ app/services/telegram/work_bot/voice_transcriber.rb — module Telegram, module 
 app/services/telegram/work_bot/weekly_summary_job.rb — module Telegram, module WorkBot, class WeeklySummaryJob
 app/services/telegram/work_bot/wizard/close_flow.rb — module Telegram, module WorkBot, module Wizard, class CloseFlow
 app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardApproveFlow
+app/services/telegram/work_bot/wizard/crm_card_attach_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardAttachFlow
 app/services/telegram/work_bot/wizard/crm_card_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardEditFlow
 app/services/telegram/work_bot/wizard/crm_card_manual_export_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardManualExportFlow
 app/services/telegram/work_bot/wizard/crm_card_note_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmCardNoteFlow

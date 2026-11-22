@@ -169,13 +169,6 @@ module Telegram
           failed.zero? ? ok.to_s : "#{ok} (⚠️ #{failed} fail)"
         end
 
-        # Phase 10 Iter 13 — cancel логика inlined в handle (двойная with_lock
-        # секция). Этот метод сохранён как dead-code чтобы тесты не ломались,
-        # удалить в следующем рефакторинге.
-        def cancel!(batch)
-          batch.cancel!
-        end
-
         def create_tasks_from(batch)
           batch.tasks_payload.filter_map do |payload|
             assignee = lookup_assignee(payload[:assignee_username])
