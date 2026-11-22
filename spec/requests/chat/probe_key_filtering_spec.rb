@@ -12,7 +12,8 @@ RSpec.describe 'Фильтрация probe_key (issue #249)' do
   FakeEvent = Struct.new(:request, :extra, :contexts, :user)
 
   it 'probe_key входит в Rails filter_parameters' do
-    expect(Rails.application.config.filter_parameters).to include(:probe_key)
+    filter = ActiveSupport::ParameterFilter.new(Rails.application.config.filter_parameters)
+    expect(filter.filter('probe_key' => 'secret-value')).to eq('probe_key' => '[FILTERED]')
   end
 
   it 'scrub_pii! (Sentry before_send) затирает probe_key в event-хэшах' do
