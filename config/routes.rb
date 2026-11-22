@@ -516,6 +516,9 @@ Rails.application.routes.draw do
     # Public widget — singleton conversation per visitor (cookie-identified)
     resource :conversation, only: %i[show update], controller: 'conversations' do
       resources :messages, only: %i[create], controller: '/chat/messages'
+      # Тумблер «🧪 Тест-прогон» (issue #249): выдача probe-токена строго по
+      # секрету probe_key (блокер ревью #230), токен — только в cookie визита.
+      post 'activate_test', to: 'conversations#activate_test'
     end
 
     # Legacy User↔User chat (kept for future internal messaging)

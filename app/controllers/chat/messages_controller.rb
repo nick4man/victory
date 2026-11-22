@@ -8,6 +8,7 @@ module Chat
   # Light rate-limit: 5 messages/minute per visitor_token via Redis.
   class MessagesController < ApplicationController
     include Chat::PageContextParams
+    include Chat::TestModeResolution
 
     skip_before_action :verify_authenticity_token, only: %i[create], raise: false
 
@@ -20,9 +21,14 @@ module Chat
         user_id:         current_user&.id,
         status:          :active,
         last_message_at: Time.current,
-        # probe-прогон (issue #214/#229): маркер в metadata, токен случайный.
-        metadata:        current_visitor_probe? ? { 'test_probe' => true } : {}
+        # Тест-контур (issue #214/#229/#249): probe-cookie из #228, кран
+        # ENV и доверенные origin/IP — все сводятся к metadata-маркеру.
+        metadata:        conversation_test_metadata
       )
+
+      # Кран/origin/IP включились посреди разговора — дорисовываем маркер,
+      # иначе POST-создание диалога работало бы, а GET — нет.
+      ensure_conversation_test_mode!(conv)
 
       return render(json: { error: 'rate_limited' }, status: :too_many_requests) if rate_limited?
 

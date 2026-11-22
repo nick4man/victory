@@ -5,11 +5,11 @@
   conversation_url = chat_conversation_path(format: :json)
   messages_url     = chat_conversation_messages_path
 %>
-
 <div id="chat-widget"
      data-cable-url="<%= cable_url %>"
      data-conversation-url="<%= conversation_url %>"
      data-messages-url="<%= messages_url %>"
+     data-activate-test-url="<%= activate_test_chat_conversation_path %>"
      class="fixed bottom-6 right-6 z-50">
 
   <button type="button" id="chat-widget-bubble"
@@ -30,6 +30,10 @@
         <p class="text-xs tracking-[0.3em] opacity-70">КОНСУЛЬТАНТ</p>
         <p class="text-sm font-medium">АН Виктори</p>
       </div>
+      <button type="button" id="chat-widget-test-toggle"
+              aria-label="Тест-прогон"
+              title="🧪 Тест-прогон"
+              class="mr-2 text-sm hover:opacity-70 transition-opacity">🧪</button>
       <button type="button" id="chat-widget-close"
               aria-label="Закрыть чат"
               class="hover:opacity-70 transition-opacity">
@@ -70,6 +74,30 @@
       <% end %>
     </div>
 
+    <%# Тумблер «🧪 Тест-прогон» (issue #249): запускает тестовый диалог
+        для оператора. Без публичной выдачи токена — блокер ревью #230:
+        сервер выпускает probe-токен ТОЛЬКО по секрету (probe_key), как в
+        #228. Секрет запрашивается у оператора, уходит POST'ом на приватный
+        эндпоинт (Origin проверяет сервер), токен — cookie того же визита:
+        передать его другой сессии нельзя. Анониму без секрета — отказ. %>
+    <div id="chat-widget-probe-panel" class="hidden border-t border-border bg-background px-3 py-2 space-y-2">
+      <p class="text-[11px] leading-snug text-muted-foreground">
+        Тест-прогон изолирует этот диалог: лиды уйдут в тестовый контур
+        (metadata&nbsp;'test'), ДИСПЕТЧЕРСКАЯ не будет потревожена.
+        Секрет выдаёт администратор (CHAT_PROBE_SECRET).
+      </p>
+      <div class="flex items-center gap-2">
+        <input type="password" id="chat-widget-probe-key" autocomplete="off"
+               placeholder="Секрет прогона"
+               class="flex-1 px-2 py-1 text-xs bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none" />
+        <button type="button" id="chat-widget-probe-start"
+                class="px-2.5 py-1 text-[11px] tracking-wider border border-border text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
+          Запустить
+        </button>
+      </div>
+      <p id="chat-widget-probe-status" class="hidden text-[11px] text-center"></p>
+    </div>
+
     <form id="chat-widget-form" class="border-t border-border bg-background">
       <div class="flex items-end gap-2 p-3">
         <textarea id="chat-widget-input" rows="1" maxlength="2000"
@@ -106,6 +134,7 @@
   const conversationUrl = root.dataset.conversationUrl;
   const messagesUrl     = root.dataset.messagesUrl;
   const cableUrl        = root.dataset.cableUrl;
+  const activateTestUrl = root.dataset.activateTestUrl;
 
   let conversation = null;
   let consumer = null;
@@ -397,5 +426,67 @@
       updateQuickRepliesVisibility();
     };
     updateQuickRepliesVisibility();
+  }
+
+  // === 🧪 Тест-прогон (issue #249) ===
+  // Кнопка открывает панель с полем секрета. Секрет уходит POST'ом на
+  // /chat/conversation/activate_test — сервер проверяет его так же, как
+  // probe-активацию из #228 (digest-сравнение), и выпускает токен ТОЛЬКО
+  // в cookie этого визита. Публичной выдачи токена нет (блокер ревью
+  // #230): без верного секрета сервер отвечает 403, ничего не меняется.
+  const testToggleBtn = document.getElementById('chat-widget-test-toggle');
+  const probePanel    = document.getElementById('chat-widget-probe-panel');
+  const probeKeyInput = document.getElementById('chat-widget-probe-key');
+  const probeStartBtn = document.getElementById('chat-widget-probe-start');
+  const probeStatusEl = document.getElementById('chat-widget-probe-status');
+
+  function probeStatus (text, ok) {
+    if (!probeStatusEl) return;
+    probeStatusEl.textContent = text;
+    probeStatusEl.classList.toggle('text-destructive', !ok);
+    probeStatusEl.classList.toggle('text-muted-foreground', ok);
+    probeStatusEl.classList.remove('hidden');
+  }
+
+  if (testToggleBtn && probePanel) {
+    testToggleBtn.addEventListener('click', () => {
+      probePanel.classList.toggle('hidden');
+      if (!probePanel.classList.contains('hidden')) probeKeyInput && probeKeyInput.focus();
+    });
+  }
+
+  if (probeStartBtn) {
+    probeStartBtn.addEventListener('click', async () => {
+      const secret = probeKeyInput ? probeKeyInput.value.trim() : '';
+      if (!secret) { probeStatus('Введите секрет прогона.', false); return; }
+      probeStartBtn.disabled = true;
+      try {
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch(activateTestUrl, {
+          method: 'POST',
+          headers: Object.assign(
+            { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            csrf ? { 'X-CSRF-Token': csrf } : {}
+          ),
+          credentials: 'same-origin',
+          body: JSON.stringify({ probe_key: secret })
+        });
+        if (res.ok) {
+          probeStatus('Прогон активирован — диалог перезапускается…', true);
+          // Токен перевыпущен: старый диалог закрыт сервером, загружаем новый.
+          conversation = null;
+          if (subscription) { subscription.unsubscribe(); subscription = null; }
+          await bootstrap();
+        } else if (res.status === 403) {
+          probeStatus('Неверный секрет. Секрет выдаёт администратор.', false);
+        } else {
+          probeStatus('Сервер ответил ' + res.status + '. Попробуйте позже.', false);
+        }
+      } catch (e) {
+        probeStatus('Не удалось связаться с сервером: ' + e.message, false);
+      } finally {
+        probeStartBtn.disabled = false;
+      }
+    });
   }
 </script>
