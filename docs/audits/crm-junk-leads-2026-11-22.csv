@@ -311,7 +311,7 @@ spam_pre_window,Inquiry#83,,Harrytoult,****2777,29.07.26 03:38,158.173.79.x, с�
 spam_pre_window,Inquiry#84,,Harrytoult,****6869,29.07.26 03:38,158.173.79.x, спам-бот (jackpot/ссылки) — до 3-мес окна для полноты
 test_inquiry,LeadEvent#69 (Inquiry#22),,Phase2 Test,****3344,17.05.26 00:10,, staff_test=true matched_by=test_marker_email
 test_inquiry,LeadEvent#70 (Inquiry#23),,Phase2 Test,****3344,17.05.26 00:11,, staff_test=true matched_by=test_marker_email
-test_inquiry,PropertyValuation#98,,Anon,0000000000,17.05.26 17:00,,тестовая оценка (имя-заглушка Anon, телефон-нули, Test Address — тестовая запись, не PII)
+test_inquiry,PropertyValuation#98,,Anon,0000000000 (тест-заглушка),17.05.26 17:00,,"тестовая оценка: имя-заглушка Anon, телефон-нули, Test Address — тестовая запись, не PII"
 test_inquiry,LeadEvent#74 (PropertyValuation#99),,Visual Test,0000000000 (тест-заглушка),17.05.26 17:01,, staff_test=true matched_by=test_marker_name
 test_inquiry,LeadEvent#75 (PropertyValuation#100),,С…,****3671,17.05.26 17:04,, staff_test=true matched_by=name_staff_first
 test_inquiry,LeadEvent#76 (PropertyValuation#101),,John Smith Test,0000000000 (тест-заглушка),17.05.26 22:02,, staff_test=true matched_by=test_marker_email
