@@ -568,7 +568,6 @@ app/
           task_action_callback.rb
           task_batch_confirm_callback.rb
           tutorial_callback.rb
-          wip_stub.rb
           wizard_callback.rb
         commands/
           assign.rb
@@ -614,6 +613,7 @@ app/
         wizard/
           close_flow.rb
           crm_card_approve_flow.rb
+          crm_card_attach_flow.rb
           crm_card_edit_flow.rb
           crm_card_manual_export_flow.rb
           crm_card_note_flow.rb
@@ -8992,40 +8992,6 @@ def mark_start(task)
 def format_duration(seconds)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/task_batch_confirm_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class TaskBatchConfirmCallback < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def post_approve_dispatch!(batch, created)
-⋮----
-def handle_orphan_tasks(batch, created)
-⋮----
-def handle_dispatch_failures(batch, created, results)
-⋮----
-def alert_directors_about_failures(batch, created, failures)
-⋮----
-def dispatch_tasks(tasks)
-⋮----
-def dispatch_summary(results)
-⋮----
-def cancel!(batch)
-⋮----
-def create_tasks_from(batch)
-⋮----
-def lookup_assignee(username)
-⋮----
-def parse_time(raw)
-⋮----
-def edit_preview(batch, suffix:)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/tutorial_callback.rb">
 module Telegram
 module WorkBot
@@ -9047,15 +9013,6 @@ def private_chat?
 def chat_id
 ⋮----
 def message_id
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks/wip_stub.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class WipStub < Base
-def handle
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/wizard_callback.rb">
@@ -13292,6 +13249,38 @@ def edit_preview(report, suffix)
 def strike_owner_card(suffix)
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/task_batch_confirm_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class TaskBatchConfirmCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def post_approve_dispatch!(batch, created)
+⋮----
+def handle_orphan_tasks(batch, created)
+⋮----
+def handle_dispatch_failures(batch, created, results)
+⋮----
+def alert_directors_about_failures(batch, created, failures)
+⋮----
+def dispatch_tasks(tasks)
+⋮----
+def dispatch_summary(results)
+⋮----
+def create_tasks_from(batch)
+⋮----
+def lookup_assignee(username)
+⋮----
+def parse_time(raw)
+⋮----
+def edit_preview(batch, suffix:)
+</file>
+
 <file path="app/services/telegram/work_bot/commands/bargain.rb">
 def handle
 ⋮----
@@ -13488,6 +13477,25 @@ def confirm_prompt
 def accept_reason(value, manual)
 </file>
 
+<file path="app/services/telegram/work_bot/wizard/crm_card_attach_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class CrmCardAttachFlow < Flow
+include CrmCardSupport
+⋮----
+flow 'crm_attach', 'Привязать номер заявки из CRM'
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_note_flow.rb">
 module Telegram
 module WorkBot
@@ -13505,21 +13513,6 @@ def gate
 def accept(step, value, manual: false)
 ⋮----
 def finish
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks_router.rb">
-module Telegram
-module WorkBot
-⋮----
-class CallbacksRouter
-⋮----
-PREFIX_MAP = {
-⋮----
-def initialize(callback_query, client: Telegram::Client.new)
-⋮----
-def call
-⋮----
-def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
 </file>
 
 <file path="app/services/telegram/work_bot/photo_intake_processor.rb">
@@ -14676,6 +14669,21 @@ def merged_metadata
 def push_note_to_crm
 ⋮----
 def log_skip(reason)
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks_router.rb">
+module Telegram
+module WorkBot
+⋮----
+class CallbacksRouter
+⋮----
+PREFIX_MAP = {
+⋮----
+def initialize(callback_query, client: Telegram::Client.new)
+⋮----
+def call
+⋮----
+def log_audit(tg_user_id, command, args, result, error_class: nil, error_message: nil)
 </file>
 
 <file path="app/services/telegram/work_bot/daily_digest_job.rb">
@@ -16500,7 +16508,7 @@ class ConversationsController < ApplicationController
 include Chat::PageContextParams
 include Chat::TestModeResolution
 ⋮----
-skip_before_action :verify_authenticity_token, only: %i[show update activate_test], raise: false
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
 ⋮----
 def show
 ⋮----
@@ -16513,10 +16521,6 @@ private
 def current_or_create_conversation
 ⋮----
 def seed_welcome(conv, page_ctx = nil)
-⋮----
-def probe_secret_valid?
-⋮----
-def probe_secret
 ⋮----
 def serialize(conv)
 ⋮----

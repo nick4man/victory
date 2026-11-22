@@ -44,6 +44,26 @@ RSpec.describe Telegram::WorkBot::Wizard::CrmCardAttachFlow do
     expect(card.transitions.last).to have_attributes(to_status: 'exported', actor_id: director.id)
   end
 
+  it 'зависшая выгрузка (exporting): тот же мастер доводит карточку до выгруженной' do
+    card.update!(status: 'exporting', crm_id: nil)
+
+    tap_callback("wiz:s:crm_attach:#{card.id}", user: director)
+    say('556677', user: director)
+    press('Привязать', user: director)
+
+    expect(card.reload).to have_attributes(status: 'exported', crm_id: '556677')
+  end
+
+  it 'сбой с уже созданной заявкой (crm_id проставлен): подтверждение номера тем же мастером' do
+    card.update!(crm_id: '4242', export_error: 'Заявка уже создана в CRM под номером 4242')
+
+    tap_callback("wiz:s:crm_attach:#{card.id}", user: director)
+    say('4242', user: director)
+    press('Привязать', user: director)
+
+    expect(card.reload).to have_attributes(status: 'exported', crm_id: '4242')
+  end
+
   it 'номер с буквами не принимается, карточка не меняется' do
     tap_callback("wiz:s:crm_attach:#{card.id}", user: director)
     say('4242abc', user: director)
