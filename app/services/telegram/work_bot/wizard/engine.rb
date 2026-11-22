@@ -49,15 +49,19 @@ module Telegram
           'crm_change' => 'Telegram::WorkBot::Wizard::CrmChangeDecideFlow',
           'crm_object' => 'Telegram::WorkBot::Wizard::CrmObjectCardFlow',
           'crm_manual' => 'Telegram::WorkBot::Wizard::CrmCardManualExportFlow',
-          'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow'
+          'crm_test_lead' => 'Telegram::WorkBot::Wizard::CrmTestLeadFlow',
+          # Recovery из неоднозначного исхода выгрузки: модератор сверил заявку
+          # с CRM глазами и привязывает номер (Workflow#attach_export_number!).
+          'crm_attach' => 'Telegram::WorkBot::Wizard::CrmCardAttachFlow'
         }.freeze
 
-        # Какой шаг получает id, пришедший с кнопкой на карточке.
+        # Какой шаг получает id, пришедший с кнопки на карточке.
         SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
                       'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
                       'crm_approve' => 'card', 'crm_release' => 'card',
                       'crm_note' => 'card',
-                      'crm_change' => 'request', 'crm_manual' => 'card' }.freeze
+                      'crm_change' => 'request', 'crm_manual' => 'card',
+                      'crm_attach' => 'card' }.freeze
 
         def self.flow_class(key)
           FLOWS[key.to_s]&.constantize
