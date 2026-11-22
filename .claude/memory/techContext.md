@@ -57,6 +57,9 @@
 | `TELEGRAM_BOT_TOKEN` | — | основной TG-бот сайта (`@anvictorybot`) |
 | `TELEGRAM_TEST_CHAT_ID` | — | тестовый канал для прогонов чат-бота (issue #214): диалоги виджета, активированные с секретом `?visitor_token=probe-<имя>&probe_key=<секрет>` (issue #229, PR #232) → лиды `metadata['test']=true` публикуются сюда, а не в ДИСПЕТЧЕРСКУЮ, и не синкаются в CRM. Пусто — тест-лиды создаются без публикации в TG. Секрет — `CHAT_PROBE_SECRET` (fallback `ADMIN_TOKEN`); пустой ENV = probe-режим отключён; токен прогона случайный, переводится в `metadata['test_probe']` Conversation |
 | `CHAT_PROBE_SECRET` | — | секрет активации probe-режима чат-виджета (issue #229); предъявляется в URL как `probe_key`. Не задан и пустой `ADMIN_TOKEN` → probe-ссылки неактивны |
+| `SITE_CHATBOT_FORCE_TEST` | — | кран «весь сайт-чат в тестовый контур» (issue #249): `1/true/yes/on` → каждый диалог помечается `metadata['test_probe']` без секретов. Для стендов/демо, в проде по умолчанию выключен. Читается на каждый запрос (правка .env без пересборки) |
+| `CHAT_TEST_TRUSTED_ORIGINS` | — | доп. доверенные Origin/Referer-хосты авто-теста чата (issue #249), через запятую; встроенные: `*.dev.victory62.org`, `localhost/127.0.0.1/::1` |
+| `CHAT_TEST_TRUSTED_IPS` | — | доп. подсети авто-теста чата (issue #249): CIDR или одиночные IP, через запятую; встроенные: RFC1918 `10/8`, `172.16/12`, `192.168/16` (loopback исключён — спеки/healthcheck). Боевой домен victory62.org и публичные IP в доверенные не попадают |
 | `TELEGRAM_TEST_BOT_TOKEN` | — (только GitHub Secrets) | токен ТЕСТОВОГО бота для живого интеграционного spec'а `spec/services/telegram/test_chat_delivery_spec.rb`; продовый код не читает. Используется в ручном workflow `test-chat-live.yml`; в PR-CI (lint.yml) секретов нет — spec skip'ается |
 | `TELEGRAM_STAFF_CHAT_ID` | `-1003937910508` (dev+owner) | куда уходят отчёты/уведомления |
 | `TOPNLAB_API_KEY` | — | ключ CRM; без него `Topnlab::Client` кидает `Error` на init |
