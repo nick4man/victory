@@ -262,9 +262,9 @@ jobs:
       # Read-only обзор diff + постинг одного верхнеуровневого комментария
       # через gh (GITHUB_TOKEN). Модель — opencode-go/glm-5.3 (подписка Go):
       # расход агента идёт на бюджет сервис-аккаунта Console, а не Kimi-план.
-      # Пишущие инструменты запрещены permission.deny (opencode.json) +
-      # --auto одобряет только то, что не запрещено явно. Транскрипт прогона
-      # (stdout) — источник вердикта для automerge.yml.
+      # Пишущие инструменты запрещены permission.bash (схема opencode 1.x:
+      # карта «паттерн → deny»; формат-массив из 2.x не валидируется) + --auto
+      # одобряет только то, что не запрещено явно.
       - name: Run OpenCode Review
         id: review
         env:
@@ -277,15 +277,26 @@ jobs:
           cat > opencode.json <<'JSON'
           {
             "permission": {
-              "deny": [
-                "Bash(git push:*)", "Bash(git commit:*)", "Bash(git checkout:*)",
-                "Bash(docker:*)",
-                "Bash(gh pr merge:*)", "Bash(gh pr edit:*)", "Bash(gh pr close:*)",
-                "Bash(gh pr review:*)", "Bash(gh issue close:*)", "Bash(gh issue edit:*)",
-                "Bash(gh secret:*)", "Bash(gh variable:*)", "Bash(gh workflow:*)",
-                "Bash(gh release:*)", "Bash(gh repo:*)", "Bash(gh api:*)",
-                "Bash(curl:*)", "Bash(wget:*)"
-              ]
+              "bash": {
+                "git push:*": "deny",
+                "git commit:*": "deny",
+                "git checkout:*": "deny",
+                "docker:*": "deny",
+                "gh pr merge:*": "deny",
+                "gh pr edit:*": "deny",
+                "gh pr close:*": "deny",
+                "gh pr review:*": "deny",
+                "gh issue close:*": "deny",
+                "gh issue edit:*": "deny",
+                "gh secret:*": "deny",
+                "gh variable:*": "deny",
+                "gh workflow:*": "deny",
+                "gh release:*": "deny",
+                "gh repo:*": "deny",
+                "gh api:*": "deny",
+                "curl:*": "deny",
+                "wget:*": "deny"
+              }
             }
           }
           JSON
