@@ -233,6 +233,10 @@ jobs:
             -d client_id="${{ secrets.OPENCODE_CLIENT_ID }}" \
             -d subject_token="$oidc" | jq -r .access_token)
           echo "::add-mask::$token"
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "OIDC-обмен не выдал токен (ответ: $(curl -s https://opencode.ai/console/auth/oauth/token -o /dev/null -w '%{http_code}'))" >&2
+            exit 1
+          fi
           echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
 
       - name: Install OpenCode
@@ -325,6 +329,7 @@ jobs:
             VERDICT: CHANGES   — есть хотя бы один блокер
           Эти строки читает workflow automerge.yml; нит-пики без блокеров — это MERGE." \
             > review-transcript.txt 2> review-stderr.txt || true
+          echo "--- stderr (head 2000c) ---"; head -c 2000 review-stderr.txt || true; echo
           echo "--- stderr (tail) ---"; tail -5 review-stderr.txt || true
           echo "--- transcript bytes: $(wc -c < review-transcript.txt)"
 
