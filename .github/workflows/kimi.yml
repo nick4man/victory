@@ -208,7 +208,9 @@ jobs:
           case "$pr" in ''|*[!0-9]*)
             echo "pr_number должен быть числом: '$pr'" >&2; exit 1;;
           esac
-          head=$(gh pr view "$pr" --repo "${{ github.repository }}" --json headRefOid --jq -r '.headRefOid')
+          head=$(gh pr view "$pr" --repo "${{ github.repository }}" --json headRefOid --jq '.headRefOid' | tr -d '"')
+          # NB: --jq -r НЕ работает (pflag съедает -r значением --jq →
+          # «received 2»); кавычки JSON-строки снимаем tr -d.
           echo "PR_NUMBER=$pr" >> "$GITHUB_ENV"
           echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
           echo "ревью PR #$pr @ $head"
