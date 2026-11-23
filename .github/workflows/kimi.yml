@@ -184,15 +184,10 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-        with:
-          fetch-depth: 1
-
-      # PR-контекст для обоих режимов: из события (pull_request) или из
-      # ввода (workflow_dispatch). pr_number валидируем строго цифрами,
-      # head sha достаём через gh — при dispatch github.event.pull_request
-      # пустой.
+      # PR-контекст РАНЬШЕ checkout: при workflow_dispatch github.event.pull_request
+      # пустой, и без явного ref checkout брал бы default branch, а не выбранный
+      # PR — diff от одного PR, дерево из другой ревизии. Резолвим номер и head
+      # SHA через gh (валидируем строго цифрами), затем качаем именно этот SHA.
       - name: Resolve PR context
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -214,6 +209,12 @@ jobs:
           echo "PR_NUMBER=$pr" >> "$GITHUB_ENV"
           echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
           echo "ревью PR #$pr @ $head"
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 1
 
       # Аутентификация без долгоживущего секрета: OIDC-токен прогона меняется
       # на краткосрочный OPENCODE_API_KEY сервис-аккаунта OpenCode Console.
@@ -277,6 +278,8 @@ jobs:
           cat > opencode.json <<'JSON'
           {
             "permission": {
+              "edit": "deny",
+              "webfetch": "deny",
               "bash": {
                 "git push:*": "deny",
                 "git commit:*": "deny",

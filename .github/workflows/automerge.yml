@@ -100,7 +100,7 @@ jobs:
             '[.workflow_runs[] | select(.path==".github/workflows/kimi.yml" and .status=="completed")] | sort_by(.run_number) | last | .id // empty')
           [ -n "$REVIEW_RUN" ] || { echo "прогон «Kimi Code» на $SHA ещё не завершён — ждём"; exit 0; }
 
-          JOBS=$(gh api "repos/$REPO/actions/runs/$REVIEW_RUN/jobs" --jq -r '.jobs[] | "\(.name)\t\(.conclusion)"')
+          JOBS=$(gh api "repos/$REPO/actions/runs/$REVIEW_RUN/jobs" --jq '.jobs[] | "\(.name)\t\(.conclusion)"')
           HAS_OC=$(awk -F'\t' '$1=="OpenCode Review"' <<<"$JOBS" | wc -l)
           OC_OK=$(awk -F'\t' '$1=="OpenCode Review" && $2=="success"' <<<"$JOBS" | wc -l)
           KIMI_OK=$(awk -F'\t' '$1=="Kimi Review" && $2=="success"' <<<"$JOBS" | wc -l)
@@ -201,7 +201,7 @@ jobs:
           # --- merge: атомарно к проверенному head -------------------------------
           gh pr merge "$NUM" --squash --delete-branch --match-head-commit "$SHA" \
             --subject "$(jq -r .title <<<"$PR_JSON") (#$NUM)" \
-            --body "Автослияние в $BASE: CI зелёный, ревью Kimi — VERDICT: MERGE (head $SHORT)."
+            --body "Автослияние в $BASE: CI зелёный, ревью $REVIEW_NEED — VERDICT: MERGE (head $SHORT)."
           echo "PR #$NUM слит в $BASE"
 
           # --- закрыть issue: closing keywords для base != default branch не работают

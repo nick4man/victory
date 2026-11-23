@@ -28,5 +28,18 @@ RSpec.describe '.github/workflows' do
         .or include("client_id='${{ secrets.OPENCODE_CLIENT_ID }}'")
         .or include('client_id=${{ secrets.OPENCODE_CLIENT_ID }}')
     end
+
+    # Нит-пик ревью PR #258: include-проверка выше не заметила бы ВТОРОЙ
+    # захардкоженный client_id. Гарантируем: в шаге «Sign in to OpenCode»
+    # ровно одно упоминание client_id и его значение — expression секрета.
+    it 'имеет ровно один client_id в шаге Sign in to OpenCode — из секрета' do
+      step = parsed['jobs'].values.flat_map { |j| j['steps'] }
+                          .find { |s| s.is_a?(Hash) && s['name'] == 'Sign in to OpenCode' }
+      expect(step).not_to be_nil
+      run = step['run'].to_s
+      expect(run.scan(/client_id/).size).to eq(1)
+      expect(run).to include('secrets.OPENCODE_CLIENT_ID')
+      expect(run).not_to match(/client_id=["']?(sk_|oc_)/)
+    end
   end
 end
