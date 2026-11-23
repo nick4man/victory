@@ -72,6 +72,56 @@ RSpec.describe 'Форма обратной связи /contacts', type: :reques
       expect(flash[:notice]).to be_present
     end
 
+    context 'с IP из блэклиста (issue #255)' do
+      let(:blocked_ip) { '80.94.95.173' }
+
+      before do
+        SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: blocked_ip, source: 'firehol')
+      end
+
+      it 'молча дропает submit: success-флэш, без Inquiry и карточки в чате' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        travel 5.seconds
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token),
+               headers: { 'REMOTE_ADDR' => blocked_ip }
+        end.not_to change(Inquiry, :count)
+
+        # Бот не должен узнать, что его раскрыли.
+        expect(response).to redirect_to(contacts_path)
+        expect(flash[:notice]).to be_present
+      end
+
+      it 'дропает submit из CIDR-подсети блэклиста' do
+        SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '80.94.95.0/24', source: 'firehol')
+        get contacts_path
+        token = rendered_at_token_from_page
+        travel 5.seconds
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token),
+               headers: { 'REMOTE_ADDR' => '80.94.95.202' }
+        end.not_to change(Inquiry, :count)
+        expect(response).to redirect_to(contacts_path)
+      end
+
+      it 'принимает submit с чистого IP' do
+        get contacts_path
+        token = rendered_at_token_from_page
+        travel 5.seconds
+
+        expect do
+          post send_contact_form_path,
+               params: valid_params.merge(rendered_at_token: token),
+               headers: { 'REMOTE_ADDR' => '203.0.113.10' }
+        end.to change(Inquiry, :count).by(1)
+      end
+    end
+
     it 'создаёт подозрительную Inquiry при отправке быстрее MIN_FILL_SECONDS после рендера' do
       get contacts_path
       token = rendered_at_token_from_page
