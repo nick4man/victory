@@ -9,17 +9,18 @@ name: Kimi Code
 #    поэтому фраза подставляется динамически — та, что реально есть
 #    в событии.
 #
-# Два пути авторевью (PR #242 + доработка 23.11.26) — ОБА сохранены:
-#   - job review (Kimi Review): xuwenhao/kimi-code-action, KIMI_API_KEY,
-#     модель k3.1-pro. Его артефакт kimi-verdict читает automerge.yml —
-#     якоря (путь workflow, имя job'а, имя артефакта, формат HEAD/RUN/VERDICT)
-#     не трогать.
-#   - job opencode-review (OpenCode Review): OpenCode CLI, аутентификация
+# Два пути авторевью — ОБА сохранены, с приоритетом (решение 23.11.26):
+#   - job opencode-review (OpenCode Review): ОСНОВНОЙ путь. OpenCode CLI,
 #     OIDC-обменом на краткосрочный OPENCODE_API_KEY сервис-аккаунта Console
 #     (без долгоживущего секрета; client_id — в secrets.OPENCODE_CLIENT_ID).
 #     Модель opencode-go/glm-5.3, расход — на бюджет Go-подписки. Артефакт
-#     opencode-verdict — для A/B и ручного сравнения вердиктов; automerge
-#     его НЕ читает.
+#     opencode-verdict automerge.yml читает ПЕРВЫМ. Невалидный вердикт (пустой
+#     транскрипт / нет HEAD/VERDICT) — job падает: сигнал для fallback.
+#   - job review (Kimi Review): FALLBACK. xuwenhao/kimi-code-action, KIMI_API_KEY,
+#     модель k3.1-pro; запускается только при падении OpenCode Review
+#     (needs + result=='failure'). Артефакт kimi-verdict automerge читает,
+#     только если opencode-вердикта нет. Якоря (workflow, имя job'а, имя
+#     артефакта, формат HEAD/RUN/VERDICT) не трогать.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -45,8 +46,11 @@ on:
 jobs:
   review:
     name: Kimi Review
-    # Только события PR; черновики пропускаем (ready_for_review подхватит).
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # FALLBACK: запускаемся ТОЛЬКО если основной OpenCode Review упал
+    # (невалидный/пустой вердикт, OIDC, install). Обычный путь PR →
+    # opencode-review. Черновики: opencode пропущен (не failure) — и мы тоже.
+    needs: opencode-review
+    if: always() && needs.opencode-review.result == 'failure' && github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     permissions:
@@ -328,6 +332,10 @@ jobs:
       # (review-transcript.txt): туда пишет только шаг ревью выше. Берём
       # ПОСЛЕДНИЕ строки HEAD:/VERDICT: — финальный ответ агента идёт
       # последним, а процитированный в diff текст — раньше.
+      # ВАЖНО: при невалидном вердикте (нет транскрипта / нет HEAD/VERDICT)
+      # job ПАДАЕТ — это сигнал automerge.yml уйти в fallback на Kimi Review.
+      # Валидный CHANGES — не падение: артефакт с VERDICT: CHANGES просто
+      # блокирует мерж.
       - name: Publish verdict artifact
         if: always()
         env:
@@ -335,17 +343,25 @@ jobs:
         run: |
           set -euo pipefail
           VERDICT=CHANGES
+          VALID=0
           if [ -s review-transcript.txt ]; then
             LAST_HEAD=$(grep -oE 'HEAD: [0-9a-f]{40}' review-transcript.txt | tail -1 || true)
             LAST_VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' review-transcript.txt | tail -1 || true)
             echo "из транскрипта: '$LAST_HEAD' / '$LAST_VERDICT'"
-            if [ "$LAST_HEAD" = "HEAD: $SHA" ] && [ "$LAST_VERDICT" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
+            if [ "$LAST_HEAD" = "HEAD: $SHA" ] && [ -n "$LAST_VERDICT" ]; then
+              VALID=1
+              if [ "$LAST_VERDICT" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
+            fi
           else
-            echo "транскрипт отсутствует — вердикт CHANGES по умолчанию"
+            echo "транскрипт отсутствует"
           fi
           mkdir -p verdict
           printf 'HEAD: %s\nRUN: %s\nVERDICT: %s\n' "$SHA" "$GITHUB_RUN_ID" "$VERDICT" > verdict/opencode-verdict.txt
           cat verdict/opencode-verdict.txt
+          if [ "$VALID" != 1 ]; then
+            echo "валидный вердикт не получен — job failed → automerge уйдёт в fallback на Kimi Review"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
