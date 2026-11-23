@@ -289,7 +289,11 @@ jobs:
             }
           }
           JSON
-          opencode run --standalone --auto --archived --model opencode-go/glm-5.3 \
+          # NB: --standalone и --archived — флаги OpenCode 2.x; в 1.19.6 их
+          # нет (yargs-strict → хелп в stderr, пустой stdout). Установщик
+          # ставит линейку 1.x. Проверено в песочнице: run --auto --model
+          # на 1.19.6 с SA-ключом работает.
+          opencode run --auto --model opencode-go/glm-5.3 \
             "REPO: $REPO
           PR NUMBER: $PR_NUMBER
           HEAD SHA: $HEAD_SHA
