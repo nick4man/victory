@@ -11,7 +11,7 @@ name: Automerge agent PRs
 #     автоматически;
 #   • все check runs на head SHA завершены и зелёные, среди них есть
 #     обязательный набор: RuboCop, RSpec, Brakeman, bundler-audit, services-check,
-#     образ web, Kimi Review.
+#     образ web, OpenCode Review (при fallback/legacy — Kimi Review).
 # Запускаемся по завершении любого из трёх workflow — кто последним
 # позеленел, тот и мержит. Комментарии бота НЕ триггерят workflow (события от
 # GITHUB_TOKEN не порождают новых прогонов), поэтому слушаем workflow_run.

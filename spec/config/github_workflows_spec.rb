@@ -37,7 +37,7 @@ RSpec.describe '.github/workflows' do
                           .find { |s| s.is_a?(Hash) && s['name'] == 'Sign in to OpenCode' }
       expect(step).not_to be_nil
       run = step['run'].to_s
-      expect(run.scan(/client_id/).size).to eq(1)
+      expect(run.scan('client_id').size).to eq(1)
       expect(run).to include('secrets.OPENCODE_CLIENT_ID')
       expect(run).not_to match(/client_id=["']?(sk_|oc_)/)
     end
