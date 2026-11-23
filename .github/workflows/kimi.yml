@@ -32,6 +32,16 @@ on:
   pull_request_review:
     types: [submitted]
 
+  # Ручной запуск OpenCode Review на любом открытом PR (по номеру). Запускает
+  # только job opencode-review: Kimi Review (xuwenhao/kimi-code-action) привязан
+  # к pull_request-событию и из dispatch не достаёт контекст PR.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Номер PR для ревью (OpenCode Review)'
+        required: true
+        type: string
+
 jobs:
   review:
     name: Kimi Review
@@ -152,8 +162,9 @@ jobs:
 
   opencode-review:
     name: OpenCode Review
-    # Только события PR; черновики пропускаем (ready_for_review подхватит).
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # PR-авто (opened/synchronize/reopened/ready_for_review, не draft) + ручной
+    # запуск workflow_dispatch на любом открытом PR (inputs.pr_number).
+    if: (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     permissions:
@@ -163,8 +174,9 @@ jobs:
       actions: read
 
     # Новый push в PR отменяет устаревшее ревью в полёте.
+    # Для dispatch — группа по введённому номеру PR.
     concurrency:
-      group: opencode-review-${{ github.event.pull_request.number }}
+      group: opencode-review-${{ github.event.pull_request.number || inputs.pr_number }}
       cancel-in-progress: true
 
     steps:
@@ -172,6 +184,30 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
+
+      # PR-контекст для обоих режимов: из события (pull_request) или из
+      # ввода (workflow_dispatch). pr_number валидируем строго цифрами,
+      # head sha достаём через gh — при dispatch github.event.pull_request
+      # пустой.
+      - name: Resolve PR context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_PR: ${{ inputs.pr_number }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pr="$INPUT_PR"
+          else
+            pr="$EVENT_PR"
+          fi
+          case "$pr" in ''|*[!0-9]*)
+            echo "pr_number должен быть числом: '$pr'" >&2; exit 1;;
+          esac
+          head=$(gh pr view "$pr" --repo "${{ github.repository }}" --json headRefOid --jq -r '.headRefOid')
+          echo "PR_NUMBER=$pr" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
+          echo "ревью PR #$pr @ $head"
 
       # Аутентификация без долгоживущего секрета: OIDC-токен прогона меняется
       # на краткосрочный OPENCODE_API_KEY сервис-аккаунта OpenCode Console.
@@ -217,9 +253,9 @@ jobs:
         id: review
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO: ${{ github.repository }}
+          # PR_NUMBER и HEAD_SHA — из шага Resolve PR context ($GITHUB_ENV):
+          # при workflow_dispatch github.event.pull_request пустой.
         run: |
           set -uo pipefail
           cat > opencode.json <<'JSON'
@@ -295,7 +331,7 @@ jobs:
       - name: Publish verdict artifact
         if: always()
         env:
-          SHA: ${{ github.event.pull_request.head.sha }}
+          SHA: ${{ env.HEAD_SHA }}
         run: |
           set -euo pipefail
           VERDICT=CHANGES
