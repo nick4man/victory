@@ -114,11 +114,12 @@ class PagesController < ApplicationController
     rendered_at = ContactFormSpamGuard.verify_rendered_at_token(params[:rendered_at_token])
     guard = ContactFormSpamGuard.new(
       honeypot: params[ContactFormSpamGuard::HONEYPOT_PARAM],
-      rendered_at: rendered_at
+      rendered_at: rendered_at,
+      ip: request.remote_ip
     ).call
 
     if guard.spam
-      # Молчаливый дроп только для honeypot: бот не должен узнать, что его раскрыли.
+      # Молчаливый дроп (honeypot / IP из блэклиста, #255): бот не должен узнать, что его раскрыли.
       ContactFormSpamGuard.record(reason: guard.reason, ip: request.remote_ip, ua: request.user_agent)
       flash[:notice] = I18n.t('messages.contact_form_success')
       redirect_to contacts_path

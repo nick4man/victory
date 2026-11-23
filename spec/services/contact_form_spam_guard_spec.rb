@@ -15,8 +15,8 @@ RSpec.describe ContactFormSpamGuard do
     travel_back
   end
 
-  def guard_call(honeypot: '', rendered_at: 10.seconds.ago.to_f, now: Time.current)
-    described_class.new(honeypot: honeypot, rendered_at: rendered_at, now: now).call
+  def guard_call(honeypot: '', rendered_at: 10.seconds.ago.to_f, now: Time.current, ip: nil)
+    described_class.new(honeypot: honeypot, rendered_at: rendered_at, now: now, ip: ip).call
   end
 
   it 'пропускает нормальную отправку' do
@@ -59,7 +59,49 @@ RSpec.describe ContactFormSpamGuard do
   end
 
   it 'REASONS покрывает все отдаваемые причины' do
-    expect(described_class::REASONS).to contain_exactly('honeypot', 'no_render_timestamp', 'too_fast')
+    expect(described_class::REASONS).to contain_exactly('honeypot', 'no_render_timestamp', 'too_fast', 'spam_ip')
+  end
+
+  describe 'IP-блэклист (issue #255)' do
+    let(:blocked_ip) { '80.94.95.173' }
+
+    before do
+      SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: blocked_ip, source: 'firehol')
+    end
+
+    it 'дропает submit с IP из блэклиста' do
+      result = guard_call(ip: blocked_ip)
+      expect(result.spam).to be true
+      expect(result.suspicious).to be false
+      expect(result.reason).to eq 'spam_ip'
+    end
+
+    it 'дропает submit с IP из CIDR-подсети блэклиста' do
+      SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '80.94.95.0/24', source: 'firehol')
+      result = guard_call(ip: '80.94.95.202')
+      expect(result.spam).to be true
+      expect(result.reason).to eq 'spam_ip'
+    end
+
+    it 'пропускает submit с чистым IP' do
+      result = guard_call(ip: '203.0.113.10')
+      expect(result.spam).to be false
+      expect(result.suspicious).to be false
+    end
+
+    it 'пропускает submit без IP (blank — не повод дропать)' do
+      result = guard_call(ip: nil)
+      expect(result.spam).to be false
+    end
+
+    it 'считает spam_ip дропом (kind dropped) в логе record' do
+      allow(Rails.logger).to receive(:info)
+      described_class.record(reason: 'spam_ip', ip: blocked_ip, ua: 'Bot/1.0')
+      expect(Rails.logger).to have_received(:info) do |message|
+        expect(message).to include('reason=spam_ip')
+        expect(message).to include('spam dropped')
+      end
+    end
   end
 
   describe 'подписанный timestamp рендера' do

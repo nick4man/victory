@@ -2,7 +2,12 @@
 
 # Антиспам-гейт для формы обратной связи /contacts (source: 'contact_form'), issue #239.
 #
-# - Молчаливый дроп оставлен только для honeypot.
+# - Молчаливый дроп оставлен только для honeypot и IP из блэклиста (#255).
+# - IP-блэклист: SpamBlockedEntry.ip_blocked? (ipsum/firehol-фиды, #219) —
+#   раньше применялся только в чат-боте (Llm::SpamFilter); контакт-форма
+#   проверяла только honeypot и тайминг, и спам с заблокированных IP
+#   падал карточкой в диспетчерскую. Дроп так же молчаливый: success-флэш,
+#   без Inquiry, с логом reason=spam_ip.
 # - Тайминговые сигналы (нет timestamp, слишком быстро) не дропают заявку:
 #   Inquiry создаётся со статусом new и меткой suspicious в metadata.
 # - Timestamp рендера передаётся подписанным скрытым полем формы
@@ -19,7 +24,7 @@ class ContactFormSpamGuard
   # Сколько срабатываний одного reason в час вызывают alert в логе.
   ALERT_THRESHOLD = 10
 
-  REASONS = %w[honeypot no_render_timestamp too_fast].freeze
+  REASONS = %w[honeypot no_render_timestamp too_fast spam_ip].freeze
 
   Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
 
@@ -61,7 +66,7 @@ class ContactFormSpamGuard
 
       count = increment_counter(reason)
       safe_ua = sanitize_user_agent(ua)
-      kind = reason == 'honeypot' ? 'dropped' : 'suspicious'
+      kind = %w[honeypot spam_ip].include?(reason) ? 'dropped' : 'suspicious'
       Rails.logger.info(
         "[contact_form] spam #{kind} reason=#{reason} ip=#{ip} ua=#{safe_ua} count=#{count}"
       )
@@ -108,14 +113,16 @@ class ContactFormSpamGuard
     end
   end
 
-  def initialize(honeypot:, rendered_at:, now: Time.current)
+  def initialize(honeypot:, rendered_at:, ip: nil, now: Time.current)
     @honeypot = honeypot.to_s.strip
     @rendered_at = rendered_at
+    @ip = ip.to_s.strip
     @now = now.to_f
   end
 
   def call
     return spam('honeypot') if @honeypot.present?
+    return spam('spam_ip') if @ip.present? && SpamBlockedEntry.ip_blocked?(@ip)
     return suspicious('no_render_timestamp') if @rendered_at.blank?
     return suspicious('too_fast') if @now - @rendered_at.to_f < MIN_FILL_SECONDS
 
