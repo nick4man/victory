@@ -196,9 +196,16 @@ jobs:
       - name: Install OpenCode
         run: |
           set -euo pipefail
-          curl -fsSL https://opencode.ai/install | bash
+          # Скачивание в файл + ретраи: curl|bash обрывался на ~92%
+          # (job падал с exit 127 на opencode --version, PR #258).
+          for i in 1 2 3; do
+            curl -fsSL https://opencode.ai/install -o /tmp/oc-install.sh && break
+            echo "retry $i"; sleep 5
+          done
+          bash /tmp/oc-install.sh
           echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
-          opencode --version
+          # Полный путь: GITHUB_PATH действует со СЛЕДУЮЩЕГО шага.
+          "$HOME/.opencode/bin/opencode" --version
 
       # Read-only обзор diff + постинг одного верхнеуровневого комментария
       # через gh (GITHUB_TOKEN). Модель — opencode-go/glm-5.3 (подписка Go):
