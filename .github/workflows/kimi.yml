@@ -237,6 +237,12 @@ jobs:
             echo "OIDC-обмен не выдал токен (ответ: $(curl -s https://opencode.ai/console/auth/oauth/token -o /dev/null -w '%{http_code}'))" >&2
             exit 1
           fi
+          # Диагностика: сразу проверить ключ на inference API — отделяет
+          # «ключ невалиден/квота» от «бинарь opencode падает сам».
+          val=$(curl -s -o /tmp/oc_val -w "%{http_code}" -H "Authorization: Bearer $token" \
+            "https://opencode.ai/inference/openai/v1/models")
+          echo "проверка ключа на inference /models: HTTP $val"
+          if [ "$val" != "200" ]; then echo "тело ответа:"; head -c 300 /tmp/oc_val; echo; exit 1; fi
           echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
 
       - name: Install OpenCode
