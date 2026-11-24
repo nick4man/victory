@@ -135,13 +135,7 @@ app/
     foreign/
       audits_controller.rb
     forms/
-      agent_contacts_controller.rb
-      callback_requests_controller.rb
-      consultation_requests_controller.rb
-      mortgage_requests_controller.rb
-      quick_inquiries_controller.rb
       service_requests_controller.rb
-      viewing_requests_controller.rb
     partners/
       auth_controller.rb
       dashboard_controller.rb
@@ -744,6 +738,7 @@ app/
     property_evaluation_service.rb
     property_feed_mapper.rb
     property_rooms_parser.rb
+    public_form_spam_gate.rb
     qr_renderer.rb
     recommendation_service.rb
     review_moderation_notifier.rb
@@ -2114,46 +2109,6 @@ def audit_params
 def rate_limited?
 </file>
 
-<file path="app/controllers/forms/agent_contacts_controller.rb">
-module Forms
-class AgentContactsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/callback_requests_controller.rb">
-module Forms
-class CallbackRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/consultation_requests_controller.rb">
-module Forms
-class ConsultationRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/mortgage_requests_controller.rb">
-module Forms
-class MortgageRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/quick_inquiries_controller.rb">
-module Forms
-class QuickInquiriesController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
 <file path="app/controllers/forms/service_requests_controller.rb">
 module Forms
 ⋮----
@@ -2165,14 +2120,6 @@ def create
 private
 ⋮----
 def build_message(service)
-</file>
-
-<file path="app/controllers/forms/viewing_requests_controller.rb">
-module Forms
-class ViewingRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
 </file>
 
 <file path="app/controllers/partners/auth_controller.rb">
@@ -3116,9 +3063,6 @@ def build_meta_description
 
 <file path="app/controllers/reviews_controller.rb">
 class ReviewsController < ApplicationController
-RATE_LIMIT_PER_HOUR = 3
-RATE_LIMIT_KEY      = 'review:submit:%<ip>s'
-⋮----
 def index
 ⋮----
 def new
@@ -3131,9 +3075,7 @@ private
 ⋮----
 def review_params
 ⋮----
-def rate_limited?
-⋮----
-def register_submission!
+def review_spam_gate
 </file>
 
 <file path="app/controllers/robots_controller.rb">
@@ -7925,6 +7867,52 @@ def parse_response(content)
 def normalize_intent(raw)
 </file>
 
+<file path="app/services/llm/omni_client.rb">
+require 'net/http'
+require 'json'
+⋮----
+module Llm
+⋮----
+class OmniClient
+class Error < StandardError; end
+⋮----
+DEFAULT_CHAINS = {
+⋮----
+def self.chain_for(key)
+⋮----
+DIRECT_PROVIDERS = {
+⋮----
+USER_AGENT = 'victory62-site/1.0'
+⋮----
+def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
+⋮----
+def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
+⋮----
+private
+⋮----
+def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
+⋮----
+def endpoint_for(model)
+⋮----
+def direct_only_chains?
+⋮----
+def direct_model?(model)
+⋮----
+def parse_tool_calls(raw)
+⋮----
+def safe_parse_json(str)
+⋮----
+TIER_WEIGHTS = {
+⋮----
+def increment_metric(chain, model)
+⋮----
+def tier_weight(model)
+⋮----
+def redis_connection
+⋮----
+require 'redis' unless defined?(Redis)
+</file>
+
 <file path="app/services/llm/question_classifier.rb">
 module Llm
 ⋮----
@@ -11948,6 +11936,66 @@ NUMERIC_PATTERN = /(?<![\d])([1-6])[\s.-]?(?:комн|к(?=\b|[\s.,]))/i.freeze
 def self.parse(description)
 </file>
 
+<file path="app/services/public_form_spam_gate.rb">
+class PublicFormSpamGate
+⋮----
+MIN_FILL_SECONDS = 3
+⋮----
+IDEMPOTENCY_WINDOW = 15.minutes
+⋮----
+DEFAULT_RATE_LIMIT_PER_HOUR = 3
+⋮----
+ALERT_THRESHOLD = 10
+⋮----
+DROP_REASONS = %w[honeypot spam_ip no_render_timestamp too_fast rate_limit duplicate].freeze
+⋮----
+HONEYPOT_PARAM = ContactFormSpamGuard::HONEYPOT_PARAM
+⋮----
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def duplicate_submit?(form, visitor_token)
+⋮----
+def rate_limit_key(form, ip)
+⋮----
+def counter_key(form, reason)
+⋮----
+def alert_key(form, reason)
+⋮----
+def idempotency_key(form, visitor_token)
+⋮----
+def record(form:, reason:, ip:, ua:)
+⋮----
+private
+⋮----
+def mark_alert_fired(form, reason)
+⋮----
+attr_reader :reason
+⋮----
+def initialize(form:, honeypot:, rendered_at:, ip:, visitor_token:,
+⋮----
+def call
+⋮----
+def spam?
+⋮----
+def suspicious?
+⋮----
+def record(ua:)
+⋮----
+def register_rate_limit_hit!
+⋮----
+private
+⋮----
+def verify_rendered_at
+⋮----
+def rate_limited?
+⋮----
+def spam(reason)
+</file>
+
 <file path="app/services/qr_renderer.rb">
 require 'rqrcode'
 ⋮----
@@ -12990,52 +13038,6 @@ LOCAL_HEADER_SIG = "PK\u0003\u0004".b
 module_function
 ⋮----
 def first_file(data)
-</file>
-
-<file path="app/services/llm/omni_client.rb">
-require 'net/http'
-require 'json'
-⋮----
-module Llm
-⋮----
-class OmniClient
-class Error < StandardError; end
-⋮----
-DEFAULT_CHAINS = {
-⋮----
-def self.chain_for(key)
-⋮----
-DIRECT_PROVIDERS = {
-⋮----
-USER_AGENT = 'victory62-site/1.0'
-⋮----
-def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
-⋮----
-def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
-⋮----
-private
-⋮----
-def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
-⋮----
-def endpoint_for(model)
-⋮----
-def direct_only_chains?
-⋮----
-def direct_model?(model)
-⋮----
-def parse_tool_calls(raw)
-⋮----
-def safe_parse_json(str)
-⋮----
-TIER_WEIGHTS = {
-⋮----
-def increment_metric(chain, model)
-⋮----
-def tier_weight(model)
-⋮----
-def redis_connection
-⋮----
-require 'redis' unless defined?(Redis)
 </file>
 
 <file path="app/services/llm/spam_filter.rb">
@@ -14973,46 +14975,6 @@ def name_matches_staff_first?
 # Exact match (имя submitter'а = staff first_name полностью)
 </file>
 
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
-⋮----
-def about
-⋮----
-def team
-⋮----
-def history
-⋮----
-def contacts
-⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-def valid_authenticity_token?(session, encoded_masked_token)
-⋮----
-def contact_form_binding
-⋮----
-def contact_form_client_fingerprint
-⋮----
-private
-⋮----
-def validate_contact_form
-⋮----
-def valid_email?(email)
-</file>
-
 <file path="app/models/inquiry.rb">
 include AASM
 ⋮----
@@ -15768,56 +15730,6 @@ def resolve_city(record, card_city)
 def sane?(p)
 </file>
 
-<file path="app/services/contact_form_spam_guard.rb">
-class ContactFormSpamGuard
-⋮----
-MIN_FILL_SECONDS = 3
-⋮----
-HONEYPOT_PARAM = :contact_code
-⋮----
-ALERT_THRESHOLD = 10
-⋮----
-REASONS = %w[honeypot no_render_timestamp too_fast].freeze
-⋮----
-Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
-⋮----
-def rendered_at_token(now = Time.current)
-⋮----
-def verify_rendered_at_token(token)
-⋮----
-def form_csrf_token(binding)
-⋮----
-def verify_form_csrf_token(token, binding)
-⋮----
-def record(reason:, ip:, ua:)
-⋮----
-def counter_key(reason)
-⋮----
-def alert_key(reason)
-⋮----
-def sanitize_user_agent(ua)
-⋮----
-private
-⋮----
-def verifier(purpose = 'contact_form_rendered_at')
-⋮----
-def increment_counter(reason)
-⋮----
-def log_alert(reason, count)
-⋮----
-def mark_alert_fired(reason)
-⋮----
-def initialize(honeypot:, rendered_at:, now: Time.current)
-⋮----
-def call
-⋮----
-private
-⋮----
-def spam(reason)
-⋮----
-def suspicious(reason)
-</file>
-
 <file path="config/routes.rb">
 require 'sidekiq/web'
 ⋮----
@@ -15841,7 +15753,7 @@ gem 'pg', '~> 1.5'
 
 # Server — CVE sweep 15.11.26: puma 7.2.1 имеет advisory, fix в 7.2.2+. Major
 # bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
-gem 'puma', '~> 7.2', '>= 7.2.2'
+gem 'puma', '~> 7.2', '>= 7.2.3'
 
 # Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
 # / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
@@ -16037,6 +15949,46 @@ def probe_secret_valid?
 def probe_secret
 ⋮----
 def set_visitor_cookies(token, probe:)
+</file>
+
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
+⋮----
+def about
+⋮----
+def team
+⋮----
+def history
+⋮----
+def contacts
+⋮----
+def send_contact_form
+⋮----
+def services
+⋮----
+def faq
+⋮----
+def privacy
+⋮----
+def terms
+⋮----
+def not_found
+⋮----
+def unprocessable_entity
+⋮----
+def internal_server_error
+⋮----
+def valid_authenticity_token?(session, encoded_masked_token)
+⋮----
+def contact_form_binding
+⋮----
+def contact_form_client_fingerprint
+⋮----
+private
+⋮----
+def validate_contact_form
+⋮----
+def valid_email?(email)
 </file>
 
 <file path="app/jobs/embed_property_valuation_job.rb">
@@ -16400,6 +16352,56 @@ private
 def recent_leads
 ⋮----
 def lead_label(lead)
+</file>
+
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
+⋮----
+MIN_FILL_SECONDS = 3
+⋮----
+HONEYPOT_PARAM = :contact_code
+⋮----
+ALERT_THRESHOLD = 10
+⋮----
+REASONS = %w[honeypot no_render_timestamp too_fast spam_ip].freeze
+⋮----
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def form_csrf_token(binding)
+⋮----
+def verify_form_csrf_token(token, binding)
+⋮----
+def record(reason:, ip:, ua:)
+⋮----
+def counter_key(reason)
+⋮----
+def alert_key(reason)
+⋮----
+def sanitize_user_agent(ua)
+⋮----
+private
+⋮----
+def verifier(purpose = 'contact_form_rendered_at')
+⋮----
+def increment_counter(reason)
+⋮----
+def log_alert(reason, count)
+⋮----
+def mark_alert_fired(reason)
+⋮----
+def initialize(honeypot:, rendered_at:, ip: nil, now: Time.current)
+⋮----
+def call
+⋮----
+private
+⋮----
+def spam(reason)
+⋮----
+def suspicious(reason)
 </file>
 
 <file path="app/services/property_evaluation_service.rb">
