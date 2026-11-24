@@ -474,25 +474,11 @@ Rails.application.routes.draw do
   # ============================================
   # FORMS & INTERACTIONS (Формы)
   # ============================================
+  # #261: мёртвые стабы Forms::{QuickInquiries,CallbackRequests,ViewingRequests,
+  # AgentContacts,MortgageRequests,ConsultationRequests} выключены — они ничего
+  # не сохраняли (log+redirect), а их роуты оставляли ботам лишние точки POST.
+  # Живой сабмит заявки — /contact_forms/* и Forms::ServiceRequests (часть 2).
   namespace :forms do
-    # Quick inquiry
-    resource :quick_inquiry, only: [:create]
-    
-    # Viewing schedule
-    resource :viewing_request, only: [:create]
-    
-    # Mortgage request
-    resource :mortgage_request, only: [:create]
-    
-    # Online consultation
-    resource :consultation_request, only: [:create]
-    
-    # Callback request
-    resource :callback_request, only: [:create]
-    
-    # Contact agent
-    resource :agent_contact, only: [:create]
-
     # Generic service request (from /services page modal)
     resource :service_request, only: [:create]
   end
