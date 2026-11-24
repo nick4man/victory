@@ -20,8 +20,8 @@
 # в /contacts suspicious-заявку смотрит человек, а в /reviews каждый
 # подозрительный отзыв — это пинг модерации, т.е. та самая спам-нагрузка.
 class PublicFormSpamGate
-  # Форма с полем `author_email` (обязательное для отзывов) заполняется
-  # быстрее 3 секунд только скриптом.
+  # Форма с видимыми полями (имя, email и т.п.) заполняется быстрее
+  # 3 секунд только скриптом; порог общий для всех публичных форм.
   MIN_FILL_SECONDS = 3
   # Окно схлопывания двойного сабмита: с запасом покрывает ретраи клиента
   # и человеческое «отправить ещё раз, вдруг не прошло».
@@ -142,6 +142,16 @@ class PublicFormSpamGate
   # поставиться и до Record, поэтому лог — отдельным шагом.
   def record(ua:)
     self.class.record(form: @form, reason: reason, ip: @ip, ua: ua)
+  end
+
+  # Откат идемпотентности для сабмита, прошедшего гейт, но не сохранившегося
+  # (ошибки валидации и т.п.): маркер резервируется ДО save ради атомарного
+  # схлопывания гонки двойного клика, и платой за окно владеет только
+  # сохранившийся сабмит. Вызов без visitor_token — no-op.
+  def release_idempotency_marker!
+    return if @visitor_token.blank?
+
+    Rails.cache.delete(self.class.idempotency_key(@form, @visitor_token))
   end
 
   def register_rate_limit_hit!

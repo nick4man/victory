@@ -69,12 +69,13 @@ RSpec.describe 'Reviews POST /reviews', type: :request do
   end
 
   describe 'молчаливый дроп (образец #255) — бот не должен узнать, что раскрыт' do
-    it 'дропает заполненный honeypot: success-флэш, без записи и пинга' do
+    it 'дропает заполненный honeypot: success-флэш, без записи и пинга, с логом reason' do
       get new_review_path
       token = rendered_at_token_from_page
       travel 5.seconds
 
       allow(ReviewModerationNotifier).to receive(:notify)
+      allow(Rails.logger).to receive(:info)
 
       expect do
         submit_review(rendered_at_token: token,
@@ -85,6 +86,9 @@ RSpec.describe 'Reviews POST /reviews', type: :request do
       expect(response).to redirect_to(reviews_path)
       expect(flash[:notice]).to be_present
       expect(flash[:alert]).to be_blank
+      # Блокер #1 из ревью: record должен видеть reason мемоизированного гейта.
+      expect(Rails.logger).to have_received(:info).with(/reason=honeypot/)
+      expect(Rails.cache.read(PublicFormSpamGate.counter_key('review', 'honeypot')).to_i).to eq 1
     end
 
     it 'дропает POST без timestamp рендера (бот не открывал форму)' do
@@ -104,6 +108,20 @@ RSpec.describe 'Reviews POST /reviews', type: :request do
       expect { submit_review(rendered_at_token: token) }.not_to change(Review, :count)
       expect(response).to redirect_to(reviews_path)
       expect(flash[:notice]).to be_present
+    end
+
+    it 'счётчик IP-дропа растёт для реальных дропов (мемоизированный гейт)' do
+      SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '80.94.95.173', source: 'firehol')
+      get new_review_path
+      token = rendered_at_token_from_page
+      travel 5.seconds
+
+      post reviews_path,
+           params: { review: valid_review_params }.merge(rendered_at_token: token),
+           headers: { 'REMOTE_ADDR' => '80.94.95.173' }
+
+      expect(response).to redirect_to(reviews_path)
+      expect(Rails.cache.read(PublicFormSpamGate.counter_key('review', 'spam_ip')).to_i).to eq 1
     end
 
     context 'с IP из блэклиста SpamBlockedEntry' do
@@ -204,10 +222,13 @@ RSpec.describe 'Reviews POST /reviews', type: :request do
       get new_review_path
       token = rendered_at_token_from_page
       travel 5.seconds
+      cookies.delete('visitor_token')
       expect { submit_review(rendered_at_token: token) }.not_to change(Review, :count)
       expect(response).to redirect_to(reviews_path)
       expect(flash[:notice]).to be_present
       expect(flash[:alert]).to be_blank
+      # Нит-пик из ревью: дроп именно по rate_limit, не за счёт дубля.
+      expect(Rails.cache.read(PublicFormSpamGate.counter_key('review', 'rate_limit')).to_i).to eq 1
     end
 
     it 'счётчик не расходуется невалидными сабмитами' do
@@ -232,6 +253,34 @@ RSpec.describe 'Reviews POST /reviews', type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include('Не удалось сохранить отзыв')
       expect(rendered_at_token_from_page).to be_present
+    end
+
+    it 'исправленный повтор после невалидного сабмита проходит целиком (блокер #2 из ревью)' do
+      get new_review_path
+      token = rendered_at_token_from_page
+      travel 5.seconds
+
+      allow(ReviewModerationNotifier).to receive(:notify)
+
+      # Невалидный сабмит прошёл гейт, но не сохранился: маркер идемпотентности
+      # обязан освободиться, иначе исправление потеряется на 15 минут.
+      submit_review(rendered_at_token: token, review: valid_review_params.merge(body: 'коротко'))
+      expect(response).to have_http_status(:unprocessable_content)
+
+      # Форма перерисована со свежим timestamp; тот же visitor_token cookie.
+      travel 5.seconds
+      corrected_token = rendered_at_token_from_page
+
+      expect { submit_review(rendered_at_token: corrected_token) }.to change(Review, :count).by(1)
+      expect(ReviewModerationNotifier).to have_received(:notify).once
+      expect(response).to redirect_to(reviews_path)
+      expect(flash[:notice]).to be_present
+
+      # Дубль исправленного всё ещё схлопывается идемпотентностью.
+      travel 5.seconds
+      expect { submit_review(rendered_at_token: PublicFormSpamGate.rendered_at_token) }
+        .not_to change(Review, :count)
+      expect(ReviewModerationNotifier).to have_received(:notify).once
     end
   end
 end

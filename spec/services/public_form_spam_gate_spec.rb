@@ -187,6 +187,26 @@ RSpec.describe PublicFormSpamGate do
       expect(gate.reason).to eq 'honeypot'
     end
 
+    it 'release_idempotency_marker! освобождает зарезервированный маркер' do
+      token = described_class.rendered_at_token(Time.current - 10.seconds)
+      gate = described_class.new(form: 'review', honeypot: '', rendered_at: token, ip: '1.2.3.4',
+                                 visitor_token: 'visitor-rel')
+      gate.call
+      expect(Rails.cache.read(described_class.idempotency_key('review', 'visitor-rel'))).to be true
+
+      gate.release_idempotency_marker!
+      expect(Rails.cache.read(described_class.idempotency_key('review', 'visitor-rel'))).to be_nil
+
+      # После освобождения повтор проходит как первый сабмит.
+      expect(described_class.duplicate_submit?('review', 'visitor-rel')).to be false
+    end
+
+    it 'release_idempotency_marker! без visitor_token — no-op' do
+      gate = described_class.new(form: 'review', honeypot: '', rendered_at: nil, ip: '1.2.3.4',
+                                 visitor_token: '')
+      expect { gate.release_idempotency_marker! }.not_to raise_error
+    end
+
     it 'record делегирует в класс-метод' do
       allow(described_class).to receive(:record)
       gate = described_class.new(form: 'review', honeypot: 'x', rendered_at: nil, ip: '1.2.3.4',

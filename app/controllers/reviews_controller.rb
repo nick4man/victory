@@ -45,6 +45,11 @@ class ReviewsController < ApplicationController
       ReviewModerationNotifier.notify(@review) rescue nil
       redirect_to reviews_path, notice: I18n.t('messages.review_accepted')
     else
+      # Маркер идемпотентности резервируется гейтом атомарно ДО save —
+      # иначе гонка двойного клика не схлопывается. Платой за это окно
+      # владеет только сохранившийся сабмит: невалидный освобождает маркер,
+      # чтобы исправленный повтор не потерялся на все 15 минут.
+      review_spam_gate.release_idempotency_marker!
       flash.now[:alert] = 'Не удалось сохранить отзыв. Проверьте поля и попробуйте ещё раз.'
       # Повторная отправка после правки полей должна пройти гейт:
       # перевыпускаем timestamp рендера для отрисованной заново формы.
@@ -63,8 +68,11 @@ class ReviewsController < ApplicationController
     params.require(:review).permit(:author_name, :author_email, :rating, :body, :title, :property_id)
   end
 
+  # Один экземпляр гейта на запрос: call резервирует reason и маркер
+  # идемпотентности, а record/release_idempotency_marker! должны видеть
+  # то же состояние, а не свежий объект с reason == nil.
   def review_spam_gate
-    PublicFormSpamGate.new(
+    @review_spam_gate ||= PublicFormSpamGate.new(
       form:          'review',
       honeypot:      params[PublicFormSpamGate::HONEYPOT_PARAM],
       rendered_at:   params[:rendered_at_token],
