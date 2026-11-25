@@ -132,6 +132,7 @@ app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
 app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
 app/controllers/concerns/chat/test_mode_resolution.rb — module Chat, module TestModeResolution
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
+app/controllers/concerns/public_form_spam_gateable.rb — module PublicFormSpamGateable
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
 app/controllers/contact_forms_controller.rb — class ContactFormsController
@@ -617,6 +618,7 @@ app/jobs/yandex/recrawl_url_job.rb — module Yandex, class RecrawlUrlJob
 ## app/mailers
 
 ```
+app/mailers/admin_mailer.rb — class AdminMailer
 app/mailers/application_mailer.rb — class ApplicationMailer
 app/mailers/cabinet_invitation_mailer.rb — class CabinetInvitationMailer
 app/mailers/cabinet_mailer.rb — class CabinetMailer

@@ -120,6 +120,14 @@
     <h3 class="text-2xl font-light tracking-wide text-foreground mb-6" data-service-modal-title>—</h3>
 
     <%= form_with url: forms_service_request_path, method: :post, local: true, class: "space-y-4", data: { service_modal_form: true } do |f| %>
+      <%# #262: honeypot + подписанный timestamp рендера — PublicFormSpamGate
+          (образец /reviews из #261). %>
+      <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+        <label>Не заполняйте это поле
+          <input type="text" name="<%= PublicFormSpamGate::HONEYPOT_PARAM %>" tabindex="-1" autocomplete="off">
+        </label>
+      </div>
+      <%= hidden_field_tag :rendered_at_token, PublicFormSpamGate.rendered_at_token %>
       <%= f.hidden_field :service_slug, data: { service_modal_slug: true } %>
       <input type="text" name="name" required placeholder="Ваше имя"
              class="w-full h-11 px-4 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none transition-colors">

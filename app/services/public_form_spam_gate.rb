@@ -9,6 +9,12 @@
 # отвечает success-ом, ничего не сохраняя и не пингуя; здесь остаётся только
 # лог reason=… (образец #255).
 #
+# Rate limit — атомарная резервация слота (increment + сравнение одной
+# операцией) ДО любых side effects: связка «прочитал счётчик в call, инкремент
+# после save» обходилась параллельным флудом (блокер 3 из ревью #262). Слот
+# расходует только сохранившийся сабмит: невалидный и дубль освобождают его
+# через release_rate_limit_slot!/release_submission_markers!.
+#
 # Идемпотентность (кейс бота RobertStymn из прода): двойной сабмит с тем же
 # visitor_token в окне IDEMPOTENCY_WINDOW — это ОДИН сабмит. Ключ кладётся
 # атомарным unless_exist — параллельные дубли из одной вкладки тоже дают
@@ -103,28 +109,42 @@ class PublicFormSpamGate
   attr_reader :reason
 
   # form — слаг формы для ключей rate limit/идемпотентности (например 'review');
-  # rate_limit — максимум сабмитов этого form в час с одного IP.
+  # rate_limit — максимум сабмитов этого form в час с одного IP (0 — счётчик
+  # выключен: у эндпоинта уже есть свой лимит, гейт его не ужесточает);
+  # require_render_token: false — для эндпоинтов без живой формы (PropertiesController#report):
+  # подписанного timestamp рендера там нет, тайминговые сигналы не проверяются.
   def initialize(form:, honeypot:, rendered_at:, ip:, visitor_token:,
-                 rate_limit: DEFAULT_RATE_LIMIT_PER_HOUR, now: Time.current)
-    @form          = form
-    @honeypot      = honeypot.to_s.strip
-    @rendered_at   = rendered_at
-    @ip            = ip.to_s.strip
-    @visitor_token = visitor_token.to_s.strip
-    @rate_limit    = rate_limit.to_i
-    @now           = now.to_f
-    @reason        = nil
+                 rate_limit: DEFAULT_RATE_LIMIT_PER_HOUR, now: Time.current,
+                 require_render_token: true)
+    @form                 = form
+    @honeypot             = honeypot.to_s.strip
+    @rendered_at          = rendered_at
+    @ip                   = ip.to_s.strip
+    @visitor_token        = visitor_token.to_s.strip
+    @rate_limit           = rate_limit.to_i
+    @now                  = now.to_f
+    @require_render_token = require_render_token
+    @rate_slot_reserved   = false
+    @reason               = nil
   end
 
   def call
     return spam('honeypot') if @honeypot.present?
     return spam('spam_ip') if @ip.present? && SpamBlockedEntry.ip_blocked?(@ip)
 
-    rendered = verify_rendered_at
-    return spam('no_render_timestamp') if rendered.nil?
-    return spam('too_fast') if rendered > @now - MIN_FILL_SECONDS
-    return spam('rate_limit') if rate_limited?
-    return spam('duplicate') if self.class.duplicate_submit?(@form, @visitor_token)
+    if @require_render_token
+      rendered = verify_rendered_at
+      return spam('no_render_timestamp') if rendered.nil?
+      return spam('too_fast') if rendered > @now - MIN_FILL_SECONDS
+    end
+    return spam('rate_limit') unless reserve_rate_limit_slot!
+
+    # Дубль не должен жечь квоту: слот, зарезервированный строкой выше,
+    # возвращаем — лимит расходует только реально новый сабмит.
+    if self.class.duplicate_submit?(@form, @visitor_token)
+      release_rate_limit_slot!
+      return spam('duplicate')
+    end
 
     Result.new(spam: false, suspicious: false, reason: nil)
   end
@@ -154,8 +174,36 @@ class PublicFormSpamGate
     Rails.cache.delete(self.class.idempotency_key(@form, @visitor_token))
   end
 
-  def register_rate_limit_hit!
-    Rails.cache.increment(self.class.rate_limit_key(@form, @ip), 1, expires_in: 1.hour)
+  # Атомарная резервация слота rate limit: increment и сравнение с лимитом —
+  # одна операция, поэтому параллельный флуд с одного IP не превышает лимит
+  # (блокер 3 из ревью #262). Идемпотентна внутри одного инстанса гейта:
+  # повторный вызов на success-пути не инкрементирует счётчик дважды.
+  # rate_limit <= 0 — лимит выключен, слот всегда «зарезервирован».
+  def reserve_rate_limit_slot!
+    return true if @rate_limit <= 0
+    return true if @rate_slot_reserved
+
+    count = Rails.cache.increment(self.class.rate_limit_key(@form, @ip), 1, expires_in: 1.hour).to_i
+    @rate_slot_reserved = count <= @rate_limit
+  end
+
+  # Откат резервации для сабмита, прошедшего гейт, но не сохранившегося:
+  # невалидная заявка не должна расходовать чей-то лимит. Сверх-лимитный
+  # инкремент (резервация не удалась) не откатывается — счётчик считает
+  # попытки, а окно фиксируется первой записью.
+  def release_rate_limit_slot!
+    return unless @rate_slot_reserved
+
+    Rails.cache.decrement(self.class.rate_limit_key(@form, @ip), 1)
+    @rate_slot_reserved = false
+  end
+
+  # Полный откат маркеров сабмита, прошедшего гейт, но не сохранившегося
+  # (ошибки валидации): идемпотентность и слот rate limit освобождаются,
+  # чтобы исправленный повтор не был молча отброшен как duplicate/rate_limit.
+  def release_submission_markers!
+    release_idempotency_marker!
+    release_rate_limit_slot!
   end
 
   private
@@ -163,12 +211,6 @@ class PublicFormSpamGate
   def verify_rendered_at
     value = self.class.verify_rendered_at_token(@rendered_at)
     value.is_a?(Numeric) ? value.to_f : nil
-  end
-
-  def rate_limited?
-    return false if @rate_limit <= 0
-
-    Rails.cache.read(self.class.rate_limit_key(@form, @ip)).to_i >= @rate_limit
   end
 
   def spam(reason)

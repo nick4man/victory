@@ -10,6 +10,7 @@ class PropertyValuationsController < ApplicationController
   RATE_LIMIT = { count: 5, window: 1.hour }.freeze
 
   before_action :set_breadcrumbs
+  before_action :drop_spam_valuation, only: :create
   before_action :enforce_rate_limit, only: :create
 
   # GET /sell/valuation/new
@@ -168,7 +169,20 @@ class PropertyValuationsController < ApplicationController
   end
   
   private
-  
+
+  # #262: общий антиспам-гейт до PropertyValuationJob (LLM-цепочка ~$0.25-0.40
+  # за прогон + Tavily/Firecrawl + пинг сотрудникам). Дроп молчаливый:
+  # success-нотис, без записи и без запуска цепочки. rate_limit: 0 — собственный
+  # Redis-лимит (5/час) ниже не ужесточаем; идемпотентность не применяем:
+  # повторная оценка другого объекта с того же браузера — легитимный сценарий.
+  def drop_spam_valuation
+    gate = public_form_spam_gate('valuation_express', rate_limit: 0, visitor_token: nil)
+    return unless gate.call.spam
+
+    gate.record(ua: request.user_agent)
+    redirect_to new_property_valuation_path, notice: 'Заявка на оценку принята. Мы свяжемся с вами.'
+  end
+
   def valuation_params
     permitted = params.require(:property_valuation).permit(
       :property_type, :deal_type, :address, :city, :district,

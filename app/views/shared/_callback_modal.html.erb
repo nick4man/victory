@@ -36,6 +36,14 @@
       <div class="bg-white px-6 py-6">
         <!-- Form -->
         <%= form_with url: contact_forms_callback_path, method: :post, local: false, html: { class: "space-y-4", id: "callbackForm" } do |f| %>
+          <%# #262: honeypot + подписанный timestamp рендера — PublicFormSpamGate
+              (образец /reviews из #261). %>
+          <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+            <label>Не заполняйте это поле
+              <input type="text" name="<%= PublicFormSpamGate::HONEYPOT_PARAM %>" tabindex="-1" autocomplete="off">
+            </label>
+          </div>
+          <%= hidden_field_tag :rendered_at_token, PublicFormSpamGate.rendered_at_token %>
           
           <!-- Name -->
           <div>
