@@ -103,26 +103,33 @@ class PublicFormSpamGate
   attr_reader :reason
 
   # form — слаг формы для ключей rate limit/идемпотентности (например 'review');
-  # rate_limit — максимум сабмитов этого form в час с одного IP.
+  # rate_limit — максимум сабмитов этого form в час с одного IP (0 — счётчик
+  # выключен: у эндпоинта уже есть свой лимит, гейт его не ужесточает);
+  # require_render_token: false — для эндпоинтов без живой формы (PropertiesController#report):
+  # подписанного timestamp рендера там нет, тайминговые сигналы не проверяются.
   def initialize(form:, honeypot:, rendered_at:, ip:, visitor_token:,
-                 rate_limit: DEFAULT_RATE_LIMIT_PER_HOUR, now: Time.current)
-    @form          = form
-    @honeypot      = honeypot.to_s.strip
-    @rendered_at   = rendered_at
-    @ip            = ip.to_s.strip
-    @visitor_token = visitor_token.to_s.strip
-    @rate_limit    = rate_limit.to_i
-    @now           = now.to_f
-    @reason        = nil
+                 rate_limit: DEFAULT_RATE_LIMIT_PER_HOUR, now: Time.current,
+                 require_render_token: true)
+    @form                 = form
+    @honeypot             = honeypot.to_s.strip
+    @rendered_at          = rendered_at
+    @ip                   = ip.to_s.strip
+    @visitor_token        = visitor_token.to_s.strip
+    @rate_limit           = rate_limit.to_i
+    @now                  = now.to_f
+    @require_render_token = require_render_token
+    @reason               = nil
   end
 
   def call
     return spam('honeypot') if @honeypot.present?
     return spam('spam_ip') if @ip.present? && SpamBlockedEntry.ip_blocked?(@ip)
 
-    rendered = verify_rendered_at
-    return spam('no_render_timestamp') if rendered.nil?
-    return spam('too_fast') if rendered > @now - MIN_FILL_SECONDS
+    if @require_render_token
+      rendered = verify_rendered_at
+      return spam('no_render_timestamp') if rendered.nil?
+      return spam('too_fast') if rendered > @now - MIN_FILL_SECONDS
+    end
     return spam('rate_limit') if rate_limited?
     return spam('duplicate') if self.class.duplicate_submit?(@form, @visitor_token)
 

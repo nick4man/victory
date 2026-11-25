@@ -281,12 +281,18 @@ RSpec.describe 'Chat::Messages', type: :request do
     # Квота 5 оценок/час на IP — в общем dev-redis её съедают соседние прогоны.
     allow_any_instance_of(PropertyValuationsController).to receive(:rate_limited?).and_return(false)
 
-    post property_valuations_path, params: {
-      property_valuation: {
-        property_type: 'apartment', deal_type: 'sale',
-        address: 'Рязань, ул. Ленина, д. 1', total_area: '54'
+    # #262: форма оценки под антиспам-гейтом — нужен подписанный timestamp
+    # рендера, иначе молчаливый дроп до создания PropertyValuation.
+    rendered_at_token = PublicFormSpamGate.rendered_at_token
+    travel 5.seconds do
+      post property_valuations_path, params: {
+        property_valuation: {
+          property_type: 'apartment', deal_type: 'sale',
+          address: 'Рязань, ул. Ленина, д. 1', total_area: '54'
+        },
+        rendered_at_token: rendered_at_token
       }
-    }
+    end
     valuation = PropertyValuation.find_by!(address: 'Рязань, ул. Ленина, д. 1')
     expect(valuation.visitor_token).to be_present
 

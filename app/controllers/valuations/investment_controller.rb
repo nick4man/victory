@@ -57,9 +57,20 @@ class Valuations::InvestmentController < ApplicationController
   end
 
   def create
+    # #262: антиспам-гейт до InvestmentAuditJob (LLM-цепочка): дроп до
+    # rate_limited?/save/enqueue, молчаливый success-нотис. rate_limit: 0 —
+    # существующий Redis-лимит (5/час) ниже не ужесточаем; идемпотентность
+    # не нужна, см. drop_spam_valuation в PropertyValuationsController.
+    gate = public_form_spam_gate('valuation_investment', rate_limit: 0, visitor_token: nil)
+    if gate.call.spam
+      gate.record(ua: request.user_agent)
+      redirect_to investment_audit_new_path, notice: 'Заявка на аудит принята. Мы свяжемся с вами.'
+      return
+    end
+
     if rate_limited?
       flash[:alert] = 'Слишком много запросов. Попробуйте через час.'
-      redirect_to new_investment_audit_path and return
+      redirect_to investment_audit_new_path and return
     end
 
     @valuation = PropertyValuation.new(valuation_params.merge(

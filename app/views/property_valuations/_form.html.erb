@@ -11,6 +11,15 @@
               data: { valuation_form: true, active_step: 1 },
               class: "max-w-3xl mx-auto" do |f| %>
 
+  <%# #262: honeypot + подписанный timestamp рендера — PublicFormSpamGate
+      до PropertyValuationJob (образец /reviews из #261). %>
+  <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+    <label>Не заполняйте это поле
+      <input type="text" name="<%= PublicFormSpamGate::HONEYPOT_PARAM %>" tabindex="-1" autocomplete="off">
+    </label>
+  </div>
+  <%= hidden_field_tag :rendered_at_token, PublicFormSpamGate.rendered_at_token %>
+
   <% if valuation.errors.any? %>
     <div class="mb-6 border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
       <p class="font-medium mb-2">Не получилось обработать форму:</p>

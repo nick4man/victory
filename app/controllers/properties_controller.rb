@@ -438,18 +438,31 @@ class PropertiesController < ApplicationController
   
   # POST /properties/:id/report
   def report
+    # #262: IP-гейт + rate limit до AdminMailer — флуд произвольным текстом
+    # в ящик админов закрыт. Живой формы у эндпоинта нет, поэтому render-token
+    # не требуем; идемпотентность не нужна (жалобы — per-property, флуд режет
+    # часовой лимит). Дроп молчаливый: success-redirect как у принятой жалобы.
+    gate = public_form_spam_gate('property_report', require_render_token: false, visitor_token: nil)
+    if gate.call.spam
+      gate.record(ua: request.user_agent)
+      redirect_to @property, notice: 'Жалоба отправлена. Спасибо за информацию!'
+      return
+    end
+
     # Report inappropriate content
     reason = params[:reason]
     description = params[:description]
-    
+
     # Send to admins or create a report record
     AdminMailer.property_reported(@property, current_user, reason, description).deliver_later
-    
-    track_event('property_reported', { 
-      property_id: @property.id, 
-      reason: reason 
+    # Счётчик rate limit растёт только по реально отправленным жалобам.
+    gate.register_rate_limit_hit!
+
+    track_event('property_reported', {
+      property_id: @property.id,
+      reason: reason
     })
-    
+
     redirect_to @property, notice: 'Жалоба отправлена. Спасибо за информацию!'
   end
   

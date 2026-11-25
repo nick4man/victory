@@ -8,6 +8,18 @@ module Forms
     skip_before_action :verify_authenticity_token, only: [:create], raise: false
 
     def create
+      # #262: общий антиспам-гейт до Inquiry — молчаливый дроп с success-ответом
+      # формы (образец #255): бот не узнаёт, что заявка не сохранилась.
+      gate = public_form_spam_gate('service_request')
+      if gate.call.spam
+        gate.record(ua: request.user_agent)
+        respond_to do |format|
+          format.html { redirect_to services_page_path, notice: 'Заявка получена. Менеджер свяжется с вами в ближайшее время.' }
+          format.json { render json: { ok: true } }
+        end
+        return
+      end
+
       service = ServiceType.find_by(slug: params[:service_slug])
       attrs = {
         inquiry_type: 'consultation',
@@ -23,6 +35,8 @@ module Forms
       attrs[:user_id] = current_user.id if user_signed_in?
 
       Inquiry.create!(attrs)
+      # Счётчик rate limit растёт только по реально сохранённым заявкам.
+      gate.register_rate_limit_hit!
 
       respond_to do |format|
         format.html { redirect_to services_page_path, notice: 'Заявка получена. Менеджер свяжется с вами в ближайшее время.' }

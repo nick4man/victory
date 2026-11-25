@@ -17,10 +17,12 @@ RSpec.describe PublicFormSpamGate do
   end
 
   def gate_call(form: 'review', honeypot: '', rendered_at_token: nil, ip: '203.0.113.10',
-                visitor_token: 'visitor-abc', rate_limit: 3, now: Time.current)
+                visitor_token: 'visitor-abc', rate_limit: 3, now: Time.current,
+                require_render_token: true)
     described_class.new(
       form: form, honeypot: honeypot, rendered_at: rendered_at_token, ip: ip,
-      visitor_token: visitor_token, rate_limit: rate_limit, now: now
+      visitor_token: visitor_token, rate_limit: rate_limit, now: now,
+      require_render_token: require_render_token
     ).call
   end
 
@@ -41,6 +43,26 @@ RSpec.describe PublicFormSpamGate do
 
   it 'не считает пробельный honeypot заполненным' do
     expect(gate_call(honeypot: '   ', rendered_at_token: token).spam).to be false
+  end
+
+  # #262: эндпоинты без живой формы (PropertiesController#report) — тайминговые
+  # сигналы выключены, остальные работают.
+  describe 'require_render_token: false (эндпоинты без формы)' do
+    it 'пропускает сабмит без timestamp рендера' do
+      expect(gate_call(require_render_token: false).spam).to be false
+    end
+
+    it 'по-прежнему дропает honeypot и IP из блэклиста' do
+      expect(gate_call(honeypot: 'x', require_render_token: false).reason).to eq 'honeypot'
+
+      SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '203.0.113.10', source: 'firehol')
+      expect(gate_call(require_render_token: false).reason).to eq 'spam_ip'
+    end
+
+    it 'по-прежнему режет rate limit' do
+      Rails.cache.write(described_class.rate_limit_key('review', '203.0.113.10'), 3, expires_in: 1.hour)
+      expect(gate_call(require_render_token: false).reason).to eq 'rate_limit'
+    end
   end
 
   describe 'IP-блэклист (SpamBlockedEntry.ip_blocked?)' do

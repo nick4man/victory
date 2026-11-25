@@ -5,6 +5,25 @@
 class ContactFormsController < ApplicationController
   skip_before_action :verify_authenticity_token, only: [:create], if: -> { request.format.json? }
   before_action :set_property, only: [:viewing_schedule, :property_inquiry]
+  # #262: антиспам-гейт до создания Inquiry и любых mailer'ов (CSRF для JSON
+  # выключен — эндпоинты открыты ботам, а каждая заявка жжёт почту, включая
+  # confirmation на адрес из формы). Дроп молчаливый: ответ повторяет
+  # success-форму экшена, бот не узнаёт о блокировке (образец #255).
+  # Объявлен ПОСЛЕ set_property: дроп viewing_schedule редиректит на @property.
+  before_action :drop_spam_submission, only: %i[
+    quick_inquiry viewing_schedule callback consultation mortgage_application property_selection
+  ]
+
+  # Success-формы заявочных экшенов — единый источник: их же отдаёт дроп гейта,
+  # чтобы заблокированный бот не отличил молчаливый дроп от принятой заявки.
+  SUBMIT_SUCCESS = {
+    'quick_inquiry'        => { notice: 'Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.', message: 'Заявка принята' },
+    'viewing_schedule'     => { notice: 'Запись на показ принята! Мы свяжемся с вами для подтверждения.', message: 'Запись принята' },
+    'callback'             => { notice: 'Заявка на звонок принята! Мы перезвоним вам в течение 15 минут.', message: 'Заявка принята' },
+    'consultation'         => { notice: 'Заявка на консультацию принята! Мы свяжемся с вами для согласования времени.', message: 'Заявка принята' },
+    'mortgage_application' => { notice: 'Заявка на ипотеку принята! Мы подберем для вас лучшие предложения.', message: 'Заявка принята' },
+    'property_selection'   => { notice: 'Заявка принята! Мы подберем для вас подходящие варианты и пришлем на email.', message: 'Заявка принята' }
+  }.freeze
   
   # POST /contact_forms/quick_inquiry
   def quick_inquiry
@@ -17,6 +36,8 @@ class ContactFormsController < ApplicationController
     @inquiry.user_agent = request.user_agent
     
     if @inquiry.save
+      # Счётчик rate limit растёт только по реально сохранённым заявкам.
+      contact_form_spam_gate.register_rate_limit_hit!
       # Send notifications
       InquiryMailer.new_inquiry_notification(@inquiry).deliver_later
       InquiryMailer.inquiry_confirmation(@inquiry).deliver_later if @inquiry.email.present?
@@ -28,8 +49,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.' }
-        format.json { render json: { success: true, message: 'Заявка принята', inquiry_id: @inquiry.id }, status: :created }
+        format.html { redirect_back fallback_location: root_path, notice: SUBMIT_SUCCESS.dig('quick_inquiry', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('quick_inquiry', :message), inquiry_id: @inquiry.id }, status: :created }
       end
     else
       respond_to do |format|
@@ -47,6 +68,7 @@ class ContactFormsController < ApplicationController
     @viewing.status = 'pending'
     
     if @viewing.save
+      contact_form_spam_gate.register_rate_limit_hit!
       # Create inquiry
       create_viewing_inquiry(@viewing)
       
@@ -61,8 +83,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_to property_path(@property), notice: 'Запись на показ принята! Мы свяжемся с вами для подтверждения.' }
-        format.json { render json: { success: true, message: 'Запись принята', viewing_id: @viewing.id }, status: :created }
+        format.html { redirect_to property_path(@property), notice: SUBMIT_SUCCESS.dig('viewing_schedule', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('viewing_schedule', :message), viewing_id: @viewing.id }, status: :created }
       end
     else
       respond_to do |format|
@@ -82,6 +104,7 @@ class ContactFormsController < ApplicationController
     @inquiry.priority = determine_priority(@inquiry)
     
     if @inquiry.save
+      contact_form_spam_gate.register_rate_limit_hit!
       # Send notifications
       InquiryMailer.callback_requested(@inquiry).deliver_later
       
@@ -98,8 +121,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на звонок принята! Мы перезвоним вам в течение 15 минут.' }
-        format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
+        format.html { redirect_back fallback_location: root_path, notice: SUBMIT_SUCCESS.dig('callback', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('callback', :message) }, status: :created }
       end
     else
       respond_to do |format|
@@ -118,6 +141,7 @@ class ContactFormsController < ApplicationController
     @inquiry.source = 'website'
     
     if @inquiry.save
+      contact_form_spam_gate.register_rate_limit_hit!
       # Send notifications
       InquiryMailer.consultation_requested(@inquiry).deliver_later
       
@@ -130,8 +154,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на консультацию принята! Мы свяжемся с вами для согласования времени.' }
-        format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
+        format.html { redirect_back fallback_location: root_path, notice: SUBMIT_SUCCESS.dig('consultation', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('consultation', :message) }, status: :created }
       end
     else
       respond_to do |format|
@@ -150,6 +174,7 @@ class ContactFormsController < ApplicationController
     @inquiry.source = 'website'
     
     if @inquiry.save
+      contact_form_spam_gate.register_rate_limit_hit!
       # Send to mortgage partners
       send_to_mortgage_partners(@inquiry)
       
@@ -163,8 +188,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка на ипотеку принята! Мы подберем для вас лучшие предложения.' }
-        format.json { render json: { success: true, message: 'Заявка принята' }, status: :created }
+        format.html { redirect_back fallback_location: root_path, notice: SUBMIT_SUCCESS.dig('mortgage_application', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('mortgage_application', :message) }, status: :created }
       end
     else
       respond_to do |format|
@@ -183,6 +208,7 @@ class ContactFormsController < ApplicationController
     @inquiry.source = 'website'
     
     if @inquiry.save
+      contact_form_spam_gate.register_rate_limit_hit!
       # AI-powered property matching
       matching_properties = find_matching_properties(@inquiry)
       @inquiry.update(metadata: @inquiry.metadata.merge(matching_count: matching_properties.count))
@@ -196,8 +222,8 @@ class ContactFormsController < ApplicationController
       })
       
       respond_to do |format|
-        format.html { redirect_back fallback_location: root_path, notice: 'Заявка принята! Мы подберем для вас подходящие варианты и пришлем на email.' }
-        format.json { render json: { success: true, message: 'Заявка принята', matching_count: matching_properties.count }, status: :created }
+        format.html { redirect_back fallback_location: root_path, notice: SUBMIT_SUCCESS.dig('property_selection', :notice) }
+        format.json { render json: { success: true, message: SUBMIT_SUCCESS.dig('property_selection', :message), matching_count: matching_properties.count }, status: :created }
       end
     else
       respond_to do |format|
@@ -208,7 +234,34 @@ class ContactFormsController < ApplicationController
   end
   
   private
-  
+
+  # #262: молчаливый дроп заявочных форм — гейт сработал, логируем и отвечаем
+  # success-формой экшена (SUBMIT_SUCCESS), ничего не создавая и не отправляя.
+  # Срабатывает как before_action: render/redirect обрывает цепочку до экшена.
+  def drop_spam_submission
+    gate = contact_form_spam_gate
+    return unless gate.call.spam
+
+    gate.record(ua: request.user_agent)
+    success = SUBMIT_SUCCESS.fetch(action_name)
+    respond_to do |format|
+      format.html do
+        if action_name == 'viewing_schedule' && @property
+          redirect_to property_path(@property), notice: success[:notice]
+        else
+          redirect_back fallback_location: root_path, notice: success[:notice]
+        end
+      end
+      format.json { render json: { success: true, message: success[:message] }, status: :created }
+    end
+  end
+
+  # Один экземпляр гейта на запрос: before_action резервирует reason, а
+  # success-путь экшена инкрементирует rate limit тем же объектом.
+  def contact_form_spam_gate
+    @contact_form_spam_gate ||= public_form_spam_gate(action_name)
+  end
+
   def quick_inquiry_params
     params.require(:inquiry).permit(:name, :phone, :email, :message, :property_id, :external_listing_id)
   end
@@ -226,7 +279,10 @@ class ContactFormsController < ApplicationController
   end
   
   def consultation_params
-    params.require(:inquiry).permit(:name, :phone, :email, :message, :consultation_type, :preferred_date).tap do |p|
+    # #262: consultation_type — не колонка inquiries (уходит в metadata ниже),
+    # в permit ей не место: Inquiry.new падал с UnknownAttributeError на любом
+    # легитимном сабмите.
+    params.require(:inquiry).permit(:name, :phone, :email, :message, :preferred_date).tap do |p|
       p[:metadata] = {
         consultation_type: params.dig(:inquiry, :consultation_type),
         preferred_date: params.dig(:inquiry, :preferred_date)
@@ -235,10 +291,8 @@ class ContactFormsController < ApplicationController
   end
   
   def mortgage_params
-    params.require(:inquiry).permit(
-      :name, :phone, :email, :property_id,
-      :property_price, :down_payment, :loan_term, :monthly_income
-    ).tap do |p|
+    # #262: финансовые поля — не колонки inquiries, только metadata (см. выше).
+    params.require(:inquiry).permit(:name, :phone, :email, :property_id).tap do |p|
       p[:metadata] = {
         property_price: params.dig(:inquiry, :property_price),
         down_payment: params.dig(:inquiry, :down_payment),
@@ -249,10 +303,8 @@ class ContactFormsController < ApplicationController
   end
   
   def selection_params
-    params.require(:inquiry).permit(
-      :name, :phone, :email, :message,
-      :property_type, :deal_type, :min_price, :max_price, :rooms, :district
-    ).tap do |p|
+    # #262: критерии подбора — не колонки inquiries, только metadata (см. выше).
+    params.require(:inquiry).permit(:name, :phone, :email, :message).tap do |p|
       p[:metadata] = {
         property_type: params.dig(:inquiry, :property_type),
         deal_type: params.dig(:inquiry, :deal_type),
