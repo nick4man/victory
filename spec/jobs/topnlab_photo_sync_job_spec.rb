@@ -74,4 +74,13 @@ RSpec.describe TopnlabPhotoSyncJob do
 
     expect(property.reload.images_count).to eq(2)
   end
+
+  it 'битый URL из CRM не мешает скачать валидные фото' do
+    good = [url_for(0), url_for(1)]
+    stub_photos(good)
+
+    expect { described_class.new.perform(property.id, ['https://[битый', 123, *good]) }
+      .not_to raise_error
+    expect(attached_filenames).to include(*good.map { |url| filename_for(url) })
+  end
 end

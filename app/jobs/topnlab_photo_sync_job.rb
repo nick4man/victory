@@ -22,12 +22,20 @@ class TopnlabPhotoSyncJob < ApplicationJob
 
     # Дедуп строго до капа: Topnlab отдаёт photos в хронологическом порядке,
     # иначе 30 старых в начале массива навсегда отсекают новые (#265).
-    urls = urls.reject { |url| existing.include?(filename_for(url)) }.first(MAX_PER_PROPERTY)
+    # filename_for вне поэлементного rescue: битый URL из CRM не должен
+    # ронять скачивание валидных — раньше их пропускал rescue в цикле.
+    urls = urls.filter_map do |url|
+      filename = filename_for(url)
+      [url, filename] unless existing.include?(filename)
+    rescue StandardError => e
+      Rails.logger.warn("TopnlabPhoto: #{property.id} #{url} → #{e.class}: #{e.message}")
+      nil
+    end.first(MAX_PER_PROPERTY)
     return if urls.empty?
 
     attached = 0
-    urls.each do |url|
-      attach_one(property, url, filename_for(url)) && (attached += 1)
+    urls.each do |url, filename|
+      attach_one(property, url, filename) && (attached += 1)
     rescue StandardError => e
       Rails.logger.warn("TopnlabPhoto: #{property.id} #{url} → #{e.class}: #{e.message}")
     end
