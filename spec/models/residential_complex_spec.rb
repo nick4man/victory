@@ -65,6 +65,36 @@ RSpec.describe ResidentialComplex do
     end
   end
 
+  # Issue #266: слаг без валидации принимал URL из формы — zhk_path ломал
+  # edit-страницу админки 500. Формат — тот же, что даёт normalize_friendly_id.
+  describe 'формат слага' do
+    it 'отвергает URL, заглавные буквы, пробелы и кириллицу' do
+      [
+        'https://www.green-garden.ru/catalog/itower/',
+        'ITower',
+        'mednyj park',
+        'медный-парк'
+      ].each do |bad|
+        expect(build(:residential_complex, slug: bad)).not_to be_valid,
+                                                              "ожидали невалидный слаг: #{bad}"
+      end
+    end
+
+    it 'принимает slug-формат friendly_id' do
+      %w[itower mednyj staroe-selo-2].each do |good|
+        expect(build(:residential_complex, slug: good)).to be_valid,
+                                                           "ожидали валидный слаг: #{good}"
+      end
+    end
+
+    it 'пустой слаг валиден — friendly_id генерирует его из имени' do
+      complex = build(:residential_complex, name: 'Медный парк', slug: '')
+
+      expect(complex).to be_valid
+      expect(complex.slug).to eq('mednyy-park')
+    end
+  end
+
   describe 'soft-delete' do
     it 'исключает удалённые из default_scope и возвращает через unscoped' do
       complex = create(:residential_complex)

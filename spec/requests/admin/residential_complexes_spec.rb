@@ -166,6 +166,35 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
     end
   end
 
+  # Issue #266: URL в поле слага ронял edit-страницу 500 через zhk_path.
+  describe 'битый слаг (issue #266)' do
+    let(:complex) { create(:residential_complex, name: 'Айтауэр') }
+
+    it 'форма отклоняет URL в слаге: 422 с ошибкой валидации, запись не изменена' do
+      original_slug = complex.slug
+
+      admin_patch admin_residential_complex_path(complex), params: {
+        residential_complex: { slug: 'https://www.green-garden.ru/catalog/itower/' }
+      }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(complex.reload.slug).to eq(original_slug)
+    end
+
+    it 'edit-страница записи с битым слагом в БД открывается и показывает слаг текстом' do
+      complex.update!(slug: 'itower')
+      # Эмуляция состояния «до фикса»: update_attribute пишет URL мимо
+      # валидации, но с колбэками friendly_id — history сохраняет 'itower',
+      # как это было на проде у ITower (id=31).
+      complex.update_attribute(:slug, 'https://www.green-garden.ru/catalog/itower/')
+
+      admin_get edit_admin_residential_complex_path('itower')
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('https://www.green-garden.ru/catalog/itower/')
+    end
+  end
+
   describe 'жизненный цикл' do
     let(:complex) { create(:residential_complex, :with_body) }
 
