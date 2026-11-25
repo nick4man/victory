@@ -51,7 +51,7 @@ namespace :images do
   desc 'Бэкфилл width/height у блобов картинок с пустым анализом (issue #53). ' \
        'Идемпотентно, с throttle; прерванный прогон продолжается повторным запуском. ' \
        'Args: batch_size (100), sleep_seconds (0.2), limit, dry_run (1 = только подсчёт)'
-  task :backfill_metadata, %i[batch_size sleep_seconds limit dry_run] => :environment do |_t, args|
+  task :backfill_metadata, %i[batch_size sleep_seconds limit dry_run] => :environment do |_task, args|
     result = ImageMetadataBackfill.call(
       batch_size:    args[:batch_size] || 100,
       sleep_seconds: args[:sleep_seconds] || 0.2,
