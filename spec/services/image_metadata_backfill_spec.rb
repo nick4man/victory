@@ -65,6 +65,26 @@ RSpec.describe ImageMetadataBackfill do
     expect(result).to eq(done: 0, failed: 0, no_dims: 0, total: 0)
   end
 
+  it 'берёт блоб, у которого есть width, но нет height' do
+    blob = create_image_blob(metadata: { 'identified' => true, 'analyzed' => true, 'width' => 100 })
+    expect(blob.metadata['height']).to be_nil
+
+    described_class.call(sleep_seconds: 0)
+
+    expect(blob.reload.metadata).to include('width' => 640, 'height' => 480)
+  end
+
+  it 'берёт блоб с NULL metadata' do
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new(PNG_BYTES), filename: 'nil-meta.png', content_type: 'image/png', metadata: nil
+    )
+
+    result = described_class.call(sleep_seconds: 0)
+
+    expect(result[:total]).to eq(1)
+    expect(blob.reload.metadata).to include('width' => 640, 'height' => 480)
+  end
+
   it 'не трогает не-картинки' do
     ActiveStorage::Blob.create_and_upload!(
       io: StringIO.new('plain text'),
@@ -113,15 +133,25 @@ RSpec.describe ImageMetadataBackfill do
     expect(result).to eq(done: 0, failed: 0, no_dims: 1, total: 1)
   end
 
-  it 'limit ограничивает выборку' do
-    3.times { create_image_blob }
+  it 'limit ограничивает выборку: обработаны ровно limit блобов, остальные не тронуты' do
+    blobs = 3.times.map { create_image_blob }
+    untouched = blobs.last
 
     result = described_class.call(sleep_seconds: 0, limit: 2)
 
-    expect(result[:total]).to eq(2)
+    expect(result).to eq(done: 2, failed: 0, no_dims: 0, total: 2)
+    expect(untouched.reload.metadata['width']).to be_nil
   end
 
-  it 'делает throttle-паузу между блобами' do
+  it 'блобов больше batch_size: find_each обходит все пачки без пропусков' do
+    5.times { create_image_blob }
+
+    result = described_class.call(batch_size: 2, sleep_seconds: 0)
+
+    expect(result).to eq(done: 5, failed: 0, no_dims: 0, total: 5)
+  end
+
+  it 'делает throttle-паузу между блобами только в реальном прогоне' do
     create_image_blob
     backfill = described_class.new(sleep_seconds: 0.5)
     allow(backfill).to receive(:sleep)
@@ -129,5 +159,15 @@ RSpec.describe ImageMetadataBackfill do
     backfill.call
 
     expect(backfill).to have_received(:sleep).with(0.5).once
+  end
+
+  it 'dry_run не делает throttle-пауз' do
+    create_image_blob
+    backfill = described_class.new(sleep_seconds: 0.5, dry_run: true)
+    allow(backfill).to receive(:sleep)
+
+    backfill.call
+
+    expect(backfill).not_to have_received(:sleep)
   end
 end

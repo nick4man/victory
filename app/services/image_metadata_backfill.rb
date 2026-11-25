@@ -39,8 +39,8 @@ class ImageMetadataBackfill
         when :failed then failed += 1
         when :no_dims then no_dims += 1
         end
+        sleep(sleep_seconds) if sleep_seconds.positive?
       end
-      sleep(sleep_seconds) if sleep_seconds.positive?
       processed = done + failed + no_dims
       logger.info("[image_backfill] progress processed=#{processed}/#{total}") if (processed % 100).zero?
     end
@@ -53,19 +53,21 @@ class ImageMetadataBackfill
 
   attr_reader :batch_size, :sleep_seconds, :limit, :dry_run, :logger
 
-  # metadata — text-колонка: LIKE-достаточно. Повторный запуск подхватывает
-  # только остаток без width.
+  # metadata — text-колонка: LIKE-достаточно. NULL тоже застрял без размеров
+  # (трёхзначная логика NOT LIKE его исключает), поэтому обрабатываем явно.
+  # Повторный запуск подхватывает только остаток без width/height.
   def scope
     @scope ||= begin
       s = ActiveStorage::Blob.where('content_type LIKE ?', 'image/%')
-                             .where("metadata NOT LIKE '%\"width\"%'")
+                             .where("metadata IS NULL OR metadata NOT LIKE '%\"width\"%' OR metadata NOT LIKE '%\"height\"%'")
       limit ? s.limit(limit) : s
     end
   end
 
   def analyze_one(blob)
     blob.analyze
-    return :no_dims if blob.reload.metadata.to_s.exclude?('"width"')
+    meta = blob.reload.metadata
+    return :no_dims unless meta.is_a?(Hash) && meta.key?('width') && meta.key?('height')
 
     :ok
   rescue StandardError => e
