@@ -193,6 +193,54 @@ RSpec.describe 'Admin::ResidentialComplexes', type: :request do
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('https://www.green-garden.ru/catalog/itower/')
     end
+
+    # action формы из to_param (текущий слаг) для записи с битым слагом
+    # вёл бы на URL, который роутер не распознаёт (слеш в сегменте),
+    # — исправить слаг было бы нечем. Поэтому action строится по id.
+    it 'action формы — по id записи, а не по слагу' do
+      complex.update_attribute(:slug, 'https://www.green-garden.ru/catalog/itower/')
+
+      admin_get edit_admin_residential_complex_path(complex.id)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("action=\"/admin/residential_complexes/#{complex.id}\"")
+    end
+
+    it 'полный цикл исправления: edit битой записи → PATCH валидный слаг → запись обновлена' do
+      complex.update_attribute(:slug, 'https://www.green-garden.ru/catalog/itower/')
+
+      admin_get edit_admin_residential_complex_path(complex.id)
+      expect(response).to have_http_status(:ok)
+
+      admin_patch admin_residential_complex_path(complex.id), params: {
+        residential_complex: { slug: 'itower' }
+      }
+
+      expect(response).to redirect_to(edit_admin_residential_complex_path('itower'))
+      expect(complex.reload.slug).to eq('itower')
+    end
+
+    # До фикса после неудачного PATCH невалидный слаг оставался в памяти
+    # объекта, и перерисованная форма получала action из него — повторная
+    # отправка уходила в никуда даже у изначально корректной записи.
+    it 'после неудачного PATCH форма перерисовывается с тем же action и повторный PATCH работает' do
+      original_slug = complex.slug
+
+      admin_patch admin_residential_complex_path(complex), params: {
+        residential_complex: { slug: 'UPPER CASE' }
+      }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response.body).to include("action=\"/admin/residential_complexes/#{complex.id}\"")
+      expect(complex.reload.slug).to eq(original_slug)
+
+      admin_patch admin_residential_complex_path(complex.id), params: {
+        residential_complex: { slug: 'itower' }
+      }
+
+      expect(response).to have_http_status(:found)
+      expect(complex.reload.slug).to eq('itower')
+    end
   end
 
   describe 'жизненный цикл' do
