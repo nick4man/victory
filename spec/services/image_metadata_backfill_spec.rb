@@ -23,8 +23,8 @@ RSpec.describe ImageMetadataBackfill do
   # Возвращает размеры для всех картинок; override — хэш blob.id => metadata
   # или исключение для точечного сбоя.
   def stub_analyzer(override = {})
-    allow_any_instance_of(ActiveStorage::Analyzer::ImageAnalyzer::Vips).to receive(:metadata) do |_analyzer|
-      blob = _analyzer.blob
+    allow_any_instance_of(ActiveStorage::Analyzer::ImageAnalyzer::Vips).to receive(:metadata) do |analyzer|
+      blob = analyzer.blob
       case (v = override[stub_analyzer__id_of(blob)])
       when nil    then { width: 640, height: 480 }
       when Exception then raise v
