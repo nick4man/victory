@@ -35,12 +35,20 @@ module Forms
       attrs[:user_id] = current_user.id if user_signed_in?
 
       Inquiry.create!(attrs)
-      # Счётчик rate limit растёт только по реально сохранённым заявкам.
-      gate.register_rate_limit_hit!
 
       respond_to do |format|
         format.html { redirect_to services_page_path, notice: 'Заявка получена. Менеджер свяжется с вами в ближайшее время.' }
         format.json { render json: { ok: true } }
+      end
+    rescue ActiveRecord::RecordInvalid
+      # Сабмит прошёл гейт (маркер идемпотентности и слот rate limit
+      # зарезервированы атомарно), но заявка не сохранилась: маркеры
+      # освобождаются, иначе исправленный повтор с той же visitor-cookie
+      # был бы молча отброшен как duplicate (блокер 2 из ревью #262).
+      gate.release_submission_markers!
+      respond_to do |format|
+        format.html { redirect_to services_page_path, alert: 'Не удалось отправить заявку. Попробуйте позже или позвоните нам.' }
+        format.json { render json: { ok: false, error: 'validation failed' }, status: :unprocessable_entity }
       end
     rescue StandardError => e
       Rails.logger.error("Forms::ServiceRequest failed: #{e.class} #{e.message}")

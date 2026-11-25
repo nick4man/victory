@@ -455,8 +455,8 @@ class PropertiesController < ApplicationController
 
     # Send to admins or create a report record
     AdminMailer.property_reported(@property, current_user, reason, description).deliver_later
-    # Счётчик rate limit растёт только по реально отправленным жалобам.
-    gate.register_rate_limit_hit!
+    # Слот rate limit уже зарезервирован гейтом атомарно (до side effects) —
+    # параллельный флуд с одного IP не превысит лимит (блокер 3 из ревью #262).
 
     track_event('property_reported', {
       property_id: @property.id,

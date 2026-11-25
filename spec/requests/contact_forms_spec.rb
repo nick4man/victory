@@ -78,7 +78,7 @@ RSpec.describe 'Антиспам-гейт /contact_forms/*', type: :request do
       expect(flash[:notice]).to be_present
     end
 
-    it 'дропает JSON-submit с заблокированным IP: 201 {success:true}, без Inquiry' do
+    it 'дропает JSON-submit с заблокированным IP: 201 со схемой настоящего успеха, без Inquiry' do
       SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '80.94.95.173', source: 'firehol')
       token = fresh_token
 
@@ -90,7 +90,33 @@ RSpec.describe 'Антиспам-гейт /contact_forms/*', type: :request do
       end.not_to change(Inquiry, :count)
 
       expect(response).to have_http_status(:created)
-      expect(response.parsed_body).to eq('success' => true, 'message' => 'Заявка принята')
+      # Блокер 4 из ревью #262: дроп неотличим от успеха — та же схема
+      # (ключи и типы), что у легитимного JSON-ответа ниже.
+      body = response.parsed_body
+      expect(body.keys).to match_array(%w[success message inquiry_id])
+      expect(body['success']).to be true
+      expect(body['message']).to eq('Заявка принята')
+      expect(body['inquiry_id']).to be_an(Integer)
+    end
+
+    it 'JSON-дроп и легитимный JSON-успех отдают одну схему ответа' do
+      token = fresh_token
+      post contact_forms_quick_inquiry_path,
+           params: { inquiry: inquiry_params, rendered_at_token: token },
+           as: :json
+      legit = response.parsed_body
+
+      SpamBlockedEntry.create!(entry_type: :ip, status: :blocked, value: '80.94.95.173', source: 'firehol')
+      post contact_forms_quick_inquiry_path,
+           params: { inquiry: inquiry_params, rendered_at_token: fresh_token },
+           headers: { 'REMOTE_ADDR' => '80.94.95.173' },
+           as: :json
+      dropped = response.parsed_body
+
+      expect(dropped.keys).to eq(legit.keys)
+      expect(dropped['success']).to eq(legit['success'])
+      expect(dropped['message']).to eq(legit['message'])
+      expect(dropped['inquiry_id']).to be_an(Integer)
     end
 
     it 'дропает submit из CIDR-подсети блэклиста' do
@@ -124,6 +150,46 @@ RSpec.describe 'Антиспам-гейт /contact_forms/*', type: :request do
       expect(flash[:notice]).to be_present
       expect(flash[:alert]).to be_blank
       expect(Rails.cache.read(PublicFormSpamGate.counter_key('quick_inquiry', 'rate_limit')).to_i).to eq 1
+    end
+
+    it 'не расходует квоту на невалидные сабмиты: три ошибки, затем три успеха' do
+      3.times do
+        token = fresh_token
+        cookies.delete('visitor_token')
+        expect do
+          post contact_forms_quick_inquiry_path,
+               params: { inquiry: inquiry_params.merge(name: ''), rendered_at_token: token },
+               as: :json
+        end.not_to change(Inquiry, :count)
+        expect(response).to have_http_status(:unprocessable_entity)
+      end
+
+      3.times do
+        token = fresh_token
+        cookies.delete('visitor_token')
+        expect { submit_quick_inquiry({ rendered_at_token: token }) }.to change(Inquiry, :count).by(1)
+      end
+    end
+  end
+
+  describe 'невалидный сабмит после гейта (блокер 2 из ревью #262)' do
+    it 'исправленный повтор с той же visitor-cookie проходит: маркеры освобождены' do
+      token = fresh_token
+      expect do
+        post contact_forms_quick_inquiry_path,
+             params: { inquiry: inquiry_params.merge(name: ''), rendered_at_token: token },
+             as: :json
+      end.not_to change(Inquiry, :count)
+      expect(response).to have_http_status(:unprocessable_entity)
+
+      # Повтор с исправленными полями и ТОЙ ЖЕ visitor-cookie: маркер
+      # идемпотентности обязан быть освобождён failure-веткой, иначе
+      # сабмит был бы молча отброшен как duplicate на 15 минут.
+      expect do
+        submit_quick_inquiry({ rendered_at_token: fresh_token })
+      end.to change(Inquiry, :count).by(1)
+      expect(response).to redirect_to(root_path)
+      expect(flash[:notice]).to eq('Спасибо! Ваша заявка принята. Мы свяжемся с вами в ближайшее время.')
     end
   end
 
@@ -168,6 +234,36 @@ RSpec.describe 'Антиспам-гейт /contact_forms/*', type: :request do
 
       expect(response).to redirect_to(root_path)
       expect(flash[:notice]).to eq('Заявка принята! Мы подберем для вас подходящие варианты и пришлем на email.')
+    end
+
+    # Блокер 1 из ревью #262: enum Inquiry не знает 'property_selection' —
+    # легитимный сабмит падал ArgumentError до save. Подбор вариантов —
+    # заявка агенту: inquiry_type из существующего enum.
+    it 'принимает валидный property_selection: Inquiry с inquiry_type из enum и mailer' do
+      expect do
+        post contact_forms_property_selection_path,
+             params: { inquiry: inquiry_params.merge(property_type: 'apartment', deal_type: 'sale',
+                                                     min_price: 3_000_000, max_price: 7_000_000),
+                       rendered_at_token: fresh_token }
+      end.to change(Inquiry, :count).by(1)
+        .and have_enqueued_job(ActionMailer::MailDeliveryJob).at_least(:once)
+
+      expect(response).to redirect_to(root_path)
+      expect(Inquiry.last.inquiry_type).to eq('contact_agent')
+    end
+
+    it 'принимает валидный property_selection по JSON: та же схема успеха, что у дропа' do
+      expect do
+        post contact_forms_property_selection_path,
+             params: { inquiry: inquiry_params.merge(property_type: 'apartment', deal_type: 'sale',
+                                                     min_price: 3_000_000, max_price: 7_000_000),
+                       rendered_at_token: fresh_token },
+             as: :json
+      end.to change(Inquiry, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      expect(response.parsed_body.keys).to match_array(%w[success message matching_count])
+      expect(response.parsed_body['matching_count']).to be_an(Integer)
     end
 
     it 'дропает callback с заблокированного IP: ни Inquiry, ни письма менеджерам' do

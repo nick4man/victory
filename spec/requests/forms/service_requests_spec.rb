@@ -99,4 +99,42 @@ RSpec.describe 'Антиспам-гейт /forms/service_request', type: :reques
     expect(response).to redirect_to(services_page_path)
     expect(flash[:notice]).to be_present
   end
+
+  # Блокер 2 из ревью #262: маркер идемпотентности резервируется гейтом до
+  # create!, поэтому невалидная заявка обязана освободить его — иначе
+  # исправленный повтор с той же visitor-cookie был бы молча отброшен как
+  # duplicate с ложным success-ответом.
+  it 'невалидная заявка не схлопывает исправленный повтор с той же cookie' do
+    expect do
+      post forms_service_request_path,
+           params: request_params.merge(rendered_at_token: fresh_token, name: ''),
+           as: :json
+    end.not_to change(Inquiry, :count)
+    expect(response).to have_http_status(:unprocessable_entity)
+
+    expect do
+      post forms_service_request_path, params: request_params.merge(rendered_at_token: fresh_token)
+    end.to change(Inquiry, :count).by(1)
+    expect(response).to redirect_to(services_page_path)
+  end
+
+  it 'не расходует квоту на невалидные заявки: три ошибки, затем три успеха' do
+    3.times do
+      token = fresh_token
+      cookies.delete('visitor_token')
+      expect do
+        post forms_service_request_path,
+             params: request_params.merge(rendered_at_token: token, name: ''),
+             as: :json
+      end.not_to change(Inquiry, :count)
+    end
+
+    3.times do
+      token = fresh_token
+      cookies.delete('visitor_token')
+      expect do
+        post forms_service_request_path, params: request_params.merge(rendered_at_token: token)
+      end.to change(Inquiry, :count).by(1)
+    end
+  end
 end
