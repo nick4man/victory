@@ -15,16 +15,19 @@ class TopnlabPhotoSyncJob < ApplicationJob
     property = Property.unscoped.find_by(id: property_id)
     return unless property
 
-    urls = Array(urls).compact.uniq.first(MAX_PER_PROPERTY)
+    urls = Array(urls).compact.uniq
     return if urls.empty?
 
     existing = property.images.attachments.map { |a| a.blob.filename.to_s }.to_set
 
+    # Дедуп строго до капа: Topnlab отдаёт photos в хронологическом порядке,
+    # иначе 30 старых в начале массива навсегда отсекают новые (#265).
+    urls = urls.reject { |url| existing.include?(filename_for(url)) }.first(MAX_PER_PROPERTY)
+    return if urls.empty?
+
     attached = 0
     urls.each do |url|
-      filename = "topnlab-#{Digest::MD5.hexdigest(url)[0, 16]}#{ext_for(url)}"
-      next if existing.include?(filename)
-      attach_one(property, url, filename) && (attached += 1)
+      attach_one(property, url, filename_for(url)) && (attached += 1)
     rescue StandardError => e
       Rails.logger.warn("TopnlabPhoto: #{property.id} #{url} → #{e.class}: #{e.message}")
     end
@@ -33,6 +36,10 @@ class TopnlabPhotoSyncJob < ApplicationJob
   end
 
   private
+
+  def filename_for(url)
+    "topnlab-#{Digest::MD5.hexdigest(url)[0, 16]}#{ext_for(url)}"
+  end
 
   def attach_one(property, url, filename)
     io = URI.parse(url).open(read_timeout: TIMEOUT, open_timeout: 10)
