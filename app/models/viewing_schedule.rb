@@ -56,6 +56,7 @@ class ViewingSchedule < ApplicationRecord
   #   пропускают.
   validate :date_not_in_past, if: :slot_or_activation_changed?
   validate :time_slot_available, if: :slot_overlap_check_needed?
+  validate :ends_after_start, if: :slot_overlap_check_needed?
 
   # Callbacks
   before_validation :normalize_phone
@@ -193,8 +194,12 @@ class ViewingSchedule < ApplicationRecord
     persisted_end = ends_at_in_database
 
     if persisted_start.nil?
-      # Новая запись: явно заданный ends_at не трогаем, иначе — по duration.
-      self[:ends_at] ||= scheduled_at + duration_minutes.minutes
+      # Новая запись: явно заданный ends_at не трогаем; автоматический —
+      # пересчитываем при КАЖДОМ изменении начала/duration, иначе после
+      # неудачной валидации и смены времени конец «застрянет» на значении
+      # прошлой сборки и даст перевёрнутый интервал 12:00–11:00 (блокер 1
+      # ревью раунда 4).
+      self[:ends_at] = scheduled_at + duration_minutes.minutes unless ends_at_explicitly_assigned?
     elsif ends_at_explicitly_assigned?
       # ends_at присвоен явно (отдельно или вместе с переносом слота) —
       # осознанная правка границ, не перетираем; её же ловит проверка
@@ -254,6 +259,16 @@ class ViewingSchedule < ApplicationRecord
     if preferred_date < Date.current
       errors.add(:preferred_date, 'не может быть в прошлом')
     end
+  end
+
+  # Инвертированный или нулевой интервал — невалиден независимо от занятости
+  # соседних слотов (блокер 2 ревью раунда 4): проверка пересечений порядок
+  # границ не гарантирует. Срабатывает там же, где и проверка пересечений;
+  # на переводы статусов прошедших показов не распространяется.
+  def ends_after_start
+    return if scheduled_at.blank? || ends_at.blank?
+
+    errors.add(:ends_at, 'должно быть позже начала показа') if ends_at <= scheduled_at
   end
 
   # Слот занят, если на этом объекте уже есть pending/confirmed-показ с

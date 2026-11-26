@@ -252,6 +252,42 @@ RSpec.describe ViewingSchedule, type: :model do
     end
   end
 
+  describe 'retry новой записи и инвариант границ (блокеры раунда 4)' do
+    it 'retry новой записи после неудачной валидации пересобирает ends_at' do
+      build_viewing(preferred_time: '12:00').tap(&:save!) # занятый слот
+      viewing = build_viewing(preferred_time: '12:00')
+
+      expect(viewing).not_to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+
+      viewing.preferred_time = '14:00'
+      expect(viewing).to be_valid
+      expect(viewing.scheduled_at).to eq(Date.tomorrow.in_time_zone + 14.hours)
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 15.hours)
+    end
+
+    it 'явное раннее ends_at отклоняется' do
+      viewing = build_viewing.tap(&:save!)
+
+      expect(viewing.update(ends_at: viewing.scheduled_at - 30.minutes)).to be(false)
+      expect(viewing.errors[:ends_at]).to include('должно быть позже начала показа')
+    end
+
+    it 'равный конец и начало отклоняются' do
+      viewing = build_viewing.tap(&:save!)
+
+      expect(viewing.update(ends_at: viewing.scheduled_at)).to be(false)
+      expect(viewing.errors[:ends_at]).to include('должно быть позже начала показа')
+    end
+
+    it 'новая запись с явным инвертированным ends_at отклоняется' do
+      viewing = build_viewing(ends_at: Date.tomorrow.in_time_zone + 9.hours + 30.minutes)
+
+      expect(viewing).not_to be_valid
+      expect(viewing.errors[:ends_at]).to include('должно быть позже начала показа')
+    end
+  end
+
   describe 'перенос слота (блокер 2 ревью #272)' do
     it 'ends_at пересчитывается вместе с scheduled_at' do
       viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
