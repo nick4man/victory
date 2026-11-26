@@ -1,9 +1,6 @@
 # frozen_string_literal: true
 
 class ReviewsController < ApplicationController
-  RATE_LIMIT_PER_HOUR = 3
-  RATE_LIMIT_KEY      = 'review:submit:%<ip>s'
-
   def index
     @reviews   = Review.public_facing.page(params[:page]).per(12)
     @aggregate = AgencyMetricsService.call
@@ -16,13 +13,20 @@ class ReviewsController < ApplicationController
 
   def new
     @review = Review.new
+    # #261: подписанный timestamp рендера — без него POST дропается гейтом.
+    @rendered_at_token = PublicFormSpamGate.rendered_at_token
     set_meta_tags(title: 'Оставить отзыв — АН «Виктори»', robots: 'noindex,follow')
   end
 
   def create
-    if rate_limited?
-      flash[:alert] = "Можно оставить не более #{RATE_LIMIT_PER_HOUR} отзывов в час с одного устройства. Попробуйте позже."
-      redirect_to(new_review_path) and return
+    result = review_spam_gate.call
+
+    if result.spam
+      # #261: молчаливый дроп (образец #255) — бот не должен узнать, что
+      # его раскрыли: success-ответ, без записи, без пинга модерации.
+      review_spam_gate.record(ua: request.user_agent)
+      redirect_to reviews_path, notice: I18n.t('messages.review_accepted')
+      return
     end
 
     @review = Review.new(review_params)
@@ -31,15 +35,26 @@ class ReviewsController < ApplicationController
       source:        'own',
       submitted_via: 'web_form',
       ip_address:    request.remote_ip,
-      user_agent:    request.user_agent
+      user_agent:    ContactFormSpamGuard.sanitize_user_agent(request.user_agent)
     )
 
     if @review.save
-      register_submission!
+      # Слот rate limit уже зарезервирован гейтом атомарно в call (блокер 3
+      # из ревью #262): счётчик по-прежнему растёт только по сохранённым
+      # отзывам — невалидный сабмит освобождает слот в ветке else.
       ReviewModerationNotifier.notify(@review) rescue nil
-      redirect_to reviews_path, notice: 'Спасибо! Отзыв принят и появится после модерации (обычно в течение суток).'
+      redirect_to reviews_path, notice: I18n.t('messages.review_accepted')
     else
+      # Маркер идемпотентности и слот rate limit резервируются гейтом
+      # атомарно ДО save — иначе гонки двойного клика и параллельного флуда
+      # не схлопываются. Платой за это окно владеет только сохранившийся
+      # сабмит: невалидный освобождает маркеры, чтобы исправленный повтор
+      # не потерялся на все 15 минут, а лимит — не расходовался впустую.
+      review_spam_gate.release_submission_markers!
       flash.now[:alert] = 'Не удалось сохранить отзыв. Проверьте поля и попробуйте ещё раз.'
+      # Повторная отправка после правки полей должна пройти гейт:
+      # перевыпускаем timestamp рендера для отрисованной заново формы.
+      @rendered_at_token = PublicFormSpamGate.rendered_at_token
       render :new, status: :unprocessable_entity
     end
   end
@@ -54,14 +69,16 @@ class ReviewsController < ApplicationController
     params.require(:review).permit(:author_name, :author_email, :rating, :body, :title, :property_id)
   end
 
-  def rate_limited?
-    key = format(RATE_LIMIT_KEY, ip: request.remote_ip)
-    count = Rails.cache.read(key).to_i
-    count >= RATE_LIMIT_PER_HOUR
-  end
-
-  def register_submission!
-    key = format(RATE_LIMIT_KEY, ip: request.remote_ip)
-    Rails.cache.write(key, Rails.cache.read(key).to_i + 1, expires_in: 1.hour)
+  # Один экземпляр гейта на запрос: call резервирует reason и маркер
+  # идемпотентности, а record/release_idempotency_marker! должны видеть
+  # то же состояние, а не свежий объект с reason == nil.
+  def review_spam_gate
+    @review_spam_gate ||= PublicFormSpamGate.new(
+      form:          'review',
+      honeypot:      params[PublicFormSpamGate::HONEYPOT_PARAM],
+      rendered_at:   params[:rendered_at_token],
+      ip:            request.remote_ip,
+      visitor_token: current_visitor_token
+    )
   end
 end

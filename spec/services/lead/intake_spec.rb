@@ -143,4 +143,109 @@ RSpec.describe Lead::Intake do
     end
   end
 
+  describe 'тест-лиды (issue #214)' do
+    around do |example|
+      old = ENV.fetch('TELEGRAM_TEST_CHAT_ID', nil)
+      ENV['TELEGRAM_TEST_CHAT_ID'] = '-100999888'
+      example.run
+      old.nil? ? ENV.delete('TELEGRAM_TEST_CHAT_ID') : ENV['TELEGRAM_TEST_CHAT_ID'] = old
+    end
+
+    it 'тест-прогон (payload test: true) → tg_chat_id тестового чата + флаг в metadata' do
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Тест', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+      expect(result).to be_success
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+      expect(result.lead_event.metadata['test']).to be(true)
+    end
+
+    it 'боевой лид идёт в рабочий чат без тест-флага — регрессии нет' do
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Анна', phone: '79001234567', message: 'хочу квартиру' },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+      expect(result.lead_event.metadata['test']).to be(false)
+    end
+
+    it 'без TELEGRAM_TEST_CHAT_ID тест-лид падает обратно на рабочий chat_id (публикацию LeadAnnouncer скипнет)' do
+      ENV.delete('TELEGRAM_TEST_CHAT_ID')
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Тест', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+      expect(result.lead_event.tg_chat_id).to eq(-1_003_779_115_845)
+    end
+
+    # Находка ревью PR #221 (round 2): A7 staff-skip резал probe-прогон
+    # сотрудника с его боевым телефоном — карточки не было вовсе.
+    it 'test-флаг переопределяет staff-skip: agent + test → тестовая карточка создаётся' do
+      create(:user, role: :agent, phone: '+79001234567')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Сотрудник', phone: '79001234567', message: 'пробный прогон', test: true },
+        announcer: fake_announcer_class
+      )
+
+      expect(result).to be_success
+      expect(result.lead_event).not_to be_nil
+      expect(result.lead_event.metadata['test']).to be(true)
+      expect(result.lead_event.tg_chat_id).to eq(-100_999_888)
+      # fallback-лид тоже помечен тестом — не уйдёт в CRM/агентам
+      expect(result.lead_event.lead_ref).to be_test
+    end
+
+    it 'боевой маршрут без флага: agent → skip по-прежнему (регрессии нет)' do
+      create(:user, role: :agent, phone: '+79001234567')
+
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Сотрудник', phone: '79001234567', message: 'боевой сабмит' },
+        announcer: fake_announcer_class
+      )
+
+      expect(result).to be_success
+      expect(result.lead_event).to be_nil
+    end
+
+    # Находка ревью PR #221 (round 3): контакты прогона правдоподобны и
+    # эвристиками StaffSubmissionDetector не ловятся — изоляция от общего
+    # поиска/KPI/embeddings держится на metadata['test'] → staff_test.
+    it 'probe-лид с правдоподобными контактами → staff_test=true, без embedding' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Мария Соколова', phone: '79031112233', message: 'интересует двушка', test: true },
+        announcer: fake_announcer_class
+      )
+      lead = result.lead_event
+      expect(lead.staff_test).to be(true)
+      expect(lead.staff_test_matched_by).to eq('lead_test_mode')
+      # fallback-Inquiry тоже в том же изоляционном классе
+      expect(lead.lead_ref.staff_test).to be(true)
+      expect(EmbedLeadEventJob).not_to have_been_enqueued
+    end
+
+    it 'боевой лид с теми же контактами → staff_test=false, embedding ставится (регрессии нет)' do
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      allow(Telegram::TopicRegistry).to receive(:chat_id).and_return(-1_003_779_115_845)
+      result = described_class.call(
+        source: 'site_form',
+        payload: { name: 'Мария Соколова', phone: '79031112233', message: 'интересует двушка' },
+        announcer: fake_announcer_class
+      )
+      lead = result.lead_event
+      expect(lead.staff_test).to be(false)
+      expect(EmbedLeadEventJob).to have_been_enqueued
+    end
+  end
+
 end

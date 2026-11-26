@@ -11,7 +11,7 @@
 | **CI/CD: сборка образов в GHCR** | ✅ с 11.10.26 | `build.yml`: push в main → образы `victory-{web,conveyor,publisher,zhk-registry}` (тег `sha-<7>`), zeitwerk:check в production до push; PR — проверка собираемости |
 | **Staging-стенд victory-staging** | ✅ с 11.10.26 | vps1 (`ssh deploy`), WG-only бинд `10.10.0.160:3002`, Traefik `staging.dev.victory62.org` + basic-auth, автовыкатка из CI через `deploy-gate`, smoke+Playwright зелёные, данные — prod-дамп с санитизацией |
 | **Release 1.0 (compose + prod-образы)** | ✅ с 12.10.26 (cutover окно A) | Прод на `victory-web:sha-f613c87` из GHCR, zhk-registry 1.0.0; `bin/{rollout,release,smoke}`; окно B (конвейер новостей с chat) pending |
-| **Kimi Code в GitHub Actions** | ✅ с 11.10.26 | `@kimi` в issue/PR-комментариях и ревью → sticky-ответ, ветки `kimi/*` |
+| **Kimi Code в GitHub Actions** | ✅ с 11.10.26 | `@kimi` и `@claude` (алиас) в issue/PR-комментариях и ревью → sticky-ответ, ветки `kimi/*`; `claude.yml` удалён (OAuth-подписка не продлевалась) |
 | Landing | ✅ active | `landing#index` корневой роут, full app layout с header/footer, news strip над featured properties |
 | Properties (каталог) | ✅ active | TopNLab MLS-синхронизация, поиск/карта/сравнение |
 | Investment Audit | ✅ active | audit-engine sidecar анализатор |
@@ -24,7 +24,7 @@
 | Telegram inbox | ✅ active | приём входящих в site, async photo download |
 | TG ↔ victory62 cross-link | ✅ Phase 8 deployed | bilateral notifications, QR codes на обоих отчётах |
 | Sidekiq + sidekiq-cron | ✅ active | контейнер `victory-sidekiq-1`; расписание в `config/sidekiq_cron.yml` (Topnlab sync каждые 30 мин и др.) |
-| Rails 8.1.3.1 / Ruby 3.4.10 | ✅ код, образы и прод-контейнер | `load_defaults` осознанно оставлен на 7.1; прод-контейнер на 3.4.10 с cutover 12.10.26 |
+| Rails 8.1.4.1 / Ruby 3.4.10 | ✅ код, образы и прод-контейнер | `load_defaults` осознанно оставлен на 7.1; прод-контейнер на 3.4.10 с cutover 12.10.26 |
 | **Прод-выкатка из CI (фаза 3 конвейера)** | ✅ с 12.10.26, связка проверена 13.10.26 | `deploy.yml` (workflow_dispatch + environment `production` с required reviewers) → bastion vps1 (`bastion-ci`, permitopen до victory:22) → SSH `bin/prod-gate` (ключ `prod-ci`, forced command) по WG → `bin/rollout`; внешний post-check + TG-алерт (TD-5 закрыт). Runbook — `docs/runbooks/deploy-pipeline.md` |
 
 ## Отключено / заглушки
@@ -148,7 +148,7 @@ Tag `phase-4-complete` → `854b8c9`. Все 8 sub-phases shipped + smoke-verifi
 
 После #413f (commits 0e5e685..2495330) phone-only клиенты Topnlab больше
 НЕ получают auto-SMS magic-link. Активация работает через 2 пути:
-1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → ActivationRequestProcessor → contact-share → match по phone → linked
+1. **Inbound trigger** — клиент сам пишет `@anvictorybot` → `WorkBot::Commands::Start` показывает кнопку «Подтвердить телефон» → `ActivationRequestProcessor` по contact-share → match по phone → linked. Тот же `/start` для непривязанного сотрудника показывает `/whoami`.
 2. **Admin-shared link** — агент в `/admin/users/:id` генерирует QR/URL и share через любой канал
 
 **НО оба зависят от того что клиент УЗНАЁТ о боте.** Ops-backlog

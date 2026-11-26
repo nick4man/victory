@@ -1,4 +1,5 @@
 <% content_for :title, @meta_title %>
+<%= chat_page_context(kind: 'zhk', slug: @complex.slug) %>
 <% content_for :seo_description, @meta_description %>
 <%# canonical: НЕ override — layout default (`request.original_url.split('?').first`)
     достаточен; редирект на канонический слаг уже сделан в контроллере. %>

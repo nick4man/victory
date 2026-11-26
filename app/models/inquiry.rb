@@ -118,7 +118,6 @@ class Inquiry < ApplicationRecord
   before_validation :detect_staff_test_submission, on: :create
   after_create :assign_to_agent
   after_create :send_notifications
-  after_create :sync_to_crm
   after_create_commit :push_to_work_bot
   # Phase 3 MLS/YRL — если Inquiry на чужой объект, заводим pending
   # Referral для commission tracking. Service сам решает что делать
@@ -142,7 +141,6 @@ class Inquiry < ApplicationRecord
   scope :this_week, -> { where('created_at >= ?', Time.current.beginning_of_week) }
   scope :this_month, -> { where('created_at >= ?', Time.current.beginning_of_month) }
   scope :high_priority, -> { where(priority: [:high, :urgent]) }
-  scope :needs_sync, -> { where(crm_id: nil).where.not(status: :spam) }
 
   # ============================================
   # STATE MACHINE (AASM)
@@ -318,18 +316,6 @@ class Inquiry < ApplicationRecord
     cancel!
   end
 
-  # CRM sync
-  def sync_to_crm!
-    return if crm_id.present?
-    
-    # AmoCrmSyncJob.perform_later(id)
-    # Placeholder for CRM sync logic
-  end
-
-  def synced_to_crm?
-    crm_id.present? && synced_to_crm_at.present?
-  end
-
   # Metadata helpers
   def set_metadata(key, value)
     self.metadata ||= {}
@@ -339,6 +325,13 @@ class Inquiry < ApplicationRecord
 
   def get_metadata(key)
     metadata&.dig(key.to_s)
+  end
+
+  # Тестовый прогон чат-бота (issue #214, см. ChatTools::QualifyLead):
+  # metadata['test']=true — лид не синкается в CRM и публикуется в тестовый
+  # TG-чат (ENV['TELEGRAM_TEST_CHAT_ID']), а не в ДИСПЕТЧЕРСКУЮ.
+  def test?
+    get_metadata('test') == true
   end
 
   # Source tracking
@@ -464,6 +457,14 @@ class Inquiry < ApplicationRecord
   def detect_staff_test_submission
     return if staff_test # уже выставлен (admin override / factory)
 
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (KPI/dashboard фильтруют по умолчанию).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
+
     result = StaffSubmissionDetector.detect(
       email: email,
       phone: phone,
@@ -476,19 +477,22 @@ class Inquiry < ApplicationRecord
 
   def assign_to_agent
     return if agent.present?
-    
+    # Тест-прогон чат-бота (issue #214): тестовый лид не назначается боевому
+    # агенту — иначе round-robin «съедает» агента и портит его статистику.
+    return if test?
+
     # Simple round-robin assignment to available agents
     available_agents = User.agents.active.order('RANDOM()').limit(1)
     self.agent = available_agents.first if available_agents.any?
   end
 
   def send_notifications
+    # Тест-прогон чат-бота (issue #214): email менеджерам о тестовом лиде
+    # не шлём — карточка уже ушла в тестовый TG-чат.
+    return if test?
+
     notify_admins!
     InquiryNotificationJob.perform_later(id) if defined?(InquiryNotificationJob)
-  end
-
-  def sync_to_crm
-    sync_to_crm! if ENV['AMOCRM_ENABLED'] == 'true'
   end
 
   # Публикуем карточку нового лида в Telegram-бот АН.
@@ -510,6 +514,9 @@ class Inquiry < ApplicationRecord
     valuation_token = chat_meta['property_valuation_token'].presence ||
                       chat_meta[:property_valuation_token].presence
     valuation_id = (PropertyValuation.find_by(token: valuation_token)&.id if valuation_token)
+    # Тест-флаг (issue #214) едет в SiteSource → metadata LeadEvent →
+    # LeadAnnouncer уводит карточку в тестовый чат, а не в ДИСПЕТЧЕРСКУЮ.
+    test_flag = chat_meta['test'] == true || chat_meta[:test] == true
 
     Lead::Intake.call(
       source: source,
@@ -521,6 +528,7 @@ class Inquiry < ApplicationRecord
         summary:       message.presence || comment,
         priority:      priority,             # для LeadAnnouncer badge (high/urgent)
         service_type:  service_type,         # для service-badge (express/cma/...)
+        test:          test_flag,            # тест-прогон чат-бота → тестовый чат
         property_id:   property_id,
         inquiry_id:    id,
         valuation_id:  valuation_id,         # → SiteSource привяжет lead_ref к PropertyValuation

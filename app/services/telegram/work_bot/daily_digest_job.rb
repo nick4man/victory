@@ -57,9 +57,11 @@ module Telegram
       def build_digest_for(director)
         yesterday = 1.day.ago.beginning_of_day..1.day.ago.end_of_day
 
-        leads_yesterday = LeadEvent.where(created_at: yesterday)
-        leads_won = LeadEvent.where(current_stage: 'closed_won', updated_at: yesterday)
-        leads_lost = LeadEvent.where(current_stage: 'closed_lost', updated_at: yesterday)
+        # staff_test=false: тестовые сабмиты сотрудников и probe-прогоны
+        # чат-бота (issue #214) не должны попадать в сводку директора.
+        leads_yesterday = LeadEvent.where(created_at: yesterday, staff_test: false)
+        leads_won = LeadEvent.where(current_stage: 'closed_won', updated_at: yesterday, staff_test: false)
+        leads_lost = LeadEvent.where(current_stage: 'closed_lost', updated_at: yesterday, staff_test: false)
         tasks_done = ::Task.status_done.where(updated_at: yesterday)
         tasks_overdue = ::Task.status_open.overdue.count
 

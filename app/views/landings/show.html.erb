@@ -1,4 +1,6 @@
 <% content_for :title, @meta_title %>
+<%= chat_page_context(kind: 'landing', deal: @intent, type: @type,
+                      district: @district_slug, rooms: @rooms_raw) %>
 <% content_for :seo_description, @meta_description %>
 <%# canonical: НЕ override — layout default `request.original_url.split('?').first`
     корректно включает city prefix (`/spb/kupit/kvartira` → canonical

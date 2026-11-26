@@ -10,6 +10,7 @@ class PropertyValuationsController < ApplicationController
   RATE_LIMIT = { count: 5, window: 1.hour }.freeze
 
   before_action :set_breadcrumbs
+  before_action :drop_spam_valuation, only: :create
   before_action :enforce_rate_limit, only: :create
 
   # GET /sell/valuation/new
@@ -44,6 +45,9 @@ class PropertyValuationsController < ApplicationController
     @valuation.ip_address  = request.remote_ip
     @valuation.user_agent  = request.user_agent
     @valuation.status      = 'pending'
+    # Владение результатом для чат-контекста (Llm::PageContext): факты
+    # оценки боту отдаются только при совпадении visitor_token.
+    @valuation.visitor_token = current_visitor_token
 
     if @valuation.save
       PropertyValuationJob.perform_later(@valuation.id)
@@ -165,7 +169,20 @@ class PropertyValuationsController < ApplicationController
   end
   
   private
-  
+
+  # #262: общий антиспам-гейт до PropertyValuationJob (LLM-цепочка ~$0.25-0.40
+  # за прогон + Tavily/Firecrawl + пинг сотрудникам). Дроп молчаливый:
+  # success-нотис, без записи и без запуска цепочки. rate_limit: 0 — собственный
+  # Redis-лимит (5/час) ниже не ужесточаем; идемпотентность не применяем:
+  # повторная оценка другого объекта с того же браузера — легитимный сценарий.
+  def drop_spam_valuation
+    gate = public_form_spam_gate('valuation_express', rate_limit: 0, visitor_token: nil)
+    return unless gate.call.spam
+
+    gate.record(ua: request.user_agent)
+    redirect_to new_property_valuation_path, notice: 'Заявка на оценку принята. Мы свяжемся с вами.'
+  end
+
   def valuation_params
     permitted = params.require(:property_valuation).permit(
       :property_type, :deal_type, :address, :city, :district,
@@ -223,26 +240,6 @@ class PropertyValuationsController < ApplicationController
   def comparable_property_type_slug(pt)
     { 'apartment' => 'flat', 'house' => 'house', 'land' => 'land',
       'commercial' => 'commerce', 'garage' => 'garage', 'room' => 'room' }[pt.to_s]
-  end
-  
-  def create_crm_lead(valuation)
-    # Integration with CRM (AmoCRM, Bitrix24, etc.)
-    # This would be implemented based on your CRM system
-    
-    Rails.logger.info "Creating CRM lead for valuation ##{valuation.id}"
-    
-    # Example structure:
-    # AmoCrmService.create_lead(
-    #   name: "Оценка: #{valuation.address}",
-    #   email: valuation.email,
-    #   phone: valuation.phone,
-    #   custom_fields: {
-    #     property_type: valuation.property_type,
-    #     estimated_price: valuation.estimated_price
-    #   }
-    # )
-  rescue StandardError => e
-    Rails.logger.error "Failed to create CRM lead: #{e.message}"
   end
 
   # Cost cap: 5 valuations per hour per IP. Soft-fail если Redis недоступен

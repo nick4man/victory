@@ -23,7 +23,9 @@ module ChatTools
         'search_all_tasks'      => ChatTools::Staff::SearchAllTasks,
         'search_all_leads'      => ChatTools::Staff::SearchAllLeads,
         # Phase 15.5 — LLM summarization of group msg threads
-        'summarize_group_messages' => ChatTools::Staff::SummarizeGroupMessages
+        'summarize_group_messages' => ChatTools::Staff::SummarizeGroupMessages,
+        # Issue #173 — анализ рынка по объекту (аналоги с площадок, со ссылками)
+        'market_comparables' => ChatTools::Staff::MarketComparables
       }.freeze
 
       module_function

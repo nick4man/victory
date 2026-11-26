@@ -13,6 +13,7 @@ class ApplicationController < ActionController::Base
   # ============================================
   # include Pundit::Authorization
   include VisitorIdentity
+  include PublicFormSpamGateable
   
   # ============================================
   # BEFORE ACTIONS

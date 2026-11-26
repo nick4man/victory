@@ -35,4 +35,16 @@ RSpec.describe Telegram::WorkBot::Commands::Stage do
     run('лунная')
     expect(tg_client).to have_received(:send_message).with(a_string_including('Неизвестная стадия'), anything)
   end
+
+  # Issue #224 (ревью PR #221, round 5, блокер 2): /stage для test-лида
+  # отклоняется — иначе LeadStageTransition сдвинет боевую воронку probe-лида.
+  it 'test-лид → отказ без перехода стадии' do
+    lead.update!(staff_test: true)
+    expect(Telegram::WorkBot::LeadStageTransition).not_to receive(:new)
+
+    run('показ')
+
+    expect(tg_client).to have_received(:send_message).with(a_string_including('тестовый'), anything)
+    expect(lead.reload.current_stage).to eq('first_contact')
+  end
 end

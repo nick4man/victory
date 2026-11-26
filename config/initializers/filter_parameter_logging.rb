@@ -22,6 +22,11 @@ Rails.application.config.filter_parameters += %i[
   authentication_token
   api_key
 
+  # Probe-активация чат-виджета (issue #229/#249): probe_key — это либо
+  # CHAT_PROBE_SECRET, либо (fallback) ADMIN_TOKEN. Не попадает ни в
+  # Rails-логи, ни в Sentry breadcrumbs.
+  probe_key
+
   passport_number
   passport_series
   passport_data

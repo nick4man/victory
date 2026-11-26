@@ -1,0 +1,92 @@
+{
+  "cian_sale_ryazan": {
+    "url": "https://ryazan.cian.ru/sale/flat/294573918/",
+    "raw_checks": { "price_str": "4 350 000", "area_str": "38 м²" },
+    "llm_result": {
+      "title": "1-комн. квартира, 38 м², Канищево",
+      "price": 4350000,
+      "area": 38.0,
+      "rooms": 1,
+      "floor": 9,
+      "total_floors": 10,
+      "building_year": 2008,
+      "condition": "good",
+      "district": "Канищево",
+      "address": "ул. Островского, 27",
+      "city": "Рязань"
+    }
+  },
+  "avito_sale_ryazan": {
+    "url": "https://www.avito.ru/ryazan/kvartiry/2-komn_54_m2_3_5_etazh_1234567890",
+    "raw_checks": { "price_str": "5 900 000", "area_str": "54 м²" },
+    "llm_result": {
+      "title": "2-комн. квартира, 54 м², Московское шоссе",
+      "price": 5900000,
+      "area": 54.0,
+      "rooms": 2,
+      "floor": 3,
+      "total_floors": 5,
+      "building_year": 1995,
+      "condition": "excellent",
+      "district": "",
+      "address": "Московское шоссе, 27",
+      "city": "Рязань"
+    }
+  },
+  "yandex_sale_ryazan": {
+    "url": "https://realty.yandex.ru/ryazan/kupit/kvartira/studiya-25-4-m-gagarina-18/",
+    "raw_checks": { "price_str": "2 600 000", "area_str": "25,4 м²" },
+    "llm_result": {
+      "title": "Студия, 25,4 м², Гагарина",
+      "price": 2600000,
+      "area": 25.4,
+      "rooms": 1,
+      "floor": 12,
+      "total_floors": 17,
+      "building_year": 2021,
+      "condition": "designer",
+      "district": "",
+      "address": "ул. Гагарина, 18",
+      "city": "Рязань"
+    }
+  },
+  "domclick_sale_ryazan": {
+    "url": "https://kazan.domclick.ru/search/realty_ryazan?deal_type=sale&offer_type=3kkvartira&id=888777",
+    "raw_checks": { "price_str": "8 100 000", "area_str": "76 м²" },
+    "llm_result": {
+      "title": "3-комн. квартира, 76 м², Кремлёвское шоссе",
+      "price": 8100000,
+      "area": 76.0,
+      "rooms": 3,
+      "floor": 7,
+      "total_floors": 9,
+      "building_year": 2012,
+      "condition": "good",
+      "district": "",
+      "address": "Кремлёвское шоссе, 5",
+      "city": "Рязань"
+    }
+  },
+  "cian_sale_kazan": {
+    "url": "https://kazan.cian.ru/sale/flat/301122233/",
+    "raw_checks": { "price_str": "5 200 000", "area_str": "40 м²" },
+    "llm_result": {
+      "title": "1-комн. квартира, 40 м², Казань",
+      "price": 5200000,
+      "area": 40.0,
+      "rooms": 1,
+      "floor": 5,
+      "total_floors": 9,
+      "building_year": 2010,
+      "condition": "",
+      "district": "",
+      "address": "Казань, ул. Баумана, 48",
+      "city": "Казань"
+    }
+  },
+  "avito_rent_ryazan": {
+    "url": "https://www.avito.ru/ryazan/kvartiry/1-komn_38_m2_9988776655",
+    "raw_checks": { "price_str": "22 000", "area_str": "38 м²" },
+    "llm_result": { "price": 0 }
+  }
+}

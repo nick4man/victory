@@ -86,7 +86,9 @@ module Telegram
       end
 
       def compute(range)
-        leads = LeadEvent.where(updated_at: range)
+        # .real — без staff_test/probe-записей (issue #214): сводка считает
+        # только боевые лиды.
+        leads = LeadEvent.real.where(updated_at: range)
         leads_won = leads.where(current_stage: 'closed_won').count
         leads_lost = leads.where(current_stage: 'closed_lost').count
         leads_total = leads.count

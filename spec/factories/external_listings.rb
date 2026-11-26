@@ -13,6 +13,7 @@ FactoryBot.define do
     total_floors { rand(5..16) }
     property_type { 'flat' }
     deal_type { 'sale' }
+    city { 'Рязань' }
     fetched_at { Time.current }
     raw_payload { {} }
 

@@ -80,9 +80,11 @@ module Kpi
     end
 
     def pipeline_block
-      open_total = LeadEvent.where.not(current_stage: ['closed_won', 'closed_lost']).count
-      won_today  = LeadEvent.where(closed_at: @range, current_stage: 'closed_won').count
-      lost_today = LeadEvent.where(closed_at: @range, current_stage: 'closed_lost').count
+      # staff_test=false: тестовые сабмиты сотрудников и probe-прогоны
+      # чат-бота (issue #214) не считаются в pipeline-метриках агентства.
+      open_total = LeadEvent.where.not(current_stage: ['closed_won', 'closed_lost']).where(staff_test: false).count
+      won_today  = LeadEvent.where(closed_at: @range, current_stage: 'closed_won', staff_test: false).count
+      lost_today = LeadEvent.where(closed_at: @range, current_stage: 'closed_lost', staff_test: false).count
 
       parts = ['<b>📈 Pipeline:</b>']
       parts << "  · В работе: <b>#{open_total}</b>"

@@ -61,6 +61,13 @@ class PropertyValuation < ApplicationRecord
   # User matched по email/phone.
   after_update_commit :broadcast_cabinet_completion, if: :saved_change_to_status?
 
+  # work_bot 2/3: завершённая экспресс-оценка → эмбеддинг для semantic поиска
+  # похожих прошлых оценок. Инвестиционные аудиты (audit_mode: investment)
+  # исключены: у них в estimated_price хранится входная цена предложения
+  # покупателя, а не рыночная оценка.
+  after_update_commit :enqueue_embed_on_completion,
+                      if: -> { saved_change_to_status? && completed? && !audit_mode_investment? }
+
   # Validations
   # Phase 16 — auto-tag staff/test submissions (Надежда тестирует на проде,
   # «Тест Клиент», phase-test emails — отделяем от real client data).
@@ -161,12 +168,30 @@ class PropertyValuation < ApplicationRecord
     I18n.l(created_at, format: :long)
   end
 
+  # work_bot 2/3: публичный enqueue эмбеддинга. Completion-path через
+  # update_columns (chat_tools) не запускает after_update_commit — такие
+  # пути обязаны вызвать метод явно после смены статуса.
+  def enqueue_embedding
+    return if audit_mode_investment?
+    return if staff_test? # тестовые оценки сотрудников — не в semantic-корпус (issue #201)
+    return if test? # probe-прогон чат-бота — тоже не в semantic-корпус (issue #214)
+
+    EmbedPropertyValuationJob.perform_later(id)
+  rescue StandardError => e
+    Rails.logger.warn("[PropertyValuation##{id}#enqueue_embedding] #{e.class} #{e.message}")
+  end
+
   # Short human-readable identifier — printed on PDF, shown in UI, used by
   # staff to look up an audit ("откройте отчёт №10042"). Falls back to id
   # for legacy rows that haven't been backfilled (should not happen — the
   # migration backfills all existing rows and the column is NOT NULL).
   def report_label
     "№#{report_number || id}"
+  end
+
+  # Тестовый прогон чат-бота (issue #214, см. ChatTools::EstimatePropertyValuation).
+  def test?
+    metadata.is_a?(Hash) && metadata['test'] == true
   end
 
   private
@@ -221,6 +246,7 @@ class PropertyValuation < ApplicationRecord
 
   # Публикуем заявку оценки в Telegram-бот АН (auto-route в топик ОЦЕНКА).
   # Не блокирует — ошибки логируем и проглатываем.
+  # Тест-прогон чат-бота (issue #214): metadata['test']=true → тестовый чат.
   def push_to_work_bot
     return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
     return if Thread.current[:skip_workbot_push] == true
@@ -235,11 +261,17 @@ class PropertyValuation < ApplicationRecord
         rooms:   rooms,
         budget:  estimated_price_formatted,
         valuation_id: id,
+        test:    test?,
         summary: "Запрос оценки: #{address}, #{total_area} м²#{", #{rooms}-комн" if rooms.present?}"
       }
     )
   rescue StandardError => e
     Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
+  end
+
+  # work_bot 2/3: callback-обёртка над публичным #enqueue_embedding.
+  def enqueue_embed_on_completion
+    enqueue_embedding
   end
 
   # A7 Phase 2: push completion в /cabinet через CabinetChannel.
@@ -264,6 +296,14 @@ class PropertyValuation < ApplicationRecord
   # Phase 16 — staff/test detection. Auto-tag без UX friction.
   def detect_staff_test_submission
     return if staff_test # уже выставлен (например через factory или admin override)
+
+    # probe-прогон чат-бота (issue #214): metadata['test'] → тот же
+    # изоляционный класс, что staff_test (вне embeddings и сводок).
+    if metadata.is_a?(Hash) && metadata['test'] == true
+      self.staff_test = true
+      self.staff_test_matched_by = StaffSubmissionDetector::TEST_MODE_MATCHED_BY
+      return
+    end
 
     result = StaffSubmissionDetector.detect(
       email: email, phone: phone, name: name, tg_user_id: nil

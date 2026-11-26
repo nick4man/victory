@@ -22,10 +22,13 @@ kanban-карточка (доска `victory`, assignee kb-backend, worktree /ho
   │  воркер: ветка kanban/issue-<N>-<slug> от origin/<dev/*>, код + spec, bin/rb rspec,
   │  PR → dev/* с метками automerge + agent:hermes, `Closes #N` в теле
   ▼
-PR: lint.yml + build.yml (на dev/* тоже) + kimi.yml «Kimi Review»
+PR: lint.yml + build.yml (на dev/* тоже) + kimi.yml «OpenCode Review» (основной
+  ревьюер; «Kimi Review» — fallback при его падении)
   │  ревью заканчивается строкой VERDICT: MERGE | VERDICT: CHANGES
   ▼
 automerge.yml (workflow_run): все check runs зелёные + VERDICT: MERGE на текущем head
+  (сначала артефакт opencode-verdict, при его отсутствии — kimi-verdict; в
+  fallback-режиме красный «OpenCode Review» не блокирует, обязателен «Kimi Review»)
   → squash-merge (--match-head-commit) в dev/*, ветка удаляется;
     issue закрывает сам workflow по `Closes #N` из тела PR (closing keywords
     GitHub работают только для default branch, поэтому явно)
@@ -71,13 +74,17 @@ PR агентов начнут конфликтовать.
 - head-ветка только `kanban/*`, `claude/*`, `kimi/*`; base только `dev/*`. В `main` автослияния нет никогда.
 - Метка `automerge` обязательна, метка `needs-human` блокирует.
 - Обязательные зелёные проверки: RuboCop, RSpec, Brakeman, bundler-audit,
-  «Учёт и границы служб», «Образ web (+ zeitwerk:check)», «Kimi Review».
-- Вердикт Kimi: job «Kimi Review» читает транскрипт агента на раннере
-  (`execution_file` action'а — туда пишет только он сам), берёт последние
-  `HEAD: <sha>` / `VERDICT: …` и публикует артефакт `kimi-verdict`
-  (HEAD / RUN / VERDICT). automerge читает только этот артефакт из run
-  `.github/workflows/kimi.yml` с event=pull_request на текущем head —
-  комментарии бота не читаются вовсе. Новый push → новое ревью → новый артефакт.
+  «Учёт и границы служб», «Образ web (+ zeitwerk:check)», «OpenCode Review»
+  (при fallback на Kimi — «Kimi Review»).
+- Вердикт ревью: job «OpenCode Review» (основной; OpenCode CLI, транскрипт
+  stdout на диске раннера) публикует артефакт `opencode-verdict` из последних
+  строк `HEAD: <sha>` / `VERDICT: …`; при его падении job «Kimi Review»
+  (fallback, запускается через needs+result=='failure') публикует
+  `kimi-verdict` из `execution_file` action'а. automerge читает сначала
+  opencode-verdict, при его отсутствии — kimi-verdict (ветки без opencode-джоба,
+  созданные до PR #258, — автоматически по kimi-пути); привязка по HEAD и RUN
+  прогона, комментарии бота не читаются вовсе. Новый push → новое ревью →
+  новый артефакт.
 - PR, меняющий что-либо в `.github/` (workflow, формы), автослиянию не
   подлежит: снимается `automerge`, ставится `needs-human`. Иначе PR мог бы
   переписать проверки, которыми сам проверяется.
@@ -103,3 +110,8 @@ hermes cron list
 
 Секреты: воркерам нужен `GH_TOKEN` в `~/.hermes/profiles/kb-*/.env` (gh-логин
 профиля); без него `gh pr create` упадёт, карточка заблокируется после 2 попыток.
+
+## Проверено
+
+- 04.11.26 — первый успешный прогон конвейера, issue #148.
+- 04.11.26 — повторный прогон после hardening automerge, issue #152 (после #151).

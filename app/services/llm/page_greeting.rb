@@ -12,21 +12,31 @@ module Llm
 
     module_function
 
-    # @param page_ctx [Hash{String=>String}, nil] keys: path, query, title, referrer
+    # @param page_ctx [Hash{String=>String}, nil] keys: path, query, title, referrer, h1, ctx
     def for(page_ctx)
       return DEFAULT unless page_ctx
-      kind = Llm::PageContext.detect(page_ctx['path'])
+      kind = Llm::PageContext.detect(page_ctx['path'], page_ctx['ctx'])
       build(kind, page_ctx)
     end
 
     def build(kind, ctx)
       case kind
-      when :landing
+      when :home
         'Добрый день! Помогу подобрать недвижимость, оценить вашу или ответить на любой вопрос об агентстве. С чего начнём?'
       when :catalog
         catalog_greeting
       when :property_show
         property_greeting(ctx)
+      when :zhk
+        zhk_greeting(ctx)
+      when :landing
+        'Смотрите подборку объектов. Скажите бюджет или пожелания — уточню поиск по этому направлению.'
+      when :valuation_result
+        valuation_greeting(ctx)
+      when :investment_audit
+        audit_greeting(ctx)
+      when :investment_audit_new
+        'Собираетесь запустить инвест-аудит объекта? Помогу с параметрами или объясню, как читать вердикт и индекс эффективности.'
       when :mortgage
         'Помогу с расчётом ипотеки. Можете ввести параметры выше или просто скажите бюджет и срок — подскажу варианты.'
       when :sell_valuation
@@ -50,6 +60,51 @@ module Llm
         "Это объект — #{title}. Хотите узнать больше: доступность, торг, юр. чистоту или записаться на просмотр?"
       else
         'Хотите узнать про этот объект больше — доступность, торг, юр. чистоту или записаться на просмотр?'
+      end
+    end
+
+    def zhk_greeting(ctx)
+      # slug — из ctx (если bootstrap/POST его прислал) либо из пути: штатный
+      # сценарий открытия чата сразу даёт path, и без fallback'а именное
+      # обращение к ЖК не работало бы никогда.
+      slug = ctx.dig('ctx', 'slug').to_s.presence || ctx['path'].to_s[%r{\A/zhk/([^/?#]+)}, 1]
+      complex = ResidentialComplex.visible.friendly.find(slug) if slug.present?
+      name = complex&.display_name
+      if name
+        "Это жилой комплекс — #{name}. Рассказать про состав объектов, цены или подобрать похожие варианты?"
+      else
+        'Смотрите жилой комплекс. Рассказать про состав объектов, цены или подобрать похожие варианты?'
+      end
+    rescue ActiveRecord::RecordNotFound
+      'Смотрите жилой комплекс. Рассказать про состав объектов, цены или подобрать похожие варианты?'
+    end
+
+    # Страница аудита показывает pending/failed/completed — «аудит готов»
+    # корректно только для завершённого расчёта.
+    def audit_greeting(ctx)
+      case ctx.dig('ctx', 'state').to_s
+      when 'pending'
+        'Вижу, инвестиционный аудит ещё считается. Помогу пока по другому вопросу — например, объясню, как читать вердикт.'
+      when 'failed'
+        'Похоже, расчёт аудита не удался. Предложите обновить страницу или попробовать ещё раз чуть позже.'
+      when 'completed'
+        'Вижу, инвестиционный аудит объекта готов. Объясню вердикт и стратегию или подскажу следующие шаги.'
+      else
+        # Без статуса не обещаем готовый результат — нейтральный вопрос.
+        'Вижу, вы смотрите страницу инвестиционного аудита. Подсказать по параметрам объекта или рассказать, как читать вердикт?'
+      end
+    end
+
+    def valuation_greeting(ctx)
+      case ctx.dig('ctx', 'state').to_s
+      when 'pending'
+        'Вижу, оценка ещё считается. Помогу пока по другому вопросу про недвижимость.'
+      when 'failed'
+        'Похоже, расчёт оценки не удался. Предложите попробовать ещё раз — форма занимает пару минут.'
+      when 'completed'
+        'Вижу, ваша оценка готова. Хотите обсудить результат, сравнить с рынком или получить полный отчёт PDF?'
+      else
+        'Вижу, вы смотрите страницу онлайн-оценки. Помогу разобраться с расчётом или подсказать следующие шаги.'
       end
     end
   end

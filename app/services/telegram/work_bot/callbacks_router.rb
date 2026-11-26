@@ -14,9 +14,6 @@ module Telegram
     # выходим. Любая необработанная ошибка в handler'е логируется в Rails.logger.
     class CallbacksRouter
       # Карта префиксов callback_data → класс-обработчик.
-      # Заглушки: на Фазе 2 шаг 3 используем Callbacks::WipStub чтобы убедиться
-      # что цикл webhook → CallbacksRouter → answer_callback_query замкнулся.
-      # Реальные обработчики подменят эту мапу в шагах 4-9.
       PREFIX_MAP = {
         'route' => 'Telegram::WorkBot::Callbacks::RouteCallback',
         'assign' => 'Telegram::WorkBot::Callbacks::AssignCallback',
@@ -48,7 +45,9 @@ module Telegram
         'show_assign' => 'Telegram::WorkBot::Callbacks::ShowAssignCallback',
         # Пошаговые мастера (задача, закрытие лида, переоткрытие) и меню
         # «Что сделать?». Формат — см. Wizard::Engine.
-        'wiz' => 'Telegram::WorkBot::Callbacks::WizardCallback'
+        'wiz' => 'Telegram::WorkBot::Callbacks::WizardCallback',
+        # Карточка CRM: показать в личке, отправить на модерацию, повторить выгрузку.
+        'crm_card' => 'Telegram::WorkBot::Callbacks::CrmCardCallback'
       }.freeze
 
       def initialize(callback_query, client: Telegram::Client.new)

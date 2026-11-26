@@ -1,5 +1,6 @@
 <% content_for :title, "Инвестиционный аудит недвижимости — АН Виктори" %>
 <% content_for :seo_description, 'Бесплатный инвестиционный аудит объекта недвижимости от АН «Виктори»: индекс эффективности, сравнение с депозитом и ипотекой, симуляция Монте-Карло, вердикт «Покупать / Подождать / Нейтрально».' %>
+<%= chat_page_context(kind: 'investment_audit_new') %>
 
 <%= render 'shared/breadcrumb', items: [
   ['Главная', root_path],
@@ -140,6 +141,14 @@
 
   <div class="max-w-2xl mx-auto bg-card border border-border p-8 lg:p-12">
     <%= form_with model: @valuation, url: investment_audit_create_path, scope: :property_valuation, local: true, html: { id: 'investment-form' }, data: { turbo: false } do |f| %>
+      <%# #262: honeypot + подписанный timestamp рендера — PublicFormSpamGate
+          до InvestmentAuditJob (образец /reviews из #261). %>
+      <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+        <label>Не заполняйте это поле
+          <input type="text" name="<%= PublicFormSpamGate::HONEYPOT_PARAM %>" tabindex="-1" autocomplete="off">
+        </label>
+      </div>
+      <%= hidden_field_tag :rendered_at_token, PublicFormSpamGate.rendered_at_token %>
       <% if @source_property %>
         <%# Persist the source_property reference through form submission so
             telemetry survives the POST. (Hidden field — invisible to user.) %>

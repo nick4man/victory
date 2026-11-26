@@ -63,6 +63,17 @@ RSpec.describe CrmCards::Checker do
     expect(check(valid_payload)).to eq([])
   end
 
+  # Регресс ревью PR #210 (round 9+++++, блокер): probe-прогон бота
+  # (lead_test_mode, issue #214) правдоподобен — с назначением и контактом
+  # прошёл бы модерацию и ушёл в боевую CRM с тестовыми ФИО/телефоном.
+  # Inquiry#test? передаёт test: true в push_to_work_bot → Lead::Intake,
+  # а LeadAnnouncer направляет карточку в тестовый чат — здесь гейт зеркальный.
+  it 'probe-прогон бота (lead_test_mode) блокируется, даже если лид назначен и проконтактирован' do
+    lead.update!(staff_test: true, staff_test_matched_by: StaffSubmissionDetector::TEST_MODE_MATCHED_BY)
+
+    expect(check(valid_payload).map { |e| e['message'] }).to include(a_string_including('Тестовый прогон бота'))
+  end
+
   it 'клиент уже в CRM — вторую заявку не пропускает' do
     lead.lead_ref.update_columns(crm_id: '4455')
 

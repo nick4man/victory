@@ -141,7 +141,8 @@ module Valuations
 
       pps = h[:price_per_sqm].to_i
       area = h[:area].to_f.positive? ? h[:area].to_f : @v.total_area.to_f
-      return nil if pps.zero? || area.zero?
+      return nil unless pps.positive?
+      return nil if area.zero?
 
       price = (pps * area).round
       adj = h[:adjustment_pct].to_i.clamp(-15, 15)

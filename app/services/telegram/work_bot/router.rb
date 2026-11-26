@@ -20,7 +20,9 @@ module Telegram
 
       COMMANDS = {
         '/help' => Commands::Help,
-        '/start' => Commands::Help, # alias TG default → /help (плюс side-effect dm_chat_id update)
+        # Первое впечатление нового сотрудника: меню с кнопками, а не простыня
+        # команд четырёх ролей. Полный справочник — /help.
+        '/start' => Commands::Start,
         # Интерактивное обучение боту — карточка уроков с кнопками в личке.
         '/tutorial' => Commands::Tutorial,
         # Меню «Что сделать?» — вход в пошаговые мастера кнопками.
@@ -43,6 +45,8 @@ module Telegram
         '/objections' => Commands::Objections,
         # BOTTLENECK — торг на объекте: карточка руководителю до звонка.
         '/bargain' => Commands::Bargain,
+        # Карточки CRM через модерацию: черновики, очередь модератора, сбои выгрузки.
+        '/cards' => Commands::Cards,
         '/unstage' => Commands::Unstage,
         '/note' => Commands::Note,
         '/doc' => Commands::Doc,

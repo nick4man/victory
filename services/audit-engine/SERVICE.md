@@ -3,7 +3,7 @@ service: audit-engine
 owner: victory
 kind: python-service
 entrypoint: FastAPI, см. SKILL_API_CONTRACT.md
-tests: не заведены — часть репатриации
+tests: pytest в engine/tests/ (зависимости в engine/pyproject.toml [dev]; в общий CI пока не включены)
 deploy: bin/audit-stack up -d на хосте victory (профиль audit корневого docker-compose.yml); стек и данные re_audit переехали с chat 13.10.26
 depends_on: none
 ported_from: chat:~/.openclaw/workspace-it-dept/audit-engine-v2/
@@ -24,19 +24,20 @@ repatriate_by: 31.03.27
 (compose-профиль `audit`, `bin/audit-stack`); контейнеры `audit-v2-*` на
 chat остановлены.
 
-`port_status: in-progress` — переезд выполнен, но хвост остаётся: нет тестов
-и жив `upstream-sync.sh`. Срок в `repatriate_by` не дедлайн для кого-то, а
-дата, после которой `bin/services-check` начнёт напоминать о незакрытом
-хвосте: иначе «потихоньку доведём до ума» превращается в «никогда».
+`port_status: in-progress` — переезд выполнен, но хвост остаётся: pytest-набор в
+`engine/tests/` пока не подключён в общий CI и в каталоге лежит отключённый
+`upstream-sync.sh`. Срок в `repatriate_by` не дедлайн для кого-то, а дата, после
+которой `bin/services-check` начнёт напоминать о незакрытом хвосте: иначе
+«потихоньку доведём до ума» превращается в «никогда».
 
 ## Что нужно для репатриации
 
 1. ~~Снять последнюю копию с хоста `chat` и зафиксировать её как нашу~~ —
    выполнено 13.10.26 (данные перенесены pg_dump'ом, без таблиц конвейера
    новостей — те уехали в `news-db` профиля `conveyor`).
-2. Завести тесты — сейчас их нет ни одного, поэтому любое изменение движка
-   проверить нечем.
-3. Убрать `upstream-sync.sh` — после переноса тянуть будет неоткуда и незачем.
+2. Довести прогон `engine/tests/` (pytest, `engine/pyproject.toml`) до автономного
+   запуска в общем CI репозитория.
+3. Удалить отключённый `upstream-sync.sh` — после переноса тянуть неоткуда и незачем.
 4. ~~Описать деплой docker-стека здесь же, а не в чужом каталоге devops~~ —
    `bin/audit-stack` + профиль `audit` корневого compose.
 

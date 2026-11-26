@@ -30,7 +30,7 @@ module Webhooks
           action: @action,
           article_id: article.id,
           slug: article.slug,
-          url: news_item_url(article.slug)
+          url: public_news_url(article.slug)
         }
       else
         render json: { error: 'validation_failed', detail: article.errors.full_messages }, status: :unprocessable_entity
@@ -38,6 +38,15 @@ module Webhooks
     end
 
     private
+
+    # Публичный URL статьи для ответа паблишеру (chat-host кладёт его в пост
+    # TG «Подробнее у нас на сайте»). Хост берём из ENV, а НЕ из запроса:
+    # cron дёргает вебхук по внутреннему адресу docker-сети (web:3000), и
+    # `_url`-хелпер без явного host: наследовал бы его — подписчики получали
+    # нерабочую ссылку (issue #189).
+    def public_news_url(slug)
+      news_item_url(slug, host: ENV.fetch('APP_DOMAIN', 'victory62.org'), protocol: 'https', port: 443)
+    end
 
     def authenticate_bearer!
       configured = ENV['NEWS_INGEST_TOKEN'].to_s

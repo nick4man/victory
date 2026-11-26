@@ -474,25 +474,11 @@ Rails.application.routes.draw do
   # ============================================
   # FORMS & INTERACTIONS (Формы)
   # ============================================
+  # #261: мёртвые стабы Forms::{QuickInquiries,CallbackRequests,ViewingRequests,
+  # AgentContacts,MortgageRequests,ConsultationRequests} выключены — они ничего
+  # не сохраняли (log+redirect), а их роуты оставляли ботам лишние точки POST.
+  # Живой сабмит заявки — /contact_forms/* и Forms::ServiceRequests (часть 2).
   namespace :forms do
-    # Quick inquiry
-    resource :quick_inquiry, only: [:create]
-    
-    # Viewing schedule
-    resource :viewing_request, only: [:create]
-    
-    # Mortgage request
-    resource :mortgage_request, only: [:create]
-    
-    # Online consultation
-    resource :consultation_request, only: [:create]
-    
-    # Callback request
-    resource :callback_request, only: [:create]
-    
-    # Contact agent
-    resource :agent_contact, only: [:create]
-
     # Generic service request (from /services page modal)
     resource :service_request, only: [:create]
   end
@@ -516,6 +502,9 @@ Rails.application.routes.draw do
     # Public widget — singleton conversation per visitor (cookie-identified)
     resource :conversation, only: %i[show update], controller: 'conversations' do
       resources :messages, only: %i[create], controller: '/chat/messages'
+      # Тумблер «🧪 Тест-прогон» (issue #249): выдача probe-токена строго по
+      # секрету probe_key (блокер ревью #230), токен — только в cookie визита.
+      post 'activate_test', to: 'conversations#activate_test'
     end
 
     # Legacy User↔User chat (kept for future internal messaging)
@@ -750,6 +739,11 @@ Rails.application.routes.draw do
         get :settlements
       end
     end
+
+    # Антиспам-блок-лист чат-бота (issue #219) — ручная модерация:
+    # пометка URL/домена как спама (source = local), выборка, разблокировка.
+    # JSON-only, потребитель — ops-скрипты / будущий админ-UI.
+    resources :spam_blocked_entries, only: %i[index create destroy]
   end
 
   # ============================================
@@ -824,6 +818,8 @@ Rails.application.routes.draw do
 
     # Telegram
     post 'telegram', to: 'telegram#create'
+    # Тестовый бот: песочница карточек CRM, только личка.
+    post 'telegram_test', to: 'telegram_test#create'
 
     # Payment systems
     post 'yookassa', to: 'yookassa#create'

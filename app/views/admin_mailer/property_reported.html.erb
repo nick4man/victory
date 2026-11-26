@@ -1,0 +1,42 @@
+<h1>🚩 Жалоба на объект</h1>
+
+<div class="info-box" style="background-color: #fff5f5; border-left-color: #f56565;">
+  <h2 style="margin-top: 0; color: #c53030;">
+    Причина: <%= @reason.presence || 'не указана' %>
+  </h2>
+</div>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Объект</h2>
+  <table class="data-table">
+    <tr>
+      <td>Название:</td>
+      <td><strong><%= @property.title %></strong></td>
+    </tr>
+    <tr>
+      <td>Адрес:</td>
+      <td><%= @property.address %></td>
+    </tr>
+    <tr>
+      <td>Ссылка:</td>
+      <td><%= link_to property_url(@property), property_url(@property) %></td>
+    </tr>
+  </table>
+</div>
+
+<div class="info-box">
+  <h2 style="margin-top: 0;">Отправитель</h2>
+  <table class="data-table">
+    <tr>
+      <td>Пользователь:</td>
+      <td><%= @reporter ? "#{@reporter.name} (id #{@reporter.id})" : 'анонимный посетитель' %></td>
+    </tr>
+  </table>
+</div>
+
+<% if @description.present? %>
+  <div class="info-box">
+    <h2 style="margin-top: 0;">Комментарий</h2>
+    <p><%= simple_format(@description) %></p>
+  </div>
+<% end %>

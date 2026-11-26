@@ -67,7 +67,9 @@ RSpec.describe Telegram::WorkBot::Router do
       cmds = described_class::COMMANDS
       expect(cmds['/panel']).to eq(cmds['/dashboard'])
       expect(cmds['/shortcuts']).to eq(cmds['/cheatsheet'])
-      expect(cmds['/start']).to eq(cmds['/help'])
+      # /start — не алиас /help: новый сотрудник должен увидеть меню с
+      # кнопками, а не справочник команд четырёх ролей.
+      expect(cmds['/start']).to eq(Telegram::WorkBot::Commands::Start)
     end
   end
 
