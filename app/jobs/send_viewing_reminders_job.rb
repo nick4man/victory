@@ -7,19 +7,19 @@ class SendViewingRemindersJob < ApplicationJob
   
   # 🚨 NOT SCHEDULED: was declared only in the deleted config/schedule.rb,
   # which never executed (no `whenever` gem). Do NOT just add it to
-  # config/sidekiq_cron.yml: the query below uses preferred_date and
-  # reminder_email_sent, but viewing_schedules has scheduled_at and
-  # reminder_sent, so it fails on the first run. Fix the query first.
-  # Example: 0 * * * * SendViewingRemindersJob.perform_later
-  
+  # config/sidekiq_cron.yml without ops sign-off. Запрос ниже приведён к
+  # реальным колонкам (scheduled_at + reminder_sent; раньше ходил в
+  # несуществующие preferred_date и reminder_email_sent и падал бы на
+  # первом же прогоне). Example: 0 * * * * SendViewingRemindersJob.perform_later
+
   def perform
     tomorrow = Date.tomorrow
-    
+
     # Find confirmed viewings scheduled for tomorrow that haven't received reminder
     viewings = ViewingSchedule.where(
       status: 'confirmed',
-      preferred_date: tomorrow,
-      reminder_email_sent: false
+      scheduled_at: tomorrow.all_day,
+      reminder_sent: false
     )
     
     Rails.logger.info "Found #{viewings.count} viewings to send reminders for"

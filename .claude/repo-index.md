@@ -132,6 +132,7 @@ app/controllers/concerns/admin_token_auth.rb — module AdminTokenAuth
 app/controllers/concerns/chat/page_context_params.rb — module Chat, module PageContextParams
 app/controllers/concerns/chat/test_mode_resolution.rb — module Chat, module TestModeResolution
 app/controllers/concerns/coming_soon_section.rb — module ComingSoonSection
+app/controllers/concerns/public_form_spam_gateable.rb — module PublicFormSpamGateable
 app/controllers/concerns/renders_not_found.rb — module RendersNotFound
 app/controllers/concerns/visitor_identity.rb — module VisitorIdentity
 app/controllers/contact_forms_controller.rb — class ContactFormsController
@@ -161,13 +162,7 @@ app/controllers/external_listings_controller.rb — class ExternalListingsContro
 app/controllers/feeds_controller.rb — class FeedsController
 app/controllers/foreign/audits_controller.rb — class Foreign::AuditsController
 app/controllers/foreign_controller.rb — class ForeignController
-app/controllers/forms/agent_contacts_controller.rb — module Forms, class AgentContactsController
-app/controllers/forms/callback_requests_controller.rb — module Forms, class CallbackRequestsController
-app/controllers/forms/consultation_requests_controller.rb — module Forms, class ConsultationRequestsController
-app/controllers/forms/mortgage_requests_controller.rb — module Forms, class MortgageRequestsController
-app/controllers/forms/quick_inquiries_controller.rb — module Forms, class QuickInquiriesController
 app/controllers/forms/service_requests_controller.rb — module Forms, class ServiceRequestsController
-app/controllers/forms/viewing_requests_controller.rb — module Forms, class ViewingRequestsController
 app/controllers/health_controller.rb — class HealthController
 app/controllers/home_controller.rb — class HomeController
 app/controllers/index_now_key_controller.rb — class IndexNowKeyController
@@ -327,12 +322,12 @@ app/services/kpi/morning_digest.rb — module Kpi, class MorningDigest
 app/services/kpi/show_funnel.rb — module Kpi, class ShowFunnel
 app/services/kpi/staff_snapshot.rb — module Kpi, class StaffSnapshot
 app/services/kpi/weekly_report.rb — module Kpi, class WeeklyReport
+app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/intake/client_resolver.rb — module Lead, class Intake, class ClientResolver
 app/services/lead/intake/crm_webhook_source.rb — module Lead, class Intake, class CrmWebhookSource
 app/services/lead/intake/manual_source.rb — module Lead, class Intake, class ManualSource
 app/services/lead/intake/site_source.rb — module Lead, class Intake, class SiteSource
 app/services/lead/intake/tg_dm_source.rb — module Lead, class Intake, class TgDmSource
-app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/property_resolver.rb — module Lead, class PropertyResolver
 app/services/listing_stats.rb — class ListingStats
 app/services/llm/chat_responder.rb — module Llm, class ChatResponder
@@ -377,6 +372,7 @@ app/services/property_evaluation/price_estimator.rb — module PropertyEvaluatio
 app/services/property_evaluation_service.rb — class PropertyEvaluationService
 app/services/property_feed_mapper.rb — class PropertyFeedMapper
 app/services/property_rooms_parser.rb — class PropertyRoomsParser
+app/services/public_form_spam_gate.rb — class PublicFormSpamGate
 app/services/qr_renderer.rb — class QrRenderer
 app/services/recommendation_service.rb — class RecommendationService
 app/services/referrals/auto_creator.rb — module Referrals, class AutoCreator
@@ -622,6 +618,7 @@ app/jobs/yandex/recrawl_url_job.rb — module Yandex, class RecrawlUrlJob
 ## app/mailers
 
 ```
+app/mailers/admin_mailer.rb — class AdminMailer
 app/mailers/application_mailer.rb — class ApplicationMailer
 app/mailers/cabinet_invitation_mailer.rb — class CabinetInvitationMailer
 app/mailers/cabinet_mailer.rb — class CabinetMailer

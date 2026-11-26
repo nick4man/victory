@@ -95,6 +95,14 @@
           </p>
 
           <%= form_with url: contact_forms_quick_inquiry_path, method: :post, local: true, class: 'space-y-4' do |f| %>
+            <%# #262: honeypot + подписанный timestamp рендера — PublicFormSpamGate
+                (образец /reviews из #261). %>
+            <div aria-hidden="true" tabindex="-1" class="absolute -left-[9999px] top-[-9999px] h-px w-px overflow-hidden">
+              <label>Не заполняйте это поле
+                <input type="text" name="<%= PublicFormSpamGate::HONEYPOT_PARAM %>" tabindex="-1" autocomplete="off">
+              </label>
+            </div>
+            <%= hidden_field_tag :rendered_at_token, PublicFormSpamGate.rendered_at_token %>
             <%= f.hidden_field :external_listing_id, value: el.id, name: 'inquiry[external_listing_id]' %>
             <input type="hidden" name="inquiry[message]" value="Запрос на объект «<%= el.title.to_s.truncate(80) %>» (источник: <%= agency_label %>)">
 

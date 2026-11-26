@@ -257,7 +257,9 @@ GitHub issue с меткой `agent:hermes` в kanban-доску `victory`; job
 
 🚨 Задачи, объявленные только в `schedule.rb`, **не запускаются**, и не все из
 них можно просто перенести в `sidekiq_cron.yml`: `SendViewingRemindersJob`
-упадёт (ищет несуществующие колонки), `UpdatePropertyStatisticsJob` обнулит
+с 26.11.26 (PR #272) выбирает по реальным колонкам (`scheduled_at`/
+`reminder_sent`), но в расписание так и не добавлен — включение только после
+ops-ревью; `UpdatePropertyStatisticsJob` обнулит
 `views_count`. Разбор всех 19 записей — CLAUDE.md, секция «Планировщик один».
 
 ### git из исходников (опционально)

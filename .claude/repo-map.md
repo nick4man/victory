@@ -108,6 +108,7 @@ app/
         test_mode_resolution.rb
       admin_token_auth.rb
       coming_soon_section.rb
+      public_form_spam_gateable.rb
       renders_not_found.rb
       visitor_identity.rb
     dashboard/
@@ -135,13 +136,7 @@ app/
     foreign/
       audits_controller.rb
     forms/
-      agent_contacts_controller.rb
-      callback_requests_controller.rb
-      consultation_requests_controller.rb
-      mortgage_requests_controller.rb
-      quick_inquiries_controller.rb
       service_requests_controller.rb
-      viewing_requests_controller.rb
     partners/
       auth_controller.rb
       dashboard_controller.rb
@@ -265,6 +260,7 @@ app/
     update_property_statistics_job.rb
     viewing_notification_job.rb
   mailers/
+    admin_mailer.rb
     application_mailer.rb
     cabinet_invitation_mailer.rb
     cabinet_mailer.rb
@@ -744,6 +740,7 @@ app/
     property_evaluation_service.rb
     property_feed_mapper.rb
     property_rooms_parser.rb
+    public_form_spam_gate.rb
     qr_renderer.rb
     recommendation_service.rb
     review_moderation_notifier.rb
@@ -2114,67 +2111,6 @@ def audit_params
 def rate_limited?
 </file>
 
-<file path="app/controllers/forms/agent_contacts_controller.rb">
-module Forms
-class AgentContactsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/callback_requests_controller.rb">
-module Forms
-class CallbackRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/consultation_requests_controller.rb">
-module Forms
-class ConsultationRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/mortgage_requests_controller.rb">
-module Forms
-class MortgageRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/quick_inquiries_controller.rb">
-module Forms
-class QuickInquiriesController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
-<file path="app/controllers/forms/service_requests_controller.rb">
-module Forms
-⋮----
-class ServiceRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-⋮----
-private
-⋮----
-def build_message(service)
-</file>
-
-<file path="app/controllers/forms/viewing_requests_controller.rb">
-module Forms
-class ViewingRequestsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], raise: false
-⋮----
-def create
-</file>
-
 <file path="app/controllers/partners/auth_controller.rb">
 module Partners
 class AuthController < ApplicationController
@@ -2360,39 +2296,6 @@ def show
 def featured
 </file>
 
-<file path="app/controllers/valuations/investment_controller.rb">
-class Valuations::InvestmentController < ApplicationController
-RATE_LIMIT = { count: 5, window: 1.hour }.freeze
-⋮----
-REALTY_TO_PV_TYPE = {
-⋮----
-CONDITION_TO_PV = {
-⋮----
-def new
-⋮----
-def create
-⋮----
-def show
-⋮----
-def status
-⋮----
-def download_pdf
-⋮----
-private
-⋮----
-def prefill_from_property!(slug_or_id)
-⋮----
-def apply_calc_prefill!
-⋮----
-def attach_property_source(valuation, slug_or_id)
-⋮----
-def attach_rate_overrides(valuation, overrides_param)
-⋮----
-def valuation_params
-⋮----
-def rate_limited?
-</file>
-
 <file path="app/controllers/webhooks/amocrm_controller.rb">
 module Webhooks
 ⋮----
@@ -2507,137 +2410,6 @@ private
 def agent_query
 ⋮----
 def build_meta_description
-</file>
-
-<file path="app/controllers/application_controller.rb">
-class ApplicationController < ActionController::Base
-⋮----
-protect_from_forgery with: :exception
-⋮----
-include VisitorIdentity
-⋮----
-before_action :configure_permitted_parameters, if: :devise_controller?
-before_action :set_locale
-before_action :setup_meta_tags
-before_action :set_active_storage_url_options
-⋮----
-before_action :set_noindex_on_devise_controllers, if: :devise_controller?
-⋮----
-rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
-rescue_from ActionController::RoutingError, with: :render_404
-⋮----
-helper_method :current_user_admin?
-helper_method :current_user_agent?
-helper_method :current_user_client?
-helper_method :mobile_device?
-helper_method :tablet_device?
-helper_method :desktop_device?
-helper_method :current_cabinet_user
-helper_method :cabinet_user_signed_in?
-⋮----
-def current_cabinet_user
-⋮----
-def cabinet_user_signed_in?
-⋮----
-protected
-⋮----
-def set_active_storage_url_options
-⋮----
-def set_noindex_on_devise_controllers
-⋮----
-def configure_permitted_parameters
-⋮----
-def set_locale
-⋮----
-def extract_locale
-⋮----
-def extract_locale_from_accept_language_header
-⋮----
-def track_user_activity
-⋮----
-def setup_meta_tags
-⋮----
-def detect_device_type
-⋮----
-def mobile_device?
-⋮----
-def tablet_device?
-⋮----
-def desktop_device?
-⋮----
-def browser
-⋮----
-def current_user_admin?
-⋮----
-def current_user_agent?
-⋮----
-def current_user_client?
-⋮----
-def require_admin!
-⋮----
-def require_agent!
-⋮----
-def track_ahoy_visit
-⋮----
-def track_event(name, properties = {})
-⋮----
-def per_page
-⋮----
-def redirect_back_or_to(default_path, **options)
-⋮----
-def safe_redirect_target?(url)
-⋮----
-def store_location
-⋮----
-def redirect_to_stored_location(default_path)
-⋮----
-def user_not_authorized(exception)
-⋮----
-def record_not_found
-⋮----
-def render_404
-⋮----
-def render_410
-⋮----
-def render_500
-⋮----
-def render_success(message = 'Операция выполнена успешно', status: :ok)
-⋮----
-def render_error(message = 'Произошла ошибка', status: :unprocessable_entity)
-⋮----
-def xhr_request?
-⋮----
-def turbo_frame_request?
-⋮----
-def capture_utm_params
-⋮----
-def utm_params
-⋮----
-def add_breadcrumb(name, path = nil)
-⋮----
-def current_api_user
-⋮----
-def decode_jwt_token(token)
-⋮----
-def feature_enabled?(feature_name)
-⋮----
-helper_method :feature_enabled?
-⋮----
-def notify_user(message, type: :info)
-⋮----
-def notify_success(message)
-⋮----
-def notify_error(message)
-⋮----
-def notify_warning(message)
-⋮----
-private
-⋮----
-def after_sign_in_path_for(resource)
-⋮----
-def default_cabinet_for(resource)
-⋮----
-def after_sign_out_path_for(resource_or_scope)
 </file>
 
 <file path="app/controllers/blog_controller.rb">
@@ -2989,89 +2761,6 @@ CARDS_LIMIT = 24
 def index
 </file>
 
-<file path="app/controllers/properties_controller.rb">
-class PropertiesController < ApplicationController
-⋮----
-before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite,
-                                       :schedule_viewing, :share, :print, :report, :dossier]
-before_action :authorize_property, only: [:edit, :update, :destroy]
-⋮----
-before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy,
-                                             :favorite, :unfavorite, :schedule_viewing]
-⋮----
-before_action :set_per_page, only: [:index, :search]
-⋮----
-def index
-⋮----
-def show
-⋮----
-def new
-⋮----
-def create
-⋮----
-def edit
-⋮----
-def update
-⋮----
-def destroy
-⋮----
-def map
-⋮----
-def search
-⋮----
-def autocomplete
-⋮----
-def compare
-⋮----
-def add_to_compare
-⋮----
-def remove_from_compare
-⋮----
-def favorite
-⋮----
-def unfavorite
-⋮----
-def schedule_viewing
-⋮----
-def share
-⋮----
-def print
-⋮----
-def dossier
-⋮----
-def report
-⋮----
-private
-⋮----
-def set_property
-⋮----
-def authorize_property
-⋮----
-def set_per_page
-⋮----
-def build_facet_counts
-⋮----
-def property_params
-⋮----
-def sort_order
-⋮----
-def calculate_map_center
-⋮----
-def set_property_meta_tags
-⋮----
-def primary_image_absolute_url
-⋮----
-def property_keywords
-⋮----
-def properties_json
-⋮----
-def property_detail_json
-⋮----
-def map_properties_json
-⋮----
-def property_summary(property)
-</file>
-
 <file path="app/controllers/public_consents_controller.rb">
 class PublicConsentsController < ApplicationController
 def show
@@ -3112,28 +2801,6 @@ def default_title
 def location_label
 ⋮----
 def build_meta_description
-</file>
-
-<file path="app/controllers/reviews_controller.rb">
-class ReviewsController < ApplicationController
-RATE_LIMIT_PER_HOUR = 3
-RATE_LIMIT_KEY      = 'review:submit:%<ip>s'
-⋮----
-def index
-⋮----
-def new
-⋮----
-def create
-⋮----
-def helpful
-⋮----
-private
-⋮----
-def review_params
-⋮----
-def rate_limited?
-⋮----
-def register_submission!
 </file>
 
 <file path="app/controllers/robots_controller.rb">
@@ -3606,13 +3273,6 @@ def perform(valuation_id)
 <file path="app/jobs/refresh_topnlab_stats_job.rb">
 class RefreshTopnlabStatsJob < ApplicationJob
 queue_as :low_priority
-⋮----
-def perform
-</file>
-
-<file path="app/jobs/send_viewing_reminders_job.rb">
-class SendViewingRemindersJob < ApplicationJob
-queue_as :scheduled
 ⋮----
 def perform
 </file>
@@ -4595,6 +4255,48 @@ def pdf?
 private
 ⋮----
 def calculate_file_size
+</file>
+
+<file path="app/models/external_listing.rb">
+class ExternalListing < ApplicationRecord
+⋮----
+KINDS = %w[yandex_yrl avito cian topnlab_mls agency_sitemap].freeze
+⋮----
+SITEMAP_AGENCY_LABELS = {
+⋮----
+def self.normalize_city(value)
+⋮----
+before_validation :normalize_city_name
+⋮----
+# Wires `.near([lat,lng], km, units: :km)` for the ComparableFinder's
+⋮----
+reverse_geocoded_by :latitude, :longitude
+⋮----
+validates :source, presence: true, inclusion: { in: KINDS }
+validates :source_id, presence: true, uniqueness: { scope: :source }
+⋮----
+scope :active,    -> { where(closed_at: nil) }
+scope :priced,    -> { where('price > 0') }
+scope :recent,    ->(days = 60) { where('fetched_at > ?', days.days.ago) }
+scope :rooms_eq,  ->(n) { where(rooms: n) }
+scope :rooms_band, ->(n, delta = 1) { where(rooms: ((n - delta)..(n + delta)).to_a) }
+scope :area_band, ->(target, pct = 0.20) { where(area: (target * (1 - pct))..(target * (1 + pct))) }
+scope :for_type,  ->(type) { where(property_type: type) }
+scope :for_deal,  ->(deal) { where(deal_type: deal) }
+⋮----
+def total_area
+⋮----
+def property_condition
+⋮----
+def display_source
+⋮----
+def agency_sitemap_label
+⋮----
+def price_per_sqm
+⋮----
+private
+⋮----
+def normalize_city_name
 </file>
 
 <file path="app/models/favorite.rb">
@@ -5829,75 +5531,6 @@ def active_for_authentication?
 def inactive_message
 </file>
 
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past
-validate :time_slot_available
-⋮----
-before_validation :normalize_phone
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('preferred_date >= ?', Date.current).where(status: [:pending, :confirmed]) }
-scope :past, -> { where('preferred_date < ?', Date.current) }
-scope :today, -> { where(preferred_date: Date.current) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-def date_not_in_past
-⋮----
-def time_slot_available
-⋮----
-# Check if time slot is available (not booked by another viewing)
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
-</file>
-
 <file path="app/models/zhk_fact.rb">
 class ZhkFact < ApplicationRecord
 belongs_to :residential_complex
@@ -6580,6 +6213,47 @@ def self.call(args = {})
 def self.serialize(task)
 </file>
 
+<file path="app/services/chat_tools/staff/market_comparables.rb">
+module ChatTools
+module Staff
+⋮----
+module MarketComparables
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+MAX_COMPARABLES = 8
+⋮----
+def self.schema
+⋮----
+def self.call(args = {}, asked_by: nil)
+⋮----
+def self.resolve_caller(args, asked_by)
+⋮----
+def self.websearch_available?
+⋮----
+def self.build_valuation(args, caller)
+⋮----
+def self.valuation_metadata(caller)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.success_response(pv, result, websearch_ok)
+⋮----
+# Estimator в ₽/м² для всех типов (единая нормализация, PR #184);
+# для участков добавляем ₽/сотку — в ней думают сотрудники.
+⋮----
+def self.websearch_status(websearch_ok, pv, result)
+⋮----
+def self.market_note(status)
+⋮----
+def self.serialize_comparables(comps)
+⋮----
+def self.serialize_comparable(c)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.run_failure(pv, error_message)
+</file>
+
 <file path="app/services/chat_tools/staff/nextcloud_list_templates.rb">
 module ChatTools
 module Staff
@@ -6600,6 +6274,22 @@ def self.schema
 def self.call(args = {})
 ⋮----
 def self.find_property(query)
+</file>
+
+<file path="app/services/chat_tools/staff/registry.rb">
+module ChatTools
+module Staff
+⋮----
+module Registry
+HANDLERS = {
+⋮----
+module_function
+⋮----
+def schemas
+⋮----
+def call(name, args, asked_by: nil)
+⋮----
+def deep_symbolize(obj)
 </file>
 
 <file path="app/services/chat_tools/staff/search_all_leads.rb">
@@ -6829,6 +6519,52 @@ def self.call(args)
 def self.agent_contact(p)
 ⋮----
 def self.amenities(p)
+</file>
+
+<file path="app/services/chat_tools/list_mortgage_programs.rb">
+module ChatTools
+⋮----
+module ListMortgagePrograms
+DEFAULT_LIMIT = 5
+MAX_LIMIT     = 10
+PAGE_PATH     = '/services/mortgage'
+⋮----
+MORTGAGE_TYPES = %w[
+⋮----
+def self.schema
+⋮----
+def self.call(args = {})
+⋮----
+def self.filter(programs, args)
+⋮----
+DERIVED_PROGRAM_MARKERS = {
+⋮----
+def self.type_match?(program, type)
+⋮----
+def self.requirement_value(program, key)
+⋮----
+def self.limit(args)
+⋮----
+def self.counts_by_type(programs)
+⋮----
+def self.present(p)
+⋮----
+def self.term_display(p)
+⋮----
+# Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
+# normalize его не меняет — Hash обрабатываем с локализацией известных
+# ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
+⋮----
+def self.requirements_display(requirements)
+⋮----
+def self.requirement_label(key, value)
+⋮----
+REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
+LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
+PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
+private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
+⋮----
+def self.page_url(args)
 </file>
 
 <file path="app/services/chat_tools/search_properties.rb">
@@ -7610,6 +7346,44 @@ def self.build(message)
 def self.topic_label(thread_id)
 </file>
 
+<file path="app/services/external_listings/yrl_parser.rb">
+require 'nokogiri'
+require 'open-uri'
+⋮----
+module ExternalListings
+⋮----
+class YrlParser
+SOURCE = 'yandex_yrl'
+⋮----
+REALTY_TYPE_MAP = {
+⋮----
+DEAL_TYPE_MAP = {
+⋮----
+def initialize(feed_url, source: SOURCE, http_timeout: 30)
+⋮----
+def call
+⋮----
+private
+⋮----
+def fetch_xml
+⋮----
+def build_attrs(offer)
+⋮----
+def build_address(offer)
+⋮----
+def text(node, xpath)
+⋮----
+def numeric(value)
+⋮----
+def integer(value)
+⋮----
+def parse_land_area(offer)
+⋮----
+def infer_type_loose(_type_attr, category)
+⋮----
+def upsert_one(attrs)
+</file>
+
 <file path="app/services/firecrawl/client.rb">
 module Firecrawl
 class Client
@@ -7925,6 +7699,66 @@ def parse_response(content)
 def normalize_intent(raw)
 </file>
 
+<file path="app/services/llm/omni_client.rb">
+require 'net/http'
+require 'json'
+⋮----
+module Llm
+⋮----
+class OmniClient
+class Error < StandardError; end
+⋮----
+DEFAULT_CHAINS = {
+⋮----
+def self.chain_for(key)
+⋮----
+DIRECT_PROVIDERS = {
+⋮----
+USER_AGENT = 'victory62-site/1.0'
+⋮----
+def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
+⋮----
+def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
+⋮----
+private
+⋮----
+def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
+⋮----
+def endpoint_for(model)
+⋮----
+def direct_only_chains?
+⋮----
+def direct_model?(model)
+⋮----
+def parse_tool_calls(raw)
+⋮----
+def safe_parse_json(str)
+⋮----
+TIER_WEIGHTS = {
+⋮----
+def increment_metric(chain, model)
+⋮----
+def tier_weight(model)
+⋮----
+def redis_connection
+⋮----
+require 'redis' unless defined?(Redis)
+</file>
+
+<file path="app/services/llm/page_greeting.rb">
+DEFAULT = <<~RU.squish
+⋮----
+def for(page_ctx)
+⋮----
+def build(kind, ctx)
+⋮----
+def catalog_greeting
+⋮----
+def property_greeting(ctx)
+⋮----
+def audit_greeting(ctx)
+</file>
+
 <file path="app/services/llm/question_classifier.rb">
 module Llm
 ⋮----
@@ -7967,6 +7801,51 @@ module_function
 def classify(text)
 ⋮----
 REPLIES = {
+</file>
+
+<file path="app/services/llm/staff_chat_responder.rb">
+module Llm
+⋮----
+class StaffChatResponder
+MAX_TOOL_ITERATIONS = 4
+⋮----
+Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
+⋮----
+def success? = error.nil?
+⋮----
+def self.call(...)
+⋮----
+def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
+⋮----
+def call
+⋮----
+private
+⋮----
+# --- Escalation path ---
+⋮----
+def handle_escalation(classification)
+⋮----
+def pick_manager
+⋮----
+def ping_manager(manager)
+⋮----
+"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
+⋮----
+def build_escalation_reply(manager)
+⋮----
+def handle_with_tools(classification)
+⋮----
+def handle_tool_calls(tool_calls, messages, used_tools)
+⋮----
+def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
+⋮----
+def log_to_bot_command_log(classification, used_tools)
+⋮----
+def empty_result(error)
+⋮----
+def system_prompt
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/llm/tool_runner.rb">
@@ -8508,6 +8387,84 @@ private
 def percentile(sorted, p)
 </file>
 
+<file path="app/services/property_evaluation/comparable_finder.rb">
+module PropertyEvaluation
+class ComparableFinder
+Tier = Struct.new(:radius_km, :area_pct, :rooms_delta, :scope_filter, keyword_init: true)
+⋮----
+TIERS = [
+⋮----
+THRESHOLDS = [
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+MAX_RADIUS_KM = 50
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def collect(tier)
+⋮----
+def external_scope(tier)
+⋮----
+def property_scope(tier)
+⋮----
+def mls_scope(tier)
+⋮----
+def apply_geo(scope, tier)
+⋮----
+def has_column?(scope, column)
+⋮----
+def band(pct)
+⋮----
+def rooms_band(delta)
+⋮----
+def property_type_id_for(pt)
+⋮----
+SIZE_BAND_PCT = 0.30
+⋮----
+def enrich(records)
+⋮----
+def external_band_area
+⋮----
+def same_city?(record, distance_km = nil)
+⋮----
+def normalized_subject_city
+⋮----
+def source_label(record)
+⋮----
+def subject_area_for_filter
+⋮----
+def compute_pps(record)
+⋮----
+def distance_km_to(r)
+</file>
+
+<file path="app/services/property_evaluation/composite_estimator.rb">
+module PropertyEvaluation
+⋮----
+class CompositeEstimator
+⋮----
+MIN_HEDONIC    = 5
+HEDONIC_WEIGHT = 0.4
+MEDIAN_WEIGHT  = 0.6
+⋮----
+def self.call(comparables:, target_area:, target_rooms:, base_estimate:)
+⋮----
+def initialize(comparables, target_area, target_rooms, base_estimate)
+⋮----
+def call
+⋮----
+private
+⋮----
+def enrich_comparables(comps)
+⋮----
+def base_only
+</file>
+
 <file path="app/services/property_evaluation/hedonic.rb">
 require 'matrix'
 ⋮----
@@ -8534,6 +8491,34 @@ def build_design_matrix
 def drop_constant_columns(matrix)
 ⋮----
 def full_rank?(matrix)
+</file>
+
+<file path="app/services/property_evaluation/price_estimator.rb">
+module PropertyEvaluation
+class PriceEstimator
+CONDITION_FACTOR = {
+⋮----
+OUTLIER_FACTOR = 3.0
+⋮----
+def initialize(valuation, comparables)
+⋮----
+def call
+⋮----
+private
+⋮----
+def subject_area
+⋮----
+def weighted_median(pairs)
+⋮----
+def reject_outliers(comps)
+⋮----
+def floor_factor
+⋮----
+def year_factor
+⋮----
+def condition_factor
+⋮----
+def amenities_factor
 </file>
 
 <file path="app/services/referrals/auto_creator.rb">
@@ -10951,6 +10936,237 @@ def redis
 require 'redis' unless defined?(Redis)
 </file>
 
+<file path="app/services/valuations/ai_synthetic_comps.rb">
+module Valuations
+⋮----
+class AiSyntheticComps
+SOURCE_TAG  = 'ai_synthesized'
+TARGET_N    = 7
+MAX_TOKENS  = 1200
+TEMPERATURE = 0.4
+CACHE_TTL   = 24 * 60 * 60
+⋮----
+def self.call(valuation, city_anchor_pps: nil)
+⋮----
+def initialize(valuation, city_anchor_pps: nil)
+⋮----
+def call
+⋮----
+private
+⋮----
+def run_llm
+⋮----
+SYSTEM_PROMPT = <<~PROMPT.freeze
+⋮----
+def build_user_prompt
+⋮----
+def type_label
+⋮----
+def parse_comps(raw_json)
+⋮----
+def build_comp(raw)
+⋮----
+def cache_key
+⋮----
+def subject_signature
+⋮----
+def read_cache
+⋮----
+def write_cache(raw)
+</file>
+
+<file path="app/services/valuations/cross_city_adapter.rb">
+module Valuations
+⋮----
+class CrossCityAdapter
+SOURCE_TAG       = 'cross_city_adapted'
+MIN_SOURCE_COMPS = 1
+MAX_COMPS        = 8
+⋮----
+DONOR_CITIES = %w[Москва Санкт-Петербург Краснодар Казань Екатеринбург Новосибирск Ростов-на-Дону].freeze
+⋮----
+def self.call(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def pick_donor_city(_target_median)
+⋮----
+def donor_comp_count(city)
+⋮----
+def comps_from_donor(city)
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+def realty_slug
+⋮----
+def adapt(property, ratio:, donor_city:)
+</file>
+
+<file path="app/services/valuations/semantic_comp_finder.rb">
+module Valuations
+⋮----
+class SemanticCompFinder
+LIMIT       = 20
+MIN_COSINE  = 0.75
+SOURCE_TAG  = 'semantic'
+⋮----
+MAX_RADIUS_KM = 50
+⋮----
+def self.call(valuation)
+⋮----
+def initialize(valuation)
+⋮----
+SIZE_BAND_PCT = 0.30
+⋮----
+def call
+⋮----
+def filter_by_size(comps)
+⋮----
+def subject_area_for_filter
+⋮----
+private
+⋮----
+def build_subject_text
+⋮----
+def property_type_label
+⋮----
+def condition_label
+⋮----
+def embed_text(text)
+⋮----
+def build_comp(embedding_row)
+⋮----
+def distance_km_to(property)
+⋮----
+def same_city?(property, distance_km = nil)
+⋮----
+def weight_for(cos, distance_km)
+</file>
+
+<file path="app/services/valuations/sitemap_comp_finder.rb">
+require 'net/http'
+require 'uri'
+require 'yaml'
+require 'digest'
+⋮----
+module Valuations
+⋮----
+class SitemapCompFinder
+CACHE_TTL = 6.hours
+CONFIG_PATH = Rails.root.join('config/agency_sitemaps.yml')
+SOURCE_KIND = 'agency_sitemap'
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def agency_covers_subject_city?(cfg)
+⋮----
+def normalize_city(value)
+⋮----
+def enabled?
+⋮----
+def load_config
+⋮----
+def property_type_supported?(cfg)
+⋮----
+def cached_count(agency_key)
+⋮----
+def area_bracket_min
+⋮----
+def area_bracket_max
+⋮----
+def band_area
+⋮----
+def discover_listings(cfg)
+⋮----
+def fetch_xml(url)
+⋮----
+def extract_locs(xml)
+⋮----
+def scrape_and_parse(urls, agency_key)
+⋮----
+# JSON-LD path: fetch raw HTML + extract <script type="application/ld+json">.
+# Schema.org даёт structured Apartment/House/Product+Offer — все нужные поля
+# (price, area, address, rooms, floor) без LLM-парсинга. Если на странице
+# нет JSON-LD или structure broken — skip (не падаем).
+def scrape_json_ld(urls, agency_key)
+⋮----
+def fetch_html(url)
+⋮----
+# Извлечь поля из Schema.org JSON-LD. Возвращает hash совместимый с
+# `persist` (price/area/rooms/floor/address/district/title). Nil если
+# structure отсутствует или unparseable.
+def extract_json_ld_attrs(html, url)
+⋮----
+.where('source_id LIKE ?', "#{agency_key}:%")
+⋮----
+# Reuse exact same prompt as WebsearchCompFinder. Извлечён в локальную
+# константу — DRY ratio < 3, не стоит ради этого выделять в shared module.
+PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
+⋮----
+def llm_parse(url, markdown)
+⋮----
+def sane?(p)
+</file>
+
+<file path="app/services/valuations/websearch_comp_finder.rb">
+module Valuations
+⋮----
+class WebsearchCompFinder
+CACHE_TTL = 6.hours
+MAX_SEARCH_RESULTS = 8
+MAX_SCRAPES = 5
+⋮----
+REALTY_TYPE_TO_SLUG = {
+⋮----
+def initialize(valuation)
+⋮----
+def call
+⋮----
+private
+⋮----
+def enabled?
+⋮----
+def cache_key
+⋮----
+def area_bracket_min
+⋮----
+def area_bracket_max
+⋮----
+def band_area
+⋮----
+def cached_count
+⋮----
+def tavily_search
+⋮----
+def build_query
+⋮----
+def guess_city
+⋮----
+def scrape_and_parse(tavily_results)
+⋮----
+def already_persisted?(url)
+⋮----
+PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
+⋮----
+def llm_parse(url, markdown)
+⋮----
+def persist(parsed_list)
+⋮----
+def resolve_city(record, card_city)
+⋮----
+def sane?(p)
+</file>
+
 <file path="app/services/yandex/webmaster_opportunities_service.rb">
 module Yandex
 ⋮----
@@ -12121,52 +12337,305 @@ def devise_admin?
 def token_admin?
 </file>
 
-<file path="app/controllers/contact_forms_controller.rb">
-class ContactFormsController < ApplicationController
-skip_before_action :verify_authenticity_token, only: [:create], if: -> { request.format.json? }
-before_action :set_property, only: [:viewing_schedule, :property_inquiry]
-⋮----
-def quick_inquiry
-⋮----
-def viewing_schedule
-⋮----
-def callback
-⋮----
-def consultation
-⋮----
-def mortgage_application
-⋮----
-def property_selection
+<file path="app/controllers/concerns/public_form_spam_gateable.rb">
+module PublicFormSpamGateable
+extend ActiveSupport::Concern
 ⋮----
 private
 ⋮----
-def quick_inquiry_params
+def public_form_spam_gate(form, rate_limit: PublicFormSpamGate::DEFAULT_RATE_LIMIT_PER_HOUR,
+</file>
+
+<file path="app/controllers/forms/service_requests_controller.rb">
+module Forms
 ⋮----
-def viewing_params
+class ServiceRequestsController < ApplicationController
+skip_before_action :verify_authenticity_token, only: [:create], raise: false
 ⋮----
-def callback_params
+def create
 ⋮----
-def consultation_params
+private
 ⋮----
-def mortgage_params
+def build_message(service)
+</file>
+
+<file path="app/controllers/valuations/investment_controller.rb">
+class Valuations::InvestmentController < ApplicationController
+RATE_LIMIT = { count: 5, window: 1.hour }.freeze
 ⋮----
-def selection_params
+REALTY_TO_PV_TYPE = {
+⋮----
+CONDITION_TO_PV = {
+⋮----
+def new
+⋮----
+def create
+# #262: антиспам-гейт до InvestmentAuditJob (LLM-цепочка): дроп до
+# rate_limited?/save/enqueue, молчаливый success-нотис. rate_limit: 0 —
+# существующий Redis-лимит (5/час) ниже не ужесточаем; идемпотентность
+# не нужна, см. drop_spam_valuation в PropertyValuationsController.
+⋮----
+def show
+⋮----
+def status
+⋮----
+def download_pdf
+⋮----
+private
+⋮----
+def prefill_from_property!(slug_or_id)
+⋮----
+def apply_calc_prefill!
+⋮----
+def attach_property_source(valuation, slug_or_id)
+⋮----
+def attach_rate_overrides(valuation, overrides_param)
+⋮----
+def valuation_params
+⋮----
+def rate_limited?
+</file>
+
+<file path="app/controllers/webhooks/news_ingest_controller.rb">
+module Webhooks
+⋮----
+class NewsIngestController < ApplicationController
+skip_before_action :verify_authenticity_token, raise: false
+before_action :authenticate_bearer!
+⋮----
+DEFAULT_CATEGORY = 'news'
+DEFAULT_SCHEMA = 'NewsArticle'
+⋮----
+def create
+⋮----
+private
+⋮----
+def public_news_url(slug)
+⋮----
+def authenticate_bearer!
+⋮----
+def payload_params
+⋮----
+def normalize_payload(p)
+⋮----
+def safe_parse_time(value)
+⋮----
+def upsert_article(attrs)
+</file>
+
+<file path="app/controllers/application_controller.rb">
+class ApplicationController < ActionController::Base
+⋮----
+protect_from_forgery with: :exception
+⋮----
+include VisitorIdentity
+include PublicFormSpamGateable
+⋮----
+before_action :configure_permitted_parameters, if: :devise_controller?
+before_action :set_locale
+before_action :setup_meta_tags
+before_action :set_active_storage_url_options
+⋮----
+before_action :set_noindex_on_devise_controllers, if: :devise_controller?
+⋮----
+rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
+rescue_from ActionController::RoutingError, with: :render_404
+⋮----
+helper_method :current_user_admin?
+helper_method :current_user_agent?
+helper_method :current_user_client?
+helper_method :mobile_device?
+helper_method :tablet_device?
+helper_method :desktop_device?
+helper_method :current_cabinet_user
+helper_method :cabinet_user_signed_in?
+⋮----
+def current_cabinet_user
+⋮----
+def cabinet_user_signed_in?
+⋮----
+protected
+⋮----
+def set_active_storage_url_options
+⋮----
+def set_noindex_on_devise_controllers
+⋮----
+def configure_permitted_parameters
+⋮----
+def set_locale
+⋮----
+def extract_locale
+⋮----
+def extract_locale_from_accept_language_header
+⋮----
+def track_user_activity
+⋮----
+def setup_meta_tags
+⋮----
+def detect_device_type
+⋮----
+def mobile_device?
+⋮----
+def tablet_device?
+⋮----
+def desktop_device?
+⋮----
+def browser
+⋮----
+def current_user_admin?
+⋮----
+def current_user_agent?
+⋮----
+def current_user_client?
+⋮----
+def require_admin!
+⋮----
+def require_agent!
+⋮----
+def track_ahoy_visit
+⋮----
+def track_event(name, properties = {})
+⋮----
+def per_page
+⋮----
+def redirect_back_or_to(default_path, **options)
+⋮----
+def safe_redirect_target?(url)
+⋮----
+def store_location
+⋮----
+def redirect_to_stored_location(default_path)
+⋮----
+def user_not_authorized(exception)
+⋮----
+def record_not_found
+⋮----
+def render_404
+⋮----
+def render_410
+⋮----
+def render_500
+⋮----
+def render_success(message = 'Операция выполнена успешно', status: :ok)
+⋮----
+def render_error(message = 'Произошла ошибка', status: :unprocessable_entity)
+⋮----
+def xhr_request?
+⋮----
+def turbo_frame_request?
+⋮----
+def capture_utm_params
+⋮----
+def utm_params
+⋮----
+def add_breadcrumb(name, path = nil)
+⋮----
+def current_api_user
+⋮----
+def decode_jwt_token(token)
+⋮----
+def feature_enabled?(feature_name)
+⋮----
+helper_method :feature_enabled?
+⋮----
+def notify_user(message, type: :info)
+⋮----
+def notify_success(message)
+⋮----
+def notify_error(message)
+⋮----
+def notify_warning(message)
+⋮----
+private
+⋮----
+def after_sign_in_path_for(resource)
+⋮----
+def default_cabinet_for(resource)
+⋮----
+def after_sign_out_path_for(resource_or_scope)
+</file>
+
+<file path="app/controllers/properties_controller.rb">
+class PropertiesController < ApplicationController
+⋮----
+before_action :set_property, only: [:show, :edit, :update, :destroy, :favorite, :unfavorite,
+                                       :schedule_viewing, :share, :print, :report, :dossier]
+before_action :authorize_property, only: [:edit, :update, :destroy]
+⋮----
+before_action :authenticate_user!, only: [:new, :create, :edit, :update, :destroy,
+                                             :favorite, :unfavorite, :schedule_viewing]
+⋮----
+before_action :set_per_page, only: [:index, :search]
+⋮----
+def index
+⋮----
+def show
+⋮----
+def new
+⋮----
+def create
+⋮----
+def edit
+⋮----
+def update
+⋮----
+def destroy
+⋮----
+def map
+⋮----
+def search
+⋮----
+def autocomplete
+⋮----
+def compare
+⋮----
+def add_to_compare
+⋮----
+def remove_from_compare
+⋮----
+def favorite
+⋮----
+def unfavorite
+⋮----
+def schedule_viewing
+⋮----
+def share
+⋮----
+def print
+⋮----
+def dossier
+⋮----
+def report
+⋮----
+private
 ⋮----
 def set_property
 ⋮----
-def determine_priority(inquiry)
+def authorize_property
 ⋮----
-def create_viewing_inquiry(viewing)
+def set_per_page
 ⋮----
-def find_matching_properties(inquiry)
+def build_facet_counts
 ⋮----
-def create_crm_task(inquiry, task_type)
+def property_params
 ⋮----
-def send_urgent_sms(inquiry)
+def sort_order
 ⋮----
-def create_calendar_event(inquiry)
+def calculate_map_center
 ⋮----
-def send_to_mortgage_partners(inquiry)
+def set_property_meta_tags
+⋮----
+def primary_image_absolute_url
+⋮----
+def property_keywords
+⋮----
+def properties_json
+⋮----
+def property_detail_json
+⋮----
+def map_properties_json
+⋮----
+def property_summary(property)
 </file>
 
 <file path="app/jobs/telegram/inbound_processor_job.rb">
@@ -12197,6 +12666,19 @@ def dispatch_downstream(valuation)
 def push_to_lead_card(valuation)
 </file>
 
+<file path="app/jobs/send_viewing_reminders_job.rb">
+class SendViewingRemindersJob < ApplicationJob
+queue_as :scheduled
+⋮----
+def perform
+</file>
+
+<file path="app/mailers/admin_mailer.rb">
+class AdminMailer < ApplicationMailer
+⋮----
+def property_reported(property, reporter, reason, description)
+</file>
+
 <file path="app/models/crm_card_change_request.rb">
 class CrmCardChangeRequest < ApplicationRecord
 belongs_to :crm_card
@@ -12212,48 +12694,6 @@ enum :status, {
 validates :field, presence: true
 ⋮----
 scope :recent, -> { order(created_at: :desc) }
-</file>
-
-<file path="app/models/external_listing.rb">
-class ExternalListing < ApplicationRecord
-⋮----
-KINDS = %w[yandex_yrl avito cian topnlab_mls agency_sitemap].freeze
-⋮----
-SITEMAP_AGENCY_LABELS = {
-⋮----
-def self.normalize_city(value)
-⋮----
-before_validation :normalize_city_name
-⋮----
-# Wires `.near([lat,lng], km, units: :km)` for the ComparableFinder's
-⋮----
-reverse_geocoded_by :latitude, :longitude
-⋮----
-validates :source, presence: true, inclusion: { in: KINDS }
-validates :source_id, presence: true, uniqueness: { scope: :source }
-⋮----
-scope :active,    -> { where(closed_at: nil) }
-scope :priced,    -> { where('price > 0') }
-scope :recent,    ->(days = 60) { where('fetched_at > ?', days.days.ago) }
-scope :rooms_eq,  ->(n) { where(rooms: n) }
-scope :rooms_band, ->(n, delta = 1) { where(rooms: ((n - delta)..(n + delta)).to_a) }
-scope :area_band, ->(target, pct = 0.20) { where(area: (target * (1 - pct))..(target * (1 + pct))) }
-scope :for_type,  ->(type) { where(property_type: type) }
-scope :for_deal,  ->(deal) { where(deal_type: deal) }
-⋮----
-def total_area
-⋮----
-def property_condition
-⋮----
-def display_source
-⋮----
-def agency_sitemap_label
-⋮----
-def price_per_sqm
-⋮----
-private
-⋮----
-def normalize_city_name
 </file>
 
 <file path="app/models/note.rb">
@@ -12717,50 +13157,19 @@ validates :processed_at, presence: true
 scope :stale, ->(older_than: 7.days.ago) { where(processed_at: ...older_than) }
 </file>
 
-<file path="app/services/chat_tools/list_mortgage_programs.rb">
+<file path="app/services/chat_tools/registry.rb">
 module ChatTools
 ⋮----
-module ListMortgagePrograms
-DEFAULT_LIMIT = 5
-MAX_LIMIT     = 10
-PAGE_PATH     = '/services/mortgage'
+module Registry
+HANDLERS = {
 ⋮----
-MORTGAGE_TYPES = %w[
+module_function
 ⋮----
-def self.schema
+def schemas
 ⋮----
-def self.call(args = {})
+def call(name, args)
 ⋮----
-def self.filter(programs, args)
-⋮----
-DERIVED_PROGRAM_MARKERS = {
-⋮----
-def self.type_match?(program, type)
-⋮----
-def self.requirement_value(program, key)
-⋮----
-def self.limit(args)
-⋮----
-def self.counts_by_type(programs)
-⋮----
-def self.present(p)
-⋮----
-def self.term_display(p)
-⋮----
-# Engine отдаёт requirements как dict[str, Any] (models.py BankOffer),
-# normalize его не меняет — Hash обрабатываем с локализацией известных
-# ключей из всех producer'ов (seed, fetch_bank_offers, manual YAML).
-⋮----
-def self.requirements_display(requirements)
-⋮----
-def self.requirement_label(key, value)
-⋮----
-REGIONS    = { 'far_east' => 'Дальний Восток' }.freeze
-LOCATIONS  = { 'rural' => 'сельская местность' }.freeze
-PROPERTY_LABELS = { 'new_building' => 'Новостройка', 'secondary' => 'Вторичное жильё' }.freeze
-private_constant :REGIONS, :LOCATIONS, :PROPERTY_LABELS
-⋮----
-def self.page_url(args)
+def deep_symbolize(obj)
 </file>
 
 <file path="app/services/crm_cards/export_lock.rb">
@@ -12992,50 +13401,19 @@ module_function
 def first_file(data)
 </file>
 
-<file path="app/services/llm/omni_client.rb">
-require 'net/http'
-require 'json'
-⋮----
+<file path="app/services/llm/page_context.rb">
 module Llm
 ⋮----
-class OmniClient
-class Error < StandardError; end
+module PageContext
+CTX_KINDS = {
 ⋮----
-DEFAULT_CHAINS = {
+def format_money(value)
 ⋮----
-def self.chain_for(key)
+def guidance(kind, page_ctx)
 ⋮----
-DIRECT_PROVIDERS = {
+def audit_guidance(state)
 ⋮----
-USER_AGENT = 'victory62-site/1.0'
-⋮----
-def initialize(base_url: ENV['OMNIROUTE_BASE_URL'], api_key: ENV['OMNIROUTE_API_KEY'])
-⋮----
-def complete(messages, chain: :chat, tools: nil, tool_choice: nil,
-⋮----
-private
-⋮----
-def try_model(model, messages, tools, tool_choice, max_tokens, temperature, response_format)
-⋮----
-def endpoint_for(model)
-⋮----
-def direct_only_chains?
-⋮----
-def direct_model?(model)
-⋮----
-def parse_tool_calls(raw)
-⋮----
-def safe_parse_json(str)
-⋮----
-TIER_WEIGHTS = {
-⋮----
-def increment_metric(chain, model)
-⋮----
-def tier_weight(model)
-⋮----
-def redis_connection
-⋮----
-require 'redis' unless defined?(Redis)
+def valuation_guidance(state)
 </file>
 
 <file path="app/services/llm/spam_filter.rb">
@@ -13752,76 +14130,6 @@ def parse(response, label, request_body: nil)
 def throttle!(kind)
 </file>
 
-<file path="app/services/valuations/ai_synthetic_comps.rb">
-module Valuations
-⋮----
-class AiSyntheticComps
-SOURCE_TAG  = 'ai_synthesized'
-TARGET_N    = 7
-MAX_TOKENS  = 1200
-TEMPERATURE = 0.4
-CACHE_TTL   = 24 * 60 * 60
-⋮----
-def self.call(valuation, city_anchor_pps: nil)
-⋮----
-def initialize(valuation, city_anchor_pps: nil)
-⋮----
-def call
-⋮----
-private
-⋮----
-def run_llm
-⋮----
-SYSTEM_PROMPT = <<~PROMPT.freeze
-⋮----
-def build_user_prompt
-⋮----
-def type_label
-⋮----
-def parse_comps(raw_json)
-⋮----
-def build_comp(raw)
-⋮----
-def cache_key
-⋮----
-def subject_signature
-⋮----
-def read_cache
-⋮----
-def write_cache(raw)
-</file>
-
-<file path="app/services/valuations/cross_city_adapter.rb">
-module Valuations
-⋮----
-class CrossCityAdapter
-SOURCE_TAG       = 'cross_city_adapted'
-MIN_SOURCE_COMPS = 1
-MAX_COMPS        = 8
-⋮----
-DONOR_CITIES = %w[Москва Санкт-Петербург Краснодар Казань Екатеринбург Новосибирск Ростов-на-Дону].freeze
-⋮----
-def self.call(valuation)
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def pick_donor_city(_target_median)
-⋮----
-def donor_comp_count(city)
-⋮----
-def comps_from_donor(city)
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-def realty_slug
-⋮----
-def adapt(property, ratio:, donor_city:)
-</file>
-
 <file path="app/services/valuations/price_formatter.rb">
 module Valuations
 ⋮----
@@ -13829,47 +14137,6 @@ module PriceFormatter
 module_function
 ⋮----
 def format_rub(amount)
-</file>
-
-<file path="app/services/valuations/semantic_comp_finder.rb">
-module Valuations
-⋮----
-class SemanticCompFinder
-LIMIT       = 20
-MIN_COSINE  = 0.75
-SOURCE_TAG  = 'semantic'
-⋮----
-MAX_RADIUS_KM = 50
-⋮----
-def self.call(valuation)
-⋮----
-def initialize(valuation)
-⋮----
-SIZE_BAND_PCT = 0.30
-⋮----
-def call
-⋮----
-def filter_by_size(comps)
-⋮----
-def subject_area_for_filter
-⋮----
-private
-⋮----
-def build_subject_text
-⋮----
-def property_type_label
-⋮----
-def condition_label
-⋮----
-def embed_text(text)
-⋮----
-def build_comp(embedding_row)
-⋮----
-def distance_km_to(property)
-⋮----
-def same_city?(property, distance_km = nil)
-⋮----
-def weight_for(cos, distance_km)
 </file>
 
 <file path="app/services/valuations/similar_valuations_finder.rb">
@@ -13903,6 +14170,105 @@ def aggregate(prices)
 def zero_result
 </file>
 
+<file path="app/services/property_evaluation_service.rb">
+class PropertyEvaluationService
+⋮----
+MIN_TIER1 = 3
+MIN_TIER2 = 2
+MIN_TIER3 = 1
+⋮----
+ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+⋮----
+AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+⋮----
+LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+⋮----
+def initialize(valuation, include_full_comparables: false)
+⋮----
+def call
+⋮----
+# Полный пул аналогов добавляем только когда запросил staff-тул
+# (include_full_comparables) — публичные оценки его не хранят (PR #184).
+def full_comparables_hash(comps)
+⋮----
+# Effective area в м² для ВСЕХ типов: total_area для строений,
+# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
+# (ComparableFinder#enrich переводит land-объявления площадок из соток),
+# поэтому fallback и CompositeEstimator работают в одной единице
+# (ревью Kimi, PR #184).
+def subject_area
+⋮----
+private
+⋮----
+def valid?
+⋮----
+# === Ensemble-based confidence ===
+# Старая tier-логика заменена на multi-source формулу: оценка строится
+# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
+# ai_synthesized / city anchor), и confidence учитывает (a) сколько
+# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
+# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
+# большинстве реалистичных сценариев.
+REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
+⋮----
+def confidence_for(pool, estimate = nil)
+⋮----
+base = 0.50  # baseline: любая успешная оценка ≥ 50%
+⋮----
+base += 0.10 if real_count >= 1                # хотя бы один настоящий
+# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
+# модель строит bootstrap-CI и хедоник работает; засчитываем как
+# «полу-настоящий» сигнал.
+⋮----
+# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
+# с минимальным сравнением, даже если расходится с агрегатами.
+⋮----
+# condition хранится в колонке `condition`; геттер `property_condition` —
+# alias через `attribute`. Проверяем оба для совместимости.
+⋮----
+# Cap positive contributions ДО penalty — иначе сумма additions может
+# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
+# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
+# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
+# min(1.25, 0.95) = 0.95 — penalty не виден).
+⋮----
+# PENALTY for high sample variance — coefficient of variation
+# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
+# spans wide range, confidence shouldn't быть 0.95. Это решает
+# «honest math» проблему: 0.95 при spread 3x = nonsense.
+#
+# CV thresholds calibrated empirically:
+#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
+#  - CV > 0.30 → notable heterogeneity — medium penalty
+#  - CV > 0.18 → some spread — small penalty
+⋮----
+# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
+⋮----
+def estimators_agree?(comps)
+⋮----
+def pps_coefficient_of_variation(comps)
+⋮----
+def low_coverage?(comps)
+⋮----
+def fallback_estimate
+⋮----
+def serialize(comps)
+⋮----
+def compose_title(r)
+⋮----
+def comparable_url(r)
+⋮----
+def comparable_source(r)
+⋮----
+def build_market_analysis(comps, estimate)
+⋮----
+def build_recommendations
+⋮----
+def success(payload)
+⋮----
+def error(message)
+</file>
+
 <file path="app/controllers/admin/spam_blocked_entries_controller.rb">
 module Admin
 ⋮----
@@ -13928,31 +14294,24 @@ def index_offset
 def serialize(entry)
 </file>
 
-<file path="app/controllers/webhooks/news_ingest_controller.rb">
-module Webhooks
+<file path="app/controllers/concerns/chat/page_context_params.rb">
+module Chat
 ⋮----
-class NewsIngestController < ApplicationController
-skip_before_action :verify_authenticity_token, raise: false
-before_action :authenticate_bearer!
+module PageContextParams
+extend ActiveSupport::Concern
 ⋮----
-DEFAULT_CATEGORY = 'news'
-DEFAULT_SCHEMA = 'NewsArticle'
-⋮----
-def create
+CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
+CTX_VALUE_MAX = 100
 ⋮----
 private
 ⋮----
-def public_news_url(slug)
+def extract_page_params
 ⋮----
-def authenticate_bearer!
+def clean_page_value(value, max)
 ⋮----
-def payload_params
+def sanitize_page_ctx(raw_ctx)
 ⋮----
-def normalize_payload(p)
-⋮----
-def safe_parse_time(value)
-⋮----
-def upsert_article(attrs)
+def stamp_page(conv, page_ctx)
 </file>
 
 <file path="app/controllers/webhooks/telegram_test_controller.rb">
@@ -13967,41 +14326,21 @@ private
 def authorized?
 </file>
 
-<file path="app/controllers/property_valuations_controller.rb">
-class PropertyValuationsController < ApplicationController
-⋮----
-RATE_LIMIT = { count: 5, window: 1.hour }.freeze
-⋮----
-before_action :set_breadcrumbs
-before_action :enforce_rate_limit, only: :create
+<file path="app/controllers/reviews_controller.rb">
+class ReviewsController < ApplicationController
+def index
 ⋮----
 def new
 ⋮----
 def create
 ⋮----
-def result
-⋮----
-def status
-⋮----
-def download_pdf
-⋮----
-def request_call
+def helpful
 ⋮----
 private
 ⋮----
-def valuation_params
+def review_params
 ⋮----
-def set_breadcrumbs
-⋮----
-def determine_error_step
-⋮----
-def find_similar_properties(valuation)
-⋮----
-def comparable_property_type_slug(pt)
-⋮----
-def enforce_rate_limit
-⋮----
-def rate_limited?
+def review_spam_gate
 </file>
 
 <file path="app/jobs/crm_cards/export_job.rb">
@@ -14022,6 +14361,21 @@ queue_as :low_priority
 retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
 def perform(lead_event_id)
+</file>
+
+<file path="app/jobs/llm_reply_job.rb">
+class LlmReplyJob < ApplicationJob
+queue_as :default
+⋮----
+def perform(conversation_id, message_id = nil)
+⋮----
+private
+⋮----
+def with_lead_test_mode(conv)
+⋮----
+def message_page_snapshot(conv, message_id)
+⋮----
+def message_payload(m)
 </file>
 
 <file path="app/models/lead_event.rb">
@@ -14139,63 +14493,6 @@ def host_of(raw_url)
 def trusted_ip?
 </file>
 
-<file path="app/services/chat_tools/staff/market_comparables.rb">
-module ChatTools
-module Staff
-⋮----
-module MarketComparables
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-MAX_COMPARABLES = 8
-⋮----
-def self.schema
-⋮----
-def self.call(args = {}, asked_by: nil)
-⋮----
-def self.resolve_caller(args, asked_by)
-⋮----
-def self.websearch_available?
-⋮----
-def self.build_valuation(args, caller)
-⋮----
-def self.valuation_metadata(caller)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.success_response(pv, result, websearch_ok)
-⋮----
-# Estimator в ₽/м² для всех типов (единая нормализация, PR #184);
-# для участков добавляем ₽/сотку — в ней думают сотрудники.
-⋮----
-def self.websearch_status(websearch_ok, pv, result)
-⋮----
-def self.market_note(status)
-⋮----
-def self.serialize_comparables(comps)
-⋮----
-def self.serialize_comparable(c)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.run_failure(pv, error_message)
-</file>
-
-<file path="app/services/chat_tools/staff/registry.rb">
-module ChatTools
-module Staff
-⋮----
-module Registry
-HANDLERS = {
-⋮----
-module_function
-⋮----
-def schemas
-⋮----
-def call(name, args, asked_by: nil)
-⋮----
-def deep_symbolize(obj)
-</file>
-
 <file path="app/services/chat_tools/qualify_lead.rb">
 PREMIUM_DISTRICTS = [
 ⋮----
@@ -14234,21 +14531,6 @@ priority:                  priority,    # LeadAnnouncer reads meta['priority']
 service_type:              service_type, # LeadAnnouncer renders badge
 ⋮----
 base = "Лид квалифицирован: #{priority.upcase} (#{score}/10). #{reasoning}"
-</file>
-
-<file path="app/services/chat_tools/registry.rb">
-module ChatTools
-⋮----
-module Registry
-HANDLERS = {
-⋮----
-module_function
-⋮----
-def schemas
-⋮----
-def call(name, args)
-⋮----
-def deep_symbolize(obj)
 </file>
 
 <file path="app/services/chat_tools/request_specialist_evaluation.rb">
@@ -14372,85 +14654,34 @@ def pipeline_block
 def highlights(metrics)
 </file>
 
-<file path="app/services/llm/page_greeting.rb">
-DEFAULT = <<~RU.squish
-⋮----
-def for(page_ctx)
-⋮----
-def build(kind, ctx)
-⋮----
-def catalog_greeting
-⋮----
-def property_greeting(ctx)
-⋮----
-def audit_greeting(ctx)
-</file>
-
-<file path="app/services/llm/staff_chat_responder.rb">
+<file path="app/services/llm/chat_responder.rb">
 module Llm
 ⋮----
-class StaffChatResponder
-MAX_TOOL_ITERATIONS = 4
+class ChatResponder
+ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 ⋮----
-Result = Struct.new(:answer, :kind, :used_tools, :model, :record, :error,
-⋮----
-def success? = error.nil?
-⋮----
-def self.call(...)
-⋮----
-def initialize(question:, asked_by:, msg: {}, client: Llm::OmniClient.new,
+def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
 ⋮----
 def call
 ⋮----
+def full_system_prompt
+⋮----
 private
 ⋮----
-# --- Escalation path ---
+def current_page_ctx
 ⋮----
-def handle_escalation(classification)
+def security_preamble
 ⋮----
-def pick_manager
+private
 ⋮----
-def ping_manager(manager)
+def parse(result)
 ⋮----
-"Вопрос: <i>#{escape(@question.truncate(400))}</i>\n\n" \
+def fallback_message
 ⋮----
-def build_escalation_reply(manager)
-⋮----
-def handle_with_tools(classification)
-⋮----
-def handle_tool_calls(tool_calls, messages, used_tools)
-⋮----
-def persist_question(classification, answer:, used_tools:, model:, escalated_to: nil)
-⋮----
-def log_to_bot_command_log(classification, used_tools)
-⋮----
-def empty_result(error)
-⋮----
+# System prompt is rebuilt on every call so it reflects the current
+# catalog and team. Cached for 5 min to avoid hammering the DB on
+# every visitor message.
 def system_prompt
-⋮----
-def escape(text)
-</file>
-
-<file path="app/services/property_evaluation/composite_estimator.rb">
-module PropertyEvaluation
-⋮----
-class CompositeEstimator
-⋮----
-MIN_HEDONIC    = 5
-HEDONIC_WEIGHT = 0.4
-MEDIAN_WEIGHT  = 0.6
-⋮----
-def self.call(comparables:, target_area:, target_rooms:, base_estimate:)
-⋮----
-def initialize(comparables, target_area, target_rooms, base_estimate)
-⋮----
-def call
-⋮----
-private
-⋮----
-def enrich_comparables(comps)
-⋮----
-def base_only
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
@@ -14937,6 +15168,70 @@ lines << "  · Депозит:   <b>#{fmt2(@audit['ei_deposit'])}</b>"
 def escape(text)
 </file>
 
+<file path="app/services/public_form_spam_gate.rb">
+class PublicFormSpamGate
+⋮----
+MIN_FILL_SECONDS = 3
+⋮----
+IDEMPOTENCY_WINDOW = 15.minutes
+⋮----
+DEFAULT_RATE_LIMIT_PER_HOUR = 3
+⋮----
+ALERT_THRESHOLD = 10
+⋮----
+DROP_REASONS = %w[honeypot spam_ip no_render_timestamp too_fast rate_limit duplicate].freeze
+⋮----
+HONEYPOT_PARAM = ContactFormSpamGuard::HONEYPOT_PARAM
+⋮----
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def duplicate_submit?(form, visitor_token)
+⋮----
+def rate_limit_key(form, ip)
+⋮----
+def counter_key(form, reason)
+⋮----
+def alert_key(form, reason)
+⋮----
+def idempotency_key(form, visitor_token)
+⋮----
+def record(form:, reason:, ip:, ua:)
+⋮----
+private
+⋮----
+def mark_alert_fired(form, reason)
+⋮----
+attr_reader :reason
+⋮----
+def initialize(form:, honeypot:, rendered_at:, ip:, visitor_token:,
+⋮----
+def call
+⋮----
+def spam?
+⋮----
+def suspicious?
+⋮----
+def record(ua:)
+⋮----
+def release_idempotency_marker!
+⋮----
+def reserve_rate_limit_slot!
+⋮----
+def release_rate_limit_slot!
+⋮----
+def release_submission_markers!
+⋮----
+private
+⋮----
+def verify_rendered_at
+⋮----
+def spam(reason)
+</file>
+
 <file path="app/services/staff_submission_detector.rb">
 class StaffSubmissionDetector
 STAFF_TEST_REASONS = %w[
@@ -14973,44 +15268,131 @@ def name_matches_staff_first?
 # Exact match (имя submitter'а = staff first_name полностью)
 </file>
 
-<file path="app/controllers/pages_controller.rb">
-class PagesController < ApplicationController
+<file path="app/controllers/chat/conversations_controller.rb">
+module Chat
 ⋮----
-def about
+class ConversationsController < ApplicationController
+include Chat::PageContextParams
+include Chat::TestModeResolution
 ⋮----
-def team
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
 ⋮----
-def history
+def show
 ⋮----
-def contacts
+def update
 ⋮----
-def send_contact_form
-⋮----
-def services
-⋮----
-def faq
-⋮----
-def privacy
-⋮----
-def terms
-⋮----
-def not_found
-⋮----
-def unprocessable_entity
-⋮----
-def internal_server_error
-⋮----
-def valid_authenticity_token?(session, encoded_masked_token)
-⋮----
-def contact_form_binding
-⋮----
-def contact_form_client_fingerprint
+def activate_test
 ⋮----
 private
 ⋮----
-def validate_contact_form
+def current_or_create_conversation
 ⋮----
-def valid_email?(email)
+def seed_welcome(conv, page_ctx = nil)
+⋮----
+def serialize(conv)
+⋮----
+def serialize_message(m)
+</file>
+
+<file path="app/controllers/contact_forms_controller.rb">
+class ContactFormsController < ApplicationController
+before_action :set_property, only: [:viewing_schedule, :property_inquiry]
+⋮----
+before_action :drop_spam_submission, only: %i[
+    quick_inquiry viewing_schedule callback consultation mortgage_application property_selection
+  ]
+⋮----
+SUBMIT_SUCCESS = {
+⋮----
+def quick_inquiry
+⋮----
+def viewing_schedule
+⋮----
+def callback
+⋮----
+def consultation
+⋮----
+def mortgage_application
+⋮----
+def property_selection
+⋮----
+private
+⋮----
+def drop_spam_submission
+⋮----
+def contact_form_spam_gate
+⋮----
+def submit_success_json(action, record_id: nil, matching_count: nil)
+⋮----
+def fake_public_id
+⋮----
+def quick_inquiry_params
+⋮----
+def viewing_params
+⋮----
+def callback_params
+⋮----
+def consultation_params
+⋮----
+def mortgage_params
+⋮----
+def selection_params
+⋮----
+def set_property
+⋮----
+def determine_priority(inquiry)
+⋮----
+def create_viewing_inquiry(viewing)
+⋮----
+def find_matching_properties(inquiry)
+⋮----
+def create_crm_task(inquiry, task_type)
+⋮----
+def send_urgent_sms(inquiry)
+⋮----
+def create_calendar_event(inquiry)
+⋮----
+def send_to_mortgage_partners(inquiry)
+</file>
+
+<file path="app/controllers/property_valuations_controller.rb">
+class PropertyValuationsController < ApplicationController
+⋮----
+RATE_LIMIT = { count: 5, window: 1.hour }.freeze
+⋮----
+before_action :set_breadcrumbs
+before_action :drop_spam_valuation, only: :create
+before_action :enforce_rate_limit, only: :create
+⋮----
+def new
+⋮----
+def create
+⋮----
+def result
+⋮----
+def status
+⋮----
+def download_pdf
+⋮----
+def request_call
+⋮----
+private
+⋮----
+def drop_spam_valuation
+⋮----
+def valuation_params
+⋮----
+def set_breadcrumbs
+⋮----
+def determine_error_step
+⋮----
+def find_similar_properties(valuation)
+⋮----
+def comparable_property_type_slug(pt)
+⋮----
+def enforce_rate_limit
+⋮----
+def rate_limited?
 </file>
 
 <file path="app/models/inquiry.rb">
@@ -15250,44 +15632,6 @@ private
 def deny(reason, crm_user: nil)
 </file>
 
-<file path="app/services/external_listings/yrl_parser.rb">
-require 'nokogiri'
-require 'open-uri'
-⋮----
-module ExternalListings
-⋮----
-class YrlParser
-SOURCE = 'yandex_yrl'
-⋮----
-REALTY_TYPE_MAP = {
-⋮----
-DEAL_TYPE_MAP = {
-⋮----
-def initialize(feed_url, source: SOURCE, http_timeout: 30)
-⋮----
-def call
-⋮----
-private
-⋮----
-def fetch_xml
-⋮----
-def build_attrs(offer)
-⋮----
-def build_address(offer)
-⋮----
-def text(node, xpath)
-⋮----
-def numeric(value)
-⋮----
-def integer(value)
-⋮----
-def parse_land_area(offer)
-⋮----
-def infer_type_loose(_type_attr, category)
-⋮----
-def upsert_one(attrs)
-</file>
-
 <file path="app/services/lead/intake/site_source.rb">
 module Lead
 class Intake
@@ -15337,105 +15681,6 @@ def initialize(source:, payload:, announcer: Telegram::WorkBot::LeadAnnouncer)
 def target_chat_id(metadata)
 ⋮----
 def adapter_for(source)
-</file>
-
-<file path="app/services/llm/page_context.rb">
-module Llm
-⋮----
-module PageContext
-CTX_KINDS = {
-⋮----
-def format_money(value)
-⋮----
-def guidance(kind, page_ctx)
-⋮----
-def audit_guidance(state)
-⋮----
-def valuation_guidance(state)
-</file>
-
-<file path="app/services/property_evaluation/comparable_finder.rb">
-module PropertyEvaluation
-class ComparableFinder
-Tier = Struct.new(:radius_km, :area_pct, :rooms_delta, :scope_filter, keyword_init: true)
-⋮----
-TIERS = [
-⋮----
-THRESHOLDS = [
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-MAX_RADIUS_KM = 50
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def collect(tier)
-⋮----
-def external_scope(tier)
-⋮----
-def property_scope(tier)
-⋮----
-def mls_scope(tier)
-⋮----
-def apply_geo(scope, tier)
-⋮----
-def has_column?(scope, column)
-⋮----
-def band(pct)
-⋮----
-def rooms_band(delta)
-⋮----
-def property_type_id_for(pt)
-⋮----
-SIZE_BAND_PCT = 0.30
-⋮----
-def enrich(records)
-⋮----
-def external_band_area
-⋮----
-def same_city?(record, distance_km = nil)
-⋮----
-def normalized_subject_city
-⋮----
-def source_label(record)
-⋮----
-def subject_area_for_filter
-⋮----
-def compute_pps(record)
-⋮----
-def distance_km_to(r)
-</file>
-
-<file path="app/services/property_evaluation/price_estimator.rb">
-module PropertyEvaluation
-class PriceEstimator
-CONDITION_FACTOR = {
-⋮----
-OUTLIER_FACTOR = 3.0
-⋮----
-def initialize(valuation, comparables)
-⋮----
-def call
-⋮----
-private
-⋮----
-def subject_area
-⋮----
-def weighted_median(pairs)
-⋮----
-def reject_outliers(comps)
-⋮----
-def floor_factor
-⋮----
-def year_factor
-⋮----
-def condition_factor
-⋮----
-def amenities_factor
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
@@ -15648,182 +15893,6 @@ def text(_tg_user)
 def keyboard(tg_user)
 </file>
 
-<file path="app/services/valuations/sitemap_comp_finder.rb">
-require 'net/http'
-require 'uri'
-require 'yaml'
-require 'digest'
-⋮----
-module Valuations
-⋮----
-class SitemapCompFinder
-CACHE_TTL = 6.hours
-CONFIG_PATH = Rails.root.join('config/agency_sitemaps.yml')
-SOURCE_KIND = 'agency_sitemap'
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def agency_covers_subject_city?(cfg)
-⋮----
-def normalize_city(value)
-⋮----
-def enabled?
-⋮----
-def load_config
-⋮----
-def property_type_supported?(cfg)
-⋮----
-def cached_count(agency_key)
-⋮----
-def area_bracket_min
-⋮----
-def area_bracket_max
-⋮----
-def band_area
-⋮----
-def discover_listings(cfg)
-⋮----
-def fetch_xml(url)
-⋮----
-def extract_locs(xml)
-⋮----
-def scrape_and_parse(urls, agency_key)
-⋮----
-# JSON-LD path: fetch raw HTML + extract <script type="application/ld+json">.
-# Schema.org даёт structured Apartment/House/Product+Offer — все нужные поля
-# (price, area, address, rooms, floor) без LLM-парсинга. Если на странице
-# нет JSON-LD или structure broken — skip (не падаем).
-def scrape_json_ld(urls, agency_key)
-⋮----
-def fetch_html(url)
-⋮----
-# Извлечь поля из Schema.org JSON-LD. Возвращает hash совместимый с
-# `persist` (price/area/rooms/floor/address/district/title). Nil если
-# structure отсутствует или unparseable.
-def extract_json_ld_attrs(html, url)
-⋮----
-.where('source_id LIKE ?', "#{agency_key}:%")
-⋮----
-# Reuse exact same prompt as WebsearchCompFinder. Извлечён в локальную
-# константу — DRY ratio < 3, не стоит ради этого выделять в shared module.
-PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
-⋮----
-def llm_parse(url, markdown)
-⋮----
-def sane?(p)
-</file>
-
-<file path="app/services/valuations/websearch_comp_finder.rb">
-module Valuations
-⋮----
-class WebsearchCompFinder
-CACHE_TTL = 6.hours
-MAX_SEARCH_RESULTS = 8
-MAX_SCRAPES = 5
-⋮----
-REALTY_TYPE_TO_SLUG = {
-⋮----
-def initialize(valuation)
-⋮----
-def call
-⋮----
-private
-⋮----
-def enabled?
-⋮----
-def cache_key
-⋮----
-def area_bracket_min
-⋮----
-def area_bracket_max
-⋮----
-def band_area
-⋮----
-def cached_count
-⋮----
-def tavily_search
-⋮----
-def build_query
-⋮----
-def guess_city
-⋮----
-def scrape_and_parse(tavily_results)
-⋮----
-def already_persisted?(url)
-⋮----
-PARSE_SYSTEM_PROMPT = <<~PROMPT.freeze
-⋮----
-def llm_parse(url, markdown)
-⋮----
-def persist(parsed_list)
-⋮----
-def resolve_city(record, card_city)
-⋮----
-def sane?(p)
-</file>
-
-<file path="app/services/contact_form_spam_guard.rb">
-class ContactFormSpamGuard
-⋮----
-MIN_FILL_SECONDS = 3
-⋮----
-HONEYPOT_PARAM = :contact_code
-⋮----
-ALERT_THRESHOLD = 10
-⋮----
-REASONS = %w[honeypot no_render_timestamp too_fast].freeze
-⋮----
-Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
-⋮----
-def rendered_at_token(now = Time.current)
-⋮----
-def verify_rendered_at_token(token)
-⋮----
-def form_csrf_token(binding)
-⋮----
-def verify_form_csrf_token(token, binding)
-⋮----
-def record(reason:, ip:, ua:)
-⋮----
-def counter_key(reason)
-⋮----
-def alert_key(reason)
-⋮----
-def sanitize_user_agent(ua)
-⋮----
-private
-⋮----
-def verifier(purpose = 'contact_form_rendered_at')
-⋮----
-def increment_counter(reason)
-⋮----
-def log_alert(reason, count)
-⋮----
-def mark_alert_fired(reason)
-⋮----
-def initialize(honeypot:, rendered_at:, now: Time.current)
-⋮----
-def call
-⋮----
-private
-⋮----
-def spam(reason)
-⋮----
-def suspicious(reason)
-</file>
-
-<file path="config/routes.rb">
-require 'sidekiq/web'
-⋮----
-LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
-</file>
-
 <file path="Gemfile">
 # frozen_string_literal: true
 
@@ -15841,7 +15910,7 @@ gem 'pg', '~> 1.5'
 
 # Server — CVE sweep 15.11.26: puma 7.2.1 имеет advisory, fix в 7.2.2+. Major
 # bump 6→7 (boot-verified в этом PR). Конфиг config/puma.rb совместим.
-gem 'puma', '~> 7.2', '>= 7.2.2'
+gem 'puma', '~> 7.2', '>= 7.2.3'
 
 # Security pins (transitive — EOL Phase 1, 04.06.26). Rails 7.2 подтянул rack 3.2.4
 # / rack-session 2.1.1, в которых открыты CVE (rack: 6 advisories вкл. 2 High —
@@ -15988,24 +16057,28 @@ group :development, :test do
 end
 </file>
 
-<file path="app/controllers/concerns/chat/page_context_params.rb">
+<file path="app/controllers/chat/messages_controller.rb">
 module Chat
 ⋮----
-module PageContextParams
-extend ActiveSupport::Concern
+class MessagesController < ApplicationController
+include Chat::PageContextParams
+include Chat::TestModeResolution
 ⋮----
-CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
-CTX_VALUE_MAX = 100
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+⋮----
+RATE_LIMIT_PER_MINUTE = 5
+⋮----
+def create
 ⋮----
 private
 ⋮----
-def extract_page_params
+def post_static_reply(conv, verdict, original_body)
 ⋮----
-def clean_page_value(value, max)
+def record_security_event(conv, verdict, original_body)
 ⋮----
-def sanitize_page_ctx(raw_ctx)
+def rate_limited?
 ⋮----
-def stamp_page(conv, page_ctx)
+def serialize(m)
 </file>
 
 <file path="app/controllers/concerns/visitor_identity.rb">
@@ -16039,6 +16112,46 @@ def probe_secret
 def set_visitor_cookies(token, probe:)
 </file>
 
+<file path="app/controllers/pages_controller.rb">
+class PagesController < ApplicationController
+⋮----
+def about
+⋮----
+def team
+⋮----
+def history
+⋮----
+def contacts
+⋮----
+def send_contact_form
+⋮----
+def services
+⋮----
+def faq
+⋮----
+def privacy
+⋮----
+def terms
+⋮----
+def not_found
+⋮----
+def unprocessable_entity
+⋮----
+def internal_server_error
+⋮----
+def valid_authenticity_token?(session, encoded_masked_token)
+⋮----
+def contact_form_binding
+⋮----
+def contact_form_client_fingerprint
+⋮----
+private
+⋮----
+def validate_contact_form
+⋮----
+def valid_email?(email)
+</file>
+
 <file path="app/jobs/embed_property_valuation_job.rb">
 require 'digest'
 ⋮----
@@ -16048,21 +16161,6 @@ queue_as :low_priority
 retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
 def perform(property_valuation_id)
-</file>
-
-<file path="app/jobs/llm_reply_job.rb">
-class LlmReplyJob < ApplicationJob
-queue_as :default
-⋮----
-def perform(conversation_id, message_id = nil)
-⋮----
-private
-⋮----
-def with_lead_test_mode(conv)
-⋮----
-def message_page_snapshot(conv, message_id)
-⋮----
-def message_payload(m)
 </file>
 
 <file path="app/models/conversation.rb">
@@ -16184,6 +16282,38 @@ def photos_limit
 Rails.logger.error("[PropertyValuation#push_to_work_bot] valuation=#{id} #{e.class}: #{e.message}")
 ⋮----
 def broadcast_cabinet_completion
+</file>
+
+<file path="app/services/chat_tools/estimate_property_valuation.rb">
+module ChatTools
+⋮----
+module EstimatePropertyValuation
+REQUIRED = %w[property_type address total_area].freeze
+SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
+⋮----
+def self.schema
+⋮----
+def self.call(args)
+⋮----
+def self.missing_fields_response(missing)
+⋮----
+def self.build_valuation(args)
+⋮----
+def self.enrich_from_geocoder(pv)
+⋮----
+def self.compact_response(pv, result, similar = nil)
+# Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
+# similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
+# озвучивает точную цену одной чужой оценки.
+⋮----
+# Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
+# специалистов (N < 3, issue #176) — бот обязан озвучить
+# ориентировочность оценки, см. description в .schema.
+⋮----
+# Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
+# никаких поштучных адресов/телефонов чужих оценок (issue #176).
+⋮----
+def self.run_failure(pv, error_message)
 </file>
 
 <file path="app/services/crm_cards/checker.rb">
@@ -16402,161 +16532,60 @@ def recent_leads
 def lead_label(lead)
 </file>
 
-<file path="app/services/property_evaluation_service.rb">
-class PropertyEvaluationService
+<file path="app/services/contact_form_spam_guard.rb">
+class ContactFormSpamGuard
 ⋮----
-MIN_TIER1 = 3
-MIN_TIER2 = 2
-MIN_TIER3 = 1
+MIN_FILL_SECONDS = 3
 ⋮----
-ABSOLUTE_FALLBACK_PRICE_PER_SQM = {
+HONEYPOT_PARAM = :contact_code
 ⋮----
-AUTO_KEPT_SOURCES = %w[ai_synthesized cross_city_adapted external_listing].freeze
+ALERT_THRESHOLD = 10
 ⋮----
-LOCAL_COMP_SOURCES = %w[agency mls external_listing external_yrl semantic].freeze
+REASONS = %w[honeypot no_render_timestamp too_fast spam_ip].freeze
 ⋮----
-def initialize(valuation, include_full_comparables: false)
+Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
+⋮----
+def rendered_at_token(now = Time.current)
+⋮----
+def verify_rendered_at_token(token)
+⋮----
+def form_csrf_token(binding)
+⋮----
+def verify_form_csrf_token(token, binding)
+⋮----
+def record(reason:, ip:, ua:)
+⋮----
+def counter_key(reason)
+⋮----
+def alert_key(reason)
+⋮----
+def sanitize_user_agent(ua)
+⋮----
+private
+⋮----
+def verifier(purpose = 'contact_form_rendered_at')
+⋮----
+def increment_counter(reason)
+⋮----
+def log_alert(reason, count)
+⋮----
+def mark_alert_fired(reason)
+⋮----
+def initialize(honeypot:, rendered_at:, ip: nil, now: Time.current)
 ⋮----
 def call
 ⋮----
-# Полный пул аналогов добавляем только когда запросил staff-тул
-# (include_full_comparables) — публичные оценки его не хранят (PR #184).
-def full_comparables_hash(comps)
-⋮----
-# Effective area в м² для ВСЕХ типов: total_area для строений,
-# land_area × 100 для участков. Пул аналогов нормализован к ₽/м²
-# (ComparableFinder#enrich переводит land-объявления площадок из соток),
-# поэтому fallback и CompositeEstimator работают в одной единице
-# (ревью Kimi, PR #184).
-def subject_area
-⋮----
 private
 ⋮----
-def valid?
+def spam(reason)
 ⋮----
-# === Ensemble-based confidence ===
-# Старая tier-логика заменена на multi-source формулу: оценка строится
-# на ансамбле из 5 типов аналогов (real / semantic / cross_city /
-# ai_synthesized / city anchor), и confidence учитывает (a) сколько
-# реальных аналогов есть, (b) согласуются ли разные источники, (c) есть
-# ли точная регионная привязка через city median. Гарантирует ≥0.80 в
-# большинстве реалистичных сценариев.
-REAL_SOURCES = %w[agency mls external_yrl semantic cross_city_adapted].freeze
-⋮----
-def confidence_for(pool, estimate = nil)
-⋮----
-base = 0.50  # baseline: любая успешная оценка ≥ 50%
-⋮----
-base += 0.10 if real_count >= 1                # хотя бы один настоящий
-# AI-synth анкорится в city median → даёт hedonic-выборку. Если их ≥3 —
-# модель строит bootstrap-CI и хедоник работает; засчитываем как
-# «полу-настоящий» сигнал.
-⋮----
-# Бонус согласованности: anchor + любой comp = настоящая точка отсчёта
-# с минимальным сравнением, даже если расходится с агрегатами.
-⋮----
-# condition хранится в колонке `condition`; геттер `property_condition` —
-# alias через `attribute`. Проверяем оба для совместимости.
-⋮----
-# Cap positive contributions ДО penalty — иначе сумма additions может
-# перейти 1.0 и penalty будет «съедаться» cap'ом 0.95 (классический
-# bug — был замечен при тесте Горького 50 v6: CV=0.30 не двигало
-# confidence потому что additions = 1.35, после -0.10 ещё 1.25,
-# min(1.25, 0.95) = 0.95 — penalty не виден).
-⋮----
-# PENALTY for high sample variance — coefficient of variation
-# (std-dev / mean) показывает heterogeneity ₽/м². Если sample
-# spans wide range, confidence shouldn't быть 0.95. Это решает
-# «honest math» проблему: 0.95 при spread 3x = nonsense.
-#
-# CV thresholds calibrated empirically:
-#  - CV > 0.50 (50% std vs mean) → sample mostly garbage — large penalty
-#  - CV > 0.30 → notable heterogeneity — medium penalty
-#  - CV > 0.18 → some spread — small penalty
-⋮----
-# Floor 0.30 — даже самая wide sample не уходит в "нет уверенности
-⋮----
-def estimators_agree?(comps)
-⋮----
-def pps_coefficient_of_variation(comps)
-⋮----
-def low_coverage?(comps)
-⋮----
-def fallback_estimate
-⋮----
-def serialize(comps)
-⋮----
-def compose_title(r)
-⋮----
-def comparable_url(r)
-⋮----
-def comparable_source(r)
-⋮----
-def build_market_analysis(comps, estimate)
-⋮----
-def build_recommendations
-⋮----
-def success(payload)
-⋮----
-def error(message)
+def suspicious(reason)
 </file>
 
-<file path="app/controllers/chat/conversations_controller.rb">
-module Chat
+<file path="config/routes.rb">
+require 'sidekiq/web'
 ⋮----
-class ConversationsController < ApplicationController
-include Chat::PageContextParams
-include Chat::TestModeResolution
-⋮----
-skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
-⋮----
-def show
-⋮----
-def update
-⋮----
-def activate_test
-⋮----
-private
-⋮----
-def current_or_create_conversation
-⋮----
-def seed_welcome(conv, page_ctx = nil)
-⋮----
-def serialize(conv)
-⋮----
-def serialize_message(m)
-</file>
-
-<file path="app/services/chat_tools/estimate_property_valuation.rb">
-module ChatTools
-⋮----
-module EstimatePropertyValuation
-REQUIRED = %w[property_type address total_area].freeze
-SUPPORTED_TYPES = %w[apartment house land commercial garage room].freeze
-⋮----
-def self.schema
-⋮----
-def self.call(args)
-⋮----
-def self.missing_fields_response(missing)
-⋮----
-def self.build_valuation(args)
-⋮----
-def self.enrich_from_geocoder(pv)
-⋮----
-def self.compact_response(pv, result, similar = nil)
-# Fail-close (ревью #206): при low_coverage (N < 3) ценовые поля
-# similar_* = nil на уровне ДАННЫХ, а не текста — иначе N = 1
-# озвучивает точную цену одной чужой оценки.
-⋮----
-# Нет локальных аналогов (issue #172) ИЛИ мало похожих оценок
-# специалистов (N < 3, issue #176) — бот обязан озвучить
-# ориентировочность оценки, см. description в .schema.
-⋮----
-# Агрегат по похожим оценкам специалистов — ТОЛЬКО числа,
-# никаких поштучных адресов/телефонов чужих оценок (issue #176).
-⋮----
-def self.run_failure(pv, error_message)
+LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
 <file path="app/services/crm_cards/notifier.rb">
@@ -16689,58 +16718,134 @@ def notifier
 def exporter
 </file>
 
-<file path="app/services/llm/chat_responder.rb">
-module Llm
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
 ⋮----
-class ChatResponder
-ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
 ⋮----
-def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
+  }
 ⋮----
-def call
+attribute :preferred_date, :date
+attribute :preferred_time, :string
 ⋮----
-def full_system_prompt
+alias_attribute :message, :notes
+⋮----
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
+⋮----
+validate :date_not_in_past, if: :slot_or_activation_changed?
+validate :time_slot_available, if: :slot_overlap_check_needed?
+validate :ends_after_start, if: :slot_overlap_check_needed?
+⋮----
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_save :clear_form_fields
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
+⋮----
+def confirm!
+⋮----
+def cancel!(reason = nil)
+⋮----
+def complete!
+⋮----
+def mark_no_show!
+⋮----
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+# Факт явного присваивания ends_at (а не разница значений): одновременный
+# перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
+# ends_at? == false, и сборка молча заменяла бы осознанное значение
+# автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
+# (clear_form_fields) — сохранённое значение больше не «явное».
+def ends_at=(value)
+⋮----
+def ends_at_explicitly_assigned?
+⋮----
+# reload отменяет незавершённые присваивания — вместе с ними и признак
+# явного ends_at (блокер 2 ревью раунда 6): иначе объект после reload вёл
+# бы себя иначе, чем свежезагруженный, и следующий перенос слота считал
+# бы сохранённый конец «явным» вместо автоматического пересчёта.
+def reload(...)
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
 ⋮----
 private
 ⋮----
-def current_page_ctx
+def normalize_phone
 ⋮----
-def security_preamble
+# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+# preferred_time): у сохранённой записи читатели деривируются из
+# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+# значения — прямое присваивание scheduled_at= перетираться не должно.
+#
+# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+# присваивание): «автоматический» конец — по duration, ручной — с
+# сохранением своей длительности. Автоматичность классифицируется по
+# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
+# текущим значениям — иначе повторная валидация уже перенесённого конца
+# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
+# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
+# новой записи не затирается.
+def assemble_scheduled_at
 ⋮----
-private
+# Пересборка — только когда форма реально прислала значения (после save
+# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+# scheduled_at= перетираться не должно. Недостающую половину (формат
+# «дата+время» пересылается целиком, но модель допускает частичное
+# обновление) берём из текущего scheduled_at.
 ⋮----
-def parse(result)
+def clear_form_fields
 ⋮----
-def fallback_message
+def slot_changed?
 ⋮----
-# System prompt is rebuilt on every call so it reflects the current
-# catalog and team. Cached for 5 min to avoid hammering the DB on
-# every visitor message.
-def system_prompt
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
+def slot_or_activation_changed?
 ⋮----
-class MessagesController < ApplicationController
-include Chat::PageContextParams
-include Chat::TestModeResolution
+def slot_overlap_check_needed?
 ⋮----
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
+def date_not_in_past
 ⋮----
-RATE_LIMIT_PER_MINUTE = 5
+def ends_after_start
 ⋮----
-def create
+def time_slot_available
 ⋮----
-private
+def send_notifications
 ⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
+def handle_status_change
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
