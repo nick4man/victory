@@ -33,7 +33,7 @@ gem 'loofah', '>= 2.25.3' # SVG href bypass (GHSA-9wjq-cp2p-hrgf), mXSS + CSS ur
 gem 'rails-html-sanitizer', '>= 1.7.2' # XSS (GHSA-cj75-f6xr-r4g7), ReDoS + shared scrubber (04.11.26)
 gem 'crass', '>= 1.0.8' # DoS advisories (транзитивно через loofah)
 gem 'json', '>= 2.19.9' # CVE-2026-54696 heap buffer overflow when streaming to IO
-gem 'msgpack', '>= 1.8.7' # CVE-2026-54522 use-after-free (DFVULN-839) + CVE-2026-126366 (sweep 25.11.26)
+gem 'msgpack', '>= 1.8.7' # CVE-2026-54522 use-after-free (DFVULN-839); CVE-2026-126366 OOM (GHSA-73v3-wf97-vpgj)
 gem 'addressable', '>= 2.9.1' # sweep 04.11.26 (транзитивно через webmock/capybara)
 
 # Assets
