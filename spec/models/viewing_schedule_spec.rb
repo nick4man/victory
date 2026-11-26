@@ -308,6 +308,56 @@ RSpec.describe ViewingSchedule, type: :model do
     end
   end
 
+  describe 'возврат значений после промежуточной валидации (блокеры раунда 6)' do
+    it 'возврат к исходному слоту восстанавливает автоматический ends_at' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 10.hours
+      viewing.save!
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 11.hours)
+    end
+
+    it 'возврат duration восстанавливает автоматический ends_at' do
+      viewing = build_viewing.tap(&:save!) # duration 60
+
+      viewing.duration = 90
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 11.hours + 30.minutes)
+
+      viewing.duration = 60
+      viewing.save!
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 11.hours)
+    end
+
+    it 'возврат к исходному слоту сохраняет ручную длительность' do
+      viewing = build_viewing.tap(&:save!)
+      viewing.update_columns(ends_at: viewing.scheduled_at + 90.minutes)
+      viewing.reload
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 10.hours
+      viewing.save!
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 11.hours + 30.minutes)
+    end
+
+    it 'reload сбрасывает признак явного ends_at' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      viewing.ends_at = Date.tomorrow.in_time_zone + 15.hours # отменяется reload
+      viewing.reload
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+    end
+  end
+
   describe 'перенос слота (блокер 2 ревью #272)' do
     it 'ends_at пересчитывается вместе с scheduled_at' do
       viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра

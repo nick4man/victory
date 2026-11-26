@@ -12396,6 +12396,33 @@ def valuation_params
 def rate_limited?
 </file>
 
+<file path="app/controllers/webhooks/news_ingest_controller.rb">
+module Webhooks
+⋮----
+class NewsIngestController < ApplicationController
+skip_before_action :verify_authenticity_token, raise: false
+before_action :authenticate_bearer!
+⋮----
+DEFAULT_CATEGORY = 'news'
+DEFAULT_SCHEMA = 'NewsArticle'
+⋮----
+def create
+⋮----
+private
+⋮----
+def public_news_url(slug)
+⋮----
+def authenticate_bearer!
+⋮----
+def payload_params
+⋮----
+def normalize_payload(p)
+⋮----
+def safe_parse_time(value)
+⋮----
+def upsert_article(attrs)
+</file>
+
 <file path="app/controllers/application_controller.rb">
 class ApplicationController < ActionController::Base
 ⋮----
@@ -14285,33 +14312,6 @@ def clean_page_value(value, max)
 def sanitize_page_ctx(raw_ctx)
 ⋮----
 def stamp_page(conv, page_ctx)
-</file>
-
-<file path="app/controllers/webhooks/news_ingest_controller.rb">
-module Webhooks
-⋮----
-class NewsIngestController < ApplicationController
-skip_before_action :verify_authenticity_token, raise: false
-before_action :authenticate_bearer!
-⋮----
-DEFAULT_CATEGORY = 'news'
-DEFAULT_SCHEMA = 'NewsArticle'
-⋮----
-def create
-⋮----
-private
-⋮----
-def public_news_url(slug)
-⋮----
-def authenticate_bearer!
-⋮----
-def payload_params
-⋮----
-def normalize_payload(p)
-⋮----
-def safe_parse_time(value)
-⋮----
-def upsert_article(attrs)
 </file>
 
 <file path="app/controllers/webhooks/telegram_test_controller.rb">
@@ -16588,130 +16588,6 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-attribute :preferred_date, :date
-attribute :preferred_time, :string
-⋮----
-alias_attribute :message, :notes
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true,
-                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
-validates :scheduled_at, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past, if: :slot_or_activation_changed?
-validate :time_slot_available, if: :slot_overlap_check_needed?
-validate :ends_after_start, if: :slot_overlap_check_needed?
-⋮----
-before_validation :normalize_phone
-before_validation :assemble_scheduled_at
-after_save :clear_form_fields
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
-scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
-scope :today, -> { where(scheduled_at: Time.current.all_day) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def preferred_date
-⋮----
-def preferred_time
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
-def duration_minutes
-⋮----
-# Факт явного присваивания ends_at (а не разница значений): одновременный
-# перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
-# ends_at? == false, и сборка молча заменяла бы осознанное значение
-# автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
-# (clear_form_fields) — сохранённое значение больше не «явное».
-def ends_at=(value)
-⋮----
-def ends_at_explicitly_assigned?
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
-# preferred_time): у сохранённой записи читатели деривируются из
-# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
-# значения — прямое присваивание scheduled_at= перетираться не должно.
-#
-# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
-# присваивание): «автоматический» конец — по duration, ручной — с
-# сохранением своей длительности. Автоматичность классифицируется по
-# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
-# текущим значениям — иначе повторная валидация уже перенесённого конца
-# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
-# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
-# новой записи не затирается.
-def assemble_scheduled_at
-⋮----
-# Пересборка — только когда форма реально прислала значения (после save
-# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
-# scheduled_at= перетираться не должно. Недостающую половину (формат
-# «дата+время» пересылается целиком, но модель допускает частичное
-# обновление) берём из текущего scheduled_at.
-⋮----
-def clear_form_fields
-⋮----
-def slot_changed?
-⋮----
-def slot_or_activation_changed?
-⋮----
-def slot_overlap_check_needed?
-⋮----
-def date_not_in_past
-⋮----
-def ends_after_start
-⋮----
-def time_slot_available
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
-</file>
-
 <file path="app/services/crm_cards/notifier.rb">
 module CrmCards
 ⋮----
@@ -16840,6 +16716,136 @@ def attempt_current?(card, token)
 def notifier
 ⋮----
 def exporter
+</file>
+
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
+⋮----
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
+⋮----
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
+  }
+⋮----
+attribute :preferred_date, :date
+attribute :preferred_time, :string
+⋮----
+alias_attribute :message, :notes
+⋮----
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
+⋮----
+validate :date_not_in_past, if: :slot_or_activation_changed?
+validate :time_slot_available, if: :slot_overlap_check_needed?
+validate :ends_after_start, if: :slot_overlap_check_needed?
+⋮----
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_save :clear_form_fields
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
+⋮----
+def confirm!
+⋮----
+def cancel!(reason = nil)
+⋮----
+def complete!
+⋮----
+def mark_no_show!
+⋮----
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+# Факт явного присваивания ends_at (а не разница значений): одновременный
+# перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
+# ends_at? == false, и сборка молча заменяла бы осознанное значение
+# автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
+# (clear_form_fields) — сохранённое значение больше не «явное».
+def ends_at=(value)
+⋮----
+def ends_at_explicitly_assigned?
+⋮----
+# reload отменяет незавершённые присваивания — вместе с ними и признак
+# явного ends_at (блокер 2 ревью раунда 6): иначе объект после reload вёл
+# бы себя иначе, чем свежезагруженный, и следующий перенос слота считал
+# бы сохранённый конец «явным» вместо автоматического пересчёта.
+def reload(...)
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
+⋮----
+private
+⋮----
+def normalize_phone
+⋮----
+# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+# preferred_time): у сохранённой записи читатели деривируются из
+# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+# значения — прямое присваивание scheduled_at= перетираться не должно.
+#
+# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+# присваивание): «автоматический» конец — по duration, ручной — с
+# сохранением своей длительности. Автоматичность классифицируется по
+# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
+# текущим значениям — иначе повторная валидация уже перенесённого конца
+# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
+# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
+# новой записи не затирается.
+def assemble_scheduled_at
+⋮----
+# Пересборка — только когда форма реально прислала значения (после save
+# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+# scheduled_at= перетираться не должно. Недостающую половину (формат
+# «дата+время» пересылается целиком, но модель допускает частичное
+# обновление) берём из текущего scheduled_at.
+⋮----
+def clear_form_fields
+⋮----
+def slot_changed?
+⋮----
+def slot_or_activation_changed?
+⋮----
+def slot_overlap_check_needed?
+⋮----
+def date_not_in_past
+⋮----
+def ends_after_start
+⋮----
+def time_slot_available
+⋮----
+def send_notifications
+⋮----
+def handle_status_change
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">

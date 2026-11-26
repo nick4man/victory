@@ -136,6 +136,15 @@ class ViewingSchedule < ApplicationRecord
     @ends_at_explicit
   end
 
+  # reload отменяет незавершённые присваивания — вместе с ними и признак
+  # явного ends_at (блокер 2 ревью раунда 6): иначе объект после reload вёл
+  # бы себя иначе, чем свежезагруженный, и следующий перенос слота считал
+  # бы сохранённый конец «явным» вместо автоматического пересчёта.
+  def reload(...)
+    @ends_at_explicit = false
+    super
+  end
+
   def upcoming?
     preferred_date.present? && preferred_date >= Date.current && %w[pending confirmed].include?(status)
   end
@@ -195,28 +204,28 @@ class ViewingSchedule < ApplicationRecord
 
     if persisted_start.nil?
       # Новая запись: явно заданный ends_at не трогаем; автоматический —
-      # пересчитываем при КАЖДОМ изменении начала/duration, иначе после
-      # неудачной валидации и смены времени конец «застрянет» на значении
-      # прошлой сборки и даст перевёрнутый интервал 12:00–11:00 (блокер 1
-      # ревью раунда 4).
+      # пересчитываем при каждой валидации, иначе после неудачной валидации
+      # и смены времени конец «застрянет» на значении прошлой сборки
+      # (блокер 1 ревью раунда 4).
       self[:ends_at] = scheduled_at + duration_minutes.minutes unless ends_at_explicitly_assigned?
     elsif ends_at_explicitly_assigned?
       # ends_at присвоен явно (отдельно или вместе с переносом слота) —
-      # осознанная правка границ, не перетираем; её же ловит проверка
-      # пересечений (slot_overlap_check_needed?).
-    elsif will_save_change_to_scheduled_at? || will_save_change_to_duration?
-      # «Автоматический» конец — по СОХРАНЁННОЙ паре и сохранённой duration:
-      # повторная валидация уже перенесённого конца не должна считать его
-      # «ручным» и растягивать интервал (10:00–11:00 → 12:00–13:00 →
-      # 12:00–15:00, блокер 1 ревью раунда 3).
-      if persisted_end.nil? || persisted_end == persisted_start + (duration_in_database || 60).minutes
-        self[:ends_at] = scheduled_at + duration_minutes.minutes
-      elsif will_save_change_to_scheduled_at?
-        # Ручной конец при переносе — с сохранением сохранённой длительности.
-        self[:ends_at] = scheduled_at + (persisted_end - persisted_start)
-      end
+      # осознанная правка границ, не перетираем; её ловят ends_after_start
+      # и проверка пересечений (slot_overlap_check_needed?).
+    elsif persisted_end.nil? || persisted_end == persisted_start + (duration_in_database || 60).minutes
+      # «Автоматический» конец — по СОХРАНЁННОЙ паре и сохранённой duration.
+      # Инвариант «конец следует за началом» поддерживается при КАЖДОЙ
+      # валидации, а не только при dirty-смене слота: возврат начала/
+      # duration к исходным значениям после промежуточной валидации
+      # dirty-tracking'ом не виден и оставлял бы чужой конец (блокер 1
+      # ревью раунда 6); повторная валидация при этом идемпотентна
+      # (блокер 1 ревью раунда 3).
+      self[:ends_at] = scheduled_at + duration_minutes.minutes
+    else
+      # Ручной конец — следует за началом с сохранением сохранённой
+      # длительности.
+      self[:ends_at] = scheduled_at + (persisted_end - persisted_start)
     end
-    # Без смены слота/duration чужое ends_at не трогаем.
   end
 
   # Виртуальные поля формы — ввод пользователя для текущего сабмита, а не
