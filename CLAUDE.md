@@ -67,11 +67,13 @@ Rails-монолит. Четыре входа, и только первый — 
   (`bin/backup` + systemd-таймер).
 - **3 рабочие, но без расписания** — `Telegram::WorkBot::Sla::WatchdogJob`,
   `Sla::TasksWatchdogJob`, `topnlab:stages:refresh`. Включение SLA-сторожей — PR #64.
-- **2 существуют, но в текущем виде вредны** — `SendViewingRemindersJob` выбирает по
-  `preferred_date`/`reminder_email_sent`, а в `viewing_schedules` колонки
-  `scheduled_at`/`reminder_sent` (упадёт на первом прогоне);
-  `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по `PropertyView`,
-  а посетители анонимны (Devise выключен) — обнулит `views_count`. Сначала чинить.
+- **1 исправлена (не включена), 1 вредна** — `SendViewingRemindersJob` с 26.11.26
+  (PR #272) читает реальные колонки `scheduled_at`/`ends_at`/`reminder_sent`
+  (прежние `preferred_date`/`reminder_email_sent` в схеме не существовали —
+  джоба падала бы на старте) и покрыт `spec/jobs/send_viewing_reminders_job_spec.rb`, но в `config/sidekiq_cron.yml` **по-прежнему не включена** — включение только
+  после ops-ревью; `UpdatePropertyStatisticsJob` считает `COUNT(DISTINCT user_id)` по
+  `PropertyView`, а посетители анонимны (Devise выключен) — обнулит
+  `views_count`. Сначала чинить.
 - **7 ссылаются на несуществующее** — классы `UserDigestJob`, `MarketAnalyticsUpdateJob`;
   таски `db:sessions:trim`, `cache:clear_expired`, `sitemap:refresh` (sitemap строит
   `SitemapController` на запросе); колонка `property_valuations.follow_up_email_sent`;
