@@ -44,16 +44,21 @@ class ViewingSchedule < ApplicationRecord
   validates :scheduled_at, presence: true
   validates :status, presence: true
 
-  # Проверки слота — только при создании/переносе (и активации): иначе
-  # complete!/cancel!/mark_no_show! на прошедшем показе разбивались бы
-  # о date_not_in_past, а перенос слота — о time_slot_available (блокеры
-  # ревью #272).
-  validate :date_not_in_past, if: :slot_changed?
+  # Проверки слота — не на каждом update, а по делу (блокеры ревью #272/#273):
+  # - date_not_in_past — при создании/переносе слота И при переходе в активный
+  #   статус: иначе confirm! вчерашнего pending или восстановление прошедшего
+  #   cancelled в активный статус проходили бы без проверки даты (и это
+  #   противоречит can_confirm?);
+  # - time_slot_available — там же: confirm!/восстановление на занятом слоте
+  #   отклоняется. Переводы в неактивные статусы (complete!/cancel!/
+  #   mark_no_show!) на прошедшем показе обе проверки пропускают.
+  validate :date_not_in_past, if: :slot_or_activation_changed?
   validate :time_slot_available, if: :slot_or_activation_changed?
 
   # Callbacks
   before_validation :normalize_phone
   before_validation :assemble_scheduled_at
+  after_save :clear_form_fields
   after_create :send_notifications
   after_update :handle_status_change, if: :saved_change_to_status?
 
@@ -134,34 +139,56 @@ class ViewingSchedule < ApplicationRecord
     self.phone = phone.gsub(/[^\d+]/, '')
   end
 
-  # Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
-  # Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
-  # повторная валидация идемпотентна (пересборка даёт то же значение).
-  # При переносе слота ends_at пересчитывается: «автоматический» конец
-  # (равен старому scheduled_at + duration) — по duration, вручную
-  # выставленный — с сохранением своей длительности. Раньше ||= оставлял
-  # интервал вида 12:00–11:00 (блокер 2 ревью #272).
+  # Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+  # preferred_time): у сохранённой записи читатели деривируются из
+  # scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+  # значения — прямое присваивание scheduled_at= перетираться не должно.
+  #
+  # ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+  # присваивание): «автоматический» конец — по duration, ручной — с
+  # сохранением своей длительности; старое начало берётся из dirty-tracking,
+  # иначе прямое scheduled_at= давало перевёрнутый интервал 12:00–11:00
+  # (блокер 2 ревью #273). Явно заданный ends_at новой записи не затирается.
   def assemble_scheduled_at
-    return if preferred_date.blank? || preferred_time.blank?
-    # Формат валидируется отдельно; мусор не собираем — иначе Time#change
-    # с hour > 23 молча уехал бы на следующие сутки.
-    return unless preferred_time.match?(/\A([01]?\d|2[0-3]):[0-5]\d\z/)
-
-    hour, minute = preferred_time.split(':').map(&:to_i)
-    new_start = preferred_date.in_time_zone.change(hour: hour, min: minute)
-
-    if ends_at.nil?
-      self.ends_at = new_start + duration_minutes.minutes
-    elsif scheduled_at.present? && ends_at == scheduled_at + duration_minutes.minutes
-      # «Автоматический» конец — переносим вместе со слотом.
-      self.ends_at = new_start + duration_minutes.minutes
-    elsif scheduled_at.present?
-      # Ручной конец — переносим с сохранением своей длительности.
-      self.ends_at = new_start + (ends_at - scheduled_at)
+    form_date = self[:preferred_date]
+    form_time = self[:preferred_time]
+    # Пересборка — только когда форма реально прислала значения (после save
+    # виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+    # scheduled_at= перетираться не должно. Недостающую половину (формат
+    # «дата+время» пересылается целиком, но модель допускает частичное
+    # обновление) берём из текущего scheduled_at.
+    if form_date.present? || form_time.present?
+      date = form_date.presence || scheduled_at&.to_date
+      time = form_time.presence || scheduled_at&.strftime('%H:%M')
+      # Формат времени валидируется отдельно; мусор не собираем — иначе
+      # Time#change с hour > 23 молча уехал бы на следующие сутки.
+      if date.present? && time.present? && time.match?(/\A([01]?\d|2[0-3]):[0-5]\d\z/)
+        hour, minute = time.split(':').map(&:to_i)
+        self.scheduled_at = date.in_time_zone.change(hour: hour, min: minute)
+      end
     end
-    # Новая запись с явно заданным ends_at — оставляем как есть.
 
-    self.scheduled_at = new_start
+    return if scheduled_at.blank?
+
+    old_start = will_save_change_to_scheduled_at? ? scheduled_at_change_to_be_saved.first : scheduled_at
+    # Новая запись с явно заданным ends_at — оставляем как есть.
+    return if old_start.nil? && ends_at.present?
+
+    if ends_at.nil? || ends_at == old_start + duration_minutes.minutes
+      self.ends_at = scheduled_at + duration_minutes.minutes
+    elsif old_start.present?
+      self.ends_at = scheduled_at + (ends_at - old_start)
+    end
+  end
+
+  # Виртуальные поля формы — ввод пользователя для текущего сабмита, а не
+  # состояние записи: после сохранения сбрасываем. Иначе «застрявшие»
+  # значения перетирали бы прямое присваивание scheduled_at= (блокер 2
+  # ревью #273), а читатели preferred_date/preferred_time для сохранённой
+  # записи всё равно деривируются из scheduled_at.
+  def clear_form_fields
+    self[:preferred_date] = nil
+    self[:preferred_time] = nil
   end
 
   # Слот создаётся или переносится (новая запись либо scheduled_at изменился

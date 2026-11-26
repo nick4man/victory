@@ -12750,116 +12750,6 @@ validates :processed_at, presence: true
 scope :stale, ->(older_than: 7.days.ago) { where(processed_at: ...older_than) }
 </file>
 
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-attribute :preferred_date, :date
-attribute :preferred_time, :string
-⋮----
-alias_attribute :message, :notes
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true,
-                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
-validates :scheduled_at, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past, if: :slot_changed?
-validate :time_slot_available, if: :slot_or_activation_changed?
-⋮----
-before_validation :normalize_phone
-before_validation :assemble_scheduled_at
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
-scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
-scope :today, -> { where(scheduled_at: Time.current.all_day) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def preferred_date
-⋮----
-def preferred_time
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
-def duration_minutes
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-# Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
-# Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
-# повторная валидация идемпотентна (пересборка даёт то же значение).
-# При переносе слота ends_at пересчитывается: «автоматический» конец
-# (равен старому scheduled_at + duration) — по duration, вручную
-# выставленный — с сохранением своей длительности. Раньше ||= оставлял
-# интервал вида 12:00–11:00 (блокер 2 ревью #272).
-def assemble_scheduled_at
-⋮----
-# Формат валидируется отдельно; мусор не собираем — иначе Time#change
-# с hour > 23 молча уехал бы на следующие сутки.
-⋮----
-# «Автоматический» конец — переносим вместе со слотом.
-⋮----
-# Ручной конец — переносим с сохранением своей длительности.
-⋮----
-# Новая запись с явно заданным ends_at — оставляем как есть.
-⋮----
-# Слот создаётся или переносится (новая запись либо scheduled_at изменился
-# в этой валидации — assemble_scheduled_at выше уже пересобрал его).
-def slot_changed?
-⋮----
-# Переход в активный статус (подтверждение/восстановление) тоже обязан
-# пройти проверку занятости слота — слот при этом мог не меняться.
-def slot_or_activation_changed?
-⋮----
-def date_not_in_past
-⋮----
-# Слот занят, если на этом объекте уже есть pending/confirmed-показ с
-# пересекающимся диапазоном [scheduled_at, ends_at).
-def time_slot_available
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
-</file>
-
 <file path="app/services/chat_tools/registry.rb">
 module ChatTools
 ⋮----
@@ -14034,6 +13924,113 @@ private
 def enqueue_embed_if_relevant_changed
 ⋮----
 def detect_staff_test_submission
+</file>
+
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
+⋮----
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
+⋮----
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
+  }
+⋮----
+attribute :preferred_date, :date
+attribute :preferred_time, :string
+⋮----
+alias_attribute :message, :notes
+⋮----
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
+⋮----
+validate :date_not_in_past, if: :slot_or_activation_changed?
+validate :time_slot_available, if: :slot_or_activation_changed?
+⋮----
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_save :clear_form_fields
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
+⋮----
+def confirm!
+⋮----
+def cancel!(reason = nil)
+⋮----
+def complete!
+⋮----
+def mark_no_show!
+⋮----
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
+⋮----
+private
+⋮----
+def normalize_phone
+⋮----
+# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+# preferred_time): у сохранённой записи читатели деривируются из
+# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+# значения — прямое присваивание scheduled_at= перетираться не должно.
+#
+# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+# присваивание): «автоматический» конец — по duration, ручной — с
+# сохранением своей длительности; старое начало берётся из dirty-tracking,
+# иначе прямое scheduled_at= давало перевёрнутый интервал 12:00–11:00
+# (блокер 2 ревью #273). Явно заданный ends_at новой записи не затирается.
+def assemble_scheduled_at
+⋮----
+# Пересборка — только когда форма реально прислала значения (после save
+# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+# scheduled_at= перетираться не должно. Недостающую половину (формат
+# «дата+время» пересылается целиком, но модель допускает частичное
+# обновление) берём из текущего scheduled_at.
+⋮----
+def clear_form_fields
+⋮----
+def slot_changed?
+⋮----
+def slot_or_activation_changed?
+⋮----
+def date_not_in_past
+⋮----
+def time_slot_available
+⋮----
+def send_notifications
+⋮----
+def handle_status_change
 </file>
 
 <file path="app/services/chat/test_mode.rb">

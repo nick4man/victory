@@ -121,6 +121,54 @@ RSpec.describe ViewingSchedule, type: :model do
       expect(viewing).not_to be_valid
       expect(viewing.errors[:preferred_date]).to include('не может быть в прошлом')
     end
+
+    it 'confirm! вчерашнего pending отклоняется (активация прошедшего — блокер 1 ревью #273)' do
+      expect(past_viewing.confirm!).to be(false)
+      expect(past_viewing.errors[:preferred_date]).to include('не может быть в прошлом')
+      expect(past_viewing.reload.status).to eq('pending')
+    end
+
+    it 'восстановление прошедшего cancelled в активный статус отклоняется' do
+      past_viewing.update!(status: 'cancelled', cancelled_at: Time.current)
+
+      expect(past_viewing.update(status: 'pending')).to be(false)
+      expect(past_viewing.errors[:preferred_date]).to include('не может быть в прошлом')
+    end
+
+    it 'восстановление будущего cancelled проходит (дата и слот валидны)' do
+      viewing = build_viewing(status: 'cancelled').tap(&:save!)
+
+      expect(viewing.update(status: 'pending')).to be(true)
+    end
+  end
+
+  describe 'прямое присваивание scheduled_at (блокер 2 ревью #273)' do
+    it 'ends_at следует за новым началом по duration' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+    end
+
+    it 'ручная длительность сохраняется при прямом переносе' do
+      viewing = build_viewing.tap(&:save!)
+      viewing.update_columns(ends_at: viewing.scheduled_at + 90.minutes)
+      viewing.reload
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours + 30.minutes)
+    end
+
+    it 'прямой перенос на занятый слот отклоняется' do
+      build_viewing(preferred_time: '12:00').tap(&:save!)
+      viewing = build_viewing(preferred_time: '10:00').tap(&:save!)
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).not_to be_valid
+      expect(viewing.errors[:preferred_time]).to include('уже занято. Пожалуйста, выберите другое время')
+    end
   end
 
   describe 'перенос слота (блокер 2 ревью #272)' do
