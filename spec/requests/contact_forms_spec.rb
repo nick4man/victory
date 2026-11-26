@@ -295,12 +295,80 @@ RSpec.describe 'Антиспам-гейт /contact_forms/*', type: :request do
       }
     end
 
-    # Легитимный сабмит здесь не проверяем: ViewingSchedule валидирует
-    # preferred_date/preferred_time, которых нет в схеме viewing_schedules
-    # (и user_id NOT NULL при optional :user) — эндпоинт падает 500 на любой
-    # попытке сохранения ещё до гейта. Это пре-существующая поломка модели,
-    # чинится отдельной задачей; гейт тестируем на дропах — они срабатывают
-    # раньше сломанного кода.
+    it 'легитимный сабмит создаёт ViewingSchedule + Inquiry и шлёт каждый mailer ровно один раз' do
+      token = fresh_token
+
+      expect do
+        post contact_forms_viewing_schedule_path,
+             params: viewing_params.merge(rendered_at_token: token)
+      end.to change(ViewingSchedule, :count).by(1)
+        .and change(Inquiry, :count).by(1)
+        .and have_enqueued_job(ActionMailer::MailDeliveryJob).exactly(2).times
+
+      viewing = ViewingSchedule.last
+      expect(viewing.property).to eq(property)
+      expect(viewing.user).to be_nil # анонимная запись — user_id nullable (миграция t_6bbf76ae)
+      expect(viewing.status).to eq('pending')
+      # Виртуальные поля формы собраны в scheduled_at/ends_at
+      expect(viewing.preferred_date).to eq(Date.tomorrow)
+      expect(viewing.preferred_time).to eq('10:00')
+      expect(viewing.scheduled_at).to eq(Date.tomorrow.in_time_zone + 10.hours)
+      expect(viewing.ends_at).to eq(viewing.scheduled_at + viewing.duration_minutes.minutes)
+      expect(viewing.notes).to eq('Удобно в выходной') # поле message формы → колонка notes
+
+      inquiry = Inquiry.last
+      expect(inquiry.inquiry_type).to eq('viewing')
+      expect(inquiry.property).to eq(property)
+      expect(inquiry.metadata['viewing_id']).to eq(viewing.id)
+
+      expect(response).to redirect_to(property_path(property))
+      expect(flash[:notice]).to eq('Запись на показ принята! Мы свяжемся с вами для подтверждения.')
+    end
+
+    it 'JSON-сабмит отдаёт success-контракт с настоящим viewing_id' do
+      token = fresh_token
+
+      expect do
+        post contact_forms_viewing_schedule_path,
+             params: viewing_params.merge(rendered_at_token: token),
+             as: :json
+      end.to change(ViewingSchedule, :count).by(1)
+
+      expect(response).to have_http_status(:created)
+      body = response.parsed_body
+      expect(body.keys).to match_array(%w[success message viewing_id])
+      expect(body['success']).to be true
+      expect(body['message']).to eq('Запись принята')
+      expect(body['viewing_id']).to eq(ViewingSchedule.last.id)
+    end
+
+    it 'не даёт записаться на занятый слот того же объекта' do
+      post contact_forms_viewing_schedule_path,
+           params: viewing_params.merge(rendered_at_token: fresh_token)
+      expect(ViewingSchedule.count).to eq(1)
+
+      cookies.delete('visitor_token') # иначе гейт схлопнет повтор как duplicate
+      expect do
+        post contact_forms_viewing_schedule_path,
+             params: viewing_params.merge(rendered_at_token: fresh_token)
+      end.not_to change(ViewingSchedule, :count)
+
+      expect(flash[:alert]).to include('уже занято')
+    end
+
+    it 'пропускает запись на тот же слот другого объекта' do
+      other_property = create(:property)
+      post contact_forms_viewing_schedule_path,
+           params: viewing_params.merge(rendered_at_token: fresh_token)
+
+      cookies.delete('visitor_token')
+      expect do
+        post contact_forms_viewing_schedule_path,
+             params: viewing_params.merge(property_id: other_property.id,
+                                          rendered_at_token: fresh_token)
+      end.to change(ViewingSchedule, :count).by(1)
+    end
+
     it 'дропает honeypot до ViewingSchedule/Inquiry: redirect на объект с success-нотисом' do
       token = fresh_token
       expect do

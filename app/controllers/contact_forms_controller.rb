@@ -74,9 +74,10 @@ class ContactFormsController < ApplicationController
       # Create inquiry
       create_viewing_inquiry(@viewing)
 
-      # Send notifications
-      ViewingMailer.viewing_requested(@viewing).deliver_later
-      ViewingMailer.viewing_confirmation(@viewing).deliver_later if @viewing.email.present?
+      # Mailer'ы НЕ дублируем: viewing_requested/viewing_confirmation шлёт
+      # after_create :send_notifications модели — единый источник уведомлений
+      # для всех путей создания записи (явные deliver_later здесь давали
+      # клиенту и менеджерам по два одинаковых письма).
 
       track_event('viewing_scheduled', {
         viewing_id: @viewing.id,
