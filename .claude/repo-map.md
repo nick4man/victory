@@ -12994,6 +12994,20 @@ module_function
 def first_file(data)
 </file>
 
+<file path="app/services/llm/page_greeting.rb">
+DEFAULT = <<~RU.squish
+⋮----
+def for(page_ctx)
+⋮----
+def build(kind, ctx)
+⋮----
+def catalog_greeting
+⋮----
+def property_greeting(ctx)
+⋮----
+def audit_greeting(ctx)
+</file>
+
 <file path="app/services/llm/spam_filter.rb">
 module Llm
 ⋮----
@@ -13926,113 +13940,6 @@ def enqueue_embed_if_relevant_changed
 def detect_staff_test_submission
 </file>
 
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-attribute :preferred_date, :date
-attribute :preferred_time, :string
-⋮----
-alias_attribute :message, :notes
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true,
-                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
-validates :scheduled_at, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past, if: :slot_or_activation_changed?
-validate :time_slot_available, if: :slot_or_activation_changed?
-⋮----
-before_validation :normalize_phone
-before_validation :assemble_scheduled_at
-after_save :clear_form_fields
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
-scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
-scope :today, -> { where(scheduled_at: Time.current.all_day) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def preferred_date
-⋮----
-def preferred_time
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
-def duration_minutes
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
-# preferred_time): у сохранённой записи читатели деривируются из
-# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
-# значения — прямое присваивание scheduled_at= перетираться не должно.
-#
-# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
-# присваивание): «автоматический» конец — по duration, ручной — с
-# сохранением своей длительности; старое начало берётся из dirty-tracking,
-# иначе прямое scheduled_at= давало перевёрнутый интервал 12:00–11:00
-# (блокер 2 ревью #273). Явно заданный ends_at новой записи не затирается.
-def assemble_scheduled_at
-⋮----
-# Пересборка — только когда форма реально прислала значения (после save
-# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
-# scheduled_at= перетираться не должно. Недостающую половину (формат
-# «дата+время» пересылается целиком, но модель допускает частичное
-# обновление) берём из текущего scheduled_at.
-⋮----
-def clear_form_fields
-⋮----
-def slot_changed?
-⋮----
-def slot_or_activation_changed?
-⋮----
-def date_not_in_past
-⋮----
-def time_slot_available
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
-</file>
-
 <file path="app/services/chat/test_mode.rb">
 module Chat
 ⋮----
@@ -14327,18 +14234,19 @@ def pipeline_block
 def highlights(metrics)
 </file>
 
-<file path="app/services/llm/page_greeting.rb">
-DEFAULT = <<~RU.squish
+<file path="app/services/llm/page_context.rb">
+module Llm
 ⋮----
-def for(page_ctx)
+module PageContext
+CTX_KINDS = {
 ⋮----
-def build(kind, ctx)
+def format_money(value)
 ⋮----
-def catalog_greeting
+def guidance(kind, page_ctx)
 ⋮----
-def property_greeting(ctx)
+def audit_guidance(state)
 ⋮----
-def audit_greeting(ctx)
+def valuation_guidance(state)
 </file>
 
 <file path="app/services/llm/staff_chat_responder.rb">
@@ -15196,6 +15104,26 @@ def name_matches_staff_first?
 # Exact match (имя submitter'а = staff first_name полностью)
 </file>
 
+<file path="app/controllers/concerns/chat/page_context_params.rb">
+module Chat
+⋮----
+module PageContextParams
+extend ActiveSupport::Concern
+⋮----
+CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
+CTX_VALUE_MAX = 100
+⋮----
+private
+⋮----
+def extract_page_params
+⋮----
+def clean_page_value(value, max)
+⋮----
+def sanitize_page_ctx(raw_ctx)
+⋮----
+def stamp_page(conv, page_ctx)
+</file>
+
 <file path="app/controllers/contact_forms_controller.rb">
 class ContactFormsController < ApplicationController
 before_action :set_property, only: [:viewing_schedule, :property_inquiry]
@@ -15295,6 +15223,21 @@ def comparable_property_type_slug(pt)
 def enforce_rate_limit
 ⋮----
 def rate_limited?
+</file>
+
+<file path="app/jobs/llm_reply_job.rb">
+class LlmReplyJob < ApplicationJob
+queue_as :default
+⋮----
+def perform(conversation_id, message_id = nil)
+⋮----
+private
+⋮----
+def with_lead_test_mode(conv)
+⋮----
+def message_page_snapshot(conv, message_id)
+⋮----
+def message_payload(m)
 </file>
 
 <file path="app/models/inquiry.rb">
@@ -15463,6 +15406,127 @@ def crumb_stale?(crumb)
 def drop_stale_crumb!(crumb)
 </file>
 
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
+⋮----
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
+⋮----
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
+  }
+⋮----
+attribute :preferred_date, :date
+attribute :preferred_time, :string
+⋮----
+alias_attribute :message, :notes
+⋮----
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
+⋮----
+validate :date_not_in_past, if: :slot_or_activation_changed?
+validate :time_slot_available, if: :slot_overlap_check_needed?
+⋮----
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_save :clear_form_fields
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
+⋮----
+def confirm!
+⋮----
+def cancel!(reason = nil)
+⋮----
+def complete!
+⋮----
+def mark_no_show!
+⋮----
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+# Пользовательское присваивание ends_at отличаем от присваивания в
+# assemble_scheduled_at (там — низкоуровневый self[:ends_at]=, сеттер не
+# вызывается): dirty-tracking их не различает, а перетирать явную правку
+# границ нельзя (блокер 2 ревью раунда 3), как нельзя сохранять
+# «застрявшее» значение прошлой неудачной валидации при retry.
+def ends_at=(value)
+⋮----
+def ends_at_explicitly_assigned?
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
+⋮----
+private
+⋮----
+def normalize_phone
+⋮----
+# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+# preferred_time): у сохранённой записи читатели деривируются из
+# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+# значения — прямое присваивание scheduled_at= перетираться не должно.
+#
+# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+# присваивание): «автоматический» конец — по duration, ручной — с
+# сохранением своей длительности. Автоматичность классифицируется по
+# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
+# текущим значениям — иначе повторная валидация уже перенесённого конца
+# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
+# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
+# новой записи не затирается.
+def assemble_scheduled_at
+⋮----
+# Пересборка — только когда форма реально прислала значения (после save
+# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+# scheduled_at= перетираться не должно. Недостающую половину (формат
+# «дата+время» пересылается целиком, но модель допускает частичное
+# обновление) берём из текущего scheduled_at.
+⋮----
+def clear_form_fields
+⋮----
+def slot_changed?
+⋮----
+def slot_or_activation_changed?
+⋮----
+def slot_overlap_check_needed?
+⋮----
+def date_not_in_past
+⋮----
+def time_slot_available
+⋮----
+def send_notifications
+⋮----
+def handle_status_change
+</file>
+
 <file path="app/services/crm_cards/change_requests.rb">
 module CrmCards
 ⋮----
@@ -15585,19 +15649,34 @@ def target_chat_id(metadata)
 def adapter_for(source)
 </file>
 
-<file path="app/services/llm/page_context.rb">
+<file path="app/services/llm/chat_responder.rb">
 module Llm
 ⋮----
-module PageContext
-CTX_KINDS = {
+class ChatResponder
+ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
 ⋮----
-def format_money(value)
+def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
 ⋮----
-def guidance(kind, page_ctx)
+def call
 ⋮----
-def audit_guidance(state)
+def full_system_prompt
 ⋮----
-def valuation_guidance(state)
+private
+⋮----
+def current_page_ctx
+⋮----
+def security_preamble
+⋮----
+private
+⋮----
+def parse(result)
+⋮----
+def fallback_message
+⋮----
+# System prompt is rebuilt on every call so it reflects the current
+# catalog and team. Cached for 5 min to avoid hammering the DB on
+# every visitor message.
+def system_prompt
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
@@ -16073,24 +16152,30 @@ group :development, :test do
 end
 </file>
 
-<file path="app/controllers/concerns/chat/page_context_params.rb">
+<file path="app/controllers/chat/conversations_controller.rb">
 module Chat
 ⋮----
-module PageContextParams
-extend ActiveSupport::Concern
+class ConversationsController < ApplicationController
+include Chat::PageContextParams
+include Chat::TestModeResolution
 ⋮----
-CTX_KEYS = %w[kind slug deal type district rooms token id state].freeze
-CTX_VALUE_MAX = 100
+skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
+⋮----
+def show
+⋮----
+def update
+⋮----
+def activate_test
 ⋮----
 private
 ⋮----
-def extract_page_params
+def current_or_create_conversation
 ⋮----
-def clean_page_value(value, max)
+def seed_welcome(conv, page_ctx = nil)
 ⋮----
-def sanitize_page_ctx(raw_ctx)
+def serialize(conv)
 ⋮----
-def stamp_page(conv, page_ctx)
+def serialize_message(m)
 </file>
 
 <file path="app/controllers/concerns/visitor_identity.rb">
@@ -16173,21 +16258,6 @@ queue_as :low_priority
 retry_on ::Embedding::GoogleClient::Error, wait: :polynomially_longer, attempts: 5
 ⋮----
 def perform(property_valuation_id)
-</file>
-
-<file path="app/jobs/llm_reply_job.rb">
-class LlmReplyJob < ApplicationJob
-queue_as :default
-⋮----
-def perform(conversation_id, message_id = nil)
-⋮----
-private
-⋮----
-def with_lead_test_mode(conv)
-⋮----
-def message_page_snapshot(conv, message_id)
-⋮----
-def message_payload(m)
 </file>
 
 <file path="app/models/conversation.rb">
@@ -16437,36 +16507,6 @@ def client = @client ||= Llm::OmniClient.new
 def system_prompt
 </file>
 
-<file path="app/services/llm/chat_responder.rb">
-module Llm
-⋮----
-class ChatResponder
-ESCALATION_RE = /<<<ESCALATE:\s*(?<summary>[^>]+?)>>>/i.freeze
-⋮----
-def initialize(conversation, runner: Llm::ToolRunner.new, page_ctx: nil)
-⋮----
-def call
-⋮----
-def full_system_prompt
-⋮----
-private
-⋮----
-def current_page_ctx
-⋮----
-def security_preamble
-⋮----
-private
-⋮----
-def parse(result)
-⋮----
-def fallback_message
-⋮----
-# System prompt is rebuilt on every call so it reflects the current
-# catalog and team. Cached for 5 min to avoid hammering the DB on
-# every visitor message.
-def system_prompt
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/crm_card_callback.rb">
 module Telegram
 module WorkBot
@@ -16645,30 +16685,28 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
-<file path="app/controllers/chat/conversations_controller.rb">
+<file path="app/controllers/chat/messages_controller.rb">
 module Chat
 ⋮----
-class ConversationsController < ApplicationController
+class MessagesController < ApplicationController
 include Chat::PageContextParams
 include Chat::TestModeResolution
 ⋮----
-skip_before_action :verify_authenticity_token, only: %i[show update], raise: false
+skip_before_action :verify_authenticity_token, only: %i[create], raise: false
 ⋮----
-def show
+RATE_LIMIT_PER_MINUTE = 5
 ⋮----
-def update
-⋮----
-def activate_test
+def create
 ⋮----
 private
 ⋮----
-def current_or_create_conversation
+def post_static_reply(conv, verdict, original_body)
 ⋮----
-def seed_welcome(conv, page_ctx = nil)
+def record_security_event(conv, verdict, original_body)
 ⋮----
-def serialize(conv)
+def rate_limited?
 ⋮----
-def serialize_message(m)
+def serialize(m)
 </file>
 
 <file path="app/services/crm_cards/notifier.rb">
@@ -16799,30 +16837,6 @@ def attempt_current?(card, token)
 def notifier
 ⋮----
 def exporter
-</file>
-
-<file path="app/controllers/chat/messages_controller.rb">
-module Chat
-⋮----
-class MessagesController < ApplicationController
-include Chat::PageContextParams
-include Chat::TestModeResolution
-⋮----
-skip_before_action :verify_authenticity_token, only: %i[create], raise: false
-⋮----
-RATE_LIMIT_PER_MINUTE = 5
-⋮----
-def create
-⋮----
-private
-⋮----
-def post_static_reply(conv, verdict, original_body)
-⋮----
-def record_security_event(conv, verdict, original_body)
-⋮----
-def rate_limited?
-⋮----
-def serialize(m)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">

@@ -49,11 +49,13 @@ class ViewingSchedule < ApplicationRecord
   #   статус: иначе confirm! вчерашнего pending или восстановление прошедшего
   #   cancelled в активный статус проходили бы без проверки даты (и это
   #   противоречит can_confirm?);
-  # - time_slot_available — там же: confirm!/восстановление на занятом слоте
-  #   отклоняется. Переводы в неактивные статусы (complete!/cancel!/
-  #   mark_no_show!) на прошедшем показе обе проверки пропускают.
+  # - time_slot_available — там же, плюс при правке ends_at/property_id:
+  #   confirm!/восстановление на занятом слоте и удлинение показа до
+  #   пересечения с соседним отклоняются. Переводы в неактивные статусы
+  #   (complete!/cancel!/mark_no_show!) на прошедшем показе обе проверки
+  #   пропускают.
   validate :date_not_in_past, if: :slot_or_activation_changed?
-  validate :time_slot_available, if: :slot_or_activation_changed?
+  validate :time_slot_available, if: :slot_overlap_check_needed?
 
   # Callbacks
   before_validation :normalize_phone
@@ -119,6 +121,20 @@ class ViewingSchedule < ApplicationRecord
     duration || 60
   end
 
+  # Пользовательское присваивание ends_at отличаем от присваивания в
+  # assemble_scheduled_at (там — низкоуровневый self[:ends_at]=, сеттер не
+  # вызывается): dirty-tracking их не различает, а перетирать явную правку
+  # границ нельзя (блокер 2 ревью раунда 3), как нельзя сохранять
+  # «застрявшее» значение прошлой неудачной валидации при retry.
+  def ends_at=(value)
+    @ends_at_explicit = true
+    super
+  end
+
+  def ends_at_explicitly_assigned?
+    @ends_at_explicit && will_save_change_to_ends_at?
+  end
+
   def upcoming?
     preferred_date.present? && preferred_date >= Date.current && %w[pending confirmed].include?(status)
   end
@@ -146,9 +162,12 @@ class ViewingSchedule < ApplicationRecord
   #
   # ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
   # присваивание): «автоматический» конец — по duration, ручной — с
-  # сохранением своей длительности; старое начало берётся из dirty-tracking,
-  # иначе прямое scheduled_at= давало перевёрнутый интервал 12:00–11:00
-  # (блокер 2 ревью #273). Явно заданный ends_at новой записи не затирается.
+  # сохранением своей длительности. Автоматичность классифицируется по
+  # СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
+  # текущим значениям — иначе повторная валидация уже перенесённого конца
+  # считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
+  # 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
+  # новой записи не затирается.
   def assemble_scheduled_at
     form_date = self[:preferred_date]
     form_time = self[:preferred_time]
@@ -170,15 +189,29 @@ class ViewingSchedule < ApplicationRecord
 
     return if scheduled_at.blank?
 
-    old_start = will_save_change_to_scheduled_at? ? scheduled_at_change_to_be_saved.first : scheduled_at
-    # Новая запись с явно заданным ends_at — оставляем как есть.
-    return if old_start.nil? && ends_at.present?
+    persisted_start = scheduled_at_in_database
+    persisted_end = ends_at_in_database
 
-    if ends_at.nil? || ends_at == old_start + duration_minutes.minutes
-      self.ends_at = scheduled_at + duration_minutes.minutes
-    elsif old_start.present?
-      self.ends_at = scheduled_at + (ends_at - old_start)
+    if persisted_start.nil?
+      # Новая запись: явно заданный ends_at не трогаем, иначе — по duration.
+      self[:ends_at] ||= scheduled_at + duration_minutes.minutes
+    elsif ends_at_explicitly_assigned?
+      # ends_at присвоен явно (отдельно или вместе с переносом слота) —
+      # осознанная правка границ, не перетираем; её же ловит проверка
+      # пересечений (slot_overlap_check_needed?).
+    elsif will_save_change_to_scheduled_at? || will_save_change_to_duration?
+      # «Автоматический» конец — по СОХРАНЁННОЙ паре и сохранённой duration:
+      # повторная валидация уже перенесённого конца не должна считать его
+      # «ручным» и растягивать интервал (10:00–11:00 → 12:00–13:00 →
+      # 12:00–15:00, блокер 1 ревью раунда 3).
+      if persisted_end.nil? || persisted_end == persisted_start + (duration_in_database || 60).minutes
+        self[:ends_at] = scheduled_at + duration_minutes.minutes
+      elsif will_save_change_to_scheduled_at?
+        # Ручной конец при переносе — с сохранением сохранённой длительности.
+        self[:ends_at] = scheduled_at + (persisted_end - persisted_start)
+      end
     end
+    # Без смены слота/duration чужое ends_at не трогаем.
   end
 
   # Виртуальные поля формы — ввод пользователя для текущего сабмита, а не
@@ -189,6 +222,8 @@ class ViewingSchedule < ApplicationRecord
   def clear_form_fields
     self[:preferred_date] = nil
     self[:preferred_time] = nil
+    # Сохранённое ends_at больше не «явное присваивание» — см. ends_at=.
+    @ends_at_explicit = false
   end
 
   # Слот создаётся или переносится (новая запись либо scheduled_at изменился
@@ -201,6 +236,16 @@ class ViewingSchedule < ApplicationRecord
   # пройти проверку занятости слота — слот при этом мог не меняться.
   def slot_or_activation_changed?
     slot_changed? || (will_save_change_to_status? && %w[pending confirmed].include?(status))
+  end
+
+  # Проверка пересечений нужна и при правке границ/объекта без смены начала:
+  # update(ends_at: ...) может удлинить показ до пересечения с соседним,
+  # update(property_id: ...) — перенести его на занятый слот другого
+  # объекта (блокер 2 ревью раунда 3). Проверка даты при этом не запускается
+  # (slot_or_activation_changed?): правка границ прошедшего показа для
+  # отчётности — легитимна.
+  def slot_overlap_check_needed?
+    slot_or_activation_changed? || will_save_change_to_ends_at? || will_save_change_to_property_id?
   end
 
   def date_not_in_past

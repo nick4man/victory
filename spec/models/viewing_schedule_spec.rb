@@ -171,6 +171,87 @@ RSpec.describe ViewingSchedule, type: :model do
     end
   end
 
+  describe 'повторная валидация и retry переноса (блокер 1 ревью раунда 3)' do
+    it 'повторная валидация не растягивает автоматический ends_at' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+
+      viewing.save!
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+    end
+
+    it 'retry после неудачного переноса собирает ends_at от нового начала' do
+      build_viewing(preferred_time: '12:00').tap(&:save!)
+      viewing = build_viewing(preferred_time: '10:00').tap(&:save!)
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours # занято
+      expect(viewing).not_to be_valid
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 14.hours # свободно
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 15.hours)
+    end
+
+    it 'ручная длительность стабильна при повторной валидации' do
+      viewing = build_viewing.tap(&:save!)
+      viewing.update_columns(ends_at: viewing.scheduled_at + 90.minutes)
+      viewing.reload
+
+      viewing.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+      2.times { expect(viewing).to be_valid }
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours + 30.minutes)
+    end
+  end
+
+  describe 'правка границ и объекта без смены начала (блокер 2 ревью раунда 3)' do
+    it 'явный update(ends_at:) уважается и не перетирается сборкой' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      expect(viewing.update(ends_at: viewing.scheduled_at + 3.hours)).to be(true)
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+    end
+
+    it 'удлинение ends_at до пересечения с соседним показом отклоняется' do
+      viewing = build_viewing.tap(&:save!)              # 10:00–11:00
+      build_viewing(preferred_time: '11:30').tap(&:save!) # 11:30–12:30
+
+      expect(viewing.update(ends_at: viewing.scheduled_at + 2.hours)).to be(false)
+      expect(viewing.errors[:preferred_time]).to include('уже занято. Пожалуйста, выберите другое время')
+    end
+
+    it 'перенос на другой объект с занятым слотом отклоняется' do
+      other_property = create(:property)
+      build_viewing(property: other_property, preferred_time: '10:00').tap(&:save!)
+      viewing = build_viewing.tap(&:save!)
+
+      expect(viewing.update(property: other_property)).to be(false)
+      expect(viewing.errors[:preferred_time]).to include('уже занято. Пожалуйста, выберите другое время')
+    end
+
+    it 'перенос на свободный объект проходит' do
+      other_property = create(:property)
+      viewing = build_viewing.tap(&:save!)
+
+      expect(viewing.update(property: other_property)).to be(true)
+    end
+
+    it 'правка границ прошедшего показа не упирается в date_not_in_past' do
+      past_start = Date.yesterday.in_time_zone + 10.hours
+      viewing = build_viewing(preferred_date: Date.current, preferred_time: '10:00')
+      viewing.scheduled_at = past_start
+      viewing.ends_at = past_start + 60.minutes
+      viewing.save!(validate: false)
+
+      expect(viewing.update(ends_at: past_start + 90.minutes)).to be(true)
+    end
+  end
+
   describe 'перенос слота (блокер 2 ревью #272)' do
     it 'ends_at пересчитывается вместе с scheduled_at' do
       viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
