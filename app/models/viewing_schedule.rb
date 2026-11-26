@@ -44,8 +44,12 @@ class ViewingSchedule < ApplicationRecord
   validates :scheduled_at, presence: true
   validates :status, presence: true
 
-  validate :date_not_in_past
-  validate :time_slot_available
+  # Проверки слота — только при создании/переносе (и активации): иначе
+  # complete!/cancel!/mark_no_show! на прошедшем показе разбивались бы
+  # о date_not_in_past, а перенос слота — о time_slot_available (блокеры
+  # ревью #272).
+  validate :date_not_in_past, if: :slot_changed?
+  validate :time_slot_available, if: :slot_or_activation_changed?
 
   # Callbacks
   before_validation :normalize_phone
@@ -133,6 +137,10 @@ class ViewingSchedule < ApplicationRecord
   # Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
   # Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
   # повторная валидация идемпотентна (пересборка даёт то же значение).
+  # При переносе слота ends_at пересчитывается: «автоматический» конец
+  # (равен старому scheduled_at + duration) — по duration, вручную
+  # выставленный — с сохранением своей длительности. Раньше ||= оставлял
+  # интервал вида 12:00–11:00 (блокер 2 ревью #272).
   def assemble_scheduled_at
     return if preferred_date.blank? || preferred_time.blank?
     # Формат валидируется отдельно; мусор не собираем — иначе Time#change
@@ -140,8 +148,32 @@ class ViewingSchedule < ApplicationRecord
     return unless preferred_time.match?(/\A([01]?\d|2[0-3]):[0-5]\d\z/)
 
     hour, minute = preferred_time.split(':').map(&:to_i)
-    self.scheduled_at = preferred_date.in_time_zone.change(hour: hour, min: minute)
-    self.ends_at ||= scheduled_at + duration_minutes.minutes
+    new_start = preferred_date.in_time_zone.change(hour: hour, min: minute)
+
+    if ends_at.nil?
+      self.ends_at = new_start + duration_minutes.minutes
+    elsif scheduled_at.present? && ends_at == scheduled_at + duration_minutes.minutes
+      # «Автоматический» конец — переносим вместе со слотом.
+      self.ends_at = new_start + duration_minutes.minutes
+    elsif scheduled_at.present?
+      # Ручной конец — переносим с сохранением своей длительности.
+      self.ends_at = new_start + (ends_at - scheduled_at)
+    end
+    # Новая запись с явно заданным ends_at — оставляем как есть.
+
+    self.scheduled_at = new_start
+  end
+
+  # Слот создаётся или переносится (новая запись либо scheduled_at изменился
+  # в этой валидации — assemble_scheduled_at выше уже пересобрал его).
+  def slot_changed?
+    new_record? || will_save_change_to_scheduled_at?
+  end
+
+  # Переход в активный статус (подтверждение/восстановление) тоже обязан
+  # пройти проверку занятости слота — слот при этом мог не меняться.
+  def slot_or_activation_changed?
+    slot_changed? || (will_save_change_to_status? && %w[pending confirmed].include?(status))
   end
 
   def date_not_in_past

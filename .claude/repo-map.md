@@ -3277,13 +3277,6 @@ queue_as :low_priority
 def perform
 </file>
 
-<file path="app/jobs/send_viewing_reminders_job.rb">
-class SendViewingRemindersJob < ApplicationJob
-queue_as :scheduled
-⋮----
-def perform
-</file>
-
 <file path="app/jobs/task_batch_expiry_job.rb">
 class TaskBatchExpiryJob
 include Sidekiq::Job
@@ -5536,98 +5529,6 @@ def phone_format
 def active_for_authentication?
 ⋮----
 def inactive_message
-</file>
-
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-attribute :preferred_date, :date
-attribute :preferred_time, :string
-⋮----
-alias_attribute :message, :notes
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true,
-                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
-validates :scheduled_at, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past
-validate :time_slot_available
-⋮----
-before_validation :normalize_phone
-before_validation :assemble_scheduled_at
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
-scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
-scope :today, -> { where(scheduled_at: Time.current.all_day) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def preferred_date
-⋮----
-def preferred_time
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
-def duration_minutes
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-# Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
-# Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
-# повторная валидация идемпотентна (пересборка даёт то же значение).
-def assemble_scheduled_at
-⋮----
-# Формат валидируется отдельно; мусор не собираем — иначе Time#change
-# с hour > 23 молча уехал бы на следующие сутки.
-⋮----
-def date_not_in_past
-⋮----
-# Слот занят, если на этом объекте уже есть pending/confirmed-показ с
-# пересекающимся диапазоном [scheduled_at, ends_at).
-def time_slot_available
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
 </file>
 
 <file path="app/models/zhk_fact.rb">
@@ -12358,6 +12259,13 @@ def dispatch_downstream(valuation)
 def push_to_lead_card(valuation)
 </file>
 
+<file path="app/jobs/send_viewing_reminders_job.rb">
+class SendViewingRemindersJob < ApplicationJob
+queue_as :scheduled
+⋮----
+def perform
+</file>
+
 <file path="app/mailers/admin_mailer.rb">
 class AdminMailer < ApplicationMailer
 ⋮----
@@ -12840,6 +12748,116 @@ validates :bot,          inclusion: { in: Telegram::BotContext::BOTS }
 validates :processed_at, presence: true
 ⋮----
 scope :stale, ->(older_than: 7.days.ago) { where(processed_at: ...older_than) }
+</file>
+
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
+⋮----
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
+⋮----
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
+  }
+⋮----
+attribute :preferred_date, :date
+attribute :preferred_time, :string
+⋮----
+alias_attribute :message, :notes
+⋮----
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
+⋮----
+validate :date_not_in_past, if: :slot_changed?
+validate :time_slot_available, if: :slot_or_activation_changed?
+⋮----
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
+⋮----
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
+⋮----
+def confirm!
+⋮----
+def cancel!(reason = nil)
+⋮----
+def complete!
+⋮----
+def mark_no_show!
+⋮----
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
+⋮----
+private
+⋮----
+def normalize_phone
+⋮----
+# Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
+# Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
+# повторная валидация идемпотентна (пересборка даёт то же значение).
+# При переносе слота ends_at пересчитывается: «автоматический» конец
+# (равен старому scheduled_at + duration) — по duration, вручную
+# выставленный — с сохранением своей длительности. Раньше ||= оставлял
+# интервал вида 12:00–11:00 (блокер 2 ревью #272).
+def assemble_scheduled_at
+⋮----
+# Формат валидируется отдельно; мусор не собираем — иначе Time#change
+# с hour > 23 молча уехал бы на следующие сутки.
+⋮----
+# «Автоматический» конец — переносим вместе со слотом.
+⋮----
+# Ручной конец — переносим с сохранением своей длительности.
+⋮----
+# Новая запись с явно заданным ends_at — оставляем как есть.
+⋮----
+# Слот создаётся или переносится (новая запись либо scheduled_at изменился
+# в этой валидации — assemble_scheduled_at выше уже пересобрал его).
+def slot_changed?
+⋮----
+# Переход в активный статус (подтверждение/восстановление) тоже обязан
+# пройти проверку занятости слота — слот при этом мог не меняться.
+def slot_or_activation_changed?
+⋮----
+def date_not_in_past
+⋮----
+# Слот занят, если на этом объекте уже есть pending/confirmed-показ с
+# пересекающимся диапазоном [scheduled_at, ends_at).
+def time_slot_available
+⋮----
+def send_notifications
+⋮----
+def handle_status_change
 </file>
 
 <file path="app/services/chat_tools/registry.rb">
@@ -13902,67 +13920,6 @@ def create
 private
 ⋮----
 def authorized?
-</file>
-
-<file path="app/controllers/contact_forms_controller.rb">
-class ContactFormsController < ApplicationController
-before_action :set_property, only: [:viewing_schedule, :property_inquiry]
-⋮----
-before_action :drop_spam_submission, only: %i[
-    quick_inquiry viewing_schedule callback consultation mortgage_application property_selection
-  ]
-⋮----
-SUBMIT_SUCCESS = {
-⋮----
-def quick_inquiry
-⋮----
-def viewing_schedule
-⋮----
-def callback
-⋮----
-def consultation
-⋮----
-def mortgage_application
-⋮----
-def property_selection
-⋮----
-private
-⋮----
-def drop_spam_submission
-⋮----
-def contact_form_spam_gate
-⋮----
-def submit_success_json(action, record_id: nil, matching_count: nil)
-⋮----
-def fake_public_id
-⋮----
-def quick_inquiry_params
-⋮----
-def viewing_params
-⋮----
-def callback_params
-⋮----
-def consultation_params
-⋮----
-def mortgage_params
-⋮----
-def selection_params
-⋮----
-def set_property
-⋮----
-def determine_priority(inquiry)
-⋮----
-def create_viewing_inquiry(viewing)
-⋮----
-def find_matching_properties(inquiry)
-⋮----
-def create_crm_task(inquiry, task_type)
-⋮----
-def send_urgent_sms(inquiry)
-⋮----
-def create_calendar_event(inquiry)
-⋮----
-def send_to_mortgage_partners(inquiry)
 </file>
 
 <file path="app/controllers/reviews_controller.rb">
@@ -15240,6 +15197,67 @@ STAFF_FIRST_NAMES_CACHE_KEY = 'staff_submission_detector:first_names_v1'
 def name_matches_staff_first?
 ⋮----
 # Exact match (имя submitter'а = staff first_name полностью)
+</file>
+
+<file path="app/controllers/contact_forms_controller.rb">
+class ContactFormsController < ApplicationController
+before_action :set_property, only: [:viewing_schedule, :property_inquiry]
+⋮----
+before_action :drop_spam_submission, only: %i[
+    quick_inquiry viewing_schedule callback consultation mortgage_application property_selection
+  ]
+⋮----
+SUBMIT_SUCCESS = {
+⋮----
+def quick_inquiry
+⋮----
+def viewing_schedule
+⋮----
+def callback
+⋮----
+def consultation
+⋮----
+def mortgage_application
+⋮----
+def property_selection
+⋮----
+private
+⋮----
+def drop_spam_submission
+⋮----
+def contact_form_spam_gate
+⋮----
+def submit_success_json(action, record_id: nil, matching_count: nil)
+⋮----
+def fake_public_id
+⋮----
+def quick_inquiry_params
+⋮----
+def viewing_params
+⋮----
+def callback_params
+⋮----
+def consultation_params
+⋮----
+def mortgage_params
+⋮----
+def selection_params
+⋮----
+def set_property
+⋮----
+def determine_priority(inquiry)
+⋮----
+def create_viewing_inquiry(viewing)
+⋮----
+def find_matching_properties(inquiry)
+⋮----
+def create_crm_task(inquiry, task_type)
+⋮----
+def send_urgent_sms(inquiry)
+⋮----
+def create_calendar_event(inquiry)
+⋮----
+def send_to_mortgage_partners(inquiry)
 </file>
 
 <file path="app/controllers/property_valuations_controller.rb">

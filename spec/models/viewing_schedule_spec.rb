@@ -86,6 +86,87 @@ RSpec.describe ViewingSchedule, type: :model do
     end
   end
 
+  describe 'жизненный цикл прошедших показов (блокер 1 ревью #272)' do
+    let(:past_viewing) do
+      described_class.new(
+        property: property, name: 'Иван Петров', phone: '+7 (900) 123-45-67',
+        status: 'pending',
+        scheduled_at: Date.yesterday.in_time_zone + 10.hours,
+        ends_at: Date.yesterday.in_time_zone + 11.hours
+      ).tap { |v| v.save!(validate: false) }
+    end
+
+    it 'complete! на вчерашнем показе проходит (date_not_in_past — только для слота)' do
+      expect(past_viewing.complete!).to be(true)
+      expect(past_viewing.reload.status).to eq('completed')
+    end
+
+    it 'mark_no_show! и cancel! на вчерашнем показе проходят' do
+      expect(past_viewing.mark_no_show!).to be(true)
+      expect(past_viewing.reload.status).to eq('no_show')
+
+      other = described_class.new(
+        property: property, name: 'Иван Петров', phone: '+7 (900) 123-45-67',
+        status: 'confirmed',
+        scheduled_at: Date.yesterday.in_time_zone + 12.hours,
+        ends_at: Date.yesterday.in_time_zone + 13.hours
+      ).tap { |v| v.save!(validate: false) }
+      expect(other.cancel!('клиент не пришёл')).to be(true)
+    end
+
+    it 'перенос показа в прошлое по-прежнему запрещён' do
+      viewing = build_viewing.tap(&:save!)
+      viewing.preferred_date = Date.yesterday
+
+      expect(viewing).not_to be_valid
+      expect(viewing.errors[:preferred_date]).to include('не может быть в прошлом')
+    end
+  end
+
+  describe 'перенос слота (блокер 2 ревью #272)' do
+    it 'ends_at пересчитывается вместе с scheduled_at' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      viewing.preferred_time = '12:00'
+      expect(viewing).to be_valid
+      expect(viewing.scheduled_at).to eq(Date.tomorrow.in_time_zone + 12.hours)
+      expect(viewing.ends_at).to eq(Date.tomorrow.in_time_zone + 13.hours)
+    end
+
+    it 'вручную выставленный ends_at перенос не затирает' do
+      viewing = build_viewing.tap(&:save!)
+      viewing.update_columns(ends_at: viewing.scheduled_at + 90.minutes)
+      viewing.reload
+
+      viewing.preferred_time = '12:00'
+      expect(viewing).to be_valid
+      expect(viewing.ends_at).to eq(viewing.scheduled_at + 90.minutes)
+    end
+
+    it 'перенос на занятый слот отклоняется' do
+      build_viewing(preferred_time: '12:00').tap(&:save!)
+      viewing = build_viewing(preferred_time: '10:00').tap(&:save!)
+
+      viewing.preferred_time = '12:00'
+      expect(viewing).not_to be_valid
+      expect(viewing.errors[:preferred_time]).to include('уже занято. Пожалуйста, выберите другое время')
+    end
+
+    it 'подтверждение показа на занятом слоте отклоняется (активация слота)' do
+      build_viewing(preferred_time: '12:00', status: 'confirmed').tap(&:save!)
+      # Пересекающийся pending-показ заводим в обход валидаций (колонки
+      # напрямую: save(validate: false) пропускает и сборку scheduled_at).
+      viewing = build_viewing(preferred_time: '12:00', status: 'pending').tap do |v|
+        v.scheduled_at = Date.tomorrow.in_time_zone + 12.hours
+        v.ends_at = v.scheduled_at + 60.minutes
+        v.save!(validate: false)
+      end
+
+      expect(viewing.confirm!).to be(false)
+      expect(viewing.errors[:preferred_time]).to include('уже занято. Пожалуйста, выберите другое время')
+    end
+  end
+
   describe 'scope\'ы на scheduled_at' do
     let!(:past_viewing) do
       # Вчерашний показ: date_not_in_past на создании не пройти, а
