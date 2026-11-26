@@ -286,6 +286,26 @@ RSpec.describe ViewingSchedule, type: :model do
       expect(viewing).not_to be_valid
       expect(viewing.errors[:ends_at]).to include('должно быть позже начала показа')
     end
+
+    it 'перенос с явно переданным прежним ends_at отклоняется (блокер 1 ревью раунда 5)' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      expect(
+        viewing.update(scheduled_at: Date.tomorrow.in_time_zone + 12.hours,
+                       ends_at: Date.tomorrow.in_time_zone + 11.hours)
+      ).to be(false)
+      expect(viewing.errors[:ends_at]).to include('должно быть позже начала показа')
+    end
+
+    it 'перенос с явным новым ends_at сохраняет его' do
+      viewing = build_viewing.tap(&:save!) # 10:00–11:00 завтра
+
+      expect(
+        viewing.update(scheduled_at: Date.tomorrow.in_time_zone + 12.hours,
+                       ends_at: Date.tomorrow.in_time_zone + 12.hours + 30.minutes)
+      ).to be(true)
+      expect(viewing.reload.ends_at).to eq(Date.tomorrow.in_time_zone + 12.hours + 30.minutes)
+    end
   end
 
   describe 'перенос слота (блокер 2 ревью #272)' do

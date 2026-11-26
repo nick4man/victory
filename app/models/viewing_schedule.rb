@@ -122,18 +122,18 @@ class ViewingSchedule < ApplicationRecord
     duration || 60
   end
 
-  # Пользовательское присваивание ends_at отличаем от присваивания в
-  # assemble_scheduled_at (там — низкоуровневый self[:ends_at]=, сеттер не
-  # вызывается): dirty-tracking их не различает, а перетирать явную правку
-  # границ нельзя (блокер 2 ревью раунда 3), как нельзя сохранять
-  # «застрявшее» значение прошлой неудачной валидации при retry.
+  # Факт явного присваивания ends_at (а не разница значений): одновременный
+  # перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
+  # ends_at? == false, и сборка молча заменяла бы осознанное значение
+  # автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
+  # (clear_form_fields) — сохранённое значение больше не «явное».
   def ends_at=(value)
     @ends_at_explicit = true
     super
   end
 
   def ends_at_explicitly_assigned?
-    @ends_at_explicit && will_save_change_to_ends_at?
+    @ends_at_explicit
   end
 
   def upcoming?
