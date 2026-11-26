@@ -48,6 +48,20 @@ namespace :images do
     puts "elapsed: #{elapsed}s (#{(elapsed / 60.0).round(1)} min)"
   end
 
+  desc 'Бэкфилл width/height у блобов картинок с пустым анализом (issue #53). ' \
+       'Идемпотентно, с throttle; прерванный прогон продолжается повторным запуском. ' \
+       'Args: batch_size (100), sleep_seconds (0.2), limit, dry_run (1 = только подсчёт)'
+  task :backfill_metadata, %i[batch_size sleep_seconds limit dry_run] => :environment do |_task, args|
+    result = ImageMetadataBackfill.call(
+      batch_size:    args[:batch_size] || 100,
+      sleep_seconds: args[:sleep_seconds] || 0.2,
+      limit:         args[:limit],
+      dry_run:       args[:dry_run].present?
+    )
+    puts "[images:backfill_metadata] done=#{result[:done]} failed=#{result[:failed]} " \
+         "no_dims=#{result[:no_dims]} total=#{result[:total]}"
+  end
+
   namespace :prewarm do
     desc 'Pre-warm только Property images (9 variants per image)'
     task property: :environment do

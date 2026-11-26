@@ -12,12 +12,20 @@
         страницы смотрят только на опубликованные ЖК, — поэтому подпись
         про это предупреждает, а не оставляет редактора гадать. %>
     <p class="text-xs text-muted-foreground mb-8">
-      <%= link_to @complex.public_path, zhk_path(@complex), class: 'underline hover:no-underline',
-                  target: '_blank', rel: 'noopener' %>
-      <% if @complex.published? %>
-        — открыть на сайте
+      <%# Битый слаг (URL, кириллица — записи «до валидации», issue #266)
+          не резолвится в zhk_path: вместо ссылки показываем его текстом,
+          чтобы страница редактирования оставалась доступной. %>
+      <% if @complex.slug.to_s.match?(ResidentialComplex::SLUG_FORMAT) %>
+        <%= link_to @complex.public_path, zhk_path(@complex), class: 'underline hover:no-underline',
+                    target: '_blank', rel: 'noopener' %>
+        <% if @complex.published? %>
+          — открыть на сайте
+        <% else %>
+          — черновик, по ссылке пока 404: страница появится после публикации
+        <% end %>
       <% else %>
-        — черновик, по ссылке пока 404: страница появится после публикации
+        <code><%= @complex.slug %></code>
+        — слаг не в slug-формате, публичная ссылка недоступна: исправьте поле «Слаг» ниже
       <% end %>
     </p>
 
