@@ -3216,7 +3216,7 @@ ALTER SEQUENCE public.users_id_seq OWNED BY public.users.id;
 CREATE TABLE public.viewing_schedules (
     id bigint NOT NULL,
     property_id bigint NOT NULL,
-    user_id bigint NOT NULL,
+    user_id bigint,
     agent_id bigint,
     inquiry_id bigint,
     scheduled_at timestamp(6) without time zone NOT NULL,
@@ -8283,6 +8283,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261126011052'),
 ('20261114120000'),
 ('20261114100000'),
 ('20261113100000'),

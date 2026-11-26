@@ -5553,26 +5553,38 @@ enum :status, {
     no_show: 'no_show'
   }
 ⋮----
+attribute :preferred_date, :date
+attribute :preferred_time, :string
+⋮----
+alias_attribute :message, :notes
+⋮----
 validates :name, presence: true
 validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
 validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
 validates :preferred_date, presence: true
-validates :preferred_time, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
 validates :status, presence: true
 ⋮----
 validate :date_not_in_past
 validate :time_slot_available
 ⋮----
 before_validation :normalize_phone
+before_validation :assemble_scheduled_at
 after_create :send_notifications
 after_update :handle_status_change, if: :saved_change_to_status?
 ⋮----
 scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('preferred_date >= ?', Date.current).where(status: [:pending, :confirmed]) }
-scope :past, -> { where('preferred_date < ?', Date.current) }
-scope :today, -> { where(preferred_date: Date.current) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
 scope :for_property, ->(property_id) { where(property_id: property_id) }
 scope :for_user, ->(user_id) { where(user_id: user_id) }
+⋮----
+def preferred_date
+⋮----
+def preferred_time
 ⋮----
 def confirm!
 ⋮----
@@ -5586,6 +5598,9 @@ def datetime
 ⋮----
 def datetime_formatted
 ⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
 def upcoming?
 ⋮----
 def can_cancel?
@@ -5596,11 +5611,19 @@ private
 ⋮----
 def normalize_phone
 ⋮----
+# Собирает scheduled_at/ends_at из виртуальных preferred_date/preferred_time.
+# Для сохранённой записи оба поля деривируются из scheduled_at, поэтому
+# повторная валидация идемпотентна (пересборка даёт то же значение).
+def assemble_scheduled_at
+⋮----
+# Формат валидируется отдельно; мусор не собираем — иначе Time#change
+# с hour > 23 молча уехал бы на следующие сутки.
+⋮----
 def date_not_in_past
 ⋮----
+# Слот занят, если на этом объекте уже есть pending/confirmed-показ с
+# пересекающимся диапазоном [scheduled_at, ends_at).
 def time_slot_available
-⋮----
-# Check if time slot is available (not booked by another viewing)
 ⋮----
 def send_notifications
 ⋮----
@@ -12307,23 +12330,6 @@ def map_properties_json
 def property_summary(property)
 </file>
 
-<file path="app/controllers/reviews_controller.rb">
-class ReviewsController < ApplicationController
-def index
-⋮----
-def new
-⋮----
-def create
-⋮----
-def helpful
-⋮----
-private
-⋮----
-def review_params
-⋮----
-def review_spam_gate
-</file>
-
 <file path="app/jobs/telegram/inbound_processor_job.rb">
 module Telegram
 ⋮----
@@ -13957,6 +13963,23 @@ def send_urgent_sms(inquiry)
 def create_calendar_event(inquiry)
 ⋮----
 def send_to_mortgage_partners(inquiry)
+</file>
+
+<file path="app/controllers/reviews_controller.rb">
+class ReviewsController < ApplicationController
+def index
+⋮----
+def new
+⋮----
+def create
+⋮----
+def helpful
+⋮----
+private
+⋮----
+def review_params
+⋮----
+def review_spam_gate
 </file>
 
 <file path="app/jobs/crm_cards/export_job.rb">
