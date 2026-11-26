@@ -81,9 +81,11 @@ Rails-монолит. Четыре входа, и только первый — 
   `victory-issue-drafts` (каждые 10 мин): черновики `agent:draft` → оформленная
   issue с `agent:triage`; `agent:hermes` (запуск) по-прежнему ставит только человек.
 - 🚨 `config/schedule.rb` удалён 12.09.26 — гема `whenever` в `Gemfile` нет, ни одна
-  его строка никогда не выполнялась. Не воскрешать. Часть старых задач
-  (`SendViewingRemindersJob`, `UpdatePropertyStatisticsJob`) в текущем виде вредны —
-  разбор всех 19 записей в `CLAUDE.md`, секция «Планировщик один».
+    его строка никогда не выполнялась. Не воскрешать. `SendViewingRemindersJob` с
+  26.11.26 (PR #272) исправлен (реальные колонки `scheduled_at`/`reminder_sent`),
+  но в расписание не включён — только после ops-ревью;
+  `UpdatePropertyStatisticsJob` в текущем виде вреден — разбор всех 19 записей в
+  `CLAUDE.md`, секция «Планировщик один».
 
 ## Где ты: две машины, Ruby не везде
 
