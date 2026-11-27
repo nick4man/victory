@@ -171,5 +171,51 @@ RSpec.describe Telegram::WorkBot::DashboardLeadCard do
       result = card(leads.first).perform_delete(actor: manager)
       expect(keyboard_callbacks(result)).to eq(['dashboard:leads:p:2'])
     end
+
+    # Ревью #280: soft-delete сериализован с выгрузкой в CRM — perform_delete
+    # берёт ту же блокировку строки, что CrmCards::Workflow#export_with_lock.
+    it 'perform_delete обновляет лид под with_lock' do
+      allow(lead).to receive(:with_lock).and_call_original
+
+      card.perform_delete(actor: manager)
+
+      expect(lead).to have_received(:with_lock)
+      expect(lead.reload.deleted_at).to be_present
+    end
+  end
+
+  # Ревью #280 — карточка, открытая из карточки сотрудника (origin
+  # s<staff_id>:<page>): «Назад»/«Отмена»/после удаления ведут обратно в
+  # карточку сотрудника на ту же страницу, а не в общий список лидов.
+  describe 'origin из карточки сотрудника' do
+    let(:origin) { { staff_id: agent.id, staff_page: 2 } }
+
+    def origin_card(lead_record = lead)
+      described_class.new(lead: lead_record, origin: origin)
+    end
+
+    it '«Назад» и «Обновить» ссылаются на карточку сотрудника / карточку с origin' do
+      callbacks = keyboard_callbacks(origin_card.call)
+
+      expect(callbacks).to include("dashboard:staff:#{agent.id}:2")
+      expect(callbacks).to include("dashboard:lead:#{lead.id}:s#{agent.id}:2")
+      expect(callbacks).not_to include('dashboard:leads:p:1')
+    end
+
+    it 'кнопки удаления несут origin: confirm, del:yes и отмена' do
+      expect(keyboard_callbacks(origin_card.call)).to include("dashboard:lead:#{lead.id}:s#{agent.id}:2:del")
+
+      confirm = origin_card.confirm_delete
+      expect(keyboard_callbacks(confirm)).to eq(["dashboard:lead:#{lead.id}:s#{agent.id}:2:del:yes",
+                                                 "dashboard:lead:#{lead.id}:s#{agent.id}:2"])
+    end
+
+    it 'после удаления — кнопка назад в карточку сотрудника' do
+      result = origin_card.perform_delete(actor: manager)
+
+      expect(keyboard_callbacks(result)).to eq(["dashboard:staff:#{agent.id}:2"])
+      expect(result.keyboard[:inline_keyboard].flatten.first[:text]).to include('сотрудника')
+      expect(lead.reload.deleted_at).to be_present
+    end
   end
 end

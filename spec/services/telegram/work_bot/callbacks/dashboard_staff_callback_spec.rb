@@ -165,6 +165,20 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardStaffCallback do
       )
     end
 
+    # Ревью #280: notice с именем сотрудника экранируется в HTML-правке
+    # сообщения, но уходит сырым текстом в answer_callback_query.
+    it 'имя с HTML-символами: экранировано в тексте, сырое в ack' do
+      staff.update!(first_name: 'Агент <b>&Co</b>', tg_username: nil)
+      invoke(admin, staff.id, 1, 'assignable')
+
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/Агент &lt;b&gt;&amp;Co&lt;\/b&gt;.*убран из подбора/m), hash_including(:reply_markup)
+      )
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_staff_1', text: '🚫 Агент <b>&Co</b> убран из подбора', show_alert: false
+      )
+    end
+
     it 'деактивация в два шага: confirm-экран, затем status_confirm применяет' do
       invoke(admin, staff.id, 1, 'status')
       expect(tg_client).to have_received(:edit_message_text).with(

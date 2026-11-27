@@ -111,6 +111,18 @@ RSpec.describe Telegram::WorkBot::DashboardListPage do
       expect(listed).to eq(5)
       expect(create_list.map(&:id)).to include(result.text[/• Лид #(\d+)/, 1].to_i)
     end
+
+    # Ревью #280: alert-блок рендерится с parse_mode HTML — mention
+    # сотрудника экранируется.
+    it 'mention в alert-блоке экранируется под HTML' do
+      agent = TelegramUser.create!(tg_user_id: 149_998, first_name: 'Агент <b>&Co</b>',
+                                   role: 'agent', status: 'active', assignable: true)
+      create_lead(assigned_to: agent, assigned_at: 2.hours.ago)
+
+      result = render(:leads, 1)
+      expect(result.text).to include('Агент &lt;b&gt;&amp;Co&lt;/b&gt;')
+      expect(result.text).not_to include('Агент <b>')
+    end
   end
 
   describe 'сотрудники — постраничный просмотр' do

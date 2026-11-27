@@ -89,9 +89,15 @@ module Telegram
         def render(staff, page, mode, notice: nil)
           result = DashboardStaffCard.new(staff: staff, admin_viewer: tg_user.role_admin?,
                                           from_page: page, mode: mode).call
-          text = notice ? "#{notice}\n\n#{result.text}" : result.text
+          # notice уходит и в HTML-сообщение (экранируем mention в нём),
+          # и в answer_callback_query (там plain text — без экранирования).
+          text = notice ? "#{escape(notice)}\n\n#{result.text}" : result.text
           edit(text, result.keyboard)
           ack(notice)
+        end
+
+        def escape(text)
+          text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
         end
 
         def edit(text, markup)

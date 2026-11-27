@@ -8,7 +8,9 @@ module Telegram
     # Форматы (лимит Telegram на callback_data — 64 байта):
     #   dashboard:leads:p:<page>  — страница списка лидов
     #   dashboard:staff:p:<page>  — страница списка сотрудников
-    #   dashboard:lead:<id>       — карточка лида (соседняя подзадача #277)
+    #   dashboard:lead:<id>[:s<sid>:<spage>][:del[:yes]] — карточка лида;
+    #     сегмент s<sid>:<spage> — origin: карточка открыта из карточки
+    #     сотрудника, «Назад» возвращает в неё (ревью #280)
     #   dashboard:staff:<id>[:<page>] — карточка сотрудника (соседняя
     #     подзадача #277); <page> — страница списка, откуда пришли, для «Назад»
     #

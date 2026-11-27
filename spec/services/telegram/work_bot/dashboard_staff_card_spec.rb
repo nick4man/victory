@@ -65,15 +65,25 @@ RSpec.describe Telegram::WorkBot::DashboardStaffCard do
       expect(text).to include('SLA 1-го контакта (7д):</b> 2/5 ≤30мин (40%)')
     end
 
-    it 'открытые лиды — кнопки dashboard:lead:<id>; чужие/закрытые/probe исключены' do
-      ids = callbacks(render).grep(/\Adashboard:lead:\d+\z/).map { |cb| cb.split(':').last.to_i }
+    it 'открытые лиды — кнопки dashboard:lead:<id> с origin карточки; чужие/закрытые/probe исключены' do
+      ids = callbacks(render(page: 2)).grep(/\Adashboard:lead:\d+:s\d+:\d+\z/)
+                                     .map { |cb| cb.split(':')[2].to_i }
 
       expect(ids).to contain_exactly(@awaiting_overdue.id, @awaiting_fresh.id, @in_sla.id, @out_sla.id)
     end
 
+    # Ревью #280: origin (s<staff_id>:<page>) — «Назад» из карточки лида
+    # вернёт в карточку сотрудника на ту же страницу, а не в список лидов.
+    it 'кнопка лида несёт origin — id сотрудника и страницу списка' do
+      button = render(page: 3).keyboard[:inline_keyboard].flatten
+                            .find { |b| b[:callback_data].start_with?("dashboard:lead:#{@in_sla.id}:") }
+
+      expect(button[:callback_data]).to eq("dashboard:lead:#{@in_sla.id}:s#{staff.id}:3")
+    end
+
     it 'лид с просроченным первым контактом помечен ⚠️ в кнопке' do
       button = render.keyboard[:inline_keyboard].flatten
-                   .find { |b| b[:callback_data] == "dashboard:lead:#{@awaiting_overdue.id}" }
+                   .find { |b| b[:callback_data] == "dashboard:lead:#{@awaiting_overdue.id}:s#{staff.id}:1" }
 
       expect(button[:text]).to include('⚠️')
     end
@@ -146,6 +156,38 @@ RSpec.describe Telegram::WorkBot::DashboardStaffCard do
       staff.update!(status: 'inactive')
 
       expect(render(mode: :status_confirm, admin: true).text).to include('Активировать')
+    end
+  end
+
+  # Ревью #280: карточка рендерится с parse_mode HTML — пользовательские
+  # строки (имя, email, заголовки задач) обязаны экранироваться.
+  describe 'экранирование HTML' do
+    # Без tg_username mention падает обратно на display_name — так HTML-опасная
+    # строка проходит через все режимы карточки (view/edit/role/status_confirm).
+    let!(:html_staff) do
+      TelegramUser.create!(tg_user_id: 150_009, first_name: 'Агент <b>&Co</b>',
+                           role: 'agent', status: 'active', assignable: true)
+    end
+
+    def render_html_staff(mode: :view)
+      described_class.new(staff: html_staff, admin_viewer: false, from_page: 1, mode: mode).call
+    end
+
+    it 'имя/mention экранируются во всех режимах карточки' do
+      %i[view edit role status_confirm].each do |mode|
+        text = render_html_staff(mode: mode).text
+
+        expect(text).to include('Агент &lt;b&gt;&amp;Co&lt;/b&gt;'), "режим #{mode} без экранирования"
+        expect(text).not_to include('<b>&Co')
+      end
+    end
+
+    it 'заголовки задач экранируются в списке' do
+      ::Task.create!(assignee: html_staff, title: 'Показ <script> & "кавычки"', status: 'open', due_at: 1.day.from_now)
+
+      text = render_html_staff.text
+      expect(text).to include('Показ &lt;script&gt; &amp; "кавычки"')
+      expect(text).not_to include('<script>')
     end
   end
 end

@@ -17,6 +17,9 @@ module Telegram
     # из callback_data), через DashboardPagination — не в начало списка.
     # Edit-кнопки рисуются только admin-роли бота (role=admin); гейт на
     # само действие — в Callbacks::DashboardStaffCallback.
+    #
+    # Все пользовательские строки (имя, mention, email, заголовки задач)
+    # экранируются — карточка рендерится с parse_mode HTML (ревью #280).
     class DashboardStaffCard
       Result = Struct.new(:text, :keyboard, keyword_init: true)
 
@@ -61,11 +64,11 @@ module Telegram
       end
 
       def header
-        "👤 <b>#{staff.display_name} (#{staff.mention})</b>"
+        "👤 <b>#{escape(staff.display_name)} (#{escape(staff.mention)})</b>"
       end
 
       def role_line
-        "Роль: <b>#{ROLE_LABELS.fetch(staff.role, staff.role)}</b> · Статус: <b>#{staff.status}</b> · " \
+        "Роль: <b>#{escape(ROLE_LABELS.fetch(staff.role, staff.role))}</b> · Статус: <b>#{escape(staff.status)}</b> · " \
           "В подборе: <b>#{staff.assignable ? 'да' : 'нет'}</b>"
       end
 
@@ -94,7 +97,7 @@ module Telegram
         return ['', '✅ <b>Открытые задачи:</b> нет'] if tasks.empty?
 
         lines = ['', "✅ <b>Открытые задачи (#{tasks.size}):</b>"]
-        tasks.each { |t| lines << "  • ##{t.id} #{t.title.to_s.truncate(45)} — #{due_label(t)}" }
+        tasks.each { |t| lines << "  • ##{t.id} #{escape(t.title.to_s.truncate(45))} — #{due_label(t)}" }
         lines
       end
 
@@ -117,18 +120,21 @@ module Telegram
         rows
       end
 
+      # Кнопка лида несёт origin (s<staff_id>:<page>) — «Назад» из карточки
+      # лида вернёт в эту карточку сотрудника на ту же страницу списка,
+      # а не в общий список лидов (ревью #280).
       def lead_button(lead)
         name = (lead.metadata || {})['name'].presence || "Лид ##{lead.id}"
         flag = lead.first_contact_at.nil? && lead.assigned_at.present? && lead.assigned_at < 30.minutes.ago ? ' ⚠️' : ''
         { text: "#{name} (##{lead.id}) — #{lead.current_stage}#{flag}".truncate(60),
-          callback_data: "dashboard:lead:#{lead.id}" }
+          callback_data: "dashboard:lead:#{lead.id}:s#{staff.id}:#{from_page}" }
       end
 
       # === :edit ===
 
       def render_edit
         lines = [
-          "✏️ <b>Редактирование: #{staff.display_name} (#{staff.mention})</b>",
+          "✏️ <b>Редактирование: #{escape(staff.display_name)} (#{escape(staff.mention)})</b>",
           '',
           role_line,
           '',
@@ -154,8 +160,8 @@ module Telegram
       # === :role ===
 
       def render_role
-        text = "🔁 <b>Роль сотрудника #{staff.mention}</b>\n\n" \
-               "Текущая: <b>#{ROLE_LABELS.fetch(staff.role, staff.role)}</b>. Выбор применяется сразу."
+        text = "🔁 <b>Роль сотрудника #{escape(staff.mention)}</b>\n\n" \
+               "Текущая: <b>#{escape(ROLE_LABELS.fetch(staff.role, staff.role))}</b>. Выбор применяется сразу."
         rows = TelegramUser.roles.keys.each_slice(2).map do |pair|
           pair.map { |role| role_button(role) }
         end
@@ -172,17 +178,23 @@ module Telegram
 
       def render_status_confirm
         if staff.status == 'active'
-          text = "⚠️ <b>Деактивировать #{staff.mention}?</b>\n\n" \
+          text = "⚠️ <b>Деактивировать #{escape(staff.mention)}?</b>\n\n" \
                  "Статус active → inactive, «в подборе» → нет. Открытые задачи/лиды останутся " \
                  "на нём — переназначение через /reassign."
         else
-          text = "▶️ <b>Активировать #{staff.mention}?</b>\n\nСтатус #{staff.status} → active."
+          text = "▶️ <b>Активировать #{escape(staff.mention)}?</b>\n\nСтатус #{escape(staff.status)} → active."
         end
         keyboard = [
           [{ text: '⚠️ Подтверждаю', callback_data: cb('status_confirm') }],
           [{ text: '⬅️ Отмена', callback_data: cb('edit') }]
         ]
         [text, keyboard]
+      end
+
+      # Экранирование под parse_mode HTML — тот же приём, что в LeadAnnouncer
+      # и DashboardLeadCard.
+      def escape(text)
+        text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
       end
     end
   end

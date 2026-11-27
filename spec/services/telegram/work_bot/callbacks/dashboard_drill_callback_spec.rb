@@ -176,6 +176,60 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardDrillCallback do
       )
     end
 
+    # Ревью #280 — origin-сегмент s<staff_id>:<page>: карточка открыта из
+    # карточки сотрудника, «Назад» ведёт в неё, а не в список лидов.
+    describe 'origin из карточки сотрудника' do
+      let!(:agent) do
+        TelegramUser.create!(tg_user_id: 120_778, tg_username: 'agent278', first_name: 'Агент',
+                             role: 'agent', status: 'active', assignable: true)
+      end
+
+      def keyboards
+        @keyboards ||= []
+      end
+
+      before do
+        allow(tg_client).to receive(:edit_message_text) do |_text, opts|
+          keyboards << opts[:reply_markup]
+          { 'message_id' => 100 }
+        end
+      end
+
+      def last_callbacks
+        keyboards.last[:inline_keyboard].flatten.map { |b| b[:callback_data] }
+      end
+
+      it 'рендер с origin: «Назад» — в карточку сотрудника на ту же страницу' do
+        invoke("dashboard:lead:#{lead.id}:s#{agent.id}:2", %w[lead] + [lead.id.to_s, "s#{agent.id}", '2'])
+
+        expect(last_callbacks).to include("dashboard:staff:#{agent.id}:2")
+        expect(last_callbacks).to include("dashboard:lead:#{lead.id}:s#{agent.id}:2:del")
+      end
+
+      it 'del:yes с origin — soft-delete, назад — в карточку сотрудника' do
+        invoke("dashboard:lead:#{lead.id}:s#{agent.id}:2:del:yes",
+               %w[lead] + [lead.id.to_s, "s#{agent.id}", '2', 'del', 'yes'])
+
+        expect(lead.reload.deleted_at).to be_present
+        expect(last_callbacks).to eq(["dashboard:staff:#{agent.id}:2"])
+      end
+
+      it 'origin без страницы — страница нормализуется к 1' do
+        invoke("dashboard:lead:#{lead.id}:s#{agent.id}", %w[lead] + [lead.id.to_s, "s#{agent.id}"])
+
+        expect(last_callbacks).to include("dashboard:staff:#{agent.id}:1")
+      end
+
+      it 'неизвестный хвост после origin — alert' do
+        invoke("dashboard:lead:#{lead.id}:s#{agent.id}:2:hax", %w[lead] + [lead.id.to_s, "s#{agent.id}", '2', 'hax'])
+
+        expect(keyboards).to be_empty
+        expect(tg_client).to have_received(:answer_callback_query).with(
+          'cb_id_1', text: a_string_matching(/Неизвестный шаг/), show_alert: true
+        )
+      end
+    end
+
     it 'удалённый лид — alert «не найден»' do
       lead.update!(deleted_at: Time.current)
       invoke("dashboard:lead:#{lead.id}", %w[lead] + [lead.id.to_s])

@@ -79,7 +79,7 @@ module Telegram
 
         lines = ['', '<b>⚠️ Ждут первого контакта (более 30 мин):</b>']
         overdue.each do |le|
-          lines << "  • Лид ##{le.id} — #{le.assigned_to&.mention} (#{time_ago(le.assigned_at)})"
+          lines << "  • Лид ##{le.id} — #{escape(le.assigned_to&.mention)} (#{time_ago(le.assigned_at)})"
         end
         lines
       end
@@ -161,6 +161,11 @@ module Telegram
         return "#{diff_sec / 3600}ч" if diff_sec < 86_400
 
         "#{diff_sec / 86_400}д"
+      end
+
+      # Экранирование под parse_mode HTML — тот же приём, что в LeadAnnouncer.
+      def escape(text)
+        text.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;')
       end
     end
   end

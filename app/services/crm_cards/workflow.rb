@@ -188,25 +188,13 @@ module CrmCards
       # Issue #277 — лид мог быть soft-deleted уже ПОСЛЕ одобрения и разрешения
       # (release человеком машинную проверку не гейтит). Последняя линия перед
       # обращением к CRM — здесь: удалённый лид не выгружается ни в каком виде.
-      if card.kind_lead? && LeadEvent.unscoped.where(id: card.lead_event_id).where.not(deleted_at: nil).exists?
-        return fail_export!(card, error: 'Лид удалён — выгрузка в CRM отменена.',
-                            attempt_token: token, retryable: false)
-      end
-
-      card.transitions.create!(from_status: 'approved', to_status: 'exporting')
-      begin
-        outcome = (card.sandbox? ? SandboxExporter.new : exporter).call(card)
-      rescue StandardError => e
-        # Явный отказ CRM/ошибка до отправки (Error: 403, 4xx, status:error,
-        # OpenTimeout) — заявка точно не создана, повтор безопасен.
-        # AmbiguousError (ReadTimeout, обрыв после отправки, 5xx, битое тело,
-        # ok без insertedId) — CRM могла принять заявку, повтор без сверки
-        # завёл бы дубль: восстановление только через привязку номера из CRM
-        # (ревью PR #210, round 7).
-        return fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token,
-                            retryable: e.is_a?(Topnlab::Client::Error) &&
-                                       !e.is_a?(Topnlab::Client::AmbiguousError))
-      end
+      # Проверка deleted_at и вызов CRM атомарны относительно удаления (ревью
+      # #280): строка лида держится под FOR UPDATE, а DashboardLeadCard#
+      # perform_delete берёт ту же with_lock — удаление либо видно проверке,
+      # либо ждёт окончания выгрузки.
+      lead_row = card.kind_lead? ? LeadEvent.unscoped.find_by(id: card.lead_event_id) : nil
+      outcome = lead_row ? lead_row.with_lock { export_guarded(card, token, lead_row) } : export_guarded(card, token, nil)
+      return outcome if outcome.is_a?(Result)
 
       # Запись номера — условная по токену и атомарная: retry мог сменить
       # токен между любой отдельной проверкой и записью, а update_all либо
@@ -473,6 +461,40 @@ module CrmCards
 
     def deny(error)
       Result.new(ok: false, error: error)
+    end
+
+    # Проверка deleted_at + вызов экспортёра. Возвращает outcome экспортёра
+    # либо Result (fail_export! уже перевёл карточку в export_failed). Когда
+    # строка лида есть, вызывается под её блокировкой — см. export_with_lock.
+    def export_guarded(card, token, lead_row)
+      if deleted_lead?(card, lead_row)
+        return fail_export!(card, error: 'Лид удалён — выгрузка в CRM отменена.',
+                            attempt_token: token, retryable: false)
+      end
+
+      card.transitions.create!(from_status: 'approved', to_status: 'exporting')
+      begin
+        (card.sandbox? ? SandboxExporter.new : exporter).call(card)
+      rescue StandardError => e
+        # Явный отказ CRM/ошибка до отправки (Error: 403, 4xx, status:error,
+        # OpenTimeout) — заявка точно не создана, повтор безопасен.
+        # AmbiguousError (ReadTimeout, обрыв после отправки, 5xx, битое тело,
+        # ok без insertedId) — CRM могла принять заявку, повтор без сверки
+        # завёл бы дубль: восстановление только через привязку номера из CRM
+        # (ревью PR #210, round 7).
+        fail_export!(card, error: "#{e.class}: #{e.message}", attempt_token: token,
+                    retryable: e.is_a?(Topnlab::Client::Error) &&
+                               !e.is_a?(Topnlab::Client::AmbiguousError))
+      end
+    end
+
+    # with_lock перечитывает строку под FOR UPDATE — deleted_at свежий и
+    # не изменится до конца выгрузки. Без строки (аномалия: карточка без
+    # лида) — прежняя проверка запросом.
+    def deleted_lead?(card, lead_row)
+      return lead_row.deleted_at.present? if lead_row
+
+      card.kind_lead? && LeadEvent.unscoped.where(id: card.lead_event_id).where.not(deleted_at: nil).exists?
     end
 
     def fail_export!(card, error:, attempt_token: nil, retryable: nil)

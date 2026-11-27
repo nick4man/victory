@@ -13,6 +13,11 @@ module Telegram
     #
     # Удаление — soft-delete по правилу #1 (deleted_at, не destroy) и только
     # через обязательный confirm: dashboard:lead:<id>:del → :del:yes.
+    #
+    # origin (ревью #280): если карточку открыли из карточки сотрудника,
+    # callback_data несёт сегмент s<staff_id>:<staff_page> — «Назад» и
+    # «Отмена» возвращают в карточку сотрудника на ту же страницу списка,
+    # а не в общий список лидов.
     class DashboardLeadCard
       Result = Struct.new(:text, :keyboard, keyword_init: true)
 
@@ -29,8 +34,9 @@ module Telegram
         'closed_lost' => 'проигран'
       }.freeze
 
-      def initialize(lead:)
+      def initialize(lead:, origin: nil)
         @lead = lead
+        @origin = origin
       end
 
       def call
@@ -45,8 +51,8 @@ module Telegram
                 'Лид скроется из списков и дашборда (soft-delete, запись останется в базе). ' \
                 'Выгрузка в CRM будет заблокирована.',
           keyboard: { inline_keyboard: [
-            [{ text: '✅ Да, удалить', callback_data: "dashboard:lead:#{@lead.id}:del:yes" }],
-            [{ text: '✖️ Отмена', callback_data: "dashboard:lead:#{@lead.id}" }]
+            [{ text: '✅ Да, удалить', callback_data: "#{card_callback}:del:yes" }],
+            [{ text: '✖️ Отмена', callback_data: card_callback }]
           ] }
         )
       end
@@ -55,16 +61,22 @@ module Telegram
       def perform_delete(actor:)
         # Страницу считаем до update!: апдейт тронет updated_at и сдвинет
         # позицию лида в детерминированной сортировке списка.
-        page = back_page
-        @lead.update!(
-          deleted_at: Time.current,
-          metadata: @lead.metadata.merge('deleted_by' => actor.mention)
-        )
+        page = back_page unless @origin
+        # with_lock — та же блокировка строки лида, что в
+        # CrmCards::Workflow#export_with_lock: soft-delete и выгрузка в CRM
+        # сериализованы, удаление не проскочит между проверкой deleted_at
+        # и обращением к CRM (ревью #280).
+        @lead.with_lock do
+          @lead.update!(
+            deleted_at: Time.current,
+            metadata: @lead.metadata.merge('deleted_by' => actor.mention)
+          )
+        end
         Result.new(
           text: "🗑 <b>Лид ##{@lead.id} удалён.</b>\n\n" \
                 'Запись скрыта из списков и дашборда (soft-delete). Выгрузка в CRM заблокирована.',
           keyboard: { inline_keyboard: [
-            [{ text: '⬅️ К списку лидов', callback_data: DashboardPagination.leads_page_callback(page) }]
+            [{ text: back_label, callback_data: back_callback(page) }]
           ] }
         )
       end
@@ -97,12 +109,36 @@ module Telegram
           { text: '🚫 Спам', callback_data: "spam:#{@lead.id}" }
         ]
         rows << [{ text: '✏️ Редактировать', callback_data: "wiz:s:lead_edit:#{@lead.id}" }]
-        rows << [{ text: '🗑 Удалить', callback_data: "dashboard:lead:#{@lead.id}:del" }]
+        rows << [{ text: '🗑 Удалить', callback_data: "#{card_callback}:del" }]
         rows << [
-          { text: '⬅️ Назад', callback_data: DashboardPagination.leads_page_callback(back_page) },
-          { text: '🔄 Обновить', callback_data: "dashboard:lead:#{@lead.id}" }
+          { text: '⬅️ Назад', callback_data: back_callback },
+          { text: '🔄 Обновить', callback_data: card_callback }
         ]
         { inline_keyboard: rows }
+      end
+
+      # Callback самой карточки с учётом origin — основа для кнопок
+      # «Обновить»/«Отмена»/«Удалить», чтобы контекст возврата не терялся.
+      def card_callback
+        "dashboard:lead:#{@lead.id}#{origin_suffix}"
+      end
+
+      # «Назад»: из карточки сотрудника — в неё же (та же страница списка);
+      # иначе — на страницу общего списка лидов, где лид лежит сейчас.
+      def back_callback(page = nil)
+        return "dashboard:staff:#{@origin[:staff_id]}:#{@origin[:staff_page]}" if @origin
+
+        DashboardPagination.leads_page_callback(page || back_page)
+      end
+
+      def back_label
+        @origin ? '⬅️ К карточке сотрудника' : '⬅️ К списку лидов'
+      end
+
+      def origin_suffix
+        return '' unless @origin
+
+        ":s#{@origin[:staff_id]}:#{@origin[:staff_page]}"
       end
 
       # «Назад» — на ту страницу списка, где лид лежит сейчас: сортировка

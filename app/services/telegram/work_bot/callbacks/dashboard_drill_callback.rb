@@ -16,8 +16,10 @@ module Telegram
       #     (issue #277, DashboardStaffCallback; <page> — страница списка
       #     для кнопки «Назад»)
       #   dashboard:lead:<id>        — карточка лида (issue #277)
-      #   dashboard:lead:<id>:del    — confirm удаления лида (soft-delete)
-      #   dashboard:lead:<id>:del:yes — выполнить soft-delete
+      #   dashboard:lead:<id>:s<sid>:<spage> — карточка лида, открытая из
+      #     карточки сотрудника (origin для «Назад», ревью #280)
+      #   dashboard:lead:<id>[:s<sid>:<spage>]:del    — confirm удаления лида
+      #   dashboard:lead:<id>[:s<sid>:<spage>]:del:yes — выполнить soft-delete
       #   dashboard:refresh          — пересчитать main dashboard
       #   dashboard:back             — обратно на main dashboard
       class DashboardDrillCallback < Base
@@ -40,7 +42,7 @@ module Telegram
 
         private
 
-        # Карточка лида (issue #277): dashboard:lead:<id>[:del[:yes]].
+        # Карточка лида (issue #277): dashboard:lead:<id>[:s<sid>:<spage>][:del[:yes]].
         # Действия карточки (стадия/назначение/спам/редактирование) уходят в
         # существующие callback-механики — здесь только рендер и soft-delete.
         def handle_lead_card
@@ -53,14 +55,28 @@ module Telegram
           # поэтому staff_test-проверка продублирована явно (issue #214).
           return ack("🧪 Лид ##{lead.id} — тестовый (probe). Действие недоступно.", alert: true) if lead.staff_test?
 
-          card = DashboardLeadCard.new(lead: lead)
-          result = case @args[2].to_s
+          origin, action, subaction = parse_lead_route(@args[2..] || [])
+          card = DashboardLeadCard.new(lead: lead, origin: origin)
+          result = case action
                    when ''    then card.call
-                   when 'del' then @args[3].to_s == 'yes' ? card.perform_delete(actor: tg_user) : card.confirm_delete
+                   when 'del' then subaction == 'yes' ? card.perform_delete(actor: tg_user) : card.confirm_delete
                    else return ack('⚠️ Неизвестный шаг.', alert: true)
                    end
           edit(result.text, result.keyboard)
           ack
+        end
+
+        # Origin-сегмент s<staff_id>:<staff_page> — карточка открыта из
+        # карточки сотрудника: «Назад» вернёт в неё, а не в список лидов
+        # (ревью #280). Без сегмента — обычный путь из списка лидов.
+        def parse_lead_route(rest)
+          origin = nil
+          if (m = rest[0].to_s.match(/\As(\d+)\z/))
+            origin = { staff_id: m[1].to_i,
+                       staff_page: DashboardPagination.normalize_page(rest[1]) }
+            rest = rest[2..] || []
+          end
+          [origin, rest[0].to_s, rest[1].to_s]
         end
 
         def handle_drill(target)
