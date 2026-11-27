@@ -50,6 +50,10 @@ module Lead
           'test'         => payload[:test] == true,                # тест-прогон → тестовый TG-чат (issue #214)
           'origin'       => payload[:origin].presence,
           'utm'          => payload[:utm].presence,
+          # IP/UA источника — на карточку лида для спам-триажа (issue #275).
+          # Формы пишут их на Inquiry/PropertyValuation; у TG-лидов их нет.
+          'ip'           => lead_ref.try(:ip_address).presence,
+          'user_agent'   => lead_ref.try(:user_agent).presence,
           'raw'          => payload.to_h.except(:name, :phone, :email)
         }.compact
 
