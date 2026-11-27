@@ -414,6 +414,7 @@ app/services/telegram/work_bot/callbacks/assign_to_callback.rb — module Telegr
 app/services/telegram/work_bot/callbacks/base.rb — module Telegram, module WorkBot, module Callbacks, class Base
 app/services/telegram/work_bot/callbacks/crm_card_callback.rb — module Telegram, module WorkBot, module Callbacks, class CrmCardCallback
 app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb — module Telegram, module WorkBot, module Callbacks, class DashboardDrillCallback
+app/services/telegram/work_bot/callbacks/dashboard_staff_callback.rb — module Telegram, module WorkBot, module Callbacks, class DashboardStaffCallback
 app/services/telegram/work_bot/callbacks/link_staff_callback.rb — module Telegram, module WorkBot, module Callbacks, class LinkStaffCallback
 app/services/telegram/work_bot/callbacks/owner_request_callback.rb — module Telegram, module WorkBot, module Callbacks, class OwnerRequestCallback
 app/services/telegram/work_bot/callbacks/photo_disposition_callback.rb — module Telegram, module WorkBot, module Callbacks, class PhotoDispositionCallback
@@ -464,6 +465,11 @@ app/services/telegram/work_bot/commands/whoami.rb — module Telegram, module Wo
 app/services/telegram/work_bot/commands/whoami_force.rb — module Telegram, module WorkBot, module Commands, class WhoamiForce
 app/services/telegram/work_bot/commands_menu_sync.rb — module Telegram, module WorkBot, class CommandsMenuSync
 app/services/telegram/work_bot/daily_digest_job.rb — module Telegram, module WorkBot, class DailyDigestJob
+app/services/telegram/work_bot/dashboard_lead_card.rb — module Telegram, module WorkBot, class DashboardLeadCard
+app/services/telegram/work_bot/dashboard_list_page.rb — module Telegram, module WorkBot, class DashboardListPage
+app/services/telegram/work_bot/dashboard_pagination.rb — module Telegram, module WorkBot, module DashboardPagination
+app/services/telegram/work_bot/dashboard_staff_card.rb — module Telegram, module WorkBot, class DashboardStaffCard
+app/services/telegram/work_bot/dashboard_staff_metrics.rb — module Telegram, module WorkBot, class DashboardStaffMetrics
 app/services/telegram/work_bot/deal_mirror.rb — module Telegram, module WorkBot, class DealMirror
 app/services/telegram/work_bot/director_dashboard.rb — module Telegram, module WorkBot, class DirectorDashboard
 app/services/telegram/work_bot/dispatcher_digest.rb — module Telegram, module WorkBot, class DispatcherDigest, class Error
@@ -514,6 +520,7 @@ app/services/telegram/work_bot/wizard/crm_object_card_flow.rb — module Telegra
 app/services/telegram/work_bot/wizard/crm_test_lead_flow.rb — module Telegram, module WorkBot, module Wizard, class CrmTestLeadFlow
 app/services/telegram/work_bot/wizard/engine.rb — module Telegram, module WorkBot, module Wizard, class Engine
 app/services/telegram/work_bot/wizard/flow.rb — module Telegram, module WorkBot, module Wizard, class Flow
+app/services/telegram/work_bot/wizard/lead_edit_flow.rb — module Telegram, module WorkBot, module Wizard, class LeadEditFlow
 app/services/telegram/work_bot/wizard/lead_picking.rb — module Telegram, module WorkBot, module Wizard, module LeadPicking
 app/services/telegram/work_bot/wizard/menu.rb — module Telegram, module WorkBot, module Wizard, module Menu
 app/services/telegram/work_bot/wizard/reopen_flow.rb — module Telegram, module WorkBot, module Wizard, class ReopenFlow
