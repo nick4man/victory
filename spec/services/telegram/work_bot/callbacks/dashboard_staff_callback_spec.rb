@@ -186,15 +186,37 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardStaffCallback do
       )
       expect(staff.reload.status).to eq('active')
 
-      invoke(admin, staff.id, 1, 'status_confirm')
+      invoke(admin, staff.id, 1, 'status_confirm', 'inactive')
       expect(staff.reload.status).to eq('inactive')
       expect(staff.assignable).to be(false)
+    end
+
+    # Ревью #280 (раунд 2): целевой статус зашит в callback — повторный тап
+    # по тому же подтверждению не переключает состояние обратно.
+    it 'повторный status_confirm:inactive — no-op, сотрудник не активируется обратно' do
+      invoke(admin, staff.id, 1, 'status_confirm', 'inactive')
+      expect(staff.reload.status).to eq('inactive')
+
+      invoke(admin, staff.id, 1, 'status_confirm', 'inactive')
+      expect(staff.reload.status).to eq('inactive')
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_staff_1', text: a_string_matching(/уже деактивирован/), show_alert: false
+      )
+    end
+
+    it 'status_confirm без целевого статуса — alert без изменений' do
+      invoke(admin, staff.id, 1, 'status_confirm')
+
+      expect(staff.reload.status).to eq('active')
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_staff_1', text: a_string_matching(/Неизвестный статус/), show_alert: true
+      )
     end
 
     it 'активация inactive сотрудника' do
       staff.update!(status: 'inactive', assignable: false)
 
-      invoke(admin, staff.id, 1, 'status_confirm')
+      invoke(admin, staff.id, 1, 'status_confirm', 'active')
 
       expect(staff.reload.status).to eq('active')
     end
@@ -203,7 +225,7 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardStaffCallback do
       invoke(admin, admin.id, 1, 'setrole', 'agent')
       expect(admin.reload.role).to eq('admin')
 
-      invoke(admin, admin.id, 1, 'status_confirm')
+      invoke(admin, admin.id, 1, 'status_confirm', 'inactive')
       expect(admin.reload.status).to eq('active')
 
       expect(tg_client).to have_received(:answer_callback_query).with(

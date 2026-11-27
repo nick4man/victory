@@ -8873,16 +8873,6 @@ BUTTONS_PER_ROW = 2
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/assign_cancel_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class AssignCancelCallback < Base
-⋮----
-def handle
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/link_staff_callback.rb">
 module Telegram
 module WorkBot
@@ -9046,7 +9036,7 @@ private
 ⋮----
 def engine
 ⋮----
-def start(flow_key, seed_id)
+def start(flow_key, rest)
 ⋮----
 def answer(outcome)
 ⋮----
@@ -13505,6 +13495,20 @@ def contact_keyboard
 def reply(text, reply_markup: nil)
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/assign_cancel_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class AssignCancelCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def delete_picker(lead)
+</file>
+
 <file path="app/services/telegram/work_bot/callbacks/base.rb">
 module Telegram
 module WorkBot
@@ -13533,37 +13537,6 @@ raise NotImplementedError, "#{self.class} must implement #handle"
 def lead_event
 ⋮----
 def actor_mention
-</file>
-
-<file path="app/services/telegram/work_bot/callbacks/dashboard_staff_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class DashboardStaffCallback < Base
-⋮----
-ACTIONS = %w[edit role setrole assignable status status_confirm].freeze
-SELF_GUARD_ACTIONS = %w[setrole status status_confirm].freeze
-⋮----
-def handle
-⋮----
-private
-⋮----
-def parse
-⋮----
-def dispatch(staff, page, action, param)
-⋮----
-def apply_role(staff, page, role)
-⋮----
-def apply_assignable(staff, page)
-⋮----
-def apply_status(staff, page)
-⋮----
-def render(staff, page, mode, notice: nil)
-⋮----
-def edit(text, markup)
-⋮----
-def sync_menu(staff)
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/photo_disposition_callback.rb">
@@ -13948,6 +13921,8 @@ FIELD_HINTS = {
 NAME_MAX = 100
 COMMENT_MAX = 500
 ⋮----
+def self.seed_extras(segments)
+⋮----
 def steps
 ⋮----
 def gate
@@ -13958,98 +13933,13 @@ def finish
 ⋮----
 private
 ⋮----
+def return_origin
+⋮----
 def accept_field(value)
 ⋮----
 def accept_value(value)
 ⋮----
 def field_label(field)
-</file>
-
-<file path="app/services/telegram/work_bot/dashboard_lead_card.rb">
-Result = Struct.new(:text, :keyboard, keyword_init: true)
-⋮----
-TIMELINE_LIMIT = 5
-UA_MAX = 80
-⋮----
-STAGE_LABELS = {
-⋮----
-def initialize(lead:)
-⋮----
-def call
-⋮----
-def confirm_delete
-⋮----
-def perform_delete(actor:)
-⋮----
-def card_text
-⋮----
-def card_keyboard
-⋮----
-def back_page
-⋮----
-def stage_label
-⋮----
-def stage_row
-⋮----
-def labels_line(meta)
-⋮----
-def timeline_lines
-⋮----
-def history_events(entries)
-⋮----
-def lead_name
-⋮----
-def escape(text)
-</file>
-
-<file path="app/services/telegram/work_bot/dashboard_staff_card.rb">
-Result = Struct.new(:text, :keyboard, keyword_init: true)
-⋮----
-ROLE_LABELS = { 'agent' => 'агент', 'manager' => 'руководитель',
-⋮----
-def initialize(staff:, admin_viewer:, from_page: 1, mode: :view)
-⋮----
-def self.call(**)
-⋮----
-def call
-⋮----
-attr_reader :staff, :metrics, :from_page
-⋮----
-lines << "📧 #{staff.email}" if staff.email.present?
-⋮----
-def header
-⋮----
-def role_line
-⋮----
-def metrics_line
-⋮----
-def leads_line
-⋮----
-def sla_line
-⋮----
-def task_lines
-⋮----
-def due_label(task)
-⋮----
-def view_keyboard
-⋮----
-def lead_button(lead)
-⋮----
-{ text: "#{name} (##{lead.id}) — #{lead.current_stage}#{flag}".truncate(60),
-⋮----
-# === :edit ===
-⋮----
-def render_edit
-⋮----
-def toggle_label
-⋮----
-def status_label
-⋮----
-def render_role
-⋮----
-def role_button(role)
-⋮----
-def render_status_confirm
 </file>
 
 <file path="app/services/telegram/work_bot/dashboard_staff_metrics.rb">
@@ -14933,6 +14823,39 @@ def fallback_message
 def system_prompt
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/dashboard_staff_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class DashboardStaffCallback < Base
+⋮----
+ACTIONS = %w[edit role setrole assignable status status_confirm].freeze
+SELF_GUARD_ACTIONS = %w[setrole status status_confirm].freeze
+⋮----
+def handle
+⋮----
+private
+⋮----
+def parse
+⋮----
+def dispatch(staff, page, action, param)
+⋮----
+def apply_role(staff, page, role)
+⋮----
+def apply_assignable(staff, page)
+⋮----
+def apply_status(staff, page, target)
+⋮----
+def render(staff, page, mode, notice: nil)
+⋮----
+def escape(text)
+⋮----
+def edit(text, markup)
+⋮----
+def sync_menu(staff)
+</file>
+
 <file path="app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb">
 module Telegram
 module WorkBot
@@ -15164,76 +15087,108 @@ def group_chat_summary(director)
 def send_digest(director, digest_markdown)
 </file>
 
-<file path="app/services/telegram/work_bot/dashboard_list_page.rb">
-module Telegram
-module WorkBot
-⋮----
-class DashboardListPage
+<file path="app/services/telegram/work_bot/dashboard_lead_card.rb">
 Result = Struct.new(:text, :keyboard, keyword_init: true)
 ⋮----
-def initialize(section:, page: 1)
+TIMELINE_LIMIT = 5
+UA_MAX = 80
+⋮----
+STAGE_LABELS = {
+⋮----
+def initialize(lead:, origin: nil)
+⋮----
+def call
+⋮----
+def confirm_delete
+⋮----
+def perform_delete(actor:)
+⋮----
+def card_text
+⋮----
+def card_keyboard
+⋮----
+def card_callback
+⋮----
+def back_callback(page = nil)
+⋮----
+def back_label
+⋮----
+def origin_suffix
+⋮----
+# Контекст возврата для wizard'а редактирования: финал перерисует
+⋮----
+def edit_callback
+⋮----
+def back_page
+⋮----
+def stage_label
+⋮----
+def stage_row
+⋮----
+def labels_line(meta)
+⋮----
+def timeline_lines
+⋮----
+def history_events(entries)
+⋮----
+def lead_name
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_staff_card.rb">
+Result = Struct.new(:text, :keyboard, keyword_init: true)
+⋮----
+ROLE_LABELS = { 'agent' => 'агент', 'manager' => 'руководитель',
+⋮----
+def initialize(staff:, admin_viewer:, from_page: 1, mode: :view)
 ⋮----
 def self.call(**)
 ⋮----
 def call
 ⋮----
-private
+attr_reader :staff, :metrics, :from_page
 ⋮----
-def count
+lines << "📧 #{escape(staff.email)}" if staff.email.present?
 ⋮----
-def leads_scope
+def header
 ⋮----
-def leads_result(page, total, total_count)
+def role_line
 ⋮----
-def leads_text(page, total, total_count)
+def metrics_line
 ⋮----
-# Alert-блок без пагинации: как в прежней сводке — не более 5.
-def overdue_lines
+def leads_line
 ⋮----
-def lead_rows(leads)
+def sla_line
 ⋮----
-def staff_scope
+def task_lines
 ⋮----
-def staff_result(page, total, total_count)
+def due_label(task)
 ⋮----
-def staff_text(page, total, total_count)
+def view_keyboard
 ⋮----
-# Групповые count'ы одним запросом на метрику — без N+1 по странице.
-def staff_metrics(ids)
+# Кнопка лида несёт origin (s<staff_id>:<page>) — «Назад» из карточки
+# лида вернёт в эту карточку сотрудника на ту же страницу списка,
+# а не в общий список лидов (ревью #280).
+def lead_button(lead)
 ⋮----
-def staff_rows(staff, metrics, page)
+{ text: "#{name} (##{lead.id}) — #{lead.current_stage}#{flag}".truncate(60),
 ⋮----
-def footer(section, page, total)
+# === :edit ===
 ⋮----
-def back_row(section, page)
+def render_edit
 ⋮----
-def time_ago(time)
-</file>
-
-<file path="app/services/telegram/work_bot/dashboard_pagination.rb">
-module Telegram
-module WorkBot
+def toggle_label
 ⋮----
-module DashboardPagination
+def status_label
 ⋮----
-PAGE_SIZE = 8
+def render_role
 ⋮----
-PAGE_MARKER = 'p'
-LIST_SECTIONS = %w[leads staff].freeze
+def role_button(role)
 ⋮----
-module_function
+def render_status_confirm
 ⋮----
-def leads_page_callback(page)
-⋮----
-def staff_page_callback(page)
-⋮----
-def page_callback(section, page)
-⋮----
-def parse_page(args)
-⋮----
-def normalize_page(value)
-⋮----
-def nav_row(section, page, total_pages)
+def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/director_dashboard.rb">
@@ -16243,6 +16198,80 @@ def text(_tg_user)
 def keyboard(tg_user)
 </file>
 
+<file path="app/services/telegram/work_bot/dashboard_list_page.rb">
+module Telegram
+module WorkBot
+⋮----
+class DashboardListPage
+Result = Struct.new(:text, :keyboard, keyword_init: true)
+⋮----
+def initialize(section:, page: 1)
+⋮----
+def self.call(**)
+⋮----
+def call
+⋮----
+private
+⋮----
+def count
+⋮----
+def leads_scope
+⋮----
+def leads_result(page, total, total_count)
+⋮----
+def leads_text(page, total, total_count)
+⋮----
+# Alert-блок без пагинации: как в прежней сводке — не более 5.
+def overdue_lines
+⋮----
+def lead_rows(leads)
+⋮----
+def staff_scope
+⋮----
+def staff_result(page, total, total_count)
+⋮----
+def staff_text(page, total, total_count)
+⋮----
+# Групповые count'ы одним запросом на метрику — без N+1 по странице.
+def staff_metrics(ids)
+⋮----
+def staff_rows(staff, metrics, page)
+⋮----
+def footer(section, page, total)
+⋮----
+def back_row(section, page)
+⋮----
+def time_ago(time)
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_pagination.rb">
+module Telegram
+module WorkBot
+⋮----
+module DashboardPagination
+⋮----
+PAGE_SIZE = 8
+⋮----
+PAGE_MARKER = 'p'
+LIST_SECTIONS = %w[leads staff].freeze
+⋮----
+module_function
+⋮----
+def leads_page_callback(page)
+⋮----
+def staff_page_callback(page)
+⋮----
+def page_callback(section, page)
+⋮----
+def parse_page(args)
+⋮----
+def normalize_page(value)
+⋮----
+def nav_row(section, page, total_pages)
+</file>
+
 <file path="Gemfile">
 # frozen_string_literal: true
 
@@ -17010,6 +17039,8 @@ private
 ⋮----
 def handle_lead_card
 ⋮----
+def parse_lead_route(rest)
+⋮----
 def handle_drill(target)
 ⋮----
 def handle_list(section)
@@ -17027,95 +17058,6 @@ def render_search_prompt
 def edit(text, markup)
 ⋮----
 def back_keyboard
-</file>
-
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
-⋮----
-class Workflow
-⋮----
-EXPORT_DELAY = 5.seconds
-⋮----
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def release_for_export!(card, actor:, expected: nil)
-⋮----
-def export!(card)
-⋮----
-def export_with_lock(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def attach_export_number!(card, crm_id:, actor:)
-⋮----
-def exporters = Permissions.exporters
-⋮----
-def changed_since_confirm
-⋮----
-def already_released(card)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
-⋮----
-private
-⋮----
-def save_values(card, values, actor:, perms:)
-⋮----
-def wrong_bot(card)
-⋮----
-def taking_over?(card, actor)
-⋮----
-def refresh_check(card)
-⋮----
-def transition!(card, to:, actor:, comment: nil)
-⋮----
-def sync_lead_ref!(card)
-⋮----
-def moderator?(actor)
-⋮----
-def moderator_denial(actor, action)
-⋮----
-def not_pending(card)
-⋮----
-def returnable?(card)
-⋮----
-def not_returnable(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil, retryable: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
@@ -17291,6 +17233,99 @@ def format_phone(digits)
 def button(text, callback_data)
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+⋮----
+EXPORT_DELAY = 5.seconds
+⋮----
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def release_for_export!(card, actor:, expected: nil)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def exporters = Permissions.exporters
+⋮----
+def changed_since_confirm
+⋮----
+def already_released(card)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def wrong_bot(card)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def returnable?(card)
+⋮----
+def not_returnable(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def export_guarded(card, token, lead_row)
+⋮----
+def deleted_lead?(card, lead_row)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/telegram/inbound_processor.rb">

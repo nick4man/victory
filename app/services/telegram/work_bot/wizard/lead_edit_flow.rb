@@ -29,6 +29,21 @@ module Telegram
         NAME_MAX = 100
         COMMENT_MAX = 500
 
+        # Контекст возврата с карточки дашборда (ревью #280): сегменты после
+        # id лида в wiz:s:lead_edit:<id>[:<ctx>] — s<staff_id>:<staff_page>
+        # (карточка сотрудника) или p<page> (страница списка лидов).
+        # Сохраняется в ctx как строка 'return_to' и переживает весь wizard.
+        def self.seed_extras(segments)
+          first = segments[0].to_s
+          if (m = first.match(/\As(\d+)\z/))
+            { 'return_to' => "s#{m[1]}:#{DashboardPagination.normalize_page(segments[1])}" }
+          elsif (m = first.match(/\Ap(\d+)\z/))
+            { 'return_to' => "p#{DashboardPagination.normalize_page(m[1])}" }
+          else
+            {}
+          end
+        end
+
         def steps
           [
             lead_step,
@@ -74,12 +89,27 @@ module Telegram
           # той же механикой, что /stage и /assign (refresh! сам гасит ошибки).
           LeadAnnouncer.refresh!(current, client: client)
 
-          card = DashboardLeadCard.new(lead: current).call
+          # Карточка перерисовывается с тем же origin, с которого пришли:
+          # сохранение тронуло updated_at и сдвинуло лид в начало сортировки
+          # списка — без зафиксированного контекста «Назад» ушёл бы на
+          # пересчитанную (неверную) страницу (ревью #280).
+          card = DashboardLeadCard.new(lead: current, origin: return_origin).call
           { text: "✅ Лид ##{current.id}: #{field_label(field)} — обновлено.\n\n#{card.text}",
             keyboard: card.keyboard[:inline_keyboard] }
         end
 
         private
+
+        # 's<staff_id>:<page>' → карточка сотрудника; 'p<page>' → страница
+        # списка лидов; иначе — без origin (старое поведение).
+        def return_origin
+          case ctx['return_to'].to_s
+          when /\As(\d+):(\d+)\z/
+            { staff_id: Regexp.last_match(1).to_i, staff_page: Regexp.last_match(2).to_i }
+          when /\Ap(\d+)\z/
+            { list_page: Regexp.last_match(1).to_i }
+          end
+        end
 
         def accept_field(value)
           return [value, nil] if FIELDS.any? { |_, v| v == value }

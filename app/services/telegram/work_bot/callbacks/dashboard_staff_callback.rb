@@ -54,7 +54,7 @@ module Telegram
           when 'setrole'        then apply_role(staff, page, param)
           when 'assignable'     then apply_assignable(staff, page)
           when 'status'         then render(staff, page, :status_confirm)
-          when 'status_confirm' then apply_status(staff, page)
+          when 'status_confirm' then apply_status(staff, page, param)
           end
         end
 
@@ -74,8 +74,18 @@ module Telegram
           render(staff, page, :edit, notice: notice)
         end
 
-        def apply_status(staff, page)
-          notice = if staff.status == 'active'
+        # Целевой статус приходит параметром (status_confirm:<active|inactive>):
+        # повторный тап по тому же подтверждению — no-op, а не переключение
+        # обратно (ревью #280).
+        def apply_status(staff, page, target)
+          return ack('⚠️ Неизвестный статус.', alert: true) unless %w[active inactive].include?(target)
+
+          if staff.status == target
+            notice = target == 'active' ? "▶️ #{staff.mention} уже активен" : "🔒 #{staff.mention} уже деактивирован"
+            return render(staff, page, :edit, notice: notice)
+          end
+
+          notice = if target == 'inactive'
                      staff.update!(status: 'inactive', assignable: false)
                      "🔒 #{staff.mention} деактивирован"
                    else

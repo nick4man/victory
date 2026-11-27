@@ -108,8 +108,24 @@ RSpec.describe Telegram::WorkBot::DashboardLeadCard do
 
       expect(callbacks).to include("stage:#{lead.id}:show", "stage:#{lead.id}:contract",
                                    "assign:#{lead.id}", "spam:#{lead.id}",
-                                   "wiz:s:lead_edit:#{lead.id}", "dashboard:lead:#{lead.id}:del",
+                                   "wiz:s:lead_edit:#{lead.id}:p1", "dashboard:lead:#{lead.id}:del",
                                    "dashboard:lead:#{lead.id}")
+    end
+
+    # Ревью #280 (раунд 2): кнопка редактирования несёт контекст возврата —
+    # страницу списка на момент открытия карточки; wizard перерисует карточку
+    # с ним, и «Назад» после сохранения не уедет на пересчитанную страницу.
+    it 'кнопка редактирования несёт страницу списка, где лид лежит сейчас' do
+      leads = Array.new(12) do |i|
+        LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                          anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                          metadata: { 'name' => "Клиент #{i}" }).tap do |le|
+          le.update_column(:updated_at, (12 - i).minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+        end
+      end
+
+      expect(keyboard_callbacks(card(leads.first).call)).to include("wiz:s:lead_edit:#{leads.first.id}:p2")
+      expect(keyboard_callbacks(card(leads.last).call)).to include("wiz:s:lead_edit:#{leads.last.id}:p1")
     end
 
     it 'у закрытого лида нет ряда стадий' do
@@ -200,6 +216,21 @@ RSpec.describe Telegram::WorkBot::DashboardLeadCard do
       expect(callbacks).to include("dashboard:staff:#{agent.id}:2")
       expect(callbacks).to include("dashboard:lead:#{lead.id}:s#{agent.id}:2")
       expect(callbacks).not_to include('dashboard:leads:p:1')
+    end
+
+    # Ревью #280 (раунд 2): wizard редактирования получает origin и после
+    # сохранения перерисовывает карточку с ним.
+    it 'кнопка редактирования несёт origin' do
+      expect(keyboard_callbacks(origin_card.call)).to include("wiz:s:lead_edit:#{lead.id}:s#{agent.id}:2")
+    end
+
+    it 'origin из списка лидов (list_page) — назад на зафиксированную страницу' do
+      list_card = described_class.new(lead: lead, origin: { list_page: 2 })
+      callbacks = keyboard_callbacks(list_card.call)
+
+      expect(callbacks).to include('dashboard:leads:p:2')
+      expect(callbacks).to include("wiz:s:lead_edit:#{lead.id}:p2")
+      expect(callbacks).to include("dashboard:lead:#{lead.id}:p2:del")
     end
 
     it 'кнопки удаления несут origin: confirm, del:yes и отмена' do

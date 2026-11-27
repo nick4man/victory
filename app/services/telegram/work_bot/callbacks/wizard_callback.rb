@@ -14,7 +14,7 @@ module Telegram
         def handle
           action, *rest = @args
           case action
-          when 's'    then start(rest[0], rest[1])
+          when 's'    then start(rest[0], rest[1..] || [])
           when 'p'    then answer(engine.pick(rest[0], rest[1], rest[2]))
           when 'm'    then answer(engine.ask_manual(rest[0], rest[1]))
           when 'b'    then answer(engine.back(rest[0]))
@@ -30,10 +30,17 @@ module Telegram
           @engine ||= Wizard::Engine.new(tg_user: tg_user, client: client)
         end
 
-        def start(flow_key, seed_id)
-          return ack('⚠️ Неизвестный мастер', alert: true) unless Wizard::Engine.flow_class(flow_key)
+        # rest — сегменты после 'wiz:s:<flow>': [id] + опциональный контекст
+        # возврата; его разбор — на классе мастера (seed_extras), чтобы не
+        # знать форматы всех мастеров здесь (ревью #280: lead_edit несёт
+        # origin карточки дашборда).
+        def start(flow_key, rest)
+          klass = Wizard::Engine.flow_class(flow_key)
+          return ack('⚠️ Неизвестный мастер', alert: true) unless klass
 
+          seed_id = rest[0]
           seed = seed_id.present? ? { Wizard::Engine::SEED_STEP.fetch(flow_key) => seed_id } : {}
+          seed.merge!(klass.seed_extras(rest[1..] || [])) if seed_id.present? && klass.respond_to?(:seed_extras)
           case engine.start(flow_key, seed: seed)
           when :dm_unavailable
             ack('Не могу написать в личку. Открой чат с ботом, нажми «Start» и нажми кнопку ещё раз.', alert: true)

@@ -220,6 +220,23 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardDrillCallback do
         expect(last_callbacks).to include("dashboard:staff:#{agent.id}:1")
       end
 
+      # Ревью #280 (раунд 2): p<page> — origin списка лидов, так wizard
+      # редактирования перерисовывает карточку после сохранения.
+      it 'origin списка (p<page>): «Назад» — на зафиксированную страницу списка' do
+        invoke("dashboard:lead:#{lead.id}:p2", %w[lead] + [lead.id.to_s, 'p2'])
+
+        expect(last_callbacks).to include('dashboard:leads:p:2')
+        expect(last_callbacks).to include("dashboard:lead:#{lead.id}:p2:del")
+        expect(last_callbacks).to include("wiz:s:lead_edit:#{lead.id}:p2")
+      end
+
+      it 'del:yes с origin списка — soft-delete, назад — на страницу списка' do
+        invoke("dashboard:lead:#{lead.id}:p2:del:yes", %w[lead] + [lead.id.to_s, 'p2', 'del', 'yes'])
+
+        expect(lead.reload.deleted_at).to be_present
+        expect(last_callbacks).to eq(['dashboard:leads:p:2'])
+      end
+
       it 'неизвестный хвост после origin — alert' do
         invoke("dashboard:lead:#{lead.id}:s#{agent.id}:2:hax", %w[lead] + [lead.id.to_s, "s#{agent.id}", '2', 'hax'])
 

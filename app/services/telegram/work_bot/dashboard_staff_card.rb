@@ -55,7 +55,7 @@ module Telegram
 
       def render_view
         lines = [header, role_line, '']
-        lines << "📧 #{staff.email}" if staff.email.present?
+        lines << "📧 #{escape(staff.email)}" if staff.email.present?
         lines << metrics_line
         lines << leads_line
         lines << sla_line
@@ -177,6 +177,7 @@ module Telegram
       # === :status_confirm ===
 
       def render_status_confirm
+        target = staff.status == 'active' ? 'inactive' : 'active'
         if staff.status == 'active'
           text = "⚠️ <b>Деактивировать #{escape(staff.mention)}?</b>\n\n" \
                  "Статус active → inactive, «в подборе» → нет. Открытые задачи/лиды останутся " \
@@ -185,7 +186,9 @@ module Telegram
           text = "▶️ <b>Активировать #{escape(staff.mention)}?</b>\n\nСтатус #{escape(staff.status)} → active."
         end
         keyboard = [
-          [{ text: '⚠️ Подтверждаю', callback_data: cb('status_confirm') }],
+          # Целевой статус зашит в callback: повторный тап по подтверждению
+          # не переключит состояние обратно (ревью #280).
+          [{ text: '⚠️ Подтверждаю', callback_data: cb('status_confirm', target) }],
           [{ text: '⬅️ Отмена', callback_data: cb('edit') }]
         ]
         [text, keyboard]

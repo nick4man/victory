@@ -144,18 +144,20 @@ RSpec.describe Telegram::WorkBot::DashboardStaffCard do
   end
 
   describe ':status_confirm — подтверждение смены статуса' do
-    it 'для active — деактивация с confirm/cancel' do
+    it 'для active — деактивация с confirm/cancel, целевой статус в callback' do
       result = render(mode: :status_confirm, admin: true)
 
       expect(result.text).to include('Деактивировать')
-      expect(callbacks(result)).to include("dashboard:staff:#{staff.id}:1:status_confirm")
+      expect(callbacks(result)).to include("dashboard:staff:#{staff.id}:1:status_confirm:inactive")
       expect(callbacks(result)).to include("dashboard:staff:#{staff.id}:1:edit")
     end
 
-    it 'для inactive — активация' do
+    it 'для inactive — активация с целевым статусом active' do
       staff.update!(status: 'inactive')
+      result = render(mode: :status_confirm, admin: true)
 
-      expect(render(mode: :status_confirm, admin: true).text).to include('Активировать')
+      expect(result.text).to include('Активировать')
+      expect(callbacks(result)).to include("dashboard:staff:#{staff.id}:1:status_confirm:active")
     end
   end
 
@@ -188,6 +190,16 @@ RSpec.describe Telegram::WorkBot::DashboardStaffCard do
       text = render_html_staff.text
       expect(text).to include('Показ &lt;script&gt; &amp; "кавычки"')
       expect(text).not_to include('<script>')
+    end
+
+    # Ревью #280 (раунд 2): email не валидируется моделью — без escape
+    # символ '<' ломал рендер карточки с Telegram Bad Request.
+    it 'email экранируется в :view' do
+      html_staff.update!(email: 'agent<b>@victory62.org')
+
+      text = render_html_staff.text
+      expect(text).to include('agent&lt;b&gt;@victory62.org')
+      expect(text).not_to include('agent<b>@')
     end
   end
 end

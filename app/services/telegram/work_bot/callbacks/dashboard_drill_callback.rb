@@ -18,8 +18,11 @@ module Telegram
       #   dashboard:lead:<id>        — карточка лида (issue #277)
       #   dashboard:lead:<id>:s<sid>:<spage> — карточка лида, открытая из
       #     карточки сотрудника (origin для «Назад», ревью #280)
-      #   dashboard:lead:<id>[:s<sid>:<spage>]:del    — confirm удаления лида
-      #   dashboard:lead:<id>[:s<sid>:<spage>]:del:yes — выполнить soft-delete
+      #   dashboard:lead:<id>:p<page> — карточка лида с зафиксированной
+      #     страницей списка для «Назад» (так её перерисовывает wizard
+      #     редактирования, ревью #280)
+      #   dashboard:lead:<id>[:s<sid>:<spage>|:p<page>]:del    — confirm удаления лида
+      #   dashboard:lead:<id>[:s<sid>:<spage>|:p<page>]:del:yes — выполнить soft-delete
       #   dashboard:refresh          — пересчитать main dashboard
       #   dashboard:back             — обратно на main dashboard
       class DashboardDrillCallback < Base
@@ -66,15 +69,20 @@ module Telegram
           ack
         end
 
-        # Origin-сегмент s<staff_id>:<staff_page> — карточка открыта из
-        # карточки сотрудника: «Назад» вернёт в неё, а не в список лидов
-        # (ревью #280). Без сегмента — обычный путь из списка лидов.
+        # Origin-сегмент после id лида (ревью #280) — куда ведёт «Назад»:
+        #   s<staff_id>:<staff_page> — карточка открыта из карточки сотрудника;
+        #   p<page> — из списка лидов с зафиксированной страницей (так wizard
+        #   редактирования возвращает карточку на исходную страницу, а не на
+        #   пересчитанную после сдвига updated_at).
         def parse_lead_route(rest)
           origin = nil
           if (m = rest[0].to_s.match(/\As(\d+)\z/))
             origin = { staff_id: m[1].to_i,
                        staff_page: DashboardPagination.normalize_page(rest[1]) }
             rest = rest[2..] || []
+          elsif (m = rest[0].to_s.match(/\Ap(\d+)\z/))
+            origin = { list_page: DashboardPagination.normalize_page(m[1]) }
+            rest = rest[1..] || []
           end
           [origin, rest[0].to_s, rest[1].to_s]
         end

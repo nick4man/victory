@@ -143,4 +143,57 @@ RSpec.describe Telegram::WorkBot::Wizard::LeadEditFlow do
 
     expect(last_text).to include('только руководителям')
   end
+
+  # Ревью #280 (раунд 2) — контекст возврата прошит через wizard: финальная
+  # карточка после сохранения ведёт «Назад» туда, откуда открыли редактирование.
+  describe 'контекст возврата после сохранения' do
+    def final_callbacks
+      dms.last[:keyboard].flatten.map { |b| b[:callback_data] }
+    end
+
+    it 'путь из карточки сотрудника (s<sid>:<page>): назад — в карточку сотрудника' do
+      tap_callback("wiz:s:lead_edit:#{lead.id}:s#{agent.id}:2")
+      press('👤 Имя')
+      say('Анна Сергеевна')
+
+      expect(lead.reload.metadata['name']).to eq('Анна Сергеевна')
+      expect(final_callbacks).to include("dashboard:staff:#{agent.id}:2")
+      expect(final_callbacks).to include("dashboard:lead:#{lead.id}:s#{agent.id}:2:del")
+      expect(final_callbacks).to include("wiz:s:lead_edit:#{lead.id}:s#{agent.id}:2")
+    end
+
+    it 'путь из списка лидов (p<page>): назад — на исходную страницу, а не пересчитанную' do
+      # 12 лидов: наш — самый старый, на странице 2. Сохранение трогает
+      # updated_at и сдвигает его на страницу 1 — вычисленная заново страница
+      # была бы неверной, зафиксированная в callback — верна (ревью #280).
+      others = Array.new(12) do |i|
+        LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                          anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                          metadata: { 'name' => "Клиент #{i}" }).tap do |le|
+          le.update_column(:updated_at, (i + 1).minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+        end
+      end
+      lead.update_column(:updated_at, 30.minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+
+      tap_callback("wiz:s:lead_edit:#{lead.id}:p2")
+      press('👤 Имя')
+      say('Анна Сергеевна')
+
+      expect(final_callbacks).to include('dashboard:leads:p:2')
+      expect(final_callbacks).to include("dashboard:lead:#{lead.id}:p2:del")
+      expect(final_callbacks).to include("wiz:s:lead_edit:#{lead.id}:p2")
+      # Пересчитанная страница была бы 1 — убеждаемся, что она нигде не просочилась.
+      expect(final_callbacks).not_to include('dashboard:leads:p:1')
+      expect(others.map(&:id)).not_to be_empty
+    end
+
+    it 'битый сегмент контекста игнорируется — карточка без origin' do
+      tap_callback("wiz:s:lead_edit:#{lead.id}:hax")
+      press('👤 Имя')
+      say('Анна Сергеевна')
+
+      expect(final_callbacks).to include("dashboard:lead:#{lead.id}:del")
+      expect(final_callbacks.grep(/dashboard:staff:/)).to be_empty
+    end
+  end
 end

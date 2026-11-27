@@ -120,4 +120,90 @@ RSpec.describe 'Dashboard drill-down e2e (issue #277)' do
       expect(last_buttons.map { |b| b[:callback_data] }).to include("dashboard:staff:#{staff_id}:2")
     end
   end
+
+  # Ревью #280 (раунд 2): редактирование лида через wizard не теряет контекст
+  # «Назад» — ни страницу списка (сохранение сдвигает лид в начало
+  # сортировки), ни карточку сотрудника. Тапы идут через боевые
+  # DashboardDrillCallback → WizardCallback → Engine.
+  describe 'редактирование лида через wizard: возврат после сохранения' do
+    let(:dms) { [] }
+    let!(:agent) do
+      TelegramUser.create!(tg_user_id: 172_001, tg_username: 'agent277w', first_name: 'Агент',
+                           role: 'agent', status: 'active', assignable: true)
+    end
+
+    before do
+      allow(tg_client).to receive(:send_message) do |text, **opts|
+        dms << { text: text, keyboard: opts.dig(:reply_markup, :inline_keyboard) || [] }
+        { 'message_id' => 2000 + dms.size }
+      end
+      allow(tg_client).to receive(:edit_message_reply_markup).and_return(true)
+      allow(DispatcherDigestRefreshJob).to receive(:perform_async)
+      allow(Telegram::WorkBot::LeadAnnouncer).to receive(:refresh!)
+    end
+
+    def tap_wizard(data)
+      cb = { 'id' => 'cb_wiz', 'data' => data, 'from' => { 'id' => director.tg_user_id },
+             'message' => { 'message_id' => 1, 'chat' => { 'id' => director.tg_user_id, 'type' => 'private' } } }
+      Telegram::WorkBot::Callbacks::WizardCallback.new(callback_query: cb, tg_user: director,
+                                                       args: data.split(':').drop(1), client: tg_client).call
+    end
+
+    def wizard_press(label)
+      btn = dms.last[:keyboard].flatten.find { |b| b[:text].include?(label) }
+      tap_wizard(btn[:callback_data])
+    end
+
+    def wizard_final_callbacks
+      dms.last[:keyboard].flatten.map { |b| b[:callback_data] }
+    end
+
+    it 'список стр. 2 → лид → редактирование → «Назад» на страницу 2, не на пересчитанную 1' do
+      lead = LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                               anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                               assigned_to: agent, metadata: { 'name' => 'Старое Имя' })
+      Array.new(12) do |i|
+        LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                          anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                          metadata: { 'name' => "Клиент #{i}" }).tap do |le|
+          le.update_column(:updated_at, (i + 1).minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+        end
+      end
+      lead.update_column(:updated_at, 30.minutes.ago) # rubocop:disable Rails/SkipsModelValidations
+
+      tap('dashboard:drill:leads', viewer: director)
+      tap(button('▶️'), viewer: director)
+      tap("dashboard:lead:#{lead.id}", viewer: director)
+      edit_cb = button('✏️ Редактировать')
+      expect(edit_cb).to eq("wiz:s:lead_edit:#{lead.id}:p2")
+
+      tap_wizard(edit_cb)
+      wizard_press('👤 Имя')
+      Telegram::WorkBot::Wizard::Engine.new(tg_user: director, client: tg_client).text('Новое Имя')
+
+      expect(lead.reload.metadata['name']).to eq('Новое Имя')
+      expect(wizard_final_callbacks).to include('dashboard:leads:p:2')
+      expect(wizard_final_callbacks).not_to include('dashboard:leads:p:1')
+    end
+
+    it 'карточка сотрудника → лид → редактирование → «Назад» в карточку сотрудника' do
+      lead = LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                               anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                               assigned_to: agent, metadata: { 'name' => 'Старое Имя' })
+
+      tap("dashboard:staff:#{agent.id}:1", viewer: director)
+      lead_cb = row_callback(/\Adashboard:lead:\d+:s\d+:1\z/)
+      tap(lead_cb, viewer: director)
+      edit_cb = button('✏️ Редактировать')
+      expect(edit_cb).to eq("wiz:s:lead_edit:#{lead.id}:s#{agent.id}:1")
+
+      tap_wizard(edit_cb)
+      wizard_press('👤 Имя')
+      Telegram::WorkBot::Wizard::Engine.new(tg_user: director, client: tg_client).text('Новое Имя')
+
+      expect(lead.reload.metadata['name']).to eq('Новое Имя')
+      expect(wizard_final_callbacks).to include("dashboard:staff:#{agent.id}:1")
+      expect(wizard_final_callbacks).to include("dashboard:lead:#{lead.id}:s#{agent.id}:1:del")
+    end
+  end
 end

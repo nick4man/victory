@@ -14,10 +14,16 @@ module Telegram
     # Удаление — soft-delete по правилу #1 (deleted_at, не destroy) и только
     # через обязательный confirm: dashboard:lead:<id>:del → :del:yes.
     #
-    # origin (ревью #280): если карточку открыли из карточки сотрудника,
-    # callback_data несёт сегмент s<staff_id>:<staff_page> — «Назад» и
-    # «Отмена» возвращают в карточку сотрудника на ту же страницу списка,
-    # а не в общий список лидов.
+    # origin (ревью #280): откуда открыли карточку — туда же ведут «Назад»,
+    # «Отмена» и кнопка после удаления:
+    #   { staff_id:, staff_page: } — из карточки сотрудника (сегмент
+    #     s<staff_id>:<staff_page> в callback_data);
+    #   { list_page: } — из списка лидов (сегмент p<page>); без origin
+    #     страница вычисляется позицией лида в сортировке списка.
+    # Контекст возврата также прошивается в кнопку редактирования
+    # (wiz:s:lead_edit:<id><suffix>): wizard после сохранения перерисовывает
+    # карточку с тем же origin — иначе «Назад» терял исходную страницу
+    # (сохранение трогает updated_at и сдвигает лид в начало списка).
     class DashboardLeadCard
       Result = Struct.new(:text, :keyboard, keyword_init: true)
 
@@ -108,7 +114,7 @@ module Telegram
           { text: '👤 Назначить', callback_data: "assign:#{@lead.id}" },
           { text: '🚫 Спам', callback_data: "spam:#{@lead.id}" }
         ]
-        rows << [{ text: '✏️ Редактировать', callback_data: "wiz:s:lead_edit:#{@lead.id}" }]
+        rows << [{ text: '✏️ Редактировать', callback_data: edit_callback }]
         rows << [{ text: '🗑 Удалить', callback_data: "#{card_callback}:del" }]
         rows << [
           { text: '⬅️ Назад', callback_data: back_callback },
@@ -124,21 +130,34 @@ module Telegram
       end
 
       # «Назад»: из карточки сотрудника — в неё же (та же страница списка);
-      # иначе — на страницу общего списка лидов, где лид лежит сейчас.
+      # из списка лидов — на исходную страницу списка; иначе — на страницу,
+      # где лид лежит сейчас.
       def back_callback(page = nil)
-        return "dashboard:staff:#{@origin[:staff_id]}:#{@origin[:staff_page]}" if @origin
+        return "dashboard:staff:#{@origin[:staff_id]}:#{@origin[:staff_page]}" if @origin&.key?(:staff_id)
+        return DashboardPagination.leads_page_callback(@origin[:list_page]) if @origin
 
         DashboardPagination.leads_page_callback(page || back_page)
       end
 
       def back_label
-        @origin ? '⬅️ К карточке сотрудника' : '⬅️ К списку лидов'
+        @origin&.key?(:staff_id) ? '⬅️ К карточке сотрудника' : '⬅️ К списку лидов'
       end
 
       def origin_suffix
         return '' unless @origin
+        return ":p#{@origin[:list_page]}" if @origin.key?(:list_page)
 
         ":s#{@origin[:staff_id]}:#{@origin[:staff_page]}"
+      end
+
+      # Контекст возврата для wizard'а редактирования: финал перерисует
+      # карточку с тем же origin. Без origin страницу списка фиксируем на
+      # момент открытия карточки — после сохранения updated_at сдвинет лид
+      # в начало сортировки и вычисленная заново страница уже не совпадёт
+      # с исходной (ревью #280).
+      def edit_callback
+        suffix = @origin ? origin_suffix : ":p#{back_page}"
+        "wiz:s:lead_edit:#{@lead.id}#{suffix}"
       end
 
       # «Назад» — на ту страницу списка, где лид лежит сейчас: сортировка
