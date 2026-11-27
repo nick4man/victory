@@ -1410,7 +1410,8 @@ CREATE TABLE public.lead_events (
     segment character varying(32),
     property_id bigint,
     first_show_at timestamp(6) without time zone,
-    contract_at timestamp(6) without time zone
+    contract_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone
 );
 
 
@@ -5718,6 +5719,13 @@ CREATE INDEX index_lead_events_on_current_stage ON public.lead_events USING btre
 
 
 --
+-- Name: index_lead_events_on_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX index_lead_events_on_deleted_at ON public.lead_events USING btree (deleted_at);
+
+
+--
 -- Name: index_lead_events_on_first_show_at; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -8283,6 +8291,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261127120000'),
 ('20261126011052'),
 ('20261114120000'),
 ('20261114100000'),

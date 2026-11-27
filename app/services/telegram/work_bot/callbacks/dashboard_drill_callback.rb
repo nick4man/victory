@@ -15,11 +15,11 @@ module Telegram
       #   dashboard:staff:<id>[:<page>[:<action>]] — карточка сотрудника
       #     (issue #277, DashboardStaffCallback; <page> — страница списка
       #     для кнопки «Назад»)
+      #   dashboard:lead:<id>        — карточка лида (issue #277)
+      #   dashboard:lead:<id>:del    — confirm удаления лида (soft-delete)
+      #   dashboard:lead:<id>:del:yes — выполнить soft-delete
       #   dashboard:refresh          — пересчитать main dashboard
       #   dashboard:back             — обратно на main dashboard
-      #
-      # dashboard:lead:<id> — карточка лида (соседняя подзадача issue #277,
-      # сюда добавят свою ветку).
       class DashboardDrillCallback < Base
         manager_only
 
@@ -30,6 +30,7 @@ module Telegram
           when 'drill'    then handle_drill(@args[1].to_s)
           when 'leads'    then handle_list(:leads)
           when 'staff'    then handle_staff
+          when 'lead'     then handle_lead_card
           when 'refresh'  then refresh_main
           when 'back'     then refresh_main
           else
@@ -38,6 +39,29 @@ module Telegram
         end
 
         private
+
+        # Карточка лида (issue #277): dashboard:lead:<id>[:del[:yes]].
+        # Действия карточки (стадия/назначение/спам/редактирование) уходят в
+        # существующие callback-механики — здесь только рендер и soft-delete.
+        def handle_lead_card
+          lead_id = @args[1].to_s
+          return ack('⚠️ Неизвестный шаг.', alert: true) unless lead_id.match?(/\A\d+\z/)
+
+          lead = LeadEvent.find_by(id: lead_id)
+          return ack('⚠️ Лид не найден (возможно, удалён).', alert: true) unless lead
+          # Центральный гейт Base#lead_event здесь не срабатывает (id в @args[1]),
+          # поэтому staff_test-проверка продублирована явно (issue #214).
+          return ack("🧪 Лид ##{lead.id} — тестовый (probe). Действие недоступно.", alert: true) if lead.staff_test?
+
+          card = DashboardLeadCard.new(lead: lead)
+          result = case @args[2].to_s
+                   when ''    then card.call
+                   when 'del' then @args[3].to_s == 'yes' ? card.perform_delete(actor: tg_user) : card.confirm_delete
+                   else return ack('⚠️ Неизвестный шаг.', alert: true)
+                   end
+          edit(result.text, result.keyboard)
+          ack
+        end
 
         def handle_drill(target)
           case target

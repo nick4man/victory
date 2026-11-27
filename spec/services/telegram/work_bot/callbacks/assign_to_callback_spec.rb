@@ -25,7 +25,9 @@ RSpec.describe Telegram::WorkBot::Callbacks::AssignToCallback do
     )
   end
 
-  let(:tg_client) { instance_double(Telegram::Client, answer_callback_query: { 'ok' => true }) }
+  let(:tg_client) do
+    instance_double(Telegram::Client, answer_callback_query: { 'ok' => true }, delete_message: { 'ok' => true })
+  end
 
   def callback_query(args:)
     {
@@ -106,6 +108,29 @@ RSpec.describe Telegram::WorkBot::Callbacks::AssignToCallback do
 
       expect(tg_client).to have_received(:answer_callback_query)
         .with('1234', hash_including(text: a_string_including('тестовый (probe)'), show_alert: true))
+    end
+  end
+
+  # Issue #277 — assign с карточки дашборда идёт из DM руководителя: picker
+  # надо удалять в том чате, откуда пришёл callback, а не в рабочей группе.
+  describe 'picker в DM (dashboard)' do
+    it 'delete_message идёт в чат callback-сообщения' do
+      assignee = TelegramUser.create!(
+        tg_user_id: 50_005, tg_username: 'agent4', first_name: 'Agent4',
+        role: 'agent', is_manager: false, status: 'active'
+      )
+      fake_result = double('Result', success?: true, error_message: nil)
+      allow_any_instance_of(Telegram::WorkBot::LeadAssignment).to receive(:call).and_return(fake_result)
+      allow(tg_client).to receive(:delete_message)
+      lead.update!(metadata: lead.metadata.merge('assign_picker_message_id' => 999))
+
+      cb = callback_query(args: [lead.id.to_s, assignee.id.to_s])
+      cb['message'] = { 'chat' => { 'id' => 50_001, 'type' => 'private' }, 'message_id' => 999 }
+      described_class.new(callback_query: cb, tg_user: manager,
+                          args: [lead.id.to_s, assignee.id.to_s], client: tg_client).call
+
+      expect(tg_client).to have_received(:delete_message).with(chat_id: 50_001, message_id: 999)
+      expect(lead.reload.metadata['assign_picker_message_id']).to be_nil
     end
   end
 end

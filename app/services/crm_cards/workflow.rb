@@ -185,6 +185,14 @@ module CrmCards
       end
 
       card.reload
+      # Issue #277 — лид мог быть soft-deleted уже ПОСЛЕ одобрения и разрешения
+      # (release человеком машинную проверку не гейтит). Последняя линия перед
+      # обращением к CRM — здесь: удалённый лид не выгружается ни в каком виде.
+      if card.kind_lead? && LeadEvent.unscoped.where(id: card.lead_event_id).where.not(deleted_at: nil).exists?
+        return fail_export!(card, error: 'Лид удалён — выгрузка в CRM отменена.',
+                            attempt_token: token, retryable: false)
+      end
+
       card.transitions.create!(from_status: 'approved', to_status: 'exporting')
       begin
         outcome = (card.sandbox? ? SandboxExporter.new : exporter).call(card)

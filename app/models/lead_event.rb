@@ -89,10 +89,17 @@ class LeadEvent < ApplicationRecord
   # routed сегодня — попадёт в today.
   scope :updated_in, ->(range) { where(updated_at: range) }
 
-  # Phase 16 — staff_test scopes (default scope не делаем, чтобы не сломать
-  # admin/debug queries. Caller сам решает .real или .staff_test).
+  # Phase 16 — staff_test scopes (default scope по staff_test не делаем,
+  # чтобы не сломать admin/debug queries. Caller сам решает .real или
+  # .staff_test).
   scope :real,       -> { where(staff_test: false) }
   scope :staff_test_only, -> { where(staff_test: true) }
+
+  # Issue #277 — soft-delete (правило #1): удалённый из дашборда лид скрыт
+  # отовсюду — выборки .real, списки дашборда, CRM-выгрузка. Доступ к
+  # удалённым — .unscoped.
+  scope :not_deleted, -> { where(deleted_at: nil) }
+  default_scope { not_deleted }
 
   # BOTTLENECK — воронка показов.
   scope :shown,     -> { where.not(first_show_at: nil) }

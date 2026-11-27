@@ -114,4 +114,23 @@ RSpec.describe LeadEvent do
     end
   end
 
+  # Issue #277 — soft-delete (правило #1): default_scope not_deleted.
+  describe 'soft-delete' do
+    let!(:kept)    { build_event.tap(&:save!) }
+    let!(:removed) { build_event.tap(&:save!) }
+
+    before { removed.update!(deleted_at: Time.current) }
+
+    it 'deleted_at скрывает запись из всех выборок, включая .real' do
+      expect(described_class.where(id: removed.id)).to be_empty
+      expect(described_class.real.where(id: removed.id)).to be_empty
+      expect(described_class.open.real.where(id: removed.id)).to be_empty
+    end
+
+    it 'живые записи не затронуты, удалённая доступна через unscoped' do
+      expect(described_class.where(id: kept.id)).to exist
+      expect(described_class.unscoped.find(removed.id).deleted_at).to be_present
+    end
+  end
+
 end

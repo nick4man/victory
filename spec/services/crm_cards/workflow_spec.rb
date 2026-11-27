@@ -277,6 +277,21 @@ RSpec.describe CrmCards::Workflow do
       expect(exporter).to have_received(:call).once
     end
 
+    # Issue #277 — лид soft-deleted уже после одобрения и разрешения: release
+    # машинную проверку не гейтит, поэтому последняя линия — сам export!.
+    it 'лид удалён после разрешения — CRM не трогаем, карточка в export_failed' do
+      allow(exporter).to receive(:call)
+      card # одобренная+разрешённая карточка собирается ДО удаления лида
+      lead.update!(deleted_at: Time.current)
+
+      workflow.export!(card)
+
+      expect(exporter).not_to have_received(:call)
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      expect(card.export_error).to include('Лид удалён')
+      expect(notifier).to have_received(:export_failed).with(card)
+    end
+
     it 'CRM приняла заявку, но статус записать не удалось — номер не теряется, повтор запрещён' do
       allow(exporter).to receive(:call).and_return(outcome)
       allow(workflow).to receive(:record_export!).and_return(CrmCards::Workflow::Result.new(ok: false, error: 'boom'))

@@ -109,6 +109,83 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardDrillCallback do
     end
   end
 
+  describe 'lead:<id> — карточка лида (issue #277)' do
+    let!(:lead) do
+      LeadEvent.create!(lead_ref: create(:inquiry), source: 'site_form', current_stage: 'new',
+                        anchor_topic_key: 'dispatcher', tg_chat_id: -1_002_000_000_000,
+                        metadata: { 'name' => 'Анна Смирнова', 'phone' => '+79001234567' })
+    end
+
+    it 'тап по лиду рендерит карточку с полями и действиями' do
+      invoke("dashboard:lead:#{lead.id}", %w[lead] + [lead.id.to_s])
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/Лид ##{lead.id}.*Анна Смирнова/m),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+    end
+
+    it 'del без yes — экран подтверждения, лид не тронут' do
+      invoke("dashboard:lead:#{lead.id}:del", %w[lead] + [lead.id.to_s, 'del'])
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/Удалить лид ##{lead.id}\?/m),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+      expect(lead.reload.deleted_at).to be_nil
+    end
+
+    it 'del:yes — soft-delete лида' do
+      invoke("dashboard:lead:#{lead.id}:del:yes", %w[lead] + [lead.id.to_s, 'del', 'yes'])
+      expect(lead.reload.deleted_at).to be_present
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/Лид ##{lead.id} удалён/m),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+    end
+
+    it 'cancel с экрана confirm возвращает карточку' do
+      invoke("dashboard:lead:#{lead.id}", %w[lead] + [lead.id.to_s])
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/Лид ##{lead.id}/m),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+      expect(lead.reload.deleted_at).to be_nil
+    end
+
+    it 'несуществующий лид — alert без edit' do
+      invoke('dashboard:lead:999999', %w[lead 999999])
+      expect(tg_client).not_to have_received(:edit_message_text)
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_id_1', text: a_string_matching(/не найден/), show_alert: true
+      )
+    end
+
+    it 'нечисловой id — alert' do
+      invoke('dashboard:lead:abc', %w[lead abc])
+      expect(tg_client).not_to have_received(:edit_message_text)
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_id_1', text: a_string_matching(/Неизвестный шаг/), show_alert: true
+      )
+    end
+
+    it 'staff_test-лид — отказ (issue #214)' do
+      lead.update!(staff_test: true)
+      invoke("dashboard:lead:#{lead.id}", %w[lead] + [lead.id.to_s])
+      expect(tg_client).not_to have_received(:edit_message_text)
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_id_1', text: a_string_matching(/тестовый \(probe\)/), show_alert: true
+      )
+    end
+
+    it 'удалённый лид — alert «не найден»' do
+      lead.update!(deleted_at: Time.current)
+      invoke("dashboard:lead:#{lead.id}", %w[lead] + [lead.id.to_s])
+      expect(tg_client).not_to have_received(:edit_message_text)
+      expect(tg_client).to have_received(:answer_callback_query).with(
+        'cb_id_1', text: a_string_matching(/не найден/), show_alert: true
+      )
+    end
+  end
+
   describe 'drill:staff' do
     it 'edit_message_text со списком сотрудников (страница 1)' do
       invoke('dashboard:drill:staff', %w[drill staff])
