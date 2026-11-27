@@ -86,12 +86,25 @@ RSpec.describe Telegram::WorkBot::Callbacks::DashboardDrillCallback do
     end
   end
 
-  describe 'staff:<id> — карточка сотрудника (подзадача #277)' do
-    it 'до интеграции карточки — вежливый отказ без изменений' do
-      invoke('dashboard:staff:123', %w[staff 123])
+  describe 'staff:<id> — карточка сотрудника (issue #277)' do
+    let!(:agent) do
+      TelegramUser.create!(tg_user_id: 120_777, tg_username: 'agent277', first_name: 'Агент',
+                           role: 'agent', status: 'active', assignable: true)
+    end
+
+    it 'рендерит карточку сотрудника (DashboardStaffCallback)' do
+      invoke("dashboard:staff:#{agent.id}", ['staff', agent.id.to_s])
+      expect(tg_client).to have_received(:edit_message_text).with(
+        a_string_matching(/👤.*Агент/m),
+        hash_including(reply_markup: a_hash_including(:inline_keyboard))
+      )
+    end
+
+    it 'несуществующий id — вежливый отказ без изменений' do
+      invoke('dashboard:staff:999999', %w[staff 999999])
       expect(tg_client).not_to have_received(:edit_message_text)
       expect(tg_client).to have_received(:answer_callback_query).with(
-        'cb_id_1', text: a_string_matching(/Неизвестный шаг/), show_alert: true
+        'cb_id_1', text: a_string_matching(/не найден/), show_alert: true
       )
     end
   end

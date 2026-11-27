@@ -40,7 +40,7 @@ RSpec.describe Telegram::WorkBot::DashboardListPage do
   end
 
   def staff_ids_on_page(result)
-    row_callbacks(result).flatten.grep(/\Adashboard:staff:\d+\z/).map { |cb| cb.split(':').last.to_i }
+    row_callbacks(result).flatten.grep(/\Adashboard:staff:\d+:\d+\z/).map { |cb| cb.split(':')[2].to_i }
   end
 
   describe 'лиды — постраничный просмотр' do
@@ -137,9 +137,15 @@ RSpec.describe Telegram::WorkBot::DashboardListPage do
       expect(first.keyboard).to eq(second.keyboard)
     end
 
-    it 'строки списка — кнопки с callback_data dashboard:staff:<id>' do
+    it 'строки списка — кнопки с callback_data dashboard:staff:<id>:<page>' do
       ids = staff_ids_on_page(render(:staff, 1))
       expect(ids.size).to eq(8)
+    end
+
+    it 'callback строки несёт номер страницы — «Назад» из карточки вернёт на неё же' do
+      rows = row_callbacks(render(:staff, 2)).flatten
+
+      expect(rows.grep(/\Adashboard:staff:\d+:2\z/).size).to eq(8)
     end
 
     it 'кнопка содержит метрики сотрудника' do
@@ -149,7 +155,7 @@ RSpec.describe Telegram::WorkBot::DashboardListPage do
       create_lead(assigned_to: agent, assigned_at: 1.hour.ago)
 
       label = render(:staff, 1).keyboard[:inline_keyboard]
-                              .flatten.find { |b| b[:callback_data] == "dashboard:staff:#{agent.id}" }[:text]
+                              .flatten.find { |b| b[:callback_data] == "dashboard:staff:#{agent.id}:1" }[:text]
 
       expect(label).to include('2 в работе')
       expect(label).to include('1 ⚠️')

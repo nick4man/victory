@@ -105,7 +105,7 @@ module Telegram
         metrics = staff_metrics(staff.map(&:id))
         Result.new(
           text: staff_text(page, total, total_count),
-          keyboard: { inline_keyboard: staff_rows(staff, metrics) + footer(:staff, page, total) }
+          keyboard: { inline_keyboard: staff_rows(staff, metrics, page) + footer(:staff, page, total) }
         )
       end
 
@@ -128,12 +128,15 @@ module Telegram
         }
       end
 
-      def staff_rows(staff, metrics)
+      # Строка списка несёт номер страницы (3-й сегмент callback_data) —
+      # карточка сотрудника по кнопке «Назад» вернёт на эту же страницу,
+      # а не в начало списка (issue #277).
+      def staff_rows(staff, metrics, page)
         staff.map do |s|
           label = "#{s.mention} · #{metrics[:open][s.id] || 0} в работе / " \
                   "#{metrics[:done][s.id] || 0} сегодня / #{metrics[:overdue][s.id] || 0} ⚠️ · " \
                   "лидов #{metrics[:leads][s.id] || 0}"
-          [{ text: label.truncate(60), callback_data: "dashboard:staff:#{s.id}" }]
+          [{ text: label.truncate(60), callback_data: "dashboard:staff:#{s.id}:#{page}" }]
         end
       end
 

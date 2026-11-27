@@ -12,11 +12,14 @@ module Telegram
       #   dashboard:drill:search     — prompt: «что ищем»
       #   dashboard:leads:p:<page>   — страница списка лидов (issue #277)
       #   dashboard:staff:p:<page>   — страница списка сотрудников (issue #277)
+      #   dashboard:staff:<id>[:<page>[:<action>]] — карточка сотрудника
+      #     (issue #277, DashboardStaffCallback; <page> — страница списка
+      #     для кнопки «Назад»)
       #   dashboard:refresh          — пересчитать main dashboard
       #   dashboard:back             — обратно на main dashboard
       #
-      # dashboard:lead:<id> / dashboard:staff:<id> — карточки сущностей
-      # (соседние подзадачи issue #277, сюда добавят свои ветки).
+      # dashboard:lead:<id> — карточка лида (соседняя подзадача issue #277,
+      # сюда добавят свою ветку).
       class DashboardDrillCallback < Base
         manager_only
 
@@ -26,7 +29,7 @@ module Telegram
           case subcmd
           when 'drill'    then handle_drill(@args[1].to_s)
           when 'leads'    then handle_list(:leads)
-          when 'staff'    then handle_list(:staff)
+          when 'staff'    then handle_staff
           when 'refresh'  then refresh_main
           when 'back'     then refresh_main
           else
@@ -48,12 +51,22 @@ module Telegram
         end
 
         # Страничная навигация dashboard:<section>:p:<page>. Числовой id
-        # (dashboard:staff:123) — карточка сотрудника из подзадачи #277.
+        # (dashboard:staff:123) — карточка сотрудника (issue #277).
         def handle_list(section)
           parsed = DashboardPagination.parse_page(@args)
           return ack('⚠️ Неизвестный шаг.', alert: true) unless parsed
 
           render_list(section, parsed[1])
+        end
+
+        # dashboard:staff:p:<page> — список; dashboard:staff:<id>[...] —
+        # карточка сотрудника (DashboardStaffCallback, issue #277).
+        def handle_staff
+          parsed = DashboardPagination.parse_page(@args)
+          return render_list(:staff, parsed[1]) if parsed
+
+          DashboardStaffCallback.new(callback_query: callback_query, tg_user: tg_user,
+                                     args: @args[1..], client: client).call
         end
 
         def render_list(section, page)
