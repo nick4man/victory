@@ -306,6 +306,10 @@ module ChatTools
         inquiry_type:  inquiry_type,
         priority:      priority,
         source:        'site_chatbot',
+        # IP/UA посетителя из чатового request (issue #275): LlmReplyJob
+        # кладёт их в thread-local; вне request-контекста поля пустые.
+        ip_address:    Thread.current[:lead_client_ip].presence,
+        user_agent:    Thread.current[:lead_client_user_agent].presence,
         message:       (args[:message].to_s.presence || reasoning).truncate(2000),
         metadata:      {
           intent:                    args[:intent].to_s,

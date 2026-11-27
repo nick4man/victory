@@ -290,6 +290,34 @@ RSpec.describe ChatTools::EstimatePropertyValuation do
     end
   end
 
+  # Issue #275: IP/UA посетителя из чатового request (thread-local от
+  # LlmReplyJob) пишутся на valuation; вне request — прежние заглушки,
+  # которые SiteSource на карточку лида не выводит.
+  describe 'IP/UA посетителя (issue #275)' do
+    after do
+      Thread.current[:lead_client_ip] = nil
+      Thread.current[:lead_client_user_agent] = nil
+    end
+
+    it 'request-контекст → реальные ip/ua на valuation вместо заглушек' do
+      Thread.current[:lead_client_ip] = '203.0.113.10'
+      Thread.current[:lead_client_user_agent] = 'Mozilla/5.0 (ChatWidget)'
+      call_tool
+
+      pv = PropertyValuation.order(:id).last
+      expect(pv.ip_address).to eq('203.0.113.10')
+      expect(pv.user_agent).to eq('Mozilla/5.0 (ChatWidget)')
+    end
+
+    it 'вне request-контекста — прежние технические заглушки' do
+      call_tool
+
+      pv = PropertyValuation.order(:id).last
+      expect(pv.ip_address).to eq('0.0.0.0')
+      expect(pv.user_agent).to eq('chat-bot')
+    end
+  end
+
   describe '.schema' do
     it 'объясняет боту, как озвучивать низкое покрытие' do
       description = described_class.schema.dig(:function, :description)
