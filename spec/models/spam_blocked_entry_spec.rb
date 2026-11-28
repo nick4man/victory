@@ -247,5 +247,131 @@ RSpec.describe SpamBlockedEntry do
       expect(result[:ok]).to be(false)
       expect(result[:error]).to eq(:invalid_status)
     end
+
+    it 'IP-литерал → entry_type ip (не domain), иначе ip_blocked? его не матчит (issue #286)' do
+      result = described_class.block_locally!('158.173.79.38')
+
+      expect(result[:ok]).to be(true)
+      entry = result[:value]
+      expect(entry).to be_entry_type_ip
+      expect(entry).to be_status_blocked
+      expect(entry.source).to eq('local')
+      expect(entry.value).to eq('158.173.79.38')
+      expect(described_class.ip_blocked?('158.173.79.38')).to be(true)
+    end
+
+    it 'CIDR → ip-запись с подсетью, ловит хосты внутри через ip_blocked?' do
+      Rails.cache.delete(described_class::CIDR_CACHE_KEY)
+      result = described_class.block_locally!('45.128.232.0/24')
+
+      expect(result[:value]).to be_entry_type_ip
+      expect(result[:value].value).to eq('45.128.232.0/24')
+      expect(described_class.ip_blocked?('45.128.232.202')).to be(true)
+      expect(described_class.ip_blocked?('45.128.233.1')).to be(false)
+    end
+
+    it 'фидовая ip-запись перезаписывается local blocked (собственный кворум точнее фида)' do
+      entry = described_class.create!(entry_type: :ip, value: '203.0.113.55',
+                                      status: :blocked, source: 'ipsum_l3')
+
+      result = described_class.block_locally!('203.0.113.55')
+
+      expect(result[:value].id).to eq(entry.id)
+      expect(entry.reload.source).to eq('local')
+      expect(described_class.unscoped.where(value_digest: described_class.digest_for('203.0.113.55')).count)
+        .to eq(1)
+    end
+  end
+
+  describe '.record_gate_hit! (автоблок IP по дропам гейта, issue #286)' do
+    let(:ip) { '198.51.100.77' }
+
+    it 'первый hit создаёт локальную suspect-запись IP' do
+      entry = described_class.record_gate_hit!(ip: ip)
+
+      expect(entry).to be_entry_type_ip
+      expect(entry).to be_status_suspect
+      expect(entry.source).to eq('local')
+      expect(entry.hits).to eq(1)
+      expect(described_class.ip_blocked?(ip)).to be(false)
+    end
+
+    it 'IP_GATE_QUORUM дропов за окно → block_locally! (status blocked, source local)' do
+      (described_class::IP_GATE_QUORUM - 1).times { described_class.record_gate_hit!(ip: ip) }
+      expect(described_class.find_by(entry_type: :ip, value: ip)).to be_status_suspect
+
+      entry = described_class.record_gate_hit!(ip: ip)
+
+      expect(entry).to be_status_blocked
+      expect(entry.source).to eq('local')
+      expect(entry.blocked_at).to be_present
+      expect(described_class.ip_blocked?(ip)).to be(true)
+    end
+
+    it 'дропы с одним visitor_token считаются каждый раз (флуд с одной вкладки)' do
+      described_class::IP_GATE_QUORUM.times do
+        described_class.record_gate_hit!(ip: ip, visitor_token: 'same-visitor')
+      end
+
+      expect(described_class.find_by(entry_type: :ip, value: ip)).to be_status_blocked
+    end
+
+    it 'дропы старше IP_GATE_WINDOW в кворум не считаются' do
+      (described_class::IP_GATE_QUORUM - 1).times { described_class.record_gate_hit!(ip: ip) }
+      travel described_class::IP_GATE_WINDOW + 1.minute
+
+      (described_class::IP_GATE_QUORUM - 1).times { described_class.record_gate_hit!(ip: ip) }
+      expect(described_class.find_by(entry_type: :ip, value: ip)).to be_status_suspect
+
+      described_class.record_gate_hit!(ip: ip)
+      expect(described_class.find_by(entry_type: :ip, value: ip)).to be_status_blocked
+    end
+
+    it 'уже заблокированный адрес не перезаписывает blocked_at' do
+      described_class::IP_GATE_QUORUM.times { described_class.record_gate_hit!(ip: ip) }
+      blocked_at = described_class.find_by(entry_type: :ip, value: ip).blocked_at
+
+      travel 5.minutes
+      described_class.record_gate_hit!(ip: ip)
+
+      expect(described_class.find_by(entry_type: :ip, value: ip).blocked_at).to eq(blocked_at)
+    end
+
+    it 'soft-deleted запись реанимируется той же строкой' do
+      entry = described_class.create!(entry_type: :ip, value: ip, status: :suspect, source: 'local')
+      entry.update_columns(deleted_at: Time.current)
+
+      result = described_class.record_gate_hit!(ip: ip)
+
+      expect(result.id).to eq(entry.id)
+      expect(result.deleted_at).to be_nil
+      expect(result.hits).to eq(1)
+    end
+
+    it 'пустой и мусорный IP — no-op, записей нет' do
+      expect(described_class.record_gate_hit!(ip: '')).to be_nil
+      expect(described_class.record_gate_hit!(ip: 'not-an-ip')).to be_nil
+      expect(described_class.entry_type_ip.count).to eq(0)
+    end
+  end
+
+  describe '.record_hit! с dedup: false (флуд-счётчик гейта)' do
+    it 'каждое событие пишет токен, даже с той же парой ip+visitor_token' do
+      entry = described_class.create!(entry_type: :ip, value: '198.51.100.10', status: :suspect, source: 'local')
+
+      3.times { described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'same', dedup: false) }
+
+      expect(entry.reload.hits).to eq(3)
+      expect(entry.hit_tokens.size).to eq(3)
+    end
+
+    it 'по умолчанию dedup включён — повторная пара токен не дублирует' do
+      entry = described_class.create!(entry_type: :domain, value: 'fishy.example', status: :suspect, source: 'local')
+
+      3.times { described_class.record_hit!(entry, ip: '198.51.100.10', visitor_token: 'same') }
+
+      expect(entry.reload.hits).to eq(3)
+      expect(entry.hit_tokens.size).to eq(1)
+    end
   end
 end

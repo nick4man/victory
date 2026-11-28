@@ -334,6 +334,14 @@ class Inquiry < ApplicationRecord
     get_metadata('test') == true
   end
 
+  # Карантин первого контакта (issue #286, Lead::FirstContactQuarantine):
+  # лид с нового IP и негативной классификацией создан с меткой quarantine —
+  # карточка в ДИСПЕТЧЕРСКУЮ не публикуется до ручной разборки.
+  def quarantined?
+    meta = metadata.is_a?(Hash) ? metadata : {}
+    meta['quarantine'] == true || meta[:quarantine] == true
+  end
+
   # Source tracking
   def from_mobile?
     source == 'mobile' || user_agent&.match?(/Mobile|Android|iPhone/i)
@@ -501,6 +509,9 @@ class Inquiry < ApplicationRecord
   def push_to_work_bot
     return if ENV['TG_WORK_BOT_DISABLED'] == 'true'
     return if Thread.current[:skip_workbot_push] == true  # рекурсия из Lead::Intake::SiteSource#fallback_inquiry
+    # Карантин первого контакта (issue #286): лид сохранён с меткой для
+    # ручной разборки, но карточка в ДИСПЕТЧЕРСКУЮ (и дальше в CRM) не уходит.
+    return if quarantined?
     source = case inquiry_type
              when 'evaluation' then 'site_valuation'
              when 'mortgage'   then 'site_mortgage'
