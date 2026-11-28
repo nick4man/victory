@@ -8,6 +8,19 @@ name: Kimi Code
 #    Claude не продлевается), экшен умеет искать ровно одну trigger_phrase,
 #    поэтому фраза подставляется динамически — та, что реально есть
 #    в событии.
+#
+# Два пути авторевью — ОБА сохранены, с приоритетом (решение 23.11.26):
+#   - job opencode-review (OpenCode Review): ОСНОВНОЙ путь. OpenCode CLI,
+#     OIDC-обменом на краткосрочный OPENCODE_API_KEY сервис-аккаунта Console
+#     (без долгоживущего секрета; client_id — в secrets.OPENCODE_CLIENT_ID).
+#     Модель opencode-go/glm-5.3, расход — на бюджет Go-подписки. Артефакт
+#     opencode-verdict automerge.yml читает ПЕРВЫМ. Невалидный вердикт (пустой
+#     транскрипт / нет HEAD/VERDICT) — job падает: сигнал для fallback.
+#   - job review (Kimi Review): FALLBACK. xuwenhao/kimi-code-action, KIMI_API_KEY,
+#     модель k3.1-pro; запускается только при падении OpenCode Review
+#     (needs + result=='failure'). Артефакт kimi-verdict automerge читает,
+#     только если opencode-вердикта нет. Якоря (workflow, имя job'а, имя
+#     артефакта, формат HEAD/RUN/VERDICT) не трогать.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -20,11 +33,24 @@ on:
   pull_request_review:
     types: [submitted]
 
+  # Ручной запуск OpenCode Review на любом открытом PR (по номеру). Запускает
+  # только job opencode-review: Kimi Review (xuwenhao/kimi-code-action) привязан
+  # к pull_request-событию и из dispatch не достаёт контекст PR.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Номер PR для ревью (OpenCode Review)'
+        required: true
+        type: string
+
 jobs:
   review:
     name: Kimi Review
-    # Только события PR; черновики пропускаем (ready_for_review подхватит).
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    # FALLBACK: запускаемся ТОЛЬКО если основной OpenCode Review упал
+    # (невалидный/пустой вердикт, OIDC, install). Обычный путь PR →
+    # opencode-review. Черновики: opencode пропущен (не failure) — и мы тоже.
+    needs: opencode-review
+    if: always() && needs.opencode-review.result == 'failure' && github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     permissions:
@@ -136,6 +162,244 @@ jobs:
         with:
           name: kimi-verdict
           path: verdict/kimi-verdict.txt
+          retention-days: 7
+
+  opencode-review:
+    name: OpenCode Review
+    # PR-авто (opened/synchronize/reopened/ready_for_review, не draft) + ручной
+    # запуск workflow_dispatch на любом открытом PR (inputs.pr_number).
+    if: (github.event_name == 'pull_request' && github.event.pull_request.draft == false) || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write    # OIDC-обмен на краткосрочный OPENCODE_API_KEY (service account Console)
+      contents: read
+      pull-requests: write
+      actions: read
+
+    # Новый push в PR отменяет устаревшее ревью в полёте.
+    # Для dispatch — группа по введённому номеру PR.
+    concurrency:
+      group: opencode-review-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: true
+
+    steps:
+      # PR-контекст РАНЬШЕ checkout: при workflow_dispatch github.event.pull_request
+      # пустой, и без явного ref checkout брал бы default branch, а не выбранный
+      # PR — diff от одного PR, дерево из другой ревизии. Резолвим номер и head
+      # SHA через gh (валидируем строго цифрами), затем качаем именно этот SHA.
+      - name: Resolve PR context
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_PR: ${{ inputs.pr_number }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            pr="$INPUT_PR"
+          else
+            pr="$EVENT_PR"
+          fi
+          case "$pr" in ''|*[!0-9]*)
+            echo "pr_number должен быть числом: '$pr'" >&2; exit 1;;
+          esac
+          head=$(gh pr view "$pr" --repo "${{ github.repository }}" --json headRefOid --jq '.headRefOid' | tr -d '"')
+          # NB: --jq -r НЕ работает (pflag съедает -r значением --jq →
+          # «received 2»); кавычки JSON-строки снимаем tr -d.
+          echo "PR_NUMBER=$pr" >> "$GITHUB_ENV"
+          echo "HEAD_SHA=$head" >> "$GITHUB_ENV"
+          echo "ревью PR #$pr @ $head"
+
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 1
+
+      # Аутентификация без долгоживущего секрета: OIDC-токен прогона меняется
+      # на краткосрочный OPENCODE_API_KEY сервис-аккаунта OpenCode Console.
+      # Сниппет — из Console (Settings → Service accounts). client_id хранится
+      # в GitHub Secret (OPENCODE_CLIENT_ID) и подставляется в запрос; обмен
+      # всё равно требует OIDC-токен конкретного прогона этого репозитория.
+      - name: Sign in to OpenCode
+        env:
+          AUDIENCE: https://opencode.ai/console
+        run: |
+          set -euo pipefail
+          oidc=$(curl -sSf --oauth2-bearer "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
+          token=$(curl -sSf https://opencode.ai/console/auth/oauth/token \
+            -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
+            -d subject_token_type=urn:ietf:params:oauth:token-type:jwt \
+            -d client_id="${{ secrets.OPENCODE_CLIENT_ID }}" \
+            -d subject_token="$oidc" | jq -r .access_token)
+          echo "::add-mask::$token"
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "OIDC-обмен не выдал токен (ответ: $(curl -s https://opencode.ai/console/auth/oauth/token -o /dev/null -w '%{http_code}'))" >&2
+            exit 1
+          fi
+          # Диагностика: сразу проверить ключ на inference API — отделяет
+          # «ключ невалиден/квота» от «бинарь opencode падает сам».
+          val=$(curl -s -o /tmp/oc_val -w "%{http_code}" -H "Authorization: Bearer $token" \
+            "https://opencode.ai/inference/openai/v1/models")
+          echo "проверка ключа на inference /models: HTTP $val"
+          if [ "$val" != "200" ]; then echo "тело ответа:"; head -c 300 /tmp/oc_val; echo; exit 1; fi
+          echo "OPENCODE_API_KEY=$token" >> "$GITHUB_ENV"
+
+      - name: Install OpenCode
+        run: |
+          set -euo pipefail
+          # Скачивание в файл + ретраи: curl|bash обрывался на ~92%
+          # (job падал с exit 127 на opencode --version, PR #258).
+          for i in 1 2 3; do
+            curl -fsSL https://opencode.ai/install -o /tmp/oc-install.sh && break
+            echo "retry $i"; sleep 5
+          done
+          bash /tmp/oc-install.sh
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          # Полный путь: GITHUB_PATH действует со СЛЕДУЮЩЕГО шага.
+          "$HOME/.opencode/bin/opencode" --version
+
+      # Read-only обзор diff + постинг одного верхнеуровневого комментария
+      # через gh (GITHUB_TOKEN). Модель — opencode-go/glm-5.3 (подписка Go):
+      # расход агента идёт на бюджет сервис-аккаунта Console, а не Kimi-план.
+      # Пишущие инструменты запрещены permission.bash (схема opencode 1.x:
+      # карта «паттерн → deny»; формат-массив из 2.x не валидируется) + --auto
+      # одобряет только то, что не запрещено явно.
+      - name: Run OpenCode Review
+        id: review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # PR_NUMBER и HEAD_SHA — из шага Resolve PR context ($GITHUB_ENV):
+          # при workflow_dispatch github.event.pull_request пустой.
+        run: |
+          set -uo pipefail
+          cat > opencode.json <<'JSON'
+          {
+            "permission": {
+              "edit": "deny",
+              "webfetch": "deny",
+              "bash": {
+                "git push:*": "deny",
+                "git commit:*": "deny",
+                "git checkout:*": "deny",
+                "docker:*": "deny",
+                "gh pr merge:*": "deny",
+                "gh pr edit:*": "deny",
+                "gh pr close:*": "deny",
+                "gh pr review:*": "deny",
+                "gh issue close:*": "deny",
+                "gh issue edit:*": "deny",
+                "gh secret:*": "deny",
+                "gh variable:*": "deny",
+                "gh workflow:*": "deny",
+                "gh release:*": "deny",
+                "gh repo:*": "deny",
+                "gh api:*": "deny",
+                "curl:*": "deny",
+                "wget:*": "deny"
+              }
+            }
+          }
+          JSON
+          # NB: --standalone и --archived — флаги OpenCode 2.x; в 1.19.6 их
+          # нет (yargs-strict → хелп в stderr, пустой stdout). Установщик
+          # ставит линейку 1.x. Проверено в песочнице: run --auto --model
+          # на 1.19.6 с SA-ключом работает.
+          opencode run --auto --model opencode-go/glm-5.3 \
+            "REPO: $REPO
+          PR NUMBER: $PR_NUMBER
+          HEAD SHA: $HEAD_SHA
+
+          Проведи code review этого PR на русском языке. Сначала прочти
+          AGENTS.md и .claude/memory/systemPatterns.md — это источник правды
+          о проекте (Rails-монолит, доменная логика в app/services/).
+
+          Фокус ревью:
+          1. Безопасность: вебхук-контроллеры при пустом ENV-секрете обязаны
+             отказывать (не пропускать); admin-доступ только через
+             ?token=ADMIN_TOKEN; сырые PostGIS-запросы — на SQL-инъекции;
+             секреты и PII в коде/логах.
+          2. Конвенции: soft delete через deleted_at (без paranoia/discard),
+             enums с _prefix: true, даты dd.MM.yy, single quotes,
+             # frozen_string_literal: true, цены через price_formatted.
+          3. Инвариант каталога: Property — проекция Topnlab; правки,
+             ломающие sync-логику (в т.ч. пропуск архивации при неполном
+             обходе), — блокер.
+          4. LLM: free-first цепочки (LLM_CHAIN_*), платные модели — только
+             last-resort; перестановка платной модели вверх — замечание.
+          5. Тесты: изменена доменная логика — жди spec'и в spec/services
+             или соседних; сеть в спеках закрыта WebMock.
+          6. Документация: устарели ли из-за diff AGENTS.md, .claude/memory/*,
+             services/*/SERVICE.md, README.md (правила — docs/documentation-rules.md).
+
+          Получи diff командами «gh pr view \$PR_NUMBER --json baseRefName»
+          и «gh pr diff \$PR_NUMBER» и ревьюй его.
+
+          Опубликуй итог ОДНИМ верхнеуровневым комментарием PR: текст ревью
+          запиши во временный файл (вне дерева репозитория) и выполни
+          «gh pr comment \$PR_NUMBER --body-file <файл>». Другие write-
+          операции (git, edit кода, иные gh-команды) НЕ выполняй.
+
+          Структура текста ревью: вердикт (можно мерджить / нужны правки),
+          список блокеров, список нит-пиков.
+
+          ОБЯЗАТЕЛЬНО: предпоследняя строка финального ответа — ровно
+          'HEAD: $HEAD_SHA' (полный sha), а самая последняя строка — ровно
+          одна из двух машиночитаемых меток, без форматирования и без текста
+          после неё:
+            VERDICT: MERGE     — блокеров нет, PR можно вливать как есть
+            VERDICT: CHANGES   — есть хотя бы один блокер
+          Эти строки читает workflow automerge.yml; нит-пики без блокеров — это MERGE." \
+            > review-transcript.txt 2> review-stderr.txt || true
+          echo "--- stderr (head 2000c) ---"; head -c 2000 review-stderr.txt || true; echo
+          echo "--- stderr (tail) ---"; tail -5 review-stderr.txt || true
+          echo "--- transcript bytes: $(wc -c < review-transcript.txt)"
+
+      # Вердикт для automerge.yml — артефактом ЭТОГО прогона. Источник — не
+      # комментарии (их пишет любой job под тем же github-actions[bot], в т.ч.
+      # интерактивный бот), а транскрипт агента на диске раннера
+      # (review-transcript.txt): туда пишет только шаг ревью выше. Берём
+      # ПОСЛЕДНИЕ строки HEAD:/VERDICT: — финальный ответ агента идёт
+      # последним, а процитированный в diff текст — раньше.
+      # ВАЖНО: при невалидном вердикте (нет транскрипта / нет HEAD/VERDICT)
+      # job ПАДАЕТ — это сигнал automerge.yml уйти в fallback на Kimi Review.
+      # Валидный CHANGES — не падение: артефакт с VERDICT: CHANGES просто
+      # блокирует мерж.
+      - name: Publish verdict artifact
+        if: always()
+        env:
+          SHA: ${{ env.HEAD_SHA }}
+        run: |
+          set -euo pipefail
+          VERDICT=CHANGES
+          VALID=0
+          if [ -s review-transcript.txt ]; then
+            LAST_HEAD=$(grep -oE 'HEAD: [0-9a-f]{40}' review-transcript.txt | tail -1 || true)
+            LAST_VERDICT=$(grep -oE 'VERDICT: (MERGE|CHANGES)' review-transcript.txt | tail -1 || true)
+            echo "из транскрипта: '$LAST_HEAD' / '$LAST_VERDICT'"
+            if [ "$LAST_HEAD" = "HEAD: $SHA" ] && [ -n "$LAST_VERDICT" ]; then
+              VALID=1
+              if [ "$LAST_VERDICT" = "VERDICT: MERGE" ]; then VERDICT=MERGE; fi
+            fi
+          else
+            echo "транскрипт отсутствует"
+          fi
+          mkdir -p verdict
+          printf 'HEAD: %s\nRUN: %s\nVERDICT: %s\n' "$SHA" "$GITHUB_RUN_ID" "$VERDICT" > verdict/opencode-verdict.txt
+          cat verdict/opencode-verdict.txt
+          if [ "$VALID" != 1 ]; then
+            echo "валидный вердикт не получен — job failed → automerge уйдёт в fallback на Kimi Review"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: opencode-verdict
+          path: verdict/opencode-verdict.txt
           retention-days: 7
 
   kimi:

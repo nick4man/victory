@@ -71,6 +71,15 @@ class ResidentialComplex < ApplicationRecord
 
   validates :name, presence: true, length: { maximum: 120 }
   validates :city, presence: true, inclusion: { in: CITY_NAMES }
+
+  # Слаг — публичный URL-контракт сущности: constraint роута /zhk/:id —
+  # %r{[a-z0-9-]+}, и zhk_path с URL-строкой в слаге ронял edit-страницу
+  # админки 500 (issue #266, ITower id=31). Формат совпадает с выхлопом
+  # normalize_friendly_id. Пустой валиден — friendly_id сгенерирует из имени.
+  SLUG_FORMAT = /\A[a-z0-9]+(-[a-z0-9]+)*\z/
+
+  validates :slug, format: { with: SLUG_FORMAT, message: '— только строчная латиница, цифры и дефис' },
+                   allow_blank: true
   validates :title,            length: { maximum: 200 }, allow_blank: true
   validates :meta_description, length: { maximum: 300 }, allow_blank: true
   validates :built_from, :built_to,

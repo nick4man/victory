@@ -76,22 +76,26 @@
                 <% end %>
               </td>
               <td class="p-3 text-right space-x-3">
+                <%# Все member-URL — по id, а не по слагу: слаг редактируемый
+                    (и legacy-записи с битым слагом существуют, issue #266), а
+                    админские ссылки должны резолвиться всегда. Публичный
+                    маршрут /zhk/:slug — другое правило, он живёт во вьюхе ЖК. %>
                 <% if c.deleted_at.present? %>
-                  <%= button_to 'Восстановить', restore_admin_residential_complex_path(c),
+                  <%= button_to 'Восстановить', restore_admin_residential_complex_path(c.id),
                         method: :post, class: 'text-xs text-foreground hover:opacity-80 inline' %>
                 <% else %>
-                  <%= link_to 'Объекты →', listings_admin_residential_complex_path(c),
+                  <%= link_to 'Объекты →', listings_admin_residential_complex_path(c.id),
                         class: 'text-xs text-muted-foreground hover:text-foreground' %>
-                  <%= link_to 'Редактировать', edit_admin_residential_complex_path(c),
+                  <%= link_to 'Редактировать', edit_admin_residential_complex_path(c.id),
                         class: 'text-xs text-foreground underline hover:no-underline' %>
                   <% if c.published? %>
-                    <%= button_to 'Снять', unpublish_admin_residential_complex_path(c),
+                    <%= button_to 'Снять', unpublish_admin_residential_complex_path(c.id),
                           method: :post, class: 'text-xs text-muted-foreground hover:text-foreground inline' %>
                   <% else %>
-                    <%= button_to 'Опубликовать', publish_admin_residential_complex_path(c),
+                    <%= button_to 'Опубликовать', publish_admin_residential_complex_path(c.id),
                           method: :post, class: 'text-xs text-foreground hover:opacity-80 inline' %>
                   <% end %>
-                  <%= button_to 'Удалить', soft_delete_admin_residential_complex_path(c),
+                  <%= button_to 'Удалить', soft_delete_admin_residential_complex_path(c.id),
                         method: :post,
                         data: { turbo_confirm: "Удалить ЖК «#{c.name}»? Привязанные объекты (#{listings_count}) сохранят связь и вернутся вместе с ЖК." },
                         class: 'text-xs text-destructive hover:opacity-80 inline' %>
