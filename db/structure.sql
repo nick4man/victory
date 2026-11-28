@@ -9,49 +9,6 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
---
--- Name: tiger; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA tiger;
-
-
---
--- Name: tiger_data; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA tiger_data;
-
-
---
--- Name: topology; Type: SCHEMA; Schema: -; Owner: -
---
-
-CREATE SCHEMA topology;
-
-
---
--- Name: SCHEMA topology; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON SCHEMA topology IS 'PostGIS Topology schema';
-
-
---
--- Name: fuzzystrmatch; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA public;
-
-
---
--- Name: EXTENSION fuzzystrmatch; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION fuzzystrmatch IS 'determine similarities and distance between strings';
-
-
---
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -77,34 +34,6 @@ CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
-
-
---
--- Name: postgis_tiger_geocoder; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder WITH SCHEMA tiger;
-
-
---
--- Name: EXTENSION postgis_tiger_geocoder; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION postgis_tiger_geocoder IS 'PostGIS tiger geocoder and reverse geocoder';
-
-
---
--- Name: postgis_topology; Type: EXTENSION; Schema: -; Owner: -
---
-
-CREATE EXTENSION IF NOT EXISTS postgis_topology WITH SCHEMA topology;
-
-
---
--- Name: EXTENSION postgis_topology; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION postgis_topology IS 'PostGIS topology spatial types and functions';
 
 
 --
@@ -1412,6 +1341,7 @@ CREATE TABLE public.lead_events (
     first_show_at timestamp(6) without time zone,
     contract_at timestamp(6) without time zone,
     deleted_at timestamp(6) without time zone
+
 );
 
 
@@ -4646,6 +4576,12 @@ CREATE INDEX idx_lead_events_anchor ON public.lead_events USING btree (anchor_th
 
 CREATE INDEX idx_lead_events_chat_anchor ON public.lead_events USING btree (tg_chat_id, anchor_message_id);
 
+--
+-- Name: idx_lead_events_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_lead_events_deleted_at ON public.lead_events USING btree (deleted_at);
+
 
 --
 -- Name: idx_lead_events_crm_sync_failed; Type: INDEX; Schema: public; Owner: -
@@ -5716,13 +5652,6 @@ CREATE INDEX index_lead_events_on_assigned_to_id ON public.lead_events USING btr
 --
 
 CREATE INDEX index_lead_events_on_current_stage ON public.lead_events USING btree (current_stage);
-
-
---
--- Name: index_lead_events_on_deleted_at; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX index_lead_events_on_deleted_at ON public.lead_events USING btree (deleted_at);
 
 
 --
@@ -8292,6 +8221,7 @@ SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261127120000'),
+('20261126011052'),
 ('20261126011052'),
 ('20261114120000'),
 ('20261114100000'),
