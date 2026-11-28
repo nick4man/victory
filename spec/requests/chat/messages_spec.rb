@@ -12,11 +12,12 @@ RSpec.describe 'Chat::Messages', type: :request do
     expect(response).to have_http_status(:ok)
   end
 
-  def post_message(body, page: nil, remote_ip: nil)
+  def post_message(body, page: nil, remote_ip: nil, user_agent: nil)
     payload = { body: body }
     payload[:page] = page if page
     headers = { 'CONTENT_TYPE' => 'application/json' }
     headers['REMOTE_ADDR'] = remote_ip if remote_ip
+    headers['HTTP_USER_AGENT'] = user_agent if user_agent
     post chat_conversation_messages_path,
          params: payload.to_json,
          headers: headers
@@ -43,6 +44,48 @@ RSpec.describe 'Chat::Messages', type: :request do
       'referrer' => 'https://yandex.ru/',
       'ctx' => { 'kind' => 'property', 'slug' => 'dom-1' }
     )
+  end
+
+  # Issue #275: IP/UA посетителя — снимком на user-сообщении; LlmReplyJob
+  # прокидывает их в чатовые сущности лида (request в job недоступен).
+  it 'IP/UA посетителя сохраняются в metadata user-сообщения' do
+    open_chat
+
+    post_message('Оцените мою квартиру', remote_ip: '203.0.113.50', user_agent: 'Mozilla/5.0 ChatWidget')
+
+    expect(response).to have_http_status(:created)
+    msg = conversation.chat_messages.where(role: :user).order(:id).last
+    expect(msg.metadata['ip']).to eq('203.0.113.50')
+    expect(msg.metadata['user_agent']).to eq('Mozilla/5.0 ChatWidget')
+  end
+
+  # Сквозной регрессионный spec чатового пути (блокер ревью #278):
+  # POST виджета → LlmReplyJob → qualify_lead → Inquiry с реальным IP/UA
+  # посетителя. Заглушен только сетевой край (LLM-ответ); контроллер, job,
+  # thread-local и тул — боевые.
+  it 'POST → LlmReplyJob → qualify_lead: Inquiry получает IP/UA посетителя' do
+    responder = instance_double(Llm::ChatResponder)
+    allow(responder).to receive(:call) do
+      ChatTools::QualifyLead.call(
+        intent: 'buy', name: 'Чатовый Клиент', phone: '+79000009900',
+        budget_rub: 8_000_000, district: 'Центр'
+      )
+      { reply: 'ok', model: 'stub', escalate: false }
+    end
+    allow(Llm::ChatResponder).to receive(:new).and_return(responder)
+
+    open_chat
+    perform_enqueued_jobs(only: LlmReplyJob) do
+      post_message('Хочу купить квартиру', remote_ip: '203.0.113.77', user_agent: 'Mozilla/5.0 E2EChat')
+    end
+
+    inquiry = Inquiry.order(:id).last
+    expect(inquiry.source).to eq('site_chatbot')
+    expect(inquiry.ip_address).to eq('203.0.113.77')
+    expect(inquiry.user_agent).to eq('Mozilla/5.0 E2EChat')
+    # thread-local не протекает за пределы job
+    expect(Thread.current[:lead_client_ip]).to be_nil
+    expect(Thread.current[:lead_client_user_agent]).to be_nil
   end
 
   it 'лишние ключи ctx отброшены, значения приведены к строкам' do

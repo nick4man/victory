@@ -184,8 +184,12 @@ module ChatTools
         property_condition: args['property_condition'],
         token:              SecureRandom.uuid,
         status:             'pending',
-        ip_address:         '0.0.0.0',
-        user_agent:         'chat-bot',
+        # IP/UA посетителя из чатового request (issue #275): LlmReplyJob
+        # кладёт их в thread-local из metadata триггерного сообщения.
+        # Заглушки — только для вызовов вне чатового request (консоль, спеки);
+        # SiteSource такие sentinel-значения на карточку лида не выводит.
+        ip_address:         Thread.current[:lead_client_ip].presence || '0.0.0.0',
+        user_agent:         Thread.current[:lead_client_user_agent].presence || 'chat-bot',
         # Тест-режим чат-бота (issue #214): probe-прогон → valuation с
         # metadata['test']=true, чтобы её карточка ушла в тестовый чат, а не
         # в рабочий топик #ОЦЕНКА (см. PropertyValuation#push_to_work_bot).
