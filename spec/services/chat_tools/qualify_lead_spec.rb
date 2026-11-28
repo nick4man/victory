@@ -72,4 +72,38 @@ RSpec.describe ChatTools::QualifyLead do
       end
     end
   end
+
+  # Issue #275: IP/UA посетителя из чатового request — LlmReplyJob кладёт их
+  # в thread-local, тул пишет на Inquiry для карточки лида (спам-триаж).
+  describe 'IP/UA посетителя из request-контекста (issue #275)' do
+    after do
+      Thread.current[:lead_client_ip] = nil
+      Thread.current[:lead_client_user_agent] = nil
+    end
+
+    it 'thread-local от LlmReplyJob → Inquiry с ip_address/user_agent' do
+      Thread.current[:lead_client_ip] = '203.0.113.10'
+      Thread.current[:lead_client_user_agent] = 'Mozilla/5.0 (ChatWidget)'
+
+      result = described_class.call(
+        intent: 'buy', name: 'Клиент Чата', phone: '+79000008811',
+        budget_rub: 8_000_000
+      )
+
+      inquiry = Inquiry.find(result[:inquiry_id])
+      expect(inquiry.ip_address).to eq('203.0.113.10')
+      expect(inquiry.user_agent).to eq('Mozilla/5.0 (ChatWidget)')
+    end
+
+    it 'без request-контекста поля ip/ua остаются пустыми (регрессии нет)' do
+      result = described_class.call(
+        intent: 'buy', name: 'Клиент Чата', phone: '+79000008822',
+        budget_rub: 8_000_000
+      )
+
+      inquiry = Inquiry.find(result[:inquiry_id])
+      expect(inquiry.ip_address).to be_nil
+      expect(inquiry.user_agent).to be_nil
+    end
+  end
 end

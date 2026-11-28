@@ -94,6 +94,10 @@ module ChatTools
         inquiry_type: 'evaluation',
         priority:     'normal',
         source:       'site_chatbot',
+        # IP/UA посетителя из чатового request (issue #275): LlmReplyJob
+        # кладёт их в thread-local; вне request-контекста поля пустые.
+        ip_address:   Thread.current[:lead_client_ip].presence,
+        user_agent:   Thread.current[:lead_client_user_agent].presence,
         message:      build_summary(args, orientation, pv).truncate(2000),
         metadata:     {
           name:        name,

@@ -57,6 +57,22 @@ RSpec.describe CrmCards::Checker do
     )
   end
 
+  # Issue #277 — soft-deleted лид (мусор с дашборда) в CRM не выгружается.
+  it 'soft-deleted лид блокируется с явной причиной' do
+    lead.update!(deleted_at: Time.current)
+
+    expect(check(valid_payload).map { |e| e['message'] }).to include(a_string_including('Лид удалён'))
+  end
+
+  it 'персистентная карточка soft-deleted лида — та же блокировка через unscoped-фолбэк' do
+    card = CrmCard.create!(kind: 'lead', author: agent, lead_event: lead, payload: valid_payload)
+    lead.update!(deleted_at: Time.current)
+
+    messages = described_class.call(card.reload).map { |e| e['message'] }
+    expect(messages).to include(a_string_including('Лид удалён'))
+    expect(messages).not_to include(a_string_including('не привязана к лиду'))
+  end
+
   it 'пометка staff_test не блокирует: её ставит эвристика, в том числе клиенту с именем сотрудника' do
     lead.update!(staff_test: true, staff_test_matched_by: 'name_staff_first')
 

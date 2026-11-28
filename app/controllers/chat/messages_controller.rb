@@ -46,7 +46,7 @@ module Chat
         role:         :user,
         body:         body,
         author:       current_user,
-        metadata:     page_ctx ? { page: page_ctx } : {}
+        metadata:     message_metadata(page_ctx)
       )
 
       ConversationChannel.broadcast_to(conv,
@@ -85,6 +85,18 @@ module Chat
     end
 
     private
+
+    # Снимок контекста запроса на сообщении: страница на момент вопроса +
+    # IP/UA посетителя (issue #275). Лиды из чата создаются LLM-тулзами уже в
+    # LlmReplyJob (другой поток, request там недоступен) — это единственная
+    # точка, где request жив; job читает снимок и прокидывает в сущности лида.
+    def message_metadata(page_ctx)
+      {
+        page:       page_ctx,
+        ip:         request.remote_ip,
+        user_agent: request.user_agent.to_s.first(255).presence
+      }.compact
+    end
 
     # ScopeGuard short-circuit: write the canned reply right here (no LLM call,
     # no token spend), broadcast it, log the security event for later review.

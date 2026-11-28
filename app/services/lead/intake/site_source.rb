@@ -50,6 +50,11 @@ module Lead
           'test'         => payload[:test] == true,                # тест-прогон → тестовый TG-чат (issue #214)
           'origin'       => payload[:origin].presence,
           'utm'          => payload[:utm].presence,
+          # IP/UA источника — на карточку лида для спам-триажа (issue #275).
+          # Формы и чатовые тулы пишут их на Inquiry/PropertyValuation;
+          # у TG-лидов их нет. Sentinel-заглушки — не факт, не выводим.
+          'ip'           => client_ip(lead_ref),
+          'user_agent'   => client_user_agent(lead_ref),
           'raw'          => payload.to_h.except(:name, :phone, :email)
         }.compact
 
@@ -67,6 +72,22 @@ module Lead
       end
 
       private
+
+      # Технические заглушки, которые EstimatePropertyValuation писал вместо
+      # реальных IP/UA до issue #275. Placeholder — не факт источника: на
+      # карточке он ввёл бы диспетчера в заблуждение при спам-триаже.
+      SENTINEL_IP = '0.0.0.0'
+      SENTINEL_UA = 'chat-bot'
+
+      def client_ip(lead_ref)
+        ip = lead_ref.try(:ip_address).presence
+        ip unless ip == SENTINEL_IP
+      end
+
+      def client_user_agent(lead_ref)
+        ua = lead_ref.try(:user_agent).presence
+        ua unless ua == SENTINEL_UA
+      end
 
       # Lookup User по normalized email и phone (last 10 digits).
       # Matched на active=true + deleted_at=nil (excludes soft-deleted accounts).

@@ -39,6 +39,8 @@ module Telegram
           'task' => 'Telegram::WorkBot::Wizard::TaskFlow',
           'close' => 'Telegram::WorkBot::Wizard::CloseFlow',
           'reopen' => 'Telegram::WorkBot::Wizard::ReopenFlow',
+          # Issue #277 — редактирование полей лида с карточки дашборда.
+          'lead_edit' => 'Telegram::WorkBot::Wizard::LeadEditFlow',
           # Карточки CRM через модерацию (docs/superpowers/specs/2026-09-14-crm-card-moderation-design.md).
           'crm_lead' => 'Telegram::WorkBot::Wizard::CrmLeadCardFlow',
           'crm_edit' => 'Telegram::WorkBot::Wizard::CrmCardEditFlow',
@@ -57,6 +59,7 @@ module Telegram
 
         # Какой шаг получает id, пришедший с кнопки на карточке.
         SEED_STEP = { 'task' => 'lead', 'close' => 'lead', 'reopen' => 'task',
+                      'lead_edit' => 'lead',
                       'crm_lead' => 'lead', 'crm_edit' => 'card', 'crm_rework' => 'card',
                       'crm_approve' => 'card', 'crm_release' => 'card',
                       'crm_note' => 'card',

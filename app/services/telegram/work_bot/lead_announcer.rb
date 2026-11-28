@@ -199,6 +199,8 @@ module Telegram
         lines << ''
         lines << "👤 #{escape(meta['name'].to_s.presence || '—')}#{phone_suffix(meta['phone'])}"
         lines << "🏷 #{escape(@lead.lead_ref.try(:title).to_s)}" if @lead.lead_ref.respond_to?(:title) && @lead.lead_ref.title.present?
+        ip = ip_line(meta)
+        lines << ip if ip
         if meta['summary'].present?
           lines << ''
           lines << escape(meta['summary'].to_s.truncate(500))
@@ -253,6 +255,17 @@ module Telegram
         return '' if phone.blank?
 
         ", #{escape(phone.to_s)}"
+      end
+
+      # IP и user_agent источника лида (issue #275): спам-триаж и кнопка
+      # [🚫 Спам] в ДИСПЕТЧЕРСКОЙ опираются на факты, а не догадки.
+      # У TG-источников (tg_dm, manual) IP нет — строка опускается.
+      def ip_line(meta)
+        ip = meta['ip'].presence
+        return nil if ip.nil?
+
+        ua = meta['user_agent'].to_s.truncate(80).presence
+        ["🌐 IP: #{escape(ip)}", ua && escape(ua)].compact.join(' · ')
       end
 
       def stage_row

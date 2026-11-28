@@ -1339,7 +1339,8 @@ CREATE TABLE public.lead_events (
     segment character varying(32),
     property_id bigint,
     first_show_at timestamp(6) without time zone,
-    contract_at timestamp(6) without time zone
+    contract_at timestamp(6) without time zone,
+    deleted_at timestamp(6) without time zone
 );
 
 
@@ -4573,6 +4574,12 @@ CREATE INDEX idx_lead_events_anchor ON public.lead_events USING btree (anchor_th
 --
 
 CREATE INDEX idx_lead_events_chat_anchor ON public.lead_events USING btree (tg_chat_id, anchor_message_id);
+
+--
+-- Name: idx_lead_events_deleted_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_lead_events_deleted_at ON public.lead_events USING btree (deleted_at);
 
 
 --
@@ -8212,6 +8219,7 @@ ALTER TABLE ONLY public.viewing_schedules
 SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
+('20261127120000'),
 ('20261126011052'),
 ('20261114120000'),
 ('20261114100000'),
