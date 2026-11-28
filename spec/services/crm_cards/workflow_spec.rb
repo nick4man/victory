@@ -277,6 +277,57 @@ RSpec.describe CrmCards::Workflow do
       expect(exporter).to have_received(:call).once
     end
 
+    # Issue #277 — лид soft-deleted уже после одобрения и разрешения: release
+    # машинную проверку не гейтит, поэтому последняя линия — сам export!.
+    it 'лид удалён после разрешения — CRM не трогаем, карточка в export_failed' do
+      allow(exporter).to receive(:call)
+      card # одобренная+разрешённая карточка собирается ДО удаления лида
+      lead.update!(deleted_at: Time.current)
+
+      workflow.export!(card)
+
+      expect(exporter).not_to have_received(:call)
+      expect(card.reload).to have_attributes(status: 'export_failed', export_retryable: false)
+      expect(card.export_error).to include('Лид удалён')
+      expect(notifier).to have_received(:export_failed).with(card)
+    end
+
+    # Ревью #280: проверка deleted_at и вызов CRM идут под той же блокировкой
+    # строки лида (FOR UPDATE), которую берёт DashboardLeadCard#perform_delete, —
+    # удаление либо видно проверке, либо ждёт конца выгрузки.
+    it 'проверка удаления и вызов CRM сериализованы блокировкой строки лида' do
+      # find_by возвращает новый инстанс — подменяем его только для нашего
+      # лида, чтобы шпионить with_lock на объекте, который видит спек.
+      # unscoped с блоком (внутренности AR#reload) делегируем как есть.
+      allow(LeadEvent).to receive(:unscoped).and_wrap_original do |m, *args, &blk|
+        next m.call(*args, &blk) if blk
+
+        m.call.tap do |relation|
+          allow(relation).to receive(:find_by).and_wrap_original do |fm, *fargs, **fkwargs|
+            fkwargs[:id] == lead.id ? lead : fm.call(*fargs, **fkwargs)
+          end
+        end
+      end
+
+      events = []
+      allow(lead).to receive(:with_lock).and_wrap_original do |m, &blk|
+        events << :lock
+        m.call do
+          events << :locked
+          blk.call.tap { events << :unlock }
+        end
+      end
+      allow(exporter).to receive(:call) do
+        events << :crm
+        outcome
+      end
+
+      workflow.export!(card)
+
+      expect(events).to eq(%i[lock locked crm unlock])
+      expect(card.reload).to have_attributes(status: 'exported', crm_id: '4455')
+    end
+
     it 'CRM приняла заявку, но статус записать не удалось — номер не теряется, повтор запрещён' do
       allow(exporter).to receive(:call).and_return(outcome)
       allow(workflow).to receive(:record_export!).and_return(CrmCards::Workflow::Result.new(ok: false, error: 'boom'))

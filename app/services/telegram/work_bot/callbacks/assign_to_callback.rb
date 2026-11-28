@@ -82,10 +82,15 @@ module Telegram
         end
 
         def delete_picker(lead)
-          picker_id = lead.metadata['assign_picker_message_id']
+          # Picker живёт в том чате, где нажали «Назначить»: с карточки
+          # дашборда (issue #277) это DM руководителя, а не рабочая группа —
+          # удалять надо там, иначе picker с живыми кнопками остаётся висеть.
+          msg = callback_query['message'] || {}
+          chat_id = msg.dig('chat', 'id') || lead.tg_chat_id
+          picker_id = msg['message_id'] || lead.metadata['assign_picker_message_id']
           return if picker_id.blank?
 
-          client.delete_message(chat_id: lead.tg_chat_id, message_id: picker_id)
+          client.delete_message(chat_id: chat_id, message_id: picker_id)
           lead.update!(metadata: lead.metadata.except('assign_picker_message_id'))
         rescue Telegram::Client::Error => e
           Rails.logger.warn("[AssignToCallback] picker delete failed: #{e.message}")

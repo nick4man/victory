@@ -72,7 +72,10 @@ module CrmCards
     # Заявка уходит в CRM только после живого контакта ответственного с
     # клиентом — это и отсекает спам с формы сайта.
     def lead_rules
-      lead = @card.lead_event
+      # unscoped-фолбэк: у soft-deleted лида (deleted_at, issue #277) ассоциация
+      # card.lead_event под default_scope отдаёт nil, и без фолбэка карточка
+      # показывала бы «не привязана к лиду» вместо настоящей причины блока.
+      lead = @card.lead_event || LeadEvent.unscoped.find_by(id: @card.lead_event_id)
       return [['lead', 'Карточка не привязана к лиду.']] unless lead
 
       # staff_test здесь намеренно не проверяется: его ставит эвристика
@@ -93,6 +96,8 @@ module CrmCards
       elsif self.class.sandbox_lead?(lead)
         errors << ['lead', 'Лид из песочницы тестового бота — в CRM не выгружается.']
       end
+      # Issue #277 — soft-deleted лид (мусор из дашборда) в CRM не уходит.
+      errors << ['lead', 'Лид удалён — выгружать нечего.'] if lead.deleted_at.present?
       errors << ['lead', "Лид закрыт (#{lead.current_stage}) — выгружать нечего."] if lead.closed?
       errors << ['lead', 'Лид никому не назначен — сначала назначь ответственного.'] unless lead.assigned?
       if lead.first_contact_at.nil? && lead.current_stage == 'new'

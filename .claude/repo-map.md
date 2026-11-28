@@ -552,6 +552,7 @@ app/
           base.rb
           crm_card_callback.rb
           dashboard_drill_callback.rb
+          dashboard_staff_callback.rb
           link_staff_callback.rb
           owner_request_callback.rb
           photo_disposition_callback.rb
@@ -622,6 +623,7 @@ app/
           crm_test_lead_flow.rb
           engine.rb
           flow.rb
+          lead_edit_flow.rb
           lead_picking.rb
           menu.rb
           reopen_flow.rb
@@ -635,6 +637,11 @@ app/
         cheatsheet_renderer.rb
         commands_menu_sync.rb
         daily_digest_job.rb
+        dashboard_lead_card.rb
+        dashboard_list_page.rb
+        dashboard_pagination.rb
+        dashboard_staff_card.rb
+        dashboard_staff_metrics.rb
         deal_mirror.rb
         director_dashboard.rb
         dispatcher_digest.rb
@@ -2309,6 +2316,33 @@ private
 def valid_credential?(secret)
 ⋮----
 def bearer_token
+</file>
+
+<file path="app/controllers/webhooks/news_ingest_controller.rb">
+module Webhooks
+⋮----
+class NewsIngestController < ApplicationController
+skip_before_action :verify_authenticity_token, raise: false
+before_action :authenticate_bearer!
+⋮----
+DEFAULT_CATEGORY = 'news'
+DEFAULT_SCHEMA = 'NewsArticle'
+⋮----
+def create
+⋮----
+private
+⋮----
+def public_news_url(slug)
+⋮----
+def authenticate_bearer!
+⋮----
+def payload_params
+⋮----
+def normalize_payload(p)
+⋮----
+def safe_parse_time(value)
+⋮----
+def upsert_article(attrs)
 </file>
 
 <file path="app/controllers/webhooks/telegram_controller.rb">
@@ -8839,16 +8873,6 @@ BUTTONS_PER_ROW = 2
 def handle
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/assign_cancel_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class AssignCancelCallback < Base
-⋮----
-def handle
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/link_staff_callback.rb">
 module Telegram
 module WorkBot
@@ -9012,7 +9036,7 @@ private
 ⋮----
 def engine
 ⋮----
-def start(flow_key, seed_id)
+def start(flow_key, rest)
 ⋮----
 def answer(outcome)
 ⋮----
@@ -12396,33 +12420,6 @@ def valuation_params
 def rate_limited?
 </file>
 
-<file path="app/controllers/webhooks/news_ingest_controller.rb">
-module Webhooks
-⋮----
-class NewsIngestController < ApplicationController
-skip_before_action :verify_authenticity_token, raise: false
-before_action :authenticate_bearer!
-⋮----
-DEFAULT_CATEGORY = 'news'
-DEFAULT_SCHEMA = 'NewsArticle'
-⋮----
-def create
-⋮----
-private
-⋮----
-def public_news_url(slug)
-⋮----
-def authenticate_bearer!
-⋮----
-def payload_params
-⋮----
-def normalize_payload(p)
-⋮----
-def safe_parse_time(value)
-⋮----
-def upsert_article(attrs)
-</file>
-
 <file path="app/controllers/application_controller.rb">
 class ApplicationController < ActionController::Base
 ⋮----
@@ -13498,6 +13495,20 @@ def contact_keyboard
 def reply(text, reply_markup: nil)
 </file>
 
+<file path="app/services/telegram/work_bot/callbacks/assign_cancel_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class AssignCancelCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def delete_picker(lead)
+</file>
+
 <file path="app/services/telegram/work_bot/callbacks/base.rb">
 module Telegram
 module WorkBot
@@ -13891,6 +13902,81 @@ def gate
 def accept(step, value, manual: false)
 ⋮----
 def finish
+</file>
+
+<file path="app/services/telegram/work_bot/wizard/lead_edit_flow.rb">
+module Telegram
+module WorkBot
+module Wizard
+⋮----
+class LeadEditFlow < Flow
+include LeadPicking
+⋮----
+flow 'lead_edit', 'Редактирование лида'
+⋮----
+FIELDS = [
+⋮----
+FIELD_HINTS = {
+⋮----
+NAME_MAX = 100
+COMMENT_MAX = 500
+⋮----
+def self.seed_extras(segments)
+⋮----
+def steps
+⋮----
+def gate
+⋮----
+def accept(step, value, manual: false)
+⋮----
+def finish
+⋮----
+private
+⋮----
+def return_origin
+⋮----
+def accept_field(value)
+⋮----
+def accept_value(value)
+⋮----
+def field_label(field)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_staff_metrics.rb">
+module Telegram
+module WorkBot
+⋮----
+class DashboardStaffMetrics
+LEADS_LIMIT = 6
+TASKS_LIMIT = 6
+FC_WINDOW = 7.days
+FC_SLA_SEC = 1800
+⋮----
+attr_reader :staff
+⋮----
+def initialize(staff)
+⋮----
+def tasks_open
+⋮----
+def tasks_overdue
+⋮----
+def tasks_done_today
+⋮----
+def leads_open
+⋮----
+def leads_awaiting_fc
+⋮----
+def leads_fc_overdue
+⋮----
+def fc_week
+⋮----
+def open_leads
+⋮----
+def open_tasks
+⋮----
+private
+⋮----
+def awaiting_fc_scope
 </file>
 
 <file path="app/services/telegram/work_bot/photo_intake_processor.rb">
@@ -14378,81 +14464,134 @@ def message_page_snapshot(conv, message_id)
 def message_payload(m)
 </file>
 
-<file path="app/models/lead_event.rb">
-class LeadEvent < ApplicationRecord
-SOURCES = ['site_form', 'site_valuation', 'site_mortgage', 'tg_dm', 'manual', 'crm_webhook'].freeze
-STAGES  = ['new', 'first_contact', 'show', 'contract', 'deal', 'closed_won', 'closed_lost'].freeze
-TOPIC_KEYS = [
+<file path="app/models/viewing_schedule.rb">
+class ViewingSchedule < ApplicationRecord
 ⋮----
-SEGMENTS = ['cash', 'mortgage_approved', 'mortgage_pending', 'alternative', 'cold'].freeze
-SEGMENT_LABELS = {
+belongs_to :property
+belongs_to :user, optional: true
+belongs_to :agent, class_name: 'User', optional: true
 ⋮----
-SEGMENT_UNKNOWN_LABEL = '❔ сегмент не указан'
-⋮----
-belongs_to :lead_ref, polymorphic: true
-belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
-⋮----
-belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
-belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
-⋮----
-belongs_to :property, optional: true
-⋮----
-has_many :show_reports, dependent: :destroy
-⋮----
-has_one :embedding_record, class_name: 'LeadEventEmbedding', dependent: :destroy
-⋮----
-after_commit :enqueue_embed_if_relevant_changed, on: %i[create update]
-⋮----
-validates :source,           inclusion: { in: SOURCES }
-validates :current_stage,    inclusion: { in: STAGES }
-validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
-validates :tg_chat_id, presence: true
-validates :segment, inclusion: { in: SEGMENTS }, allow_nil: true
-⋮----
-scope :open,     -> { where.not(current_stage: ['closed_won', 'closed_lost']) }
-scope :closed,   -> { where(current_stage: ['closed_won', 'closed_lost']) }
-scope :for_agent, ->(tg_user) { where(assigned_to: tg_user) }
-scope :awaiting_first_contact, lambda {
-    where(first_contact_at: nil)
-      .where.not(assigned_at: nil)
-      .where.not(current_stage: ['closed_won', 'closed_lost'])
+enum :status, {
+    pending: 'pending',
+    confirmed: 'confirmed',
+    completed: 'completed',
+    cancelled: 'cancelled',
+    no_show: 'no_show'
   }
-scope :in_topic, ->(key) { where(anchor_topic_key: key) }
 ⋮----
-scope :assigned_by_tg, ->(tg_user) { where(assigned_by_id: tg_user.id) }
-scope :routed_by_tg,   ->(tg_user) { where(routed_by_id: tg_user.id) }
+attribute :preferred_date, :date
+attribute :preferred_time, :string
 ⋮----
-scope :updated_in, ->(range) { where(updated_at: range) }
+alias_attribute :message, :notes
 ⋮----
-scope :real,       -> { where(staff_test: false) }
-scope :staff_test_only, -> { where(staff_test: true) }
+validates :name, presence: true
+validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
+validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
+validates :preferred_date, presence: true
+validates :preferred_time, presence: true,
+                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
+validates :scheduled_at, presence: true
+validates :status, presence: true
 ⋮----
-scope :shown,     -> { where.not(first_show_at: nil) }
-scope :segmented, -> { where.not(segment: nil) }
+validate :date_not_in_past, if: :slot_or_activation_changed?
+validate :time_slot_available, if: :slot_overlap_check_needed?
+validate :ends_after_start, if: :slot_overlap_check_needed?
 ⋮----
-before_validation :detect_staff_test_submission, on: :create
+before_validation :normalize_phone
+before_validation :assemble_scheduled_at
+after_save :clear_form_fields
+after_create :send_notifications
+after_update :handle_status_change, if: :saved_change_to_status?
 ⋮----
-def open?
+scope :recent, -> { order(created_at: :desc) }
+scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
+scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
+scope :today, -> { where(scheduled_at: Time.current.all_day) }
+scope :for_property, ->(property_id) { where(property_id: property_id) }
+scope :for_user, ->(user_id) { where(user_id: user_id) }
 ⋮----
-def closed?
+def preferred_date
 ⋮----
-def assigned?
+def preferred_time
 ⋮----
-def segment_label
+def confirm!
 ⋮----
-def apply_segment!(value, by:)
+def cancel!(reason = nil)
 ⋮----
-def anchor_url
+def complete!
 ⋮----
-HISTORY_DEFAULT_CAPS = {
+def mark_no_show!
 ⋮----
-def append_history(key:, entry:, cap: nil)
+def datetime
+⋮----
+def datetime_formatted
+⋮----
+# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
+def duration_minutes
+⋮----
+# Факт явного присваивания ends_at (а не разница значений): одновременный
+# перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
+# ends_at? == false, и сборка молча заменяла бы осознанное значение
+# автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
+# (clear_form_fields) — сохранённое значение больше не «явное».
+def ends_at=(value)
+⋮----
+def ends_at_explicitly_assigned?
+⋮----
+# reload отменяет незавершённые присваивания — вместе с ними и признак
+# явного ends_at (блокер 2 ревью раунда 6): иначе объект после reload вёл
+# бы себя иначе, чем свежезагруженный, и следующий перенос слота считал
+# бы сохранённый конец «явным» вместо автоматического пересчёта.
+def reload(...)
+⋮----
+def upcoming?
+⋮----
+def can_cancel?
+⋮----
+def can_confirm?
 ⋮----
 private
 ⋮----
-def enqueue_embed_if_relevant_changed
+def normalize_phone
 ⋮----
-def detect_staff_test_submission
+# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
+# preferred_time): у сохранённой записи читатели деривируются из
+# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
+# значения — прямое присваивание scheduled_at= перетираться не должно.
+#
+# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
+# присваивание): «автоматический» конец — по duration, ручной — с
+# сохранением своей длительности. Автоматичность классифицируется по
+# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
+# текущим значениям — иначе повторная валидация уже перенесённого конца
+# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
+# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
+# новой записи не затирается.
+def assemble_scheduled_at
+⋮----
+# Пересборка — только когда форма реально прислала значения (после save
+# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
+# scheduled_at= перетираться не должно. Недостающую половину (формат
+# «дата+время» пересылается целиком, но модель допускает частичное
+# обновление) берём из текущего scheduled_at.
+⋮----
+def clear_form_fields
+⋮----
+def slot_changed?
+⋮----
+def slot_or_activation_changed?
+⋮----
+def slot_overlap_check_needed?
+⋮----
+def date_not_in_past
+⋮----
+def ends_after_start
+⋮----
+def time_slot_available
+⋮----
+def send_notifications
+⋮----
+def handle_status_change
 </file>
 
 <file path="app/services/chat/test_mode.rb">
@@ -14684,37 +14823,37 @@ def fallback_message
 def system_prompt
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
+<file path="app/services/telegram/work_bot/callbacks/dashboard_staff_callback.rb">
 module Telegram
 module WorkBot
 module Callbacks
 ⋮----
-class DashboardDrillCallback < Base
+class DashboardStaffCallback < Base
+⋮----
+ACTIONS = %w[edit role setrole assignable status status_confirm].freeze
+SELF_GUARD_ACTIONS = %w[setrole status status_confirm].freeze
 ⋮----
 def handle
 ⋮----
 private
 ⋮----
-def handle_drill(target)
+def parse
 ⋮----
-def refresh_main
+def dispatch(staff, page, action, param)
 ⋮----
-def render_leads_detail
+def apply_role(staff, page, role)
 ⋮----
-# Top-5 hot (high-priority topics + recent activity). .real — без
-# staff_test/probe-записей (issue #214).
+def apply_assignable(staff, page)
 ⋮----
-def render_tasks_detail
+def apply_status(staff, page, target)
 ⋮----
-def render_staff_detail
+def render(staff, page, mode, notice: nil)
 ⋮----
-def render_search_prompt
+def escape(text)
 ⋮----
 def edit(text, markup)
 ⋮----
-def back_keyboard
-⋮----
-def time_ago(time)
+def sync_menu(staff)
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_approve_flow.rb">
@@ -14946,6 +15085,110 @@ def build_digest_for(director)
 def group_chat_summary(director)
 ⋮----
 def send_digest(director, digest_markdown)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_lead_card.rb">
+Result = Struct.new(:text, :keyboard, keyword_init: true)
+⋮----
+TIMELINE_LIMIT = 5
+UA_MAX = 80
+⋮----
+STAGE_LABELS = {
+⋮----
+def initialize(lead:, origin: nil)
+⋮----
+def call
+⋮----
+def confirm_delete
+⋮----
+def perform_delete(actor:)
+⋮----
+def card_text
+⋮----
+def card_keyboard
+⋮----
+def card_callback
+⋮----
+def back_callback(page = nil)
+⋮----
+def back_label
+⋮----
+def origin_suffix
+⋮----
+# Контекст возврата для wizard'а редактирования: финал перерисует
+⋮----
+def edit_callback
+⋮----
+def back_page
+⋮----
+def stage_label
+⋮----
+def stage_row
+⋮----
+def labels_line(meta)
+⋮----
+def timeline_lines
+⋮----
+def history_events(entries)
+⋮----
+def lead_name
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_staff_card.rb">
+Result = Struct.new(:text, :keyboard, keyword_init: true)
+⋮----
+ROLE_LABELS = { 'agent' => 'агент', 'manager' => 'руководитель',
+⋮----
+def initialize(staff:, admin_viewer:, from_page: 1, mode: :view)
+⋮----
+def self.call(**)
+⋮----
+def call
+⋮----
+attr_reader :staff, :metrics, :from_page
+⋮----
+lines << "📧 #{escape(staff.email)}" if staff.email.present?
+⋮----
+def header
+⋮----
+def role_line
+⋮----
+def metrics_line
+⋮----
+def leads_line
+⋮----
+def sla_line
+⋮----
+def task_lines
+⋮----
+def due_label(task)
+⋮----
+def view_keyboard
+⋮----
+# Кнопка лида несёт origin (s<staff_id>:<page>) — «Назад» из карточки
+# лида вернёт в эту карточку сотрудника на ту же страницу списка,
+# а не в общий список лидов (ревью #280).
+def lead_button(lead)
+⋮----
+{ text: "#{name} (##{lead.id}) — #{lead.current_stage}#{flag}".truncate(60),
+⋮----
+# === :edit ===
+⋮----
+def render_edit
+⋮----
+def toggle_label
+⋮----
+def status_label
+⋮----
+def render_role
+⋮----
+def role_button(role)
+⋮----
+def render_status_confirm
+⋮----
+def escape(text)
 </file>
 
 <file path="app/services/telegram/work_bot/director_dashboard.rb">
@@ -15486,6 +15729,86 @@ def property_or_message_required
 # applications validate cleanly.
 </file>
 
+<file path="app/models/lead_event.rb">
+class LeadEvent < ApplicationRecord
+SOURCES = ['site_form', 'site_valuation', 'site_mortgage', 'tg_dm', 'manual', 'crm_webhook'].freeze
+STAGES  = ['new', 'first_contact', 'show', 'contract', 'deal', 'closed_won', 'closed_lost'].freeze
+TOPIC_KEYS = [
+⋮----
+SEGMENTS = ['cash', 'mortgage_approved', 'mortgage_pending', 'alternative', 'cold'].freeze
+SEGMENT_LABELS = {
+⋮----
+SEGMENT_UNKNOWN_LABEL = '❔ сегмент не указан'
+⋮----
+belongs_to :lead_ref, polymorphic: true
+belongs_to :assigned_to, class_name: 'TelegramUser', optional: true
+⋮----
+belongs_to :assigned_by, class_name: 'TelegramUser', optional: true
+belongs_to :routed_by,   class_name: 'TelegramUser', optional: true
+⋮----
+belongs_to :property, optional: true
+⋮----
+has_many :show_reports, dependent: :destroy
+⋮----
+has_one :embedding_record, class_name: 'LeadEventEmbedding', dependent: :destroy
+⋮----
+after_commit :enqueue_embed_if_relevant_changed, on: %i[create update]
+⋮----
+validates :source,           inclusion: { in: SOURCES }
+validates :current_stage,    inclusion: { in: STAGES }
+validates :anchor_topic_key, inclusion: { in: TOPIC_KEYS }
+validates :tg_chat_id, presence: true
+validates :segment, inclusion: { in: SEGMENTS }, allow_nil: true
+⋮----
+scope :open,     -> { where.not(current_stage: ['closed_won', 'closed_lost']) }
+scope :closed,   -> { where(current_stage: ['closed_won', 'closed_lost']) }
+scope :for_agent, ->(tg_user) { where(assigned_to: tg_user) }
+scope :awaiting_first_contact, lambda {
+    where(first_contact_at: nil)
+      .where.not(assigned_at: nil)
+      .where.not(current_stage: ['closed_won', 'closed_lost'])
+  }
+scope :in_topic, ->(key) { where(anchor_topic_key: key) }
+⋮----
+scope :assigned_by_tg, ->(tg_user) { where(assigned_by_id: tg_user.id) }
+scope :routed_by_tg,   ->(tg_user) { where(routed_by_id: tg_user.id) }
+⋮----
+scope :updated_in, ->(range) { where(updated_at: range) }
+⋮----
+scope :real,       -> { where(staff_test: false) }
+scope :staff_test_only, -> { where(staff_test: true) }
+⋮----
+scope :not_deleted, -> { where(deleted_at: nil) }
+default_scope { not_deleted }
+⋮----
+scope :shown,     -> { where.not(first_show_at: nil) }
+scope :segmented, -> { where.not(segment: nil) }
+⋮----
+before_validation :detect_staff_test_submission, on: :create
+⋮----
+def open?
+⋮----
+def closed?
+⋮----
+def assigned?
+⋮----
+def segment_label
+⋮----
+def apply_segment!(value, by:)
+⋮----
+def anchor_url
+⋮----
+HISTORY_DEFAULT_CAPS = {
+⋮----
+def append_history(key:, entry:, cap: nil)
+⋮----
+private
+⋮----
+def enqueue_embed_if_relevant_changed
+⋮----
+def detect_staff_test_submission
+</file>
+
 <file path="app/models/telegram_user.rb">
 class TelegramUser < ApplicationRecord
 STATUSES = ['active', 'inactive', 'blocked'].freeze
@@ -15683,24 +16006,6 @@ def target_chat_id(metadata)
 def adapter_for(source)
 </file>
 
-<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
-module Telegram
-module WorkBot
-module Callbacks
-⋮----
-class AssignToCallback < Base
-⋮----
-def handle
-⋮----
-private
-⋮----
-def log_reassignment_audit(lead, prev_assignee, new_assignee)
-⋮----
-def log_soft_error(result, error_msg)
-⋮----
-def delete_picker(lead)
-</file>
-
 <file path="app/services/telegram/work_bot/callbacks/stage_callback.rb">
 module Telegram
 module WorkBot
@@ -15891,6 +16196,80 @@ module_function
 def text(_tg_user)
 ⋮----
 def keyboard(tg_user)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_list_page.rb">
+module Telegram
+module WorkBot
+⋮----
+class DashboardListPage
+Result = Struct.new(:text, :keyboard, keyword_init: true)
+⋮----
+def initialize(section:, page: 1)
+⋮----
+def self.call(**)
+⋮----
+def call
+⋮----
+private
+⋮----
+def count
+⋮----
+def leads_scope
+⋮----
+def leads_result(page, total, total_count)
+⋮----
+def leads_text(page, total, total_count)
+⋮----
+# Alert-блок без пагинации: как в прежней сводке — не более 5.
+def overdue_lines
+⋮----
+def lead_rows(leads)
+⋮----
+def staff_scope
+⋮----
+def staff_result(page, total, total_count)
+⋮----
+def staff_text(page, total, total_count)
+⋮----
+# Групповые count'ы одним запросом на метрику — без N+1 по странице.
+def staff_metrics(ids)
+⋮----
+def staff_rows(staff, metrics, page)
+⋮----
+def footer(section, page, total)
+⋮----
+def back_row(section, page)
+⋮----
+def time_ago(time)
+⋮----
+def escape(text)
+</file>
+
+<file path="app/services/telegram/work_bot/dashboard_pagination.rb">
+module Telegram
+module WorkBot
+⋮----
+module DashboardPagination
+⋮----
+PAGE_SIZE = 8
+⋮----
+PAGE_MARKER = 'p'
+LIST_SECTIONS = %w[leads staff].freeze
+⋮----
+module_function
+⋮----
+def leads_page_callback(page)
+⋮----
+def staff_page_callback(page)
+⋮----
+def page_callback(section, page)
+⋮----
+def parse_page(args)
+⋮----
+def normalize_page(value)
+⋮----
+def nav_row(section, page, total_pages)
 </file>
 
 <file path="Gemfile">
@@ -16316,37 +16695,6 @@ def self.compact_response(pv, result, similar = nil)
 def self.run_failure(pv, error_message)
 </file>
 
-<file path="app/services/crm_cards/checker.rb">
-module CrmCards
-⋮----
-class Checker
-CONDITIONAL_MESSAGES = {
-⋮----
-def self.call(card)
-⋮----
-def self.sandbox_lead?(lead)
-⋮----
-def self.conditionally_required(values)
-⋮----
-def initialize(card)
-⋮----
-def call
-⋮----
-private
-⋮----
-def field_errors
-⋮----
-def lead_rules
-⋮----
-def object_rules
-⋮----
-def area_cents(value)
-⋮----
-def area(value)
-⋮----
-def blank_value?(raw)
-</file>
-
 <file path="app/services/crm_cards/text_intake.rb">
 MIN_TEXT = 12
 MAX_TEXT = 4000
@@ -16408,6 +16756,24 @@ def llm_values
 def client = @client ||= Llm::OmniClient.new
 ⋮----
 def system_prompt
+</file>
+
+<file path="app/services/telegram/work_bot/callbacks/assign_to_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
+⋮----
+class AssignToCallback < Base
+⋮----
+def handle
+⋮----
+private
+⋮----
+def log_reassignment_audit(lead, prev_assignee, new_assignee)
+⋮----
+def log_soft_error(result, error_msg)
+⋮----
+def delete_picker(lead)
 </file>
 
 <file path="app/services/telegram/work_bot/callbacks/crm_card_callback.rb">
@@ -16588,6 +16954,37 @@ require 'sidekiq/web'
 LANDING_TYPE_RX = /(kvartira|dom|uchastok|komnata|kommercheskaya)/.freeze
 </file>
 
+<file path="app/services/crm_cards/checker.rb">
+module CrmCards
+⋮----
+class Checker
+CONDITIONAL_MESSAGES = {
+⋮----
+def self.call(card)
+⋮----
+def self.sandbox_lead?(lead)
+⋮----
+def self.conditionally_required(values)
+⋮----
+def initialize(card)
+⋮----
+def call
+⋮----
+private
+⋮----
+def field_errors
+⋮----
+def lead_rules
+⋮----
+def object_rules
+⋮----
+def area_cents(value)
+⋮----
+def area(value)
+⋮----
+def blank_value?(raw)
+</file>
+
 <file path="app/services/crm_cards/notifier.rb">
 module CrmCards
 ⋮----
@@ -16629,223 +17026,38 @@ def client
 def escape(text)
 </file>
 
-<file path="app/services/crm_cards/workflow.rb">
-module CrmCards
+<file path="app/services/telegram/work_bot/callbacks/dashboard_drill_callback.rb">
+module Telegram
+module WorkBot
+module Callbacks
 ⋮----
-class Workflow
+class DashboardDrillCallback < Base
 ⋮----
-EXPORT_DELAY = 5.seconds
-⋮----
-Result = Struct.new(:ok, :card, :error, keyword_init: true) do
-def ok?
-⋮----
-def initialize(notifier: nil, exporter: nil)
-⋮----
-def upsert_lead_card!(lead:, actor:, values:)
-⋮----
-def create_object_card!(actor:, values:)
-⋮----
-def update_fields!(card, values, actor:)
-⋮----
-def submit!(card, actor:)
-⋮----
-def return_for_rework!(card, actor:, comment:)
-⋮----
-def approve!(card, actor:)
-⋮----
-def release_for_export!(card, actor:, expected: nil)
-⋮----
-def export!(card)
-⋮----
-def export_with_lock(card)
-⋮----
-def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
-⋮----
-def retry_export!(card, actor:)
-⋮----
-def attach_export_number!(card, crm_id:, actor:)
-⋮----
-def exporters = Permissions.exporters
-⋮----
-def changed_since_confirm
-⋮----
-def already_released(card)
-⋮----
-def can_edit?(card, actor, perms = Permissions.for(actor))
-⋮----
-def edit_denial(card, perms)
+def handle
 ⋮----
 private
 ⋮----
-def save_values(card, values, actor:, perms:)
+def handle_lead_card
 ⋮----
-def wrong_bot(card)
+def parse_lead_route(rest)
 ⋮----
-def taking_over?(card, actor)
+def handle_drill(target)
 ⋮----
-def refresh_check(card)
+def handle_list(section)
 ⋮----
-def transition!(card, to:, actor:, comment: nil)
+def handle_staff
 ⋮----
-def sync_lead_ref!(card)
+def render_list(section, page)
 ⋮----
-def moderator?(actor)
+def refresh_main
 ⋮----
-def moderator_denial(actor, action)
+def render_tasks_detail
 ⋮----
-def not_pending(card)
+def render_search_prompt
 ⋮----
-def returnable?(card)
+def edit(text, markup)
 ⋮----
-def not_returnable(card)
-⋮----
-def label(card)
-⋮----
-def ok(card)
-⋮----
-def deny(error)
-⋮----
-def fail_export!(card, error:, attempt_token: nil, retryable: nil)
-⋮----
-def finalize_export!(card, outcome, attempt_token: nil)
-⋮----
-def lost_export_status!(card, outcome, reason, attempt_token: nil)
-⋮----
-def attempt_current?(card, token)
-⋮----
-def notifier
-⋮----
-def exporter
-</file>
-
-<file path="app/models/viewing_schedule.rb">
-class ViewingSchedule < ApplicationRecord
-⋮----
-belongs_to :property
-belongs_to :user, optional: true
-belongs_to :agent, class_name: 'User', optional: true
-⋮----
-enum :status, {
-    pending: 'pending',
-    confirmed: 'confirmed',
-    completed: 'completed',
-    cancelled: 'cancelled',
-    no_show: 'no_show'
-  }
-⋮----
-attribute :preferred_date, :date
-attribute :preferred_time, :string
-⋮----
-alias_attribute :message, :notes
-⋮----
-validates :name, presence: true
-validates :phone, presence: true, format: { with: /\A\+?[0-9\s\-\(\)]+\z/ }
-validates :email, format: { with: URI::MailTo::EMAIL_REGEXP }, allow_blank: true
-validates :preferred_date, presence: true
-validates :preferred_time, presence: true,
-                             format: { with: /\A([01]?\d|2[0-3]):[0-5]\d\z/, allow_blank: true }
-validates :scheduled_at, presence: true
-validates :status, presence: true
-⋮----
-validate :date_not_in_past, if: :slot_or_activation_changed?
-validate :time_slot_available, if: :slot_overlap_check_needed?
-validate :ends_after_start, if: :slot_overlap_check_needed?
-⋮----
-before_validation :normalize_phone
-before_validation :assemble_scheduled_at
-after_save :clear_form_fields
-after_create :send_notifications
-after_update :handle_status_change, if: :saved_change_to_status?
-⋮----
-scope :recent, -> { order(created_at: :desc) }
-scope :upcoming, -> { where('scheduled_at >= ?', Time.current.beginning_of_day).where(status: %w[pending confirmed]) }
-scope :past, -> { where('scheduled_at < ?', Time.current.beginning_of_day) }
-scope :today, -> { where(scheduled_at: Time.current.all_day) }
-scope :for_property, ->(property_id) { where(property_id: property_id) }
-scope :for_user, ->(user_id) { where(user_id: user_id) }
-⋮----
-def preferred_date
-⋮----
-def preferred_time
-⋮----
-def confirm!
-⋮----
-def cancel!(reason = nil)
-⋮----
-def complete!
-⋮----
-def mark_no_show!
-⋮----
-def datetime
-⋮----
-def datetime_formatted
-⋮----
-# Продолжительность показа в минутах (колонка duration, дефолт схемы — 60).
-def duration_minutes
-⋮----
-# Факт явного присваивания ends_at (а не разница значений): одновременный
-# перенос слота с явно переданным ПРЕЖНИМ концом даёт will_save_change_to_
-# ends_at? == false, и сборка молча заменяла бы осознанное значение
-# автоматическим (блокер 1 ревью раунда 5). Сбрасывается после save
-# (clear_form_fields) — сохранённое значение больше не «явное».
-def ends_at=(value)
-⋮----
-def ends_at_explicitly_assigned?
-⋮----
-# reload отменяет незавершённые присваивания — вместе с ними и признак
-# явного ends_at (блокер 2 ревью раунда 6): иначе объект после reload вёл
-# бы себя иначе, чем свежезагруженный, и следующий перенос слота считал
-# бы сохранённый конец «явным» вместо автоматического пересчёта.
-def reload(...)
-⋮----
-def upcoming?
-⋮----
-def can_cancel?
-⋮----
-def can_confirm?
-⋮----
-private
-⋮----
-def normalize_phone
-⋮----
-# Собирает scheduled_at из ЯВНО переданных полей формы (preferred_date/
-# preferred_time): у сохранённой записи читатели деривируются из
-# scheduled_at, поэтому пересборка идёт только когда форма реально прислала
-# значения — прямое присваивание scheduled_at= перетираться не должно.
-#
-# ends_at следует за scheduled_at при ЛЮБОМ переносе (форма или прямое
-# присваивание): «автоматический» конец — по duration, ручной — с
-# сохранением своей длительности. Автоматичность классифицируется по
-# СОХРАНЁННОЙ паре scheduled_at/ends_at (attribute_in_database), а не по
-# текущим значениям — иначе повторная валидация уже перенесённого конца
-# считала бы его «ручным» и растягивала интервал: 10:00–11:00 → 12:00–
-# 13:00 → 12:00–15:00 (блокер 1 ревью раунда 3). Явно заданный ends_at
-# новой записи не затирается.
-def assemble_scheduled_at
-⋮----
-# Пересборка — только когда форма реально прислала значения (после save
-# виртуальные поля сброшены, см. clear_form_fields): прямое присваивание
-# scheduled_at= перетираться не должно. Недостающую половину (формат
-# «дата+время» пересылается целиком, но модель допускает частичное
-# обновление) берём из текущего scheduled_at.
-⋮----
-def clear_form_fields
-⋮----
-def slot_changed?
-⋮----
-def slot_or_activation_changed?
-⋮----
-def slot_overlap_check_needed?
-⋮----
-def date_not_in_past
-⋮----
-def ends_after_start
-⋮----
-def time_slot_available
-⋮----
-def send_notifications
-⋮----
-def handle_status_change
+def back_keyboard
 </file>
 
 <file path="app/services/telegram/work_bot/wizard/crm_card_support.rb">
@@ -17021,6 +17233,99 @@ def format_phone(digits)
 def button(text, callback_data)
 ⋮----
 def escape(text)
+</file>
+
+<file path="app/services/crm_cards/workflow.rb">
+module CrmCards
+⋮----
+class Workflow
+⋮----
+EXPORT_DELAY = 5.seconds
+⋮----
+Result = Struct.new(:ok, :card, :error, keyword_init: true) do
+def ok?
+⋮----
+def initialize(notifier: nil, exporter: nil)
+⋮----
+def upsert_lead_card!(lead:, actor:, values:)
+⋮----
+def create_object_card!(actor:, values:)
+⋮----
+def update_fields!(card, values, actor:)
+⋮----
+def submit!(card, actor:)
+⋮----
+def return_for_rework!(card, actor:, comment:)
+⋮----
+def approve!(card, actor:)
+⋮----
+def release_for_export!(card, actor:, expected: nil)
+⋮----
+def export!(card)
+⋮----
+def export_with_lock(card)
+⋮----
+def record_export!(card, crm_id:, mode:, actor: nil, warning: nil, attempt_token: nil)
+⋮----
+def retry_export!(card, actor:)
+⋮----
+def attach_export_number!(card, crm_id:, actor:)
+⋮----
+def exporters = Permissions.exporters
+⋮----
+def changed_since_confirm
+⋮----
+def already_released(card)
+⋮----
+def can_edit?(card, actor, perms = Permissions.for(actor))
+⋮----
+def edit_denial(card, perms)
+⋮----
+private
+⋮----
+def save_values(card, values, actor:, perms:)
+⋮----
+def wrong_bot(card)
+⋮----
+def taking_over?(card, actor)
+⋮----
+def refresh_check(card)
+⋮----
+def transition!(card, to:, actor:, comment: nil)
+⋮----
+def sync_lead_ref!(card)
+⋮----
+def moderator?(actor)
+⋮----
+def moderator_denial(actor, action)
+⋮----
+def not_pending(card)
+⋮----
+def returnable?(card)
+⋮----
+def not_returnable(card)
+⋮----
+def label(card)
+⋮----
+def ok(card)
+⋮----
+def deny(error)
+⋮----
+def export_guarded(card, token, lead_row)
+⋮----
+def deleted_lead?(card, lead_row)
+⋮----
+def fail_export!(card, error:, attempt_token: nil, retryable: nil)
+⋮----
+def finalize_export!(card, outcome, attempt_token: nil)
+⋮----
+def lost_export_status!(card, outcome, reason, attempt_token: nil)
+⋮----
+def attempt_current?(card, token)
+⋮----
+def notifier
+⋮----
+def exporter
 </file>
 
 <file path="app/services/telegram/inbound_processor.rb">

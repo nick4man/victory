@@ -52,6 +52,20 @@ RSpec.describe Telegram::WorkBot::Callbacks::AssignCancelCallback do
     expect(deleted).to eq([{ chat_id: lead.tg_chat_id, message_id: 8008 }])
   end
 
+  # Ревью #280: с карточки дашборда picker живёт в DM руководителя — удалять
+  # надо в чате callback'а, а не в чате лида, иначе picker с живыми кнопками
+  # остаётся висеть, а metadata уже очищена.
+  it 'из DM удаляет picker в DM, а не в чате лида' do
+    cb = { 'id' => 'cb-4dm', 'data' => "assign_cancel:#{lead.id}",
+           'from' => { 'id' => manager.tg_user_id },
+           'message' => { 'message_id' => 8008, 'chat' => { 'id' => 97_301, 'type' => 'private' } } }
+    described_class.new(callback_query: cb, tg_user: manager, args: [lead.id.to_s],
+                        client: tg_client).call
+
+    expect(deleted).to eq([{ chat_id: 97_301, message_id: 8008 }])
+    expect(lead.reload.metadata).not_to have_key('assign_picker_message_id')
+  end
+
   it 'убирает ключ из metadata, не затирая остальное' do
     lead.update!(metadata: lead.metadata.merge('name' => 'Клиент'))
     run
@@ -66,11 +80,22 @@ RSpec.describe Telegram::WorkBot::Callbacks::AssignCancelCallback do
     expect(acks.last[:text]).to eq('Отменено')
   end
 
-  it 'без сохранённого picker_id ничего не удаляет, но кнопку отпускает' do
+  it 'без ключа в metadata удаляет сообщение, на котором нажали отмену' do
     lead.update!(metadata: {})
     run
-    expect(deleted).to be_empty
+    expect(deleted).to eq([{ chat_id: lead.tg_chat_id, message_id: 8008 }])
     expect(acks.last[:text]).to eq('Отменено')
+  end
+
+  it 'без message в callback — fallback на metadata и чат лида' do
+    lead.update!(metadata: lead.metadata.merge('assign_picker_message_id' => 8009))
+    cb = { 'id' => 'cb-5', 'data' => "assign_cancel:#{lead.id}",
+           'from' => { 'id' => manager.tg_user_id } }
+    described_class.new(callback_query: cb, tg_user: manager, args: [lead.id.to_s],
+                        client: tg_client).call
+
+    expect(deleted).to eq([{ chat_id: lead.tg_chat_id, message_id: 8009 }])
+    expect(lead.reload.metadata).not_to have_key('assign_picker_message_id')
   end
 
   it 'агенту недоступна' do

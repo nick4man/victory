@@ -6,21 +6,36 @@ module Telegram
       # Phase 15 — drill-down callback'и для /dashboard.
       #
       # callback_data префиксы:
-      #   dashboard:drill:leads   — детальный leads breakdown
-      #   dashboard:drill:tasks   — детальный tasks
-      #   dashboard:drill:staff   — per-staff cards
-      #   dashboard:drill:search  — prompt: «что ищем»
-      #   dashboard:refresh       — пересчитать main dashboard
-      #   dashboard:back          — обратно на main dashboard
+      #   dashboard:drill:leads      — алиас: страница 1 списка лидов
+      #   dashboard:drill:tasks      — детальный tasks
+      #   dashboard:drill:staff      — алиас: страница 1 списка сотрудников
+      #   dashboard:drill:search     — prompt: «что ищем»
+      #   dashboard:leads:p:<page>   — страница списка лидов (issue #277)
+      #   dashboard:staff:p:<page>   — страница списка сотрудников (issue #277)
+      #   dashboard:staff:<id>[:<page>[:<action>]] — карточка сотрудника
+      #     (issue #277, DashboardStaffCallback; <page> — страница списка
+      #     для кнопки «Назад»)
+      #   dashboard:lead:<id>        — карточка лида (issue #277)
+      #   dashboard:lead:<id>:s<sid>:<spage> — карточка лида, открытая из
+      #     карточки сотрудника (origin для «Назад», ревью #280)
+      #   dashboard:lead:<id>:p<page> — карточка лида с зафиксированной
+      #     страницей списка для «Назад» (так её перерисовывает wizard
+      #     редактирования, ревью #280)
+      #   dashboard:lead:<id>[:s<sid>:<spage>|:p<page>]:del    — confirm удаления лида
+      #   dashboard:lead:<id>[:s<sid>:<spage>|:p<page>]:del:yes — выполнить soft-delete
+      #   dashboard:refresh          — пересчитать main dashboard
+      #   dashboard:back             — обратно на main dashboard
       class DashboardDrillCallback < Base
         manager_only
 
         def handle
           subcmd = @args[0].to_s
-          target = @args[1].to_s
 
           case subcmd
-          when 'drill'    then handle_drill(target)
+          when 'drill'    then handle_drill(@args[1].to_s)
+          when 'leads'    then handle_list(:leads)
+          when 'staff'    then handle_staff
+          when 'lead'     then handle_lead_card
           when 'refresh'  then refresh_main
           when 'back'     then refresh_main
           else
@@ -30,49 +45,88 @@ module Telegram
 
         private
 
+        # Карточка лида (issue #277): dashboard:lead:<id>[:s<sid>:<spage>][:del[:yes]].
+        # Действия карточки (стадия/назначение/спам/редактирование) уходят в
+        # существующие callback-механики — здесь только рендер и soft-delete.
+        def handle_lead_card
+          lead_id = @args[1].to_s
+          return ack('⚠️ Неизвестный шаг.', alert: true) unless lead_id.match?(/\A\d+\z/)
+
+          lead = LeadEvent.find_by(id: lead_id)
+          return ack('⚠️ Лид не найден (возможно, удалён).', alert: true) unless lead
+          # Центральный гейт Base#lead_event здесь не срабатывает (id в @args[1]),
+          # поэтому staff_test-проверка продублирована явно (issue #214).
+          return ack("🧪 Лид ##{lead.id} — тестовый (probe). Действие недоступно.", alert: true) if lead.staff_test?
+
+          origin, action, subaction = parse_lead_route(@args[2..] || [])
+          card = DashboardLeadCard.new(lead: lead, origin: origin)
+          result = case action
+                   when ''    then card.call
+                   when 'del' then subaction == 'yes' ? card.perform_delete(actor: tg_user) : card.confirm_delete
+                   else return ack('⚠️ Неизвестный шаг.', alert: true)
+                   end
+          edit(result.text, result.keyboard)
+          ack
+        end
+
+        # Origin-сегмент после id лида (ревью #280) — куда ведёт «Назад»:
+        #   s<staff_id>:<staff_page> — карточка открыта из карточки сотрудника;
+        #   p<page> — из списка лидов с зафиксированной страницей (так wizard
+        #   редактирования возвращает карточку на исходную страницу, а не на
+        #   пересчитанную после сдвига updated_at).
+        def parse_lead_route(rest)
+          origin = nil
+          if (m = rest[0].to_s.match(/\As(\d+)\z/))
+            origin = { staff_id: m[1].to_i,
+                       staff_page: DashboardPagination.normalize_page(rest[1]) }
+            rest = rest[2..] || []
+          elsif (m = rest[0].to_s.match(/\Ap(\d+)\z/))
+            origin = { list_page: DashboardPagination.normalize_page(m[1]) }
+            rest = rest[1..] || []
+          end
+          [origin, rest[0].to_s, rest[1].to_s]
+        end
+
         def handle_drill(target)
           case target
-          when 'leads'  then render_leads_detail
+          when 'leads'  then render_list(:leads, 1)
           when 'tasks'  then render_tasks_detail
-          when 'staff'  then render_staff_detail
+          when 'staff'  then render_list(:staff, 1)
           when 'search' then render_search_prompt
           else
             ack('⚠️ Неизвестная секция.', alert: true)
           end
         end
 
+        # Страничная навигация dashboard:<section>:p:<page>. Числовой id
+        # (dashboard:staff:123) — карточка сотрудника (issue #277).
+        def handle_list(section)
+          parsed = DashboardPagination.parse_page(@args)
+          return ack('⚠️ Неизвестный шаг.', alert: true) unless parsed
+
+          render_list(section, parsed[1])
+        end
+
+        # dashboard:staff:p:<page> — список; dashboard:staff:<id>[...] —
+        # карточка сотрудника (DashboardStaffCallback, issue #277).
+        def handle_staff
+          parsed = DashboardPagination.parse_page(@args)
+          return render_list(:staff, parsed[1]) if parsed
+
+          DashboardStaffCallback.new(callback_query: callback_query, tg_user: tg_user,
+                                     args: @args[1..], client: client).call
+        end
+
+        def render_list(section, page)
+          result = DashboardListPage.new(section: section, page: page).call
+          edit(result.text, result.keyboard)
+          ack
+        end
+
         def refresh_main
           result = Telegram::WorkBot::DirectorDashboard.new(tg_user: tg_user, period: :today).call
           edit(result.markdown, result.keyboard)
           ack('🔄 Обновлено')
-        end
-
-        def render_leads_detail
-          lines = ['🎯 <b>Лиды — детально</b>', '']
-
-          # Top-5 hot (high-priority topics + recent activity). .real — без
-          # staff_test/probe-записей (issue #214).
-          hot = LeadEvent.open.real.order(updated_at: :desc).limit(5).includes(:assigned_to)
-          if hot.any?
-            lines << '<b>Топ-5 активных:</b>'
-            hot.each do |le|
-              name = (le.metadata || {})['name'].presence || "Лид ##{le.id}"
-              lines << "  • #{name} (##{le.id}) — #{le.current_stage} → #{le.assigned_to&.mention || '<i>не назначен</i>'}"
-            end
-          end
-
-          # Лиды, которые ждут первого контакта дольше 30 минут.
-          overdue = LeadEvent.real.awaiting_first_contact.where('assigned_at < ?', 30.minutes.ago).limit(5)
-          if overdue.any?
-            lines << ''
-            lines << '<b>⚠️ Ждут первого контакта (более 30 мин):</b>'
-            overdue.each do |le|
-              lines << "  • Лид ##{le.id} — #{le.assigned_to&.mention} (#{time_ago(le.assigned_at)})"
-            end
-          end
-
-          edit(lines.join("\n"), back_keyboard)
-          ack
         end
 
         def render_tasks_detail
@@ -94,26 +148,6 @@ module Telegram
             due_today.each do |t|
               lines << "  • ##{t.id} #{t.title.to_s.truncate(50)} — #{t.assignee&.mention}"
             end
-          end
-
-          edit(lines.join("\n"), back_keyboard)
-          ack
-        end
-
-        def render_staff_detail
-          lines = ['👥 <b>Сотрудники — детально</b>', '']
-
-          staff = TelegramUser.assignable.where.not(role: 'admin').order(:first_name, :id)
-          staff.each do |s|
-            open = ::Task.where(assignee_id: s.id, status: 'open').count
-            done_today = ::Task.where(assignee_id: s.id, status: 'done', updated_at: Time.current.all_day).count
-            overdue = ::Task.where(assignee_id: s.id, status: 'open').where('due_at < ?', Time.current).count
-            leads_open = LeadEvent.real.where(assigned_to_id: s.id).open.count
-
-            lines << "<b>#{s.mention}</b> (#{s.role})"
-            lines << "  • Задачи: #{open} в работе / #{done_today} закрыто сегодня / #{overdue} просрочено"
-            lines << "  • Открытых лидов: #{leads_open}"
-            lines << ''
           end
 
           edit(lines.join("\n"), back_keyboard)
@@ -156,16 +190,6 @@ module Telegram
               { text: '🔄 Обновить', callback_data: 'dashboard:refresh' }
             ]]
           }
-        end
-
-        def time_ago(time)
-          return 'unknown' if time.nil?
-
-          diff_sec = (Time.current - time).to_i
-          return "#{diff_sec / 60}мин" if diff_sec < 3600
-          return "#{diff_sec / 3600}ч" if diff_sec < 86_400
-
-          "#{diff_sec / 86_400}д"
         end
       end
     end
