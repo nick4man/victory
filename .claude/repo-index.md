@@ -317,11 +317,13 @@ app/services/firecrawl/client.rb — module Firecrawl, class Client, class Error
 app/services/formatters/date_format.rb — module Formatters, module DateFormat
 app/services/formatters/price_parse.rb — module Formatters, module PriceParse
 app/services/geocoding/address_lookup.rb — module Geocoding, class AddressLookup
+app/services/image_metadata_backfill.rb — class ImageMetadataBackfill
 app/services/kpi/agency_digest.rb — module Kpi, class AgencyDigest
 app/services/kpi/morning_digest.rb — module Kpi, class MorningDigest
 app/services/kpi/show_funnel.rb — module Kpi, class ShowFunnel
 app/services/kpi/staff_snapshot.rb — module Kpi, class StaffSnapshot
 app/services/kpi/weekly_report.rb — module Kpi, class WeeklyReport
+app/services/lead/first_contact_quarantine.rb — module Lead, class FirstContactQuarantine
 app/services/lead/intake.rb — module Lead, class Intake
 app/services/lead/intake/client_resolver.rb — module Lead, class Intake, class ClientResolver
 app/services/lead/intake/crm_webhook_source.rb — module Lead, class Intake, class CrmWebhookSource

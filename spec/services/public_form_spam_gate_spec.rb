@@ -319,4 +319,55 @@ RSpec.describe PublicFormSpamGate do
       expect(described_class::HONEYPOT_PARAM).to eq ContactFormSpamGuard::HONEYPOT_PARAM
     end
   end
+
+  # issue #286: нетерминальные дропы пишут hit в локальную репутацию IP;
+  # кворум дропов за окно автоблочит адрес раньше фидовых блэклистов.
+  describe 'автоблок IP по дропам гейта (issue #286)' do
+    let(:flood_ip) { '203.0.113.99' }
+
+    it 'IP с 5 дроп-событиями rate_limit за час → SpamBlockedEntry (local/blocked), следующий сабмит — spam_ip' do
+      5.times { described_class.record(form: 'review', reason: 'rate_limit', ip: flood_ip, ua: 'Bot/1.0') }
+
+      entry = SpamBlockedEntry.find_by(entry_type: :ip, value: flood_ip)
+      expect(entry).to be_status_blocked
+      expect(entry.source).to eq('local')
+
+      result = gate_call(ip: flood_ip, rendered_at_token: token)
+      expect(result.spam).to be true
+      expect(result.reason).to eq 'spam_ip'
+    end
+
+    it 'honeypot и spam_ip не пишут hits — они терминальные' do
+      described_class.record(form: 'review', reason: 'honeypot', ip: flood_ip, ua: 'Bot/1.0')
+      described_class.record(form: 'review', reason: 'spam_ip', ip: flood_ip, ua: 'Bot/1.0')
+
+      expect(SpamBlockedEntry.where(entry_type: :ip, value: flood_ip)).to be_empty
+    end
+
+    it 'одиночный rate_limit-дроп НЕ банит — запись остаётся suspect' do
+      described_class.record(form: 'review', reason: 'rate_limit', ip: flood_ip, ua: 'Bot/1.0')
+
+      entry = SpamBlockedEntry.find_by(entry_type: :ip, value: flood_ip)
+      expect(entry).to be_status_suspect
+      expect(SpamBlockedEntry.ip_blocked?(flood_ip)).to be false
+    end
+
+    it 'квота-окно не роняет легитимного клиента: 3 сабмита/час по лимиту не пишут hits' do
+      3.times do |i|
+        result = gate_call(ip: flood_ip, visitor_token: "visitor-legit-#{i}",
+                           rendered_at_token: described_class.rendered_at_token(Time.current - 10.seconds))
+        expect(result.spam).to be false
+      end
+
+      # счётчик дропа ≠ счётчику сабмитов: успешные сабмиты hits не создают
+      expect(SpamBlockedEntry.where(entry_type: :ip, value: flood_ip)).to be_empty
+    end
+
+    it 'дропы каждой формы идут в общую репутацию IP (form не часть ключа)' do
+      3.times { described_class.record(form: 'review', reason: 'rate_limit', ip: flood_ip, ua: 'Bot/1.0') }
+      2.times { described_class.record(form: 'callback', reason: 'too_fast', ip: flood_ip, ua: 'Bot/1.0') }
+
+      expect(SpamBlockedEntry.find_by(entry_type: :ip, value: flood_ip)).to be_status_blocked
+    end
+  end
 end

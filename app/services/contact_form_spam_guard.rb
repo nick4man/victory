@@ -26,6 +26,11 @@ class ContactFormSpamGuard
 
   REASONS = %w[honeypot no_render_timestamp too_fast spam_ip].freeze
 
+  # Причины, пишущие hit в локальную репутацию IP (issue #286) — тот же
+  # паттерн, что PublicFormSpamGate::IP_HIT_REASONS: нетерминальные
+  # тайминговые сигналы копят кворум автоблока; honeypot/spam_ip терминальны.
+  IP_HIT_REASONS = %w[no_render_timestamp too_fast].freeze
+
   Result = Struct.new(:spam, :suspicious, :reason, keyword_init: true)
 
   class << self
@@ -63,6 +68,10 @@ class ContactFormSpamGuard
 
     def record(reason:, ip:, ua:)
       return unless REASONS.include?(reason)
+
+      # Локальная репутация IP (issue #286): нетерминальные сигналы копят
+      # кворум автоблока адреса (SpamBlockedEntry.record_gate_hit!).
+      SpamBlockedEntry.record_gate_hit!(ip: ip) if IP_HIT_REASONS.include?(reason)
 
       count = increment_counter(reason)
       safe_ua = sanitize_user_agent(ua)

@@ -186,6 +186,30 @@ RSpec.describe Inquiry do
     end
   end
 
+  describe 'карантин первого контакта (issue #286)' do
+    it 'quarantined? читает метку metadata (string и symbol ключи)' do
+      expect(build_inquiry(metadata: { 'quarantine' => true })).to be_quarantined
+      expect(build_inquiry(metadata: { quarantine: true })).to be_quarantined
+      expect(build_inquiry(metadata: { 'quarantine' => false })).not_to be_quarantined
+      expect(build_inquiry(metadata: {})).not_to be_quarantined
+      expect(build_inquiry(metadata: nil)).not_to be_quarantined
+    end
+
+    it 'карантинный лид: push_to_work_bot не вызывает Lead::Intake (карточка не публикуется)' do
+      inquiry = build_inquiry(metadata: { 'quarantine' => true }).tap(&:save!)
+
+      expect(Lead::Intake).not_to receive(:call)
+      inquiry.send(:push_to_work_bot)
+    end
+
+    it 'обычный лид: push_to_work_bot работает как раньше (регрессия)' do
+      inquiry = build_inquiry.tap(&:save!)
+
+      expect(Lead::Intake).to receive(:call).and_return(Lead::Intake::Result.new(success: true))
+      inquiry.send(:push_to_work_bot)
+    end
+  end
+
   describe 'AASM transitions' do
     let(:inquiry) { build_inquiry.tap(&:save!) }
 

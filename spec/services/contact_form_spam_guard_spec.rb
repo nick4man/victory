@@ -231,4 +231,37 @@ RSpec.describe ContactFormSpamGuard do
       end
     end
   end
+
+  # issue #286: нетерминальные сигналы пишут hit в локальную репутацию IP —
+  # тот же паттерн, что PublicFormSpamGate::IP_HIT_REASONS.
+  describe 'hits локальной репутации IP (issue #286)' do
+    let(:ip) { '203.0.113.60' }
+
+    it 'тайминговые причины (too_fast/no_render_timestamp) пишут hit' do
+      described_class.record(reason: 'too_fast', ip: ip, ua: 'Bot/1.0')
+      described_class.record(reason: 'no_render_timestamp', ip: ip, ua: 'Bot/1.0')
+
+      entry = SpamBlockedEntry.find_by(entry_type: :ip, value: ip)
+      expect(entry).to be_status_suspect
+      expect(entry.source).to eq('local')
+      expect(entry.hits).to eq(2)
+    end
+
+    it 'honeypot и spam_ip не пишут hits — они терминальные' do
+      described_class.record(reason: 'honeypot', ip: ip, ua: 'Bot/1.0')
+      described_class.record(reason: 'spam_ip', ip: ip, ua: 'Bot/1.0')
+
+      expect(SpamBlockedEntry.where(entry_type: :ip, value: ip)).to be_empty
+    end
+
+    it 'кворум тайминговых сигналов автоблочит адрес' do
+      SpamBlockedEntry::IP_GATE_QUORUM.times do
+        described_class.record(reason: 'too_fast', ip: ip, ua: 'Bot/1.0')
+      end
+
+      entry = SpamBlockedEntry.find_by(entry_type: :ip, value: ip)
+      expect(entry).to be_status_blocked
+      expect(SpamBlockedEntry.ip_blocked?(ip)).to be true
+    end
+  end
 end

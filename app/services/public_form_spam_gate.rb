@@ -39,6 +39,13 @@ class PublicFormSpamGate
 
   DROP_REASONS = %w[honeypot spam_ip no_render_timestamp too_fast rate_limit duplicate].freeze
 
+  # Причины-дропы, пишущие hit в локальную репутацию IP (issue #286):
+  # нетерминальные срабатывания — флуд-сигнал, по кворуму адрес автоблочится
+  # (SpamBlockedEntry.record_gate_hit!). honeypot — разовая ловушка, а не
+  # флуд; spam_ip — адрес уже заблокирован: hits по терминальным причинам
+  # не пишутся.
+  IP_HIT_REASONS = %w[rate_limit duplicate too_fast no_render_timestamp].freeze
+
   # Имя honeypot-поля общее с /contacts: нейтральное, не совпадает с
   # известными полями автозаполнителей (website, email, phone и т.п.).
   HONEYPOT_PARAM = ContactFormSpamGuard::HONEYPOT_PARAM
@@ -84,8 +91,12 @@ class PublicFormSpamGate
 
     # Лог дропа: счётчик по reason + alert при превышении порога
     # (механика как ContactFormSpamGuard.record, но свои ключи и причины).
+    # Нетерминальные дропы дополнительно пишут hit в локальную репутацию IP
+    # (issue #286): кворум дропов за окно автоблочит адрес до фидов.
     def record(form:, reason:, ip:, ua:)
       return unless DROP_REASONS.include?(reason)
+
+      SpamBlockedEntry.record_gate_hit!(ip: ip) if IP_HIT_REASONS.include?(reason)
 
       count = Rails.cache.increment(counter_key(form, reason), 1, expires_in: 1.hour) || 0
       safe_ua = ContactFormSpamGuard.sanitize_user_agent(ua)
