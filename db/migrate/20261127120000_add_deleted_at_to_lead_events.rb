@@ -6,6 +6,6 @@
 class AddDeletedAtToLeadEvents < ActiveRecord::Migration[8.1]
   def change
     add_column :lead_events, :deleted_at, :datetime
-    add_index :lead_events, :deleted_at
+    add_index :lead_events, :deleted_at, name: 'idx_lead_events_deleted_at'
   end
 end

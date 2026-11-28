@@ -1341,7 +1341,6 @@ CREATE TABLE public.lead_events (
     first_show_at timestamp(6) without time zone,
     contract_at timestamp(6) without time zone,
     deleted_at timestamp(6) without time zone
-
 );
 
 
@@ -8221,7 +8220,6 @@ SET search_path TO "$user", public;
 
 INSERT INTO "schema_migrations" (version) VALUES
 ('20261127120000'),
-('20261126011052'),
 ('20261126011052'),
 ('20261114120000'),
 ('20261114100000'),
