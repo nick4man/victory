@@ -1,7 +1,14 @@
 <%# Карточка ЖК. Поля сгруппированы по смыслу: сначала то, без чего
     страница не существует, потом фактура, которую редактор дозаполняет
     по официальным источникам. %>
-<%= form_with model: [:admin, complex], html: { class: 'space-y-8' } do |f| %>
+<%# Action формы — по persisted id, а не по слагу: слаг — редактируемое
+    поле, и у записи с битым слагом (issue #266, ITower id=31) action из
+    to_param уводил бы на URL, который роутер не распознаёт, — исправить
+    слаг было бы нечем. То же и при re-render после неудачного PATCH:
+    невалидный слаг в памяти объекта не должен ломать повторную отправку. %>
+<%= form_with model: [:admin, complex],
+              url: complex.persisted? ? admin_residential_complex_path(complex.id) : admin_residential_complexes_path,
+              html: { class: 'space-y-8' } do |f| %>
 
   <% if complex.errors.any? %>
     <div class="p-4 border border-destructive text-destructive text-sm">
@@ -181,7 +188,7 @@
           class: 'px-6 py-3 text-xs tracking-[0.3em] text-muted-foreground hover:text-foreground transition-colors' %>
     <% if complex.persisted? %>
       <%= link_to "Объекты (#{complex.on_site_listings_count}) →",
-            listings_admin_residential_complex_path(complex),
+            listings_admin_residential_complex_path(complex.id),
             class: 'ml-auto text-xs text-foreground underline hover:no-underline' %>
     <% end %>
   </div>

@@ -203,8 +203,15 @@ Devise — вернуть gem в Gemfile и пройти ревью.
   - CodeQL (`ruby` / `python` / `javascript-typescript` / `actions`) — GitHub code
     scanning default setup, **файла в репозитории нет**;
   - GitGuardian Security Checks — GitHub App.
-- `.github/workflows/kimi.yml`, job **«Kimi Review»** — авторевью каждого PR; его вердикт
-  (`VERDICT: MERGE|CHANGES`) — обязательный gate автослияния в `dev/*` (`automerge.yml`).
+- `.github/workflows/kimi.yml`, job **«OpenCode Review»** — ОСНОВНОЕ авторевью
+  каждого PR (OpenCode CLI, OIDC на краткосрочный OPENCODE_API_KEY сервис-аккаунта
+  Console, модель opencode-go/glm-5.3 на бюджет Go-подписки); его вердикт
+  (`VERDICT: MERGE|CHANGES`, артефакт `opencode-verdict`) — обязательный gate
+  автослияния в `dev/*` (`automerge.yml`). Job **«Kimi Review»** — FALLBACK:
+  запускается только при падении OpenCode Review, его артефакт `kimi-verdict`
+  automerge читает, только если opencode-вердикта нет; ветки без opencode-джоба
+  (до PR #258) идут по kimi-пути автоматически. Ручной запуск OpenCode Review
+  на любом PR — workflow_dispatch с номером PR (после мержа в main).
   Job `@kimi`/`@claude` (алиас к тому же job'у) — интерактивный бот, в PR-проверки **не входят**.
 - **Агентный конвейер** (issue → kanban → PR → `dev/*`): `docs/runbooks/agent-pipeline.md`.
   Issue с меткой `agent:hermes` (ставит человек после triage) подхватывает Hermes на хосте
